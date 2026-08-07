@@ -30,3 +30,7 @@ apps/web/next-env.d.ts
 
 # learner (local, per-repo)
 .claude/learner.local.json
+
+# agent scratch (worktrees, plan-execution ledger)
+.claude/worktrees/
+.superpowers/
