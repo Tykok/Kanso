@@ -1,5 +1,6 @@
 package dev.kanso.api
 
+import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.MemberRole
 import dev.kanso.service.TeamService
 import jakarta.validation.Valid
@@ -9,7 +10,10 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/teams")
-class TeamController(private val teams: TeamService) {
+class TeamController(
+	private val teams: TeamService,
+	private val currentUser: CurrentUser,
+) {
 
 	@GetMapping
 	fun list(@RequestParam(defaultValue = "false") includeArchived: Boolean): List<TeamResponse> =
@@ -25,14 +29,17 @@ class TeamController(private val teams: TeamService) {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	fun create(@Valid @RequestBody request: TeamRequest): TeamResponse =
-		TeamResponse.of(teams.create(request.name, request.key?.uppercase(), request.parentTeamId))
+	fun create(@Valid @RequestBody request: TeamRequest): TeamResponse = TeamResponse.of(
+		teams.create(currentUser.require(), request.name, request.key?.uppercase(), request.parentTeamId)
+	)
 
 	@PutMapping("/{id}")
 	fun update(@PathVariable id: UUID, @Valid @RequestBody request: TeamRequest): TeamResponse {
+		val actor = currentUser.require()
 		val current = teams.get(id)
 		return TeamResponse.of(
 			teams.update(
+				actor = actor,
 				id = id,
 				name = request.name,
 				key = request.key?.uppercase() ?: current.key,
@@ -52,9 +59,11 @@ class TeamController(private val teams: TeamService) {
 
 	@PostMapping("/{id}/members")
 	fun addMember(@PathVariable id: UUID, @RequestBody request: AddMemberRequest): List<MemberResponse> =
-		teams.addMember(id, request.userId, MemberRole.from(request.role)).map(MemberResponse::of)
+		teams.addMember(currentUser.require(), id, request.userId, MemberRole.from(request.role))
+			.map(MemberResponse::of)
 
 	@DeleteMapping("/{id}/members/{userId}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	fun removeMember(@PathVariable id: UUID, @PathVariable userId: UUID) = teams.removeMember(id, userId)
+	fun removeMember(@PathVariable id: UUID, @PathVariable userId: UUID) =
+		teams.removeMember(currentUser.require(), id, userId)
 }

@@ -1,11 +1,16 @@
 package dev.kanso.service
 
 import dev.kanso.PostgresTest
+import dev.kanso.auth.hash
+import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.User
 import dev.kanso.repo.SyncJobRepository
+import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
@@ -22,9 +27,21 @@ class TicketWorkflowTest : PostgresTest() {
 	@Autowired lateinit var projects: ProjectService
 	@Autowired lateinit var tickets: TicketService
 	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var users: UserRepository
+	@Autowired lateinit var encoder: PasswordEncoder
+
+	/** Team writes are admin-only, so every team this file builds needs one. */
+	private val admin: User by lazy {
+		users.createLocalUser(
+			email = "workflow-${UUID.randomUUID()}@kanso.test",
+			displayName = "Workflow admin",
+			passwordHash = encoder.hash("correct-horse-battery"),
+			role = InstanceRole.ADMIN,
+		)
+	}
 
 	private fun newTeam(name: String = "Team ${UUID.randomUUID().toString().take(4)}") =
-		teams.create(name, "K${UUID.randomUUID().toString().take(4).uppercase()}", null)
+		teams.create(admin, name, "K${UUID.randomUUID().toString().take(4).uppercase()}", null)
 
 	@Test
 	fun `a new ticket gets a short identifier scoped to its team`() {
@@ -153,7 +170,7 @@ class TicketWorkflowTest : PostgresTest() {
 	@Test
 	fun `tickets can be listed across a team subtree`() {
 		val parent = newTeam("Parent")
-		val child = teams.create("Child", "CH${UUID.randomUUID().toString().take(3).uppercase()}", parent.id)
+		val child = teams.create(admin, "Child", "CH${UUID.randomUUID().toString().take(3).uppercase()}", parent.id)
 
 		for (team in listOf(parent, child)) {
 			tickets.create(
@@ -237,10 +254,10 @@ class TicketWorkflowTest : PostgresTest() {
 	@Test
 	fun `a team cannot be moved under its own descendant`() {
 		val root = newTeam("Root")
-		val child = teams.create("Child", "CD${UUID.randomUUID().toString().take(3).uppercase()}", root.id)
+		val child = teams.create(admin, "Child", "CD${UUID.randomUUID().toString().take(3).uppercase()}", root.id)
 
 		assertFailsWith<ConflictException> {
-			teams.update(root.id, root.name, root.key, child.id, archived = false)
+			teams.update(admin, root.id, root.name, root.key, child.id, archived = false)
 		}
 	}
 }

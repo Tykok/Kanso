@@ -3,6 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.TeamMember
+import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
@@ -12,6 +13,7 @@ import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -37,7 +39,8 @@ class TeamService(
 	}
 
 	@Transactional
-	fun create(name: String, key: String?, parentTeamId: UUID?): Team {
+	fun create(actor: User, name: String, key: String?, parentTeamId: UUID?): Team {
+		requireConfigurator(actor)
 		if (parentTeamId != null && teams.findById(parentTeamId) == null) {
 			throw BadRequestException("Parent team $parentTeamId does not exist")
 		}
@@ -48,7 +51,8 @@ class TeamService(
 	}
 
 	@Transactional
-	fun update(id: UUID, name: String, key: String, parentTeamId: UUID?, archived: Boolean): Team {
+	fun update(actor: User, id: UUID, name: String, key: String, parentTeamId: UUID?, archived: Boolean): Team {
+		requireConfigurator(actor)
 		val existing = get(id)
 		if (parentTeamId != existing.parentTeamId) {
 			if (parentTeamId == id) throw ConflictException("A team cannot be its own parent")
@@ -99,7 +103,8 @@ class TeamService(
 	}
 
 	@Transactional
-	fun addMember(teamId: UUID, userId: UUID, role: MemberRole): List<TeamMember> {
+	fun addMember(actor: User, teamId: UUID, userId: UUID, role: MemberRole): List<TeamMember> {
+		requireConfigurator(actor)
 		get(teamId)
 		users.findById(userId) ?: throw BadRequestException("No user $userId")
 		teams.addMember(teamId, userId, role)
@@ -109,13 +114,27 @@ class TeamService(
 	}
 
 	@Transactional
-	fun removeMember(teamId: UUID, userId: UUID) {
+	fun removeMember(actor: User, teamId: UUID, userId: UUID) {
+		requireConfigurator(actor)
 		get(teamId)
 		if (!teams.removeMember(teamId, userId)) {
 			throw NotFoundException("User $userId is not a member of team $teamId")
 		}
 		syncJobs.enqueue(SyncEntityType.TEAM, teamId, SyncOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.UPDATED, teamId))
+	}
+
+	// --- permissions ---------------------------------------------------------
+
+	/**
+	 * Teams are instance configuration, not daily work: who reports to whom decides
+	 * what everyone else sees. The client hides what it may not do from `/api/me`;
+	 * this is the backstop, not the mechanism.
+	 */
+	private fun requireConfigurator(actor: User) {
+		if (!actor.instanceRole.canConfigureInstance) {
+			throw AccessDeniedException("Only the owner or an admin can change teams")
+		}
 	}
 
 	// --- keys ----------------------------------------------------------------
