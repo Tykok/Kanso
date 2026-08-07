@@ -124,6 +124,34 @@ class TeamRepository(private val jdbc: JdbcClient) {
 	fun directChildIds(id: UUID): List<UUID> =
 		Teams.select(Teams.id).where { Teams.parentTeamId eq id }.map { it[Teams.id] }
 
+	/**
+	 * The chain above [id], nearest first, excluding [id] itself.
+	 *
+	 * Raw SQL for the same reason [descendantIds] is: Exposed has no `WITH RECURSIVE`.
+	 * Cycles are impossible — [wouldCreateCycle] refuses them on the way in — so the
+	 * walk always terminates at a root.
+	 */
+	fun ancestorIds(id: UUID): List<UUID> = jdbc.sql(
+		"""
+		WITH RECURSIVE ancestors AS (
+		    SELECT parent_team_id AS id, 1 AS depth
+		      FROM teams WHERE id = :id AND parent_team_id IS NOT NULL
+		    UNION ALL
+		    SELECT t.parent_team_id, a.depth + 1
+		      FROM teams t JOIN ancestors a ON t.id = a.id
+		     WHERE t.parent_team_id IS NOT NULL
+		)
+		SELECT id FROM ancestors ORDER BY depth
+		""".trimIndent()
+	).param("id", id).query(UUID::class.java).list().filterNotNull()
+
+	fun setParent(id: UUID, parentTeamId: UUID?): Boolean =
+		Teams.update({ Teams.id eq id }) { it[Teams.parentTeamId] = parentTeamId } > 0
+
+	fun setArchived(ids: Collection<UUID>, archived: Boolean): Int =
+		if (ids.isEmpty()) 0
+		else Teams.update({ Teams.id inList ids }) { it[Teams.archived] = archived }
+
 	// --- members -------------------------------------------------------------
 
 	fun members(teamId: UUID): List<TeamMember> =

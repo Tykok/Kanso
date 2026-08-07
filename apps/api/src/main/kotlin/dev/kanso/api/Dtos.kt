@@ -68,7 +68,6 @@ data class TeamRequest(
 	/** Ticket prefix, e.g. `KAN`. Derived from the name when omitted. */
 	@field:Size(min = 2, max = 8) val key: String? = null,
 	val parentTeamId: UUID? = null,
-	val archived: Boolean = false,
 )
 
 data class TeamResponse(

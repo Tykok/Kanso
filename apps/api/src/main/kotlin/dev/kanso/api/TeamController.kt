@@ -49,10 +49,17 @@ class TeamController(
 				name = request.name,
 				key = request.key?.uppercase() ?: current.key,
 				parentTeamId = request.parentTeamId,
-				archived = request.archived,
 			)
 		)
 	}
+
+	@PutMapping("/{id}/archive")
+	fun archive(@PathVariable id: UUID, @RequestBody request: DispositionPlanRequest): TeamResponse =
+		TeamResponse.of(teams.archive(currentUser.require(), id, request.toPlan()))
+
+	@PostMapping("/{id}/unarchive")
+	fun unarchive(@PathVariable id: UUID): TeamResponse =
+		TeamResponse.of(teams.unarchive(currentUser.require(), id))
 
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)

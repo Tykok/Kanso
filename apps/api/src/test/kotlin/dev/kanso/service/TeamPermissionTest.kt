@@ -46,7 +46,7 @@ class TeamPermissionTest : PostgresTest() {
 		val admin = user(InstanceRole.ADMIN)
 
 		val created = teams.create(admin, "Core", key(), null)
-		val renamed = teams.update(admin, created.id, "Core Platform", created.key, null, archived = false)
+		val renamed = teams.update(admin, created.id, "Core Platform", created.key, null)
 
 		assertEquals("Core Platform", renamed.name)
 	}
@@ -64,7 +64,7 @@ class TeamPermissionTest : PostgresTest() {
 		val team = teams.create(admin, "Growth", key(), null)
 
 		assertFailsWith<AccessDeniedException> {
-			teams.update(member, team.id, "Hijacked", team.key, null, archived = false)
+			teams.update(member, team.id, "Hijacked", team.key, null)
 		}
 	}
 

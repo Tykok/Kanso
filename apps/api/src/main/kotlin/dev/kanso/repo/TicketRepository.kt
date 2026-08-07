@@ -135,6 +135,28 @@ class TicketRepository {
 		return Tickets.selectAll().where(where).count().toInt()
 	}
 
+	fun idsByTeam(teamId: UUID): List<UUID> =
+		Tickets.select(Tickets.id).where { Tickets.teamId eq teamId }
+			.orderBy(Tickets.number to SortOrder.ASC)
+			.map { it[Tickets.id] }
+
+	/** A move renames the ticket for good: `UNIQUE (team_id, number)` leaves no choice. */
+	fun moveToTeam(ticketId: UUID, teamId: UUID, number: Int): Boolean =
+		Tickets.update({ Tickets.id eq ticketId }) {
+			it[Tickets.teamId] = teamId
+			it[Tickets.number] = number
+		} > 0
+
+	/** Returns only the rows that actually changed — the others need no mirror push. */
+	fun setArchivedByTeams(teamIds: Collection<UUID>, archived: Boolean): List<UUID> {
+		if (teamIds.isEmpty()) return emptyList()
+		val ids = Tickets.select(Tickets.id)
+			.where { (Tickets.teamId inList teamIds) and (Tickets.archived neq archived) }
+			.map { it[Tickets.id] }
+		if (ids.isNotEmpty()) Tickets.update({ Tickets.id inList ids }) { it[Tickets.archived] = archived }
+		return ids
+	}
+
 	// --- assignees -----------------------------------------------------------
 
 	fun assigneeIds(ticketId: UUID): List<UUID> =

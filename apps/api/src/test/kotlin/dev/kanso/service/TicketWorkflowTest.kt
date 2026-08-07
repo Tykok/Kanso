@@ -257,7 +257,7 @@ class TicketWorkflowTest : PostgresTest() {
 		val child = teams.create(admin, "Child", "CD${UUID.randomUUID().toString().take(3).uppercase()}", root.id)
 
 		assertFailsWith<ConflictException> {
-			teams.update(admin, root.id, root.name, root.key, child.id, archived = false)
+			teams.update(admin, root.id, root.name, root.key, child.id)
 		}
 	}
 }

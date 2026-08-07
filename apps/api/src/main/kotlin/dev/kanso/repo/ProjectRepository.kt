@@ -97,6 +97,22 @@ class ProjectRepository {
 		return Projects.selectAll().where(where).count().toInt()
 	}
 
+	fun idsByTeam(teamId: UUID): List<UUID> =
+		Projects.select(Projects.id).where { Projects.teamId eq teamId }.map { it[Projects.id] }
+
+	/** Null is a real destination: a project with no team is the transverse case. */
+	fun setTeam(projectId: UUID, teamId: UUID?): Boolean =
+		Projects.update({ Projects.id eq projectId }) { it[Projects.teamId] = teamId } > 0
+
+	fun setArchivedByTeams(teamIds: Collection<UUID>, archived: Boolean): List<UUID> {
+		if (teamIds.isEmpty()) return emptyList()
+		val ids = Projects.select(Projects.id)
+			.where { (Projects.teamId inList teamIds) and (Projects.archived neq archived) }
+			.map { it[Projects.id] }
+		if (ids.isNotEmpty()) Projects.update({ Projects.id inList ids }) { it[Projects.archived] = archived }
+		return ids
+	}
+
 	// --- docs ----------------------------------------------------------------
 
 	fun docIds(projectId: UUID): List<UUID> =
