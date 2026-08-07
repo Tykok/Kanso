@@ -109,8 +109,24 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
               event.preventDefault();
               dismiss();
             } else if (event.key === "Tab") {
-              // Tabbing out closes the menu; the focus move itself is left alone.
+              // Both directions need the same fix. `setOpen(false)` is a discrete
+              // update: React flushes it synchronously, before this handler
+              // returns, which unmounts the popover — including whichever item
+              // currently holds focus — before the browser gets to resolve Tab's
+              // native "move focus" default action. A default action resolves
+              // against `document.activeElement` at the time it *runs*, not at
+              // the time the key was pressed; if that node has already been
+              // removed, the browser resets focus to `<body>` first, so the
+              // default action then computes "next/previous focusable" from the
+              // top of the document instead of from this row. Refocusing the
+              // trigger first — a node that stays mounted regardless of `open` —
+              // gives the browser a live, correct anchor to resolve *either*
+              // Tab's or Shift+Tab's default action against, so focus still ends
+              // up on whatever follows or precedes the row, as intended.
+              triggerRef.current?.focus();
               setOpen(false);
+              // No preventDefault(): the browser's own default action, run
+              // against the now-focused trigger, is what moves focus onward.
             }
             // Enter and Space are not intercepted: the entries are `<button>`s, and
             // the browser already fires them.
