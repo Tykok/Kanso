@@ -82,7 +82,16 @@ So `DELETE /api/teams/{id}` takes a body saying, per category, what to do:
 ```
 
 Server-side the whole thing is one transaction, and the counts are recomputed inside
-it: the client's numbers are for the human, never for the decision.
+it, so contents created while the modal was open are handled by the chosen plan
+instead of falling through to whatever the foreign keys do.
+
+The request also carries the counts the modal displayed. If the recount disagrees,
+the server changes nothing and returns `409` with the new figures; the modal reopens
+with them and the name has to be retyped. Recounting keeps the operation coherent,
+but it cannot keep a person's consent honest — someone who agreed to destroy 47
+tickets did not agree to destroy 50. Everywhere else in Kanso an optimistic write
+that turns out wrong simply snaps back; here it does not come back at all, which is
+what buys the extra round trip.
 
 **Tickets are the constrained case.** `tickets.team_id` is `NOT NULL`, so a ticket has
 no team-less state to fall back to the way a project does. Two situations:
@@ -324,6 +333,8 @@ No toast system — there is none today and it would be one more mechanism to ma
 - Tickets of a kept sub-team keep their identifier untouched.
 - `tickets: "move"` without `ticketsTargetTeamId` is a 400, and the team still exists
   afterwards.
+- A ticket created after the counts were read makes the delete return 409 and change
+  nothing; replaying with the new counts succeeds.
 - Patching a ticket's team clears a `project_id` pointing at another team's project,
   and leaves a team-less project alone.
 
