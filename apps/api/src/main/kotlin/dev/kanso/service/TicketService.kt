@@ -147,10 +147,17 @@ class TicketService(
 		if (patch.teamId != null && teams.findById(patch.teamId) == null) {
 			throw BadRequestException("No team ${patch.teamId}")
 		}
-		val projectId = when {
+		val requested = when {
 			"projectId" in patch.unset -> null
 			patch.projectId != null -> patch.projectId.also { requireProject(it) }
 			else -> current.projectId
+		}
+		// A ticket's project must belong to its team. Not a database constraint: making
+		// it one would also forbid the team-less projects the sidebar shows in their own
+		// section, which are the transverse case on purpose.
+		val projectId = requested?.takeIf { id ->
+			val projectTeamId = projects.findById(id)?.teamId
+			projectTeamId == null || projectTeamId == teamId
 		}
 		val startDate = if ("startDate" in patch.unset) null else patch.startDate ?: current.startDate
 		val dueDate = if ("dueDate" in patch.unset) null else patch.dueDate ?: current.dueDate
