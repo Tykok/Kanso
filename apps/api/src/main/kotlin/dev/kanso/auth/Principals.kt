@@ -1,0 +1,72 @@
+package dev.kanso.auth
+
+import org.springframework.security.core.GrantedAuthority
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.oauth2.core.oidc.OidcIdToken
+import org.springframework.security.oauth2.core.oidc.OidcUserInfo
+import org.springframework.security.oauth2.core.oidc.user.OidcUser
+import org.springframework.security.oauth2.core.user.OAuth2User
+import java.io.Serializable
+import java.security.Principal
+import java.util.UUID
+
+/**
+ * Whatever the login path, the rest of the application only needs the Kanso user
+ * id. Every principal type carries it so nothing downstream has to know whether
+ * the session came from Google, GitHub or dev mode.
+ */
+interface KansoAuthenticatedUser {
+	val kansoUserId: UUID
+	val kansoEmail: String
+}
+
+/** Google (and any OIDC provider): wraps the provider's user, adds our id. */
+class KansoOidcUser(
+	private val delegate: OidcUser,
+	override val kansoUserId: UUID,
+	override val kansoEmail: String,
+) : OidcUser by delegate, KansoAuthenticatedUser {
+	override fun getName(): String = delegate.name
+	override fun getAttributes(): Map<String, Any> = delegate.attributes
+	override fun getAuthorities(): Collection<GrantedAuthority> = delegate.authorities
+	override fun getClaims(): Map<String, Any> = delegate.claims
+	override fun getUserInfo(): OidcUserInfo? = delegate.userInfo
+	override fun getIdToken(): OidcIdToken = delegate.idToken
+}
+
+/** GitHub is plain OAuth2, not OIDC, so it needs its own wrapper. */
+class KansoOAuth2User(
+	private val delegate: OAuth2User,
+	override val kansoUserId: UUID,
+	override val kansoEmail: String,
+) : OAuth2User by delegate, KansoAuthenticatedUser {
+	override fun getName(): String = delegate.name
+	override fun getAttributes(): Map<String, Any> = delegate.attributes
+	override fun getAuthorities(): Collection<GrantedAuthority> = delegate.authorities
+}
+
+/**
+ * Email and password. Serializable because, unlike the others, this principal is
+ * only ever put in the session by hand — and the session is where it has to
+ * survive.
+ */
+class KansoLocalUser(
+	override val kansoUserId: UUID,
+	override val kansoEmail: String,
+	private val displayName: String,
+) : Principal, KansoAuthenticatedUser, Serializable {
+	override fun getName(): String = displayName
+
+	val authorities: Collection<GrantedAuthority> = listOf(SimpleGrantedAuthority("ROLE_USER"))
+}
+
+/** Dev mode only: identity asserted by a header, nothing verified. */
+class KansoDevUser(
+	override val kansoUserId: UUID,
+	override val kansoEmail: String,
+	private val displayName: String,
+) : Principal, KansoAuthenticatedUser {
+	override fun getName(): String = displayName
+
+	val authorities: Collection<GrantedAuthority> = listOf(SimpleGrantedAuthority("ROLE_USER"))
+}

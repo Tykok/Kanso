@@ -1,0 +1,29 @@
+# env
+.env
+.env.local
+
+# Generated AES key for the secrets the setup wizard stores. Committing it would
+# publish the key that protects the Notion token and the Google client secret.
+data/
+apps/api/data/
+*.key
+
+# jvm / gradle
+apps/api/build/
+apps/api/.gradle/
+apps/api/bin/
+*.class
+*.log
+
+# node / next
+node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/next-env.d.ts
+.pnpm-store/
+
+# editors
+.idea/
+.vscode/
+*.iml
+.DS_Store

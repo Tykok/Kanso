@@ -1,0 +1,16 @@
+# Tests drive the sync engine explicitly; the schedulers would otherwise claim
+# jobs from under a test's feet and make assertions about the queue racy.
+kanso:
+  auth:
+    mode: dev
+  sync:
+    outbound:
+      enabled: false
+    inbound:
+      enabled: false
+
+logging:
+  level:
+    dev.kanso: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN

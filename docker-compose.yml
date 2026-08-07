@@ -1,0 +1,74 @@
+name: kanso
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kanso}
+      POSTGRES_USER: ${POSTGRES_USER:-kanso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kanso}
+    ports:
+      # Exposed so you can psql / point a local API run at it.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - kanso-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kanso} -d ${POSTGRES_DB:-kanso}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-kanso}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-kanso}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-kanso}
+      KANSO_WEB_ORIGIN: ${KANSO_WEB_ORIGIN:-http://localhost:3000}
+      KANSO_AUTH_MODE: ${KANSO_AUTH_MODE:-oidc}
+      KANSO_SECRET_KEY: ${KANSO_SECRET_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      NOTION_TOKEN: ${NOTION_TOKEN:-}
+      NOTION_PARENT_PAGE_ID: ${NOTION_PARENT_PAGE_ID:-}
+      NOTION_API_VERSION: ${NOTION_API_VERSION:-2025-09-03}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      # Holds the generated encryption key. Lose this volume without having set
+      # KANSO_SECRET_KEY and the stored Notion and Google secrets have to be
+      # entered again.
+      - kanso-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        # Next.js inlines NEXT_PUBLIC_* at build time, so the API origin is a
+        # build arg. The browser talks to the API directly (CORS + cookie).
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  kanso-pgdata:
+  kanso-data:

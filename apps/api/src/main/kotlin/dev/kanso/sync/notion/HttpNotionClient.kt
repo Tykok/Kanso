@@ -1,0 +1,212 @@
+package dev.kanso.sync.notion
+
+import dev.kanso.config.KansoProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+
+/**
+ * The real client.
+ *
+ * Every call goes through [RateLimiter] first, so the ~3 req/s ceiling is honoured
+ * across the whole application rather than per call site. A 429 both raises
+ * [NotionRateLimited] for the caller's backoff and penalises the shared limiter,
+ * because the limit is per integration, not per request.
+ */
+class HttpNotionClient(
+	private val props: KansoProperties.Notion,
+	private val objectMapper: ObjectMapper,
+	private val rateLimiter: RateLimiter,
+) : NotionClient {
+
+	private val log = LoggerFactory.getLogger(javaClass)
+
+	private val http: HttpClient = HttpClient.newBuilder()
+		.connectTimeout(Duration.ofSeconds(10))
+		.followRedirects(HttpClient.Redirect.NORMAL)
+		.build()
+
+	override val enabled: Boolean = true
+
+	@Volatile
+	private var cachedBotUserId: String? = null
+
+	override suspend fun botUserId(): String? {
+		cachedBotUserId?.let { return it }
+		val body = request("GET", "/users/me", null) ?: return null
+		val id = body.path("bot").path("owner").path("user").path("id").asText(null)
+			?: body.path("id").asText(null)
+		cachedBotUserId = id
+		return id
+	}
+
+	override suspend fun createDatabase(
+		parentPageId: String,
+		title: String,
+		properties: Map<String, Any?>,
+	): NotionDatabase {
+		val payload = mapOf(
+			"parent" to mapOf("type" to "page_id", "page_id" to parentPageId),
+			"title" to listOf(NotionProps.textFragment(title)),
+			// 2025-09-03: the schema of the first data source lives under this key
+			// rather than at the top level.
+			"initial_data_source" to mapOf("properties" to properties),
+		)
+		val body = requireNotNull(request("POST", "/databases", payload)) { "Empty response creating database" }
+		return database(body)
+	}
+
+	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? =
+		request("GET", "/databases/$databaseId", null)?.let(::database)
+
+	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) {
+		request("PATCH", "/data_sources/$dataSourceId", mapOf("properties" to properties))
+	}
+
+	override suspend fun createPage(dataSourceId: String, properties: Map<String, Any?>): NotionPage {
+		val payload = mapOf(
+			// 2025-09-03: pages hang off a data source, not a database.
+			"parent" to mapOf("type" to "data_source_id", "data_source_id" to dataSourceId),
+			"properties" to properties,
+		)
+		val body = requireNotNull(request("POST", "/pages", payload)) { "Empty response creating page" }
+		return page(body)
+	}
+
+	override suspend fun updatePage(
+		pageId: String,
+		properties: Map<String, Any?>?,
+		archived: Boolean?,
+	): NotionPage {
+		val payload = buildMap {
+			properties?.let { put("properties", it) }
+			archived?.let {
+				// Notion has both spellings live; sending each keeps behaviour the
+				// same whichever one the current version honours.
+				put("archived", it)
+				put("in_trash", it)
+			}
+		}
+		val body = requireNotNull(request("PATCH", "/pages/$pageId", payload)) { "Empty response updating page" }
+		return page(body)
+	}
+
+	override suspend fun retrievePage(pageId: String): NotionPage? =
+		request("GET", "/pages/$pageId", null)?.let(::page)
+
+	override suspend fun queryDataSource(
+		dataSourceId: String,
+		editedOnOrAfter: OffsetDateTime?,
+		startCursor: String?,
+		pageSize: Int,
+		includeArchived: Boolean,
+	): NotionQueryPage {
+		val payload = buildMap<String, Any?> {
+			// Ascending, so a cursor advanced from the last row cannot skip a page
+			// that was edited while we were paginating.
+			put("sorts", listOf(mapOf("timestamp" to "last_edited_time", "direction" to "ascending")))
+			put("page_size", pageSize)
+			startCursor?.let { put("start_cursor", it) }
+			if (includeArchived) put("is_archived", true)
+			editedOnOrAfter?.let {
+				put(
+					"filter",
+					mapOf(
+						"timestamp" to "last_edited_time",
+						"last_edited_time" to mapOf("on_or_after" to ISO.format(it)),
+					),
+				)
+			}
+		}
+		val body = request("POST", "/data_sources/$dataSourceId/query", payload)
+			?: return NotionQueryPage(emptyList(), null, false)
+		val pages = body.path("results")
+			.filter { it.path("object").asText("") == "page" }
+			.map(::page)
+		return NotionQueryPage(
+			pages = pages,
+			nextCursor = body.path("next_cursor").asText(null),
+			hasMore = body.path("has_more").asBoolean(false),
+		)
+	}
+
+	// --- transport -----------------------------------------------------------
+
+	private suspend fun request(method: String, path: String, body: Any?): JsonNode? {
+		rateLimiter.acquire()
+
+		val builder = HttpRequest.newBuilder(URI.create(props.baseUrl.trimEnd('/') + path))
+			.timeout(props.requestTimeout)
+			.header("Authorization", "Bearer ${props.token}")
+			.header("Notion-Version", props.apiVersion)
+			.header("Content-Type", "application/json")
+
+		val publisher = if (body == null) {
+			HttpRequest.BodyPublishers.noBody()
+		} else {
+			HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body))
+		}
+		val request = builder.method(method, publisher).build()
+
+		val response = try {
+			withContext(Dispatchers.IO) {
+				http.send(request, HttpResponse.BodyHandlers.ofString())
+			}
+		} catch (e: Exception) {
+			// Status 0: transport failure, which is exactly the retryable case.
+			throw NotionApiException(0, "transport", e.message ?: e.javaClass.simpleName)
+		}
+
+		if (response.statusCode() == 429) {
+			val retryAfter = response.headers().firstValue("Retry-After")
+				.map { Duration.ofSeconds(it.toLongOrNull() ?: DEFAULT_RETRY_AFTER_SECONDS) }
+				.orElse(Duration.ofSeconds(DEFAULT_RETRY_AFTER_SECONDS))
+			rateLimiter.penalise(retryAfter.toMillis())
+			throw NotionRateLimited(retryAfter)
+		}
+
+		if (response.statusCode() == 404) return null
+
+		if (response.statusCode() !in 200..299) {
+			val parsed = runCatching { objectMapper.readTree(response.body()) }.getOrNull()
+			throw NotionApiException(
+				status = response.statusCode(),
+				code = parsed?.path("code")?.asText(null),
+				message = parsed?.path("message")?.asText(null) ?: response.body().take(500),
+			)
+		}
+
+		log.debug("{} {} -> {}", method, path, response.statusCode())
+		return objectMapper.readTree(response.body())
+	}
+
+	private fun database(body: JsonNode) = NotionDatabase(
+		id = body.path("id").asText(),
+		dataSourceIds = body.path("data_sources").mapNotNull { it.path("id").asText(null) },
+		title = body.path("title").firstOrNull()?.path("plain_text")?.asText(null),
+	)
+
+	private fun page(body: JsonNode) = NotionPage(
+		id = body.path("id").asText(),
+		lastEditedTime = body.path("last_edited_time").asText(null)?.let { OffsetDateTime.parse(it) },
+		lastEditedById = body.path("last_edited_by").path("id").asText(null),
+		// Either flag means "not in the active database" as far as Kanso cares.
+		archived = body.path("archived").asBoolean(false) || body.path("in_trash").asBoolean(false),
+		properties = body.path("properties").takeIf { !it.isMissingNode },
+		url = body.path("url").asText(null),
+	)
+
+	private companion object {
+		const val DEFAULT_RETRY_AFTER_SECONDS = 5L
+		val ISO: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+	}
+}

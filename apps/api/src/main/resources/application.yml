@@ -1,0 +1,101 @@
+spring:
+  application:
+    name: kanso-api
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/kanso}
+    username: ${SPRING_DATASOURCE_USERNAME:kanso}
+    password: ${SPRING_DATASOURCE_PASSWORD:kanso}
+    hikari:
+      pool-name: kanso-pool
+      maximum-pool-size: 10
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    # Jackson 3 already writes java.time values as ISO-8601, so there is nothing
+    # to turn off here — WRITE_DATES_AS_TIMESTAMPS is gone from SerializationFeature.
+    default-property-inclusion: non_null
+
+  # Outbound worker, inbound poller and the stuck-job sweeper all run on this
+  # scheduler; a single thread would serialise them.
+  task:
+    scheduling:
+      pool:
+        size: 4
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    dev.kanso: INFO
+
+kanso:
+  # Origin allowed to call the API with credentials, and where OAuth2 login
+  # returns the browser after a successful round trip.
+  web-origin: ${KANSO_WEB_ORIGIN:http://localhost:3000}
+
+  security:
+    # Encrypts the secrets the setup wizard collects. Base64 of 32 bytes.
+    # Left empty, a key is generated into key-file on first boot — which must live
+    # on a volume that survives the container, or the stored Notion and Google
+    # secrets become unreadable on the next deploy.
+    secret-key: ${KANSO_SECRET_KEY:}
+    key-file: ${KANSO_KEY_FILE:./data/secret.key}
+
+  auth:
+    # oidc | dev. "dev" trusts an X-Kanso-User header and is for local work and
+    # tests only — it is never entered by accident. With mode=oidc and no provider
+    # configured, first launch shows the setup wizard, where you create an owner
+    # account with an email and a password.
+    mode: ${KANSO_AUTH_MODE:oidc}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+    github:
+      client-id: ${GITHUB_CLIENT_ID:}
+      client-secret: ${GITHUB_CLIENT_SECRET:}
+
+  notion:
+    # Empty token => the no-op client. Sync jobs are still queued and completed,
+    # so the queue is exercised without any network call.
+    token: ${NOTION_TOKEN:}
+    parent-page-id: ${NOTION_PARENT_PAGE_ID:}
+    api-version: ${NOTION_API_VERSION:2025-09-03}
+    base-url: ${NOTION_BASE_URL:https://api.notion.com/v1}
+    request-timeout: 20s
+
+  sync:
+    outbound:
+      enabled: true
+      poll-interval-ms: 500
+      batch-size: 10
+      max-attempts: 8
+      # Notion allows roughly 3 requests/second averaged; stay under it.
+      requests-per-second: 2.5
+      # A job still 'running' after this long is assumed orphaned by a dead
+      # worker and returned to the queue.
+      stuck-job-timeout: 5m
+    inbound:
+      enabled: true
+      interval-ms: 30000
+      page-size: 50
+      # Re-scan window on each poll, to absorb clock skew between Notion and us.
+      overlap: 60s
+
+  realtime:
+    channel: kanso_events

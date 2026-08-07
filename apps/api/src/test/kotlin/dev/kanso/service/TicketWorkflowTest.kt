@@ -1,0 +1,246 @@
+package dev.kanso.service
+
+import dev.kanso.PostgresTest
+import dev.kanso.domain.ProjectStatus
+import dev.kanso.domain.TicketPriority
+import dev.kanso.domain.TicketStatus
+import dev.kanso.repo.SyncJobRepository
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.util.UUID
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@Transactional
+class TicketWorkflowTest : PostgresTest() {
+
+	@Autowired lateinit var teams: TeamService
+	@Autowired lateinit var projects: ProjectService
+	@Autowired lateinit var tickets: TicketService
+	@Autowired lateinit var jobs: SyncJobRepository
+
+	private fun newTeam(name: String = "Team ${UUID.randomUUID().toString().take(4)}") =
+		teams.create(name, "K${UUID.randomUUID().toString().take(4).uppercase()}", null)
+
+	@Test
+	fun `a new ticket gets a short identifier scoped to its team`() {
+		val team = newTeam()
+
+		val first = tickets.create(
+			teamId = team.id,
+			title = "First",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			startDate = null,
+			dueDate = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+		val second = tickets.create(
+			teamId = team.id,
+			title = "Second",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			startDate = null,
+			dueDate = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		assertEquals("${team.key}-1", first.identifier)
+		assertEquals("${team.key}-2", second.identifier)
+	}
+
+	@Test
+	fun `every write queues exactly one mirror push for the row`() {
+		val team = newTeam()
+		val ticket = tickets.create(
+			teamId = team.id,
+			title = "Queued",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			startDate = null,
+			dueDate = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		// Three rapid keystrokes, as a status change would produce.
+		tickets.patch(ticket.ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		tickets.patch(ticket.ticket.id, TicketPatch(priority = TicketPriority.HIGH))
+		tickets.patch(ticket.ticket.id, TicketPatch(title = "Renamed"))
+
+		val queued = jobs.claimBatch(50, "test").filter { it.entityId == ticket.ticket.id }
+		assertEquals(1, queued.size, "the mirror needs one push carrying the final state, not four")
+	}
+
+	@Test
+	fun `a patch leaves untouched fields alone and clears only what is named`() {
+		val team = newTeam()
+		val created = tickets.create(
+			teamId = team.id,
+			title = "Keep me",
+			description = "Some context",
+			status = TicketStatus.TODO,
+			priority = TicketPriority.HIGH,
+			startDate = null,
+			dueDate = LocalDate.of(2026, 9, 1),
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		val afterStatus = tickets.patch(created.ticket.id, TicketPatch(status = TicketStatus.DONE))
+		assertEquals("Keep me", afterStatus.ticket.title)
+		assertEquals("Some context", afterStatus.ticket.description)
+		assertEquals(TicketPriority.HIGH, afterStatus.ticket.priority)
+		assertEquals(LocalDate.of(2026, 9, 1), afterStatus.ticket.dueDate)
+
+		val cleared = tickets.patch(created.ticket.id, TicketPatch(unset = setOf("dueDate")))
+		assertNull(cleared.ticket.dueDate, "naming a field in unset must actually clear it")
+		assertEquals("Some context", cleared.ticket.description, "unset must not touch anything else")
+	}
+
+	@Test
+	fun `a due date before the start date is refused`() {
+		val team = newTeam()
+		val failure = assertFailsWith<BadRequestException> {
+			tickets.create(
+				teamId = team.id,
+				title = "Backwards",
+				description = null,
+				status = TicketStatus.TODO,
+				priority = TicketPriority.NONE,
+				startDate = LocalDate.of(2026, 9, 10),
+				dueDate = LocalDate.of(2026, 9, 1),
+				projectId = null,
+				assigneeIds = emptyList(),
+				docIds = emptyList(),
+			)
+		}
+		assertTrue(failure.message!!.contains("before startDate"), failure.message!!)
+	}
+
+	@Test
+	fun `an unknown assignee is rejected rather than silently dropped`() {
+		val team = newTeam()
+		assertFailsWith<BadRequestException> {
+			tickets.create(
+				teamId = team.id,
+				title = "Ghost",
+				description = null,
+				status = TicketStatus.TODO,
+				priority = TicketPriority.NONE,
+				startDate = null,
+				dueDate = null,
+				projectId = null,
+				assigneeIds = listOf(UUID.randomUUID()),
+				docIds = emptyList(),
+			)
+		}
+	}
+
+	@Test
+	fun `tickets can be listed across a team subtree`() {
+		val parent = newTeam("Parent")
+		val child = teams.create("Child", "CH${UUID.randomUUID().toString().take(3).uppercase()}", parent.id)
+
+		for (team in listOf(parent, child)) {
+			tickets.create(
+				teamId = team.id,
+				title = "In ${team.name}",
+				description = null,
+				status = TicketStatus.TODO,
+				priority = TicketPriority.NONE,
+				startDate = null,
+				dueDate = null,
+				projectId = null,
+				assigneeIds = emptyList(),
+				docIds = emptyList(),
+			)
+		}
+
+		val shallow = tickets.search(parent.id, false, null, emptyList(), null, false, 50, 0)
+		val deep = tickets.search(parent.id, true, null, emptyList(), null, false, 50, 0)
+
+		assertEquals(1, shallow.size, "without includeDescendants only the team's own tickets show")
+		assertEquals(2, deep.size, "with it, nested teams are included")
+	}
+
+	@Test
+	fun `a project groups tickets across the team that owns them`() {
+		val team = newTeam()
+		val project = projects.create(
+			name = "Ship it",
+			status = ProjectStatus.IN_PROGRESS,
+			startDate = LocalDate.of(2026, 8, 1),
+			endDate = LocalDate.of(2026, 9, 1),
+			leadUserId = null,
+			teamId = team.id,
+			docIds = emptyList(),
+		)
+
+		val ticket = tickets.create(
+			teamId = team.id,
+			title = "Part of the project",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			startDate = null,
+			dueDate = null,
+			projectId = project.project.id,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		val inProject = tickets.search(null, false, project.project.id, emptyList(), null, false, 50, 0)
+		assertEquals(listOf(ticket.ticket.id), inProject.map { it.ticket.id })
+	}
+
+	@Test
+	fun `archiving a ticket queues an archive rather than an update`() {
+		val team = newTeam()
+		val ticket = tickets.create(
+			teamId = team.id,
+			title = "To archive",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			startDate = null,
+			dueDate = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+		jobs.claimBatch(50, "drain")
+
+		tickets.patch(ticket.ticket.id, TicketPatch(archived = true))
+
+		val queued = jobs.claimBatch(50, "test").single { it.entityId == ticket.ticket.id }
+		assertEquals(
+			dev.kanso.sync.SyncOperation.ARCHIVE,
+			queued.operation,
+			"Notion archives rather than deletes, so archiving is its own operation",
+		)
+	}
+
+	@Test
+	fun `a team cannot be moved under its own descendant`() {
+		val root = newTeam("Root")
+		val child = teams.create("Child", "CD${UUID.randomUUID().toString().take(3).uppercase()}", root.id)
+
+		assertFailsWith<ConflictException> {
+			teams.update(root.id, root.name, root.key, child.id, archived = false)
+		}
+	}
+}

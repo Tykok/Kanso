@@ -1,0 +1,477 @@
+/*
+ * The wizard and the sign-in page are the only screens in Kanso that are not the
+ * list, so they get their own file rather than widening globals.css. Every colour,
+ * radius and font still comes from there; this file only lays out shapes the main
+ * shell has no use for — a centred card, a step rail, a preference preview.
+ */
+
+.setup-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+}
+
+/*
+ * Auto margins centre the card while it fits and collapse to zero when it does not.
+ * `justify-content: center` cannot do the second half: it pushes the top of a tall
+ * card above the scroll origin, out of reach.
+ */
+.setup-shell {
+  margin-block: auto;
+  width: min(600px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.setup-shell .brand {
+  padding: 0;
+}
+
+.setup-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.setup-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-head h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.setup-intro {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+}
+
+.setup-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.setup-foot {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-keys {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* Kept as one unit so hiding the keyboard hint on a narrow screen cannot unpin it. */
+.setup-foot-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- progress ------------------------------------------------------------- */
+
+.setup-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.setup-rail-count {
+  font: 11px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.setup-rail ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.setup-rail li {
+  color: var(--text-faint);
+}
+
+.setup-rail li:not(:last-child)::after {
+  content: "·";
+  padding: 0 7px;
+  color: var(--border);
+}
+
+.setup-rail li[data-state="done"] {
+  color: var(--text-dim);
+}
+
+.setup-rail li[data-state="current"] {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* --- fields --------------------------------------------------------------- */
+
+.setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.setup-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.setup-field input,
+.setup-field textarea {
+  width: 100%;
+}
+
+.setup-field input[readonly] {
+  color: var(--text-dim);
+  background: var(--bg);
+}
+
+.setup-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.setup-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--urgent);
+}
+
+.setup-ok {
+  margin: 0;
+  font-size: 12px;
+  color: var(--status-done);
+}
+
+.setup-callout {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+}
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-actions .button {
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.setup-copy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setup-copy input {
+  flex: 1;
+  min-width: 0;
+  font: 12px/1.4 var(--mono);
+}
+
+.setup-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.setup-divider::before,
+.setup-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.setup-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setup-providers .button {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
+.setup-providers .button:not(.button-primary) {
+  color: var(--text);
+}
+
+.setup-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.setup-summary dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.setup-summary dd {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* --- choices -------------------------------------------------------------- */
+
+.setup-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.setup-choice,
+.setup-accent {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.setup-choice {
+  padding: 5px 10px;
+}
+
+.setup-accent {
+  padding: 4px 10px 4px 6px;
+  border-color: transparent;
+  font-size: 12px;
+}
+
+/*
+ * The radio stays in the accessibility tree and keeps arrow-key navigation; only
+ * its own rendering is dropped, and the label draws the state instead.
+ */
+.setup-choice input,
+.setup-accent input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+}
+
+.setup-choice:hover,
+.setup-accent:hover {
+  background: var(--surface-hover);
+}
+
+.setup-choice:has(input:checked),
+.setup-accent:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.setup-choice:has(input:focus-visible),
+.setup-accent:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.setup-accents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.setup-swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.setup-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.setup-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.setup-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.setup-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/*
+ * The six accent presets live in globals.css, matched on [data-accent] without a
+ * :root prefix so they dress any subtree that carries the attribute — including
+ * the swatches and the preview here. Redefining them locally would fork the
+ * palette, and the global values are the ones whose contrast was measured.
+ */
+
+/* --- preview -------------------------------------------------------------- */
+
+.setup-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Density comes from the same [data-density] rules the application uses. */
+
+.setup-preview-shell {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+}
+
+.setup-preview-shell[data-sidebar="false"] {
+  grid-template-columns: 1fr;
+}
+
+.setup-preview-side {
+  border-right: 1px solid var(--border);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setup-preview-side .nav-label {
+  padding: 0 6px 4px;
+}
+
+.setup-preview-nav {
+  padding: 3px 6px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.setup-preview-nav[data-current="true"] {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.setup-preview-main {
+  min-width: 0;
+}
+
+/* The row is the app's own; only its interactivity is unwanted in a preview. */
+.setup-preview .row {
+  padding: 0 10px;
+  gap: 8px;
+  cursor: default;
+}
+
+.setup-preview .row:hover {
+  background: none;
+}
+
+.setup-preview .row[data-selected="true"],
+.setup-preview .row[data-selected="true"]:hover {
+  background: var(--accent-soft);
+}
+
+.setup-preview-rows .row:last-child {
+  border-bottom: none;
+}
+
+.setup-preview .row-id {
+  width: 52px;
+}
+
+.setup-preview .status {
+  width: 88px;
+}
+
+.setup-preview .statusbar {
+  padding: 5px 10px;
+}
+
+/* --- narrow --------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .setup-page {
+    padding: 24px 14px;
+  }
+
+  .setup-body {
+    padding: 14px;
+  }
+
+  .setup-foot {
+    flex-wrap: wrap;
+  }
+
+  .setup-keys {
+    display: none;
+  }
+
+  .setup-preview-shell,
+  .setup-preview-shell[data-sidebar="true"] {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-preview-side {
+    display: none;
+  }
+}
