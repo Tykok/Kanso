@@ -1,23 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoginScreen } from "@/components/login";
 import { CommandPalette, Composer, DetailPanel, HelpOverlay } from "@/components/overlays";
-import { statusLabel } from "@/components/pills";
 import { SettingsPanel } from "@/components/settings/panel";
 import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
-import {
-  ApiError,
-  TICKET_PRIORITIES,
-  TICKET_STATUSES,
-  getDevUser,
-  setDevUser,
-  type Ticket,
-  type TicketPriority,
-  type TicketStatus,
-} from "@/lib/api";
+import { availableActions, resolveShortcut } from "@/lib/actions";
+import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
 import {
   useAuthMode,
   useCreateTicket,
@@ -31,7 +22,8 @@ import {
   useTeams,
   useTickets,
 } from "@/lib/queries";
-import { useUi } from "@/store/ui";
+import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
+import { useUi, type Scope } from "@/store/ui";
 
 const isTypingTarget = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -44,10 +36,10 @@ export default function InboxPage() {
   const setup = useSetupState();
   const preferences = usePreferences();
 
-  const { scope, selectedId, overlay, query, setScope, select, open, close, setQuery } = useUi();
-
+  const { scope, selectedId, overlay, dialog, query, setScope, select, open, close, setQuery } =
+    useUi();
   const [editingId, setEditingId] = useState<string | undefined>();
-  const filterRef = useRef<HTMLInputElement>(null);
+  const [actionError, setActionError] = useState<{ scope: Scope; message: string } | null>(null);
 
   const teams = useTeams();
   const tickets = useTickets();
@@ -109,19 +101,7 @@ export default function InboxPage() {
     [visible, selectedId, select],
   );
 
-  const setStatus = useCallback(
-    (status: TicketStatus) => {
-      if (selected) patch.mutate({ id: selected.id, status });
-    },
-    [selected, patch],
-  );
-
-  const setPriority = useCallback(
-    (priority: TicketPriority) => {
-      if (selected) patch.mutate({ id: selected.id, priority });
-    },
-    [selected, patch],
-  );
+  const startRename = useCallback((id: string) => setEditingId(id), []);
 
   const createTicket = useCallback(
     (title: string) => {
@@ -132,16 +112,31 @@ export default function InboxPage() {
     [scope, teams.data, create, close],
   );
 
+  /**
+   * A failure belongs to the view it happened in, so the scope it was reported
+   * against is stored with it and a scope change simply stops it applying. Clearing
+   * it from an effect instead would leave one render showing a sentence about a team
+   * nobody is looking at any more.
+   */
+  const reportError = useCallback(
+    (message: string | null) => setActionError(message === null ? null : { scope, message }),
+    [scope],
+  );
+  const shownError = actionError?.scope === scope ? actionError.message : null;
+
+  const ctx = useActionContext({ tickets: visible, selected, move, startRename, reportError });
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // A modified key, so it never reaches the registry, which only owns bare ones.
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         open("palette");
         return;
       }
 
-      // Overlays own their own keys; the list must not react behind them.
-      if (overlay !== "none" || editingId || isTypingTarget(event.target)) {
+      // Overlays and dialogs own their own keys; the list must not react behind them.
+      if (overlay !== "none" || dialog.kind !== "none" || editingId || isTypingTarget(event.target)) {
         if (event.key === "Escape") {
           close();
           setEditingId(undefined);
@@ -151,104 +146,37 @@ export default function InboxPage() {
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-      switch (event.key) {
-        case "j":
-        case "ArrowDown":
-          event.preventDefault();
-          move(1);
-          break;
-        case "k":
-        case "ArrowUp":
-          event.preventDefault();
-          move(-1);
-          break;
-        case "Enter":
-          if (selected) {
-            event.preventDefault();
-            open("detail");
-          }
-          break;
-        case "c":
-          event.preventDefault();
-          open("composer");
-          break;
-        case "e":
-          if (selected) {
-            event.preventDefault();
-            setEditingId(selected.id);
-          }
-          break;
-        case "x":
-          if (selected) {
-            event.preventDefault();
-            patch.mutate({ id: selected.id, archived: !selected.archived });
-          }
-          break;
-        case "/":
-          event.preventDefault();
-          filterRef.current?.focus();
-          break;
-        case "?":
-          event.preventDefault();
-          open("help");
-          break;
-        case ",":
-          event.preventDefault();
-          open("settings");
-          break;
-        default:
-          // 1..6 walk the status vocabulary in its natural order.
-          if (/^[1-6]$/.test(event.key)) {
-            event.preventDefault();
-            setStatus(TICKET_STATUSES[Number(event.key) - 1]);
-          }
-      }
+      const action = resolveShortcut(event.key);
+      // One predicate answers both "may I show this" and "may I run it", so a key
+      // whose action is unavailable stays inert rather than half-firing.
+      if (!action || !action.when(ctx)) return;
+      event.preventDefault();
+      action.run(ctx);
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [overlay, editingId, selected, move, open, close, patch, setStatus]);
+  }, [ctx, overlay, dialog, editingId, open, close]);
 
   const commands = useMemo(
     () => [
-      { id: "new", label: "New ticket", hint: "c", run: () => open("composer") },
-      ...TICKET_STATUSES.map((status, index) => ({
-        id: `status-${status}`,
-        label: `Set status: ${statusLabel(status)}`,
-        hint: String(index + 1),
-        run: () => {
-          setStatus(status);
-          close();
-        },
+      ...availableActions(ctx).map((action) => ({
+        id: action.id,
+        label: action.label,
+        hint: action.shortcut?.split(" ")[0],
+        run: () => action.run(ctx),
       })),
-      ...TICKET_PRIORITIES.map((priority) => ({
-        id: `priority-${priority}`,
-        label: `Set priority: ${priority}`,
-        run: () => {
-          setPriority(priority);
-          close();
-        },
-      })),
-      {
-        id: "all-teams",
-        label: "View: all tickets",
-        run: () => {
-          setScope({ kind: "all" });
-          close();
-        },
-      },
+      // Teams are rows from the server, so no static registry can enumerate them.
       ...(teams.data ?? []).map((team) => ({
-        id: `team-${team.id}`,
+        id: `view.team.${team.id}`,
         label: `View team: ${team.name}`,
         run: () => {
           setScope({ kind: "team", id: team.id });
           close();
         },
       })),
-      { id: "settings", label: "Settings", hint: ",", run: () => open("settings") },
-      { id: "help", label: "Keyboard shortcuts", hint: "?", run: () => open("help") },
     ],
-    [teams.data, open, close, setStatus, setPriority, setScope],
+    [ctx, teams.data, setScope, close],
   );
 
   if (me.isLoading || authMode.isLoading || setup.isLoading) {
@@ -289,7 +217,7 @@ export default function InboxPage() {
           <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{visible.length}</span>
           <span className="spacer" />
           <input
-            ref={filterRef}
+            id={FILTER_INPUT_ID}
             className="filter-input"
             placeholder="Filter…  /"
             value={query}
@@ -305,6 +233,20 @@ export default function InboxPage() {
             New <kbd>c</kbd>
           </button>
         </div>
+
+        {shownError && (
+          <div className="topbar-error error" role="alert">
+            <span>{shownError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss this message"
+              title="Dismiss"
+              onClick={() => setActionError(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {tickets.error ? (
           <div className="empty error">{(tickets.error as Error).message}</div>

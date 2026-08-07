@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { shortcutRows } from "@/lib/actions";
 import {
   TICKET_PRIORITIES,
   TICKET_STATUSES,
@@ -256,21 +257,6 @@ export function DetailPanel({
 }
 
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
-  const rows: [string, string][] = [
-    ["j / ↓", "Move down"],
-    ["k / ↑", "Move up"],
-    ["Enter", "Open the selected ticket"],
-    ["c", "Create a ticket"],
-    ["e", "Rename in place"],
-    ["1 … 6", "Set status (backlog → canceled)"],
-    ["x", "Archive / unarchive"],
-    ["/", "Filter"],
-    ["⌘K / Ctrl+K", "Command palette"],
-    [",", "Settings"],
-    ["?", "This list"],
-    ["Esc", "Close"],
-  ];
-
   return (
     <Backdrop onClose={onClose}>
       <div className="panel-header">
@@ -281,12 +267,25 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
       </div>
       <div className="panel-body">
         <div className="shortcuts">
-          {rows.map(([keys, description]) => (
-            <div key={keys} style={{ display: "contents" }}>
-              <kbd>{keys}</kbd>
-              <span>{description}</span>
+          {shortcutRows().map((row) => (
+            <div key={row.keys} style={{ display: "contents" }}>
+              <kbd>{row.keys}</kbd>
+              <span>{row.label}</span>
             </div>
           ))}
+          {/*
+            The two keys the registry cannot own: the palette is a modified key,
+            resolved before the registry is consulted, and Escape is not an action
+            but the way out of whatever is on top of the list.
+          */}
+          <div style={{ display: "contents" }}>
+            <kbd>⌘K / Ctrl+K</kbd>
+            <span>Command palette</span>
+          </div>
+          <div style={{ display: "contents" }}>
+            <kbd>Esc</kbd>
+            <span>Close</span>
+          </div>
         </div>
       </div>
     </Backdrop>
