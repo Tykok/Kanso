@@ -88,6 +88,22 @@ class TicketProjectCoherenceTest : PostgresTest() {
 	}
 
 	@Test
+	fun `an ordinary patch that touches neither teamId nor projectId leaves a matching inherited project alone`() {
+		val core = newTeam("Core")
+		val coreProject = newProject(core.id)
+		val ticket = newTicket(core.id, coreProject.id)
+
+		val renamed = tickets.patch(ticket.ticket.id, TicketPatch(title = "Still grouped"))
+
+		assertEquals(core.id, renamed.ticket.teamId)
+		assertEquals(
+			coreProject.id,
+			renamed.ticket.projectId,
+			"an inherited project whose team already matches must survive an unrelated field edit",
+		)
+	}
+
+	@Test
 	fun `an explicit projectId from another team is rejected, and the ticket is left untouched`() {
 		val core = newTeam("Core")
 		val growth = newTeam("Growth")
