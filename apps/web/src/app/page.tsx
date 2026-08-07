@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ProjectDialog } from "@/components/dialogs/project-dialog";
+import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
 import { CommandPalette, Composer, DetailPanel, HelpOverlay } from "@/components/overlays";
 import { SettingsPanel } from "@/components/settings/panel";
@@ -304,6 +306,12 @@ export default function InboxPage() {
           }}
           onClose={close}
         />
+      )}
+      {dialog.kind === "team" && (
+        <TeamDialog id={dialog.id} parentTeamId={dialog.parentTeamId} onClose={close} />
+      )}
+      {dialog.kind === "project" && (
+        <ProjectDialog id={dialog.id} teamId={dialog.teamId} onClose={close} />
       )}
     </div>
   );
