@@ -202,14 +202,7 @@ export default function InboxPage() {
 
   return (
     <div className="shell" data-sidebar={preferences.sidebarVisible ? "shown" : "hidden"}>
-      {preferences.sidebarVisible && (
-        <Sidebar
-          teams={teams.data ?? []}
-          scope={scope}
-          onSelectScope={setScope}
-          syncSummary={mirrorSummary}
-        />
-      )}
+      {preferences.sidebarVisible && <Sidebar ctx={ctx} syncSummary={mirrorSummary} />}
 
       <div className="main">
         <div className="topbar">

@@ -226,10 +226,152 @@ kbd {
   padding: 0 6px 6px;
 }
 
+/*
+ * A row is no longer a button but a container: it now carries a menu, and a
+ * `<button>` cannot contain another one. The current state therefore travels through
+ * `data-current` on the container, `aria-current` staying on the button that is
+ * really the click target.
+ */
 .nav-item {
   display: flex;
   align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding-right: 6px;
+  border-radius: var(--radius);
+}
+
+.nav-item:hover {
+  background: var(--surface-hover);
+}
+
+.nav-item[data-current="true"] {
+  background: var(--accent-soft);
+}
+
+.nav-item-main {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: var(--nav-pad) 0 var(--nav-pad) 6px;
+  text-align: left;
+  color: var(--text-dim);
+}
+
+.nav-item[data-current="true"] .nav-item-main {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.nav-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The bullet tells a project from a team. It is drawn rather than written: a
+ * `content: "•"` would enter the button's accessible name, which would read
+ * "• Refonte". An empty string does not.
+ */
+.nav-item[data-kind="project"] .nav-item-label::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  vertical-align: middle;
+}
+
+.nav-item[data-archived="true"] .nav-item-main {
+  opacity: 0.55;
+}
+
+/*
+ * The menu only appears on hover, but stays in the tab order and becomes visible
+ * again the moment it takes focus: a control that only exists on hover is a control
+ * the keyboard cannot reach.
+ */
+.nav-item .menu-trigger {
+  opacity: 0;
+}
+
+.nav-item:hover .menu-trigger,
+.nav-item .menu-trigger:focus-visible,
+.nav-item .menu-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.nav-item .count {
+  font: 11px/1 var(--mono);
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.nav-depth-1 .nav-item-main {
+  padding-left: 18px;
+}
+
+.nav-depth-2 .nav-item-main {
+  padding-left: 30px;
+}
+
+.nav-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 6px;
+}
+
+.nav-section .nav-label {
+  flex: 1;
+  padding: 0;
+}
+
+.nav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+.nav-add:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.nav-empty {
+  padding: 4px 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.nav-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/*
+ * A stateful button rather than a checkbox: `aria-pressed` says the same thing, the
+ * click target is the whole row, and the square is drawn here rather than left to the
+ * native theme, which does not follow `--accent`.
+ */
+.nav-toggle {
+  display: flex;
+  align-items: center;
   gap: 8px;
   width: 100%;
   padding: var(--nav-pad) 6px;
@@ -238,27 +380,32 @@ kbd {
   color: var(--text-dim);
 }
 
-.nav-item:hover {
+.nav-toggle:hover {
   background: var(--surface-hover);
 }
 
-.nav-item[aria-current="true"] {
-  background: var(--accent-soft);
+.nav-toggle::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.nav-toggle[aria-pressed="true"] {
   color: var(--text);
-  font-weight: 500;
 }
 
-.nav-item .count {
-  font: 11px/1 var(--mono);
+.nav-toggle[aria-pressed="true"]::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.nav-sync {
+  padding: 0 6px;
   color: var(--text-faint);
-}
-
-.nav-depth-1 {
-  padding-left: 18px;
-}
-
-.nav-depth-2 {
-  padding-left: 30px;
+  font-size: 11px;
 }
 
 .main {
