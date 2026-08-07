@@ -1,6 +1,7 @@
 "use client";
 
 import type { Team } from "@/lib/api";
+import type { Scope } from "@/store/ui";
 
 /**
  * Teams nest, so the sidebar renders them as a tree. Depth is capped at two
@@ -29,13 +30,13 @@ function order(teams: Team[]): { team: Team; depth: number }[] {
 
 export function Sidebar({
   teams,
-  activeTeamId,
-  onSelectTeam,
+  scope,
+  onSelectScope,
   syncSummary,
 }: {
   teams: Team[];
-  activeTeamId?: string;
-  onSelectTeam: (teamId?: string) => void;
+  scope: Scope;
+  onSelectScope: (scope: Scope) => void;
   syncSummary: string;
 }) {
   return (
@@ -49,8 +50,8 @@ export function Sidebar({
         <div className="nav-label">Views</div>
         <button
           className="nav-item"
-          aria-current={activeTeamId === undefined}
-          onClick={() => onSelectTeam(undefined)}
+          aria-current={scope.kind === "all"}
+          onClick={() => onSelectScope({ kind: "all" })}
         >
           <span>All tickets</span>
         </button>
@@ -67,8 +68,8 @@ export function Sidebar({
           <button
             key={team.id}
             className={`nav-item nav-depth-${depth}`}
-            aria-current={team.id === activeTeamId}
-            onClick={() => onSelectTeam(team.id)}
+            aria-current={scope.kind === "team" && scope.id === team.id}
+            onClick={() => onSelectScope({ kind: "team", id: team.id })}
             title={`${team.name} — prefix ${team.key}`}
           >
             <span>{team.name}</span>

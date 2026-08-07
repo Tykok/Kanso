@@ -44,7 +44,10 @@ export default function InboxPage() {
   const setup = useSetupState();
   const preferences = usePreferences();
 
-  const { teamId, selectedId, overlay, query, setTeam, select, open, close, setQuery } = useUi();
+  const { scope, selectedId, overlay, query, setScope, select, open, close, setQuery } = useUi();
+
+  // The query layer still keys on a team; task 10 teaches it the whole scope.
+  const teamId = scope.kind === "team" ? scope.id : undefined;
   const [editingId, setEditingId] = useState<string | undefined>();
   const filterRef = useRef<HTMLInputElement>(null);
 
@@ -231,7 +234,7 @@ export default function InboxPage() {
         id: "all-teams",
         label: "View: all tickets",
         run: () => {
-          setTeam(undefined);
+          setScope({ kind: "all" });
           close();
         },
       },
@@ -239,14 +242,14 @@ export default function InboxPage() {
         id: `team-${team.id}`,
         label: `View team: ${team.name}`,
         run: () => {
-          setTeam(team.id);
+          setScope({ kind: "team", id: team.id });
           close();
         },
       })),
       { id: "settings", label: "Settings", hint: ",", run: () => open("settings") },
       { id: "help", label: "Keyboard shortcuts", hint: "?", run: () => open("help") },
     ],
-    [teams.data, open, close, setStatus, setPriority, setTeam],
+    [teams.data, open, close, setStatus, setPriority, setScope],
   );
 
   if (me.isLoading || authMode.isLoading || setup.isLoading) {
@@ -275,8 +278,8 @@ export default function InboxPage() {
       {preferences.sidebarVisible && (
         <Sidebar
           teams={teams.data ?? []}
-          activeTeamId={teamId}
-          onSelectTeam={setTeam}
+          scope={scope}
+          onSelectScope={setScope}
           syncSummary={mirrorSummary}
         />
       )}

@@ -31,25 +31,36 @@ export type Dialog =
  * under someone's fingers.
  */
 type UiState = {
-  teamId?: string;
+  scope: Scope;
   selectedId?: string;
   overlay: Overlay;
+  dialog: Dialog;
   query: string;
+  showArchived: boolean;
 
-  setTeam: (teamId?: string) => void;
+  setScope: (scope: Scope) => void;
   select: (id?: string) => void;
   open: (overlay: Overlay) => void;
   close: () => void;
+  openDialog: (dialog: Dialog) => void;
   setQuery: (query: string) => void;
+  setShowArchived: (showArchived: boolean) => void;
 };
 
 export const useUi = create<UiState>((set) => ({
+  scope: { kind: "all" },
   overlay: "none",
+  dialog: { kind: "none" },
   query: "",
+  showArchived: false,
 
-  setTeam: (teamId) => set({ teamId, selectedId: undefined }),
+  // A new scope is a new list, so no cursor from the old one can survive it.
+  setScope: (scope) => set({ scope, selectedId: undefined }),
   select: (selectedId) => set({ selectedId }),
   open: (overlay) => set({ overlay }),
-  close: () => set({ overlay: "none" }),
+  // Escape is one key and means one thing, whichever of the two is on screen.
+  close: () => set({ overlay: "none", dialog: { kind: "none" } }),
+  openDialog: (dialog) => set({ dialog }),
   setQuery: (query) => set({ query }),
+  setShowArchived: (showArchived) => set({ showArchived }),
 }));
