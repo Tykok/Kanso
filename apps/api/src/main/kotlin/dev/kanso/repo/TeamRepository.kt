@@ -104,6 +104,22 @@ class TeamRepository(private val jdbc: JdbcClient) {
 		"UPDATE teams SET ticket_counter = ticket_counter + 1 WHERE id = :id RETURNING ticket_counter"
 	).param("id", teamId).query(Int::class.java).single()
 
+	/**
+	 * Reserves [count] consecutive numbers in one statement and returns them in order.
+	 *
+	 * One statement rather than [count] of them: the row lock is held for the same
+	 * span either way, so the loop would only add a round trip per ticket inside it —
+	 * time every concurrent "new ticket" in this team spends waiting.
+	 */
+	fun nextTicketNumbers(teamId: UUID, count: Int): List<Int> {
+		require(count >= 0) { "Cannot reserve a negative number of ticket numbers ($count)" }
+		if (count == 0) return emptyList()
+		val last = jdbc.sql(
+			"UPDATE teams SET ticket_counter = ticket_counter + :count WHERE id = :id RETURNING ticket_counter"
+		).param("count", count).param("id", teamId).query(Int::class.java).single()
+		return ((last - count + 1)..last).toList()
+	}
+
 	// --- members -------------------------------------------------------------
 
 	fun members(teamId: UUID): List<TeamMember> =
