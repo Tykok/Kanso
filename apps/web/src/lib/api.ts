@@ -1,3 +1,8 @@
+// Type-only, so nothing of the store reaches the runtime bundle: the tickets
+// endpoint is shaped by the scope, and restating that union here would let the
+// two drift.
+import type { Scope } from "@/store/ui";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 export const TICKET_STATUSES = [
@@ -55,9 +60,38 @@ export type Project = {
   id: string;
   name: string;
   status: string;
+  startDate?: string;
+  endDate?: string;
+  leadUserId?: string;
   teamId?: string;
   archived: boolean;
   mirror: Mirror;
+};
+
+export type ProjectBody = {
+  name: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  leadUserId?: string;
+  teamId?: string;
+};
+
+/** What happens to what a team or a project holds when the container goes away. */
+export type DispositionChoice = "take" | "keep";
+
+export type DispositionCounts = { subTeams: number; projects: number; tickets: number };
+
+/**
+ * `counts` is what the modal displayed. Deleting sends it so the server can refuse
+ * on drift; archiving may omit it, because archiving comes back.
+ */
+export type DispositionPlan = {
+  subTeams: DispositionChoice;
+  projects: DispositionChoice;
+  tickets: DispositionChoice;
+  ticketsTargetTeamId?: string;
+  counts?: DispositionCounts;
 };
 
 export type InstanceRole = "owner" | "admin" | "member";
@@ -156,6 +190,11 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly detail: string,
+    /**
+     * The whole problem document. A 409 on a disposition carries the fresh
+     * `counts` there, and the modal has to reopen on them.
+     */
+    readonly body?: unknown,
   ) {
     super(detail);
   }
@@ -193,9 +232,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const problem = await response.json().catch(() => null);
-    throw new ApiError(response.status, problem?.detail ?? response.statusText);
+    throw new ApiError(response.status, problem?.detail ?? response.statusText, problem);
   }
   return response.json() as Promise<T>;
+}
+
+/** Drops absent parameters rather than sending `undefined` as a literal string. */
+function query(params: Record<string, string | number | boolean | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const encoded = search.toString();
+  return encoded ? `?${encoded}` : "";
 }
 
 export const api = {
@@ -280,16 +329,75 @@ export const api = {
   savePreferences: (body: Partial<Preferences> & { onboarded?: boolean }) =>
     request<Preferences>("/api/me/preferences", { method: "PUT", body: JSON.stringify(body) }),
 
-  teams: () => request<Team[]>("/api/teams"),
+  // --- teams ---------------------------------------------------------------
+
+  teams: (includeArchived = false) => request<Team[]>(`/api/teams${query({ includeArchived })}`),
+
   createTeam: (body: { name: string; key?: string; parentTeamId?: string }) =>
     request<Team>("/api/teams", { method: "POST", body: JSON.stringify(body) }),
 
-  projects: (teamId?: string) =>
-    request<Project[]>(`/api/projects${teamId ? `?teamId=${teamId}&includeDescendants=true` : ""}`),
+  /** Reparenting is this call too: the parent is just another field. */
+  updateTeam: (id: string, body: { name: string; key?: string; parentTeamId?: string }) =>
+    request<Team>(`/api/teams/${id}`, { method: "PUT", body: JSON.stringify(body) }),
 
-  tickets: (teamId?: string) =>
+  teamContents: (id: string) => request<DispositionCounts>(`/api/teams/${id}/contents`),
+
+  archiveTeam: (id: string, plan: DispositionPlan) =>
+    request<Team>(`/api/teams/${id}/archive`, { method: "PUT", body: JSON.stringify(plan) }),
+
+  unarchiveTeam: (id: string) => request<Team>(`/api/teams/${id}/unarchive`, { method: "POST" }),
+
+  deleteTeam: (id: string, plan: DispositionPlan) =>
+    request<void>(`/api/teams/${id}`, { method: "DELETE", body: JSON.stringify(plan) }),
+
+  // --- projects ------------------------------------------------------------
+
+  /**
+   * Called once with no team: the sidebar draws every project to build its tree,
+   * and a query per team would be one request per row to render it.
+   */
+  projects: (opts: { teamId?: string; includeArchived?: boolean } = {}) =>
+    request<Project[]>(
+      `/api/projects${query({
+        teamId: opts.teamId,
+        includeDescendants: opts.teamId === undefined ? undefined : true,
+        includeArchived: opts.includeArchived,
+      })}`,
+    ),
+
+  createProject: (body: ProjectBody) =>
+    request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
+
+  /** Omitting `teamId` is how a project becomes transverse. */
+  updateProject: (id: string, body: ProjectBody) =>
+    request<Project>(`/api/projects/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+
+  projectContents: (id: string) => request<DispositionCounts>(`/api/projects/${id}/contents`),
+
+  archiveProject: (id: string, plan: DispositionPlan) =>
+    request<Project>(`/api/projects/${id}/archive`, { method: "PUT", body: JSON.stringify(plan) }),
+
+  unarchiveProject: (id: string) =>
+    request<Project>(`/api/projects/${id}/unarchive`, { method: "POST" }),
+
+  deleteProject: (id: string, plan: DispositionPlan) =>
+    request<void>(`/api/projects/${id}`, { method: "DELETE", body: JSON.stringify(plan) }),
+
+  // --- tickets -------------------------------------------------------------
+
+  /**
+   * A team scope includes its descendants, so a parent shows the work of its
+   * sub-teams. A project scope needs no team: a project may span several, or none.
+   */
+  tickets: (scope: Scope, includeArchived = false) =>
     request<Ticket[]>(
-      `/api/tickets?limit=200${teamId ? `&teamId=${teamId}&includeDescendants=true` : ""}`,
+      `/api/tickets${query({
+        limit: 200,
+        teamId: scope.kind === "team" ? scope.id : undefined,
+        includeDescendants: scope.kind === "team" ? true : undefined,
+        projectId: scope.kind === "project" ? scope.id : undefined,
+        includeArchived,
+      })}`,
     ),
 
   createTicket: (body: {
@@ -298,6 +406,7 @@ export const api = {
     status?: TicketStatus;
     priority?: TicketPriority;
     projectId?: string;
+    assigneeIds?: string[];
   }) => request<Ticket>("/api/tickets", { method: "POST", body: JSON.stringify(body) }),
 
   patchTicket: (

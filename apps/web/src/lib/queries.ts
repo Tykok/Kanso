@@ -6,11 +6,14 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
+import { useUi, type Scope } from "@/store/ui";
 import {
   api,
   DEFAULT_PREFERENCES,
   type Me,
   type Preferences,
+  type Project,
+  type Team,
   type Ticket,
   type TicketPriority,
   type TicketStatus,
@@ -20,14 +23,31 @@ export const keys = {
   authMode: ["authMode"] as const,
   me: ["me"] as const,
   setupState: ["setupState"] as const,
-  teams: ["teams"] as const,
   users: ["users"] as const,
   people: ["people"] as const,
   invitations: ["invitations"] as const,
-  projects: (teamId?: string) => ["projects", teamId ?? "all"] as const,
-  tickets: (teamId?: string) => ["tickets", teamId ?? "all"] as const,
   sync: ["sync"] as const,
+
+  // Everything below is keyed on what was asked for, so two different answers
+  // never share one cache entry. `applyEvent` invalidates on the first segment,
+  // which is what lets these keys grow without it having to know about them.
+  teams: (includeArchived: boolean) => ["teams", includeArchived] as const,
+  /** All projects, one query — the sidebar needs the whole set to draw its tree. */
+  projects: (includeArchived: boolean) => ["projects", includeArchived] as const,
+  tickets: (scope: Scope, includeArchived: boolean) =>
+    ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived] as const,
+  contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
 };
+
+/**
+ * The scope and the archived toggle live in the store, not in props, so every
+ * caller of these hooks agrees on what is being shown without passing it down.
+ */
+const useTicketsKey = () =>
+  keys.tickets(
+    useUi((state) => state.scope),
+    useUi((state) => state.showArchived),
+  );
 
 export const useAuthMode = () => useQuery({ queryKey: keys.authMode, queryFn: api.authMode });
 
@@ -98,7 +118,10 @@ export function useSavePreferences() {
   });
 }
 
-export const useTeams = () => useQuery({ queryKey: keys.teams, queryFn: api.teams });
+export const useTeams = () => {
+  const showArchived = useUi((state) => state.showArchived);
+  return useQuery({ queryKey: keys.teams(showArchived), queryFn: () => api.teams(showArchived) });
+};
 
 export const useUsers = () => useQuery({ queryKey: keys.users, queryFn: api.users });
 
@@ -116,11 +139,34 @@ export const usePendingInvitations = (enabled: boolean) =>
     retry: false,
   });
 
-export const useProjects = (teamId?: string) =>
-  useQuery({ queryKey: keys.projects(teamId), queryFn: () => api.projects(teamId) });
+export const useProjects = () => {
+  const showArchived = useUi((state) => state.showArchived);
+  return useQuery({
+    queryKey: keys.projects(showArchived),
+    queryFn: () => api.projects({ includeArchived: showArchived }),
+  });
+};
 
-export const useTickets = (teamId?: string) =>
-  useQuery({ queryKey: keys.tickets(teamId), queryFn: () => api.tickets(teamId) });
+export const useTickets = () => {
+  const scope = useUi((state) => state.scope);
+  const showArchived = useUi((state) => state.showArchived);
+  return useQuery({
+    queryKey: keys.tickets(scope, showArchived),
+    queryFn: () => api.tickets(scope, showArchived),
+  });
+};
+
+/**
+ * What a team or a project holds. The disposition modal exists to say what is in
+ * there *now*, so a cached count is the one answer it must never be given.
+ */
+export const useContents = (kind: "team" | "project", id: string) =>
+  useQuery({
+    queryKey: keys.contents(kind, id),
+    queryFn: () => (kind === "team" ? api.teamContents(id) : api.projectContents(id)),
+    staleTime: 0,
+    gcTime: 0,
+  });
 
 export const useSyncStatus = () =>
   useQuery({ queryKey: keys.sync, queryFn: api.syncStatus, refetchInterval: 10_000 });
@@ -142,9 +188,9 @@ type PatchInput = {
  * rewritten before the request leaves. On failure the snapshot is restored — the
  * row visibly snaps back, which is the honest signal that the change did not land.
  */
-export function usePatchTicket(teamId?: string) {
+export function usePatchTicket() {
   const queryClient = useQueryClient();
-  const key = keys.tickets(teamId);
+  const key = useTicketsKey();
 
   return useMutation({
     mutationFn: ({ id, ...body }: PatchInput) => api.patchTicket(id, body),
@@ -177,20 +223,22 @@ export function usePatchTicket(teamId?: string) {
   });
 }
 
-export function useCreateTicket(teamId?: string) {
+export function useCreateTicket() {
   const queryClient = useQueryClient();
+  const key = useTicketsKey();
   return useMutation({
     mutationFn: api.createTicket,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: keys.tickets(teamId) });
-      queryClient.invalidateQueries({ queryKey: keys.teams });
+      queryClient.invalidateQueries({ queryKey: key });
+      // The team row carries a ticket count, so it is stale too.
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
     },
   });
 }
 
-export function useDeleteTicket(teamId?: string) {
+export function useDeleteTicket() {
   const queryClient = useQueryClient();
-  const key = keys.tickets(teamId);
+  const key = useTicketsKey();
   return useMutation({
     mutationFn: api.deleteTicket,
     onMutate: async (id: string) => {
@@ -208,13 +256,36 @@ export function useDeleteTicket(teamId?: string) {
   });
 }
 
-/** Applies a realtime event to the cache. Same effect whoever caused it. */
+/**
+ * One hook for both entities: unarchiving asks nothing, so the only thing that
+ * differs between a team and a project is which endpoint is called. Unarchiving a
+ * team also unarchives its ancestors, which is why the ticket lists go stale too.
+ */
+export function useUnarchive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (target: { kind: "team" | "project"; id: string }): Promise<Team | Project> =>
+      target.kind === "team" ? api.unarchiveTeam(target.id) : api.unarchiveProject(target.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
+/**
+ * Applies a realtime event to the cache. Same effect whoever caused it.
+ *
+ * Matched on the first key segment, so every variant of a list — archived shown
+ * or not, whichever scope — is invalidated by one call.
+ */
 export function applyEvent(queryClient: QueryClient, entity: string) {
   if (entity === "tickets") {
     queryClient.invalidateQueries({ queryKey: ["tickets"] });
   } else if (entity === "projects") {
     queryClient.invalidateQueries({ queryKey: ["projects"] });
   } else if (entity === "teams") {
-    queryClient.invalidateQueries({ queryKey: keys.teams });
+    queryClient.invalidateQueries({ queryKey: ["teams"] });
   }
 }

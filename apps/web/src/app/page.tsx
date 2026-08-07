@@ -46,19 +46,17 @@ export default function InboxPage() {
 
   const { scope, selectedId, overlay, query, setScope, select, open, close, setQuery } = useUi();
 
-  // The query layer still keys on a team; task 10 teaches it the whole scope.
-  const teamId = scope.kind === "team" ? scope.id : undefined;
   const [editingId, setEditingId] = useState<string | undefined>();
   const filterRef = useRef<HTMLInputElement>(null);
 
   const teams = useTeams();
-  const tickets = useTickets(teamId);
-  const projects = useProjects(teamId);
+  const tickets = useTickets();
+  const projects = useProjects();
   const sync = useSyncStatus();
 
-  const patch = usePatchTicket(teamId);
-  const create = useCreateTicket(teamId);
-  const remove = useDeleteTicket(teamId);
+  const patch = usePatchTicket();
+  const create = useCreateTicket();
+  const remove = useDeleteTicket();
 
   const visible = useMemo(() => {
     const rows = tickets.data ?? [];
@@ -98,7 +96,8 @@ export default function InboxPage() {
   }, [needsSetup, router]);
 
   const selected: Ticket | undefined = visible.find((ticket) => ticket.id === selectedId);
-  const currentTeam = teams.data?.find((team) => team.id === teamId);
+  const currentTeam =
+    scope.kind === "team" ? teams.data?.find((team) => team.id === scope.id) : undefined;
 
   const move = useCallback(
     (delta: number) => {
@@ -126,11 +125,11 @@ export default function InboxPage() {
 
   const createTicket = useCallback(
     (title: string) => {
-      const target = teamId ?? teams.data?.[0]?.id;
+      const target = scope.kind === "team" ? scope.id : teams.data?.[0]?.id;
       if (!target) return;
       create.mutate({ teamId: target, title }, { onSuccess: () => close() });
     },
-    [teamId, teams.data, create, close],
+    [scope, teams.data, create, close],
   );
 
   useEffect(() => {
