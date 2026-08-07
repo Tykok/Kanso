@@ -11,8 +11,9 @@ action comes next, web notifications after that.
 
 ## What ships
 
-- Create, rename, reparent and archive teams and sub-teams.
-- Delete a team or a project, after deciding explicitly what happens to what it holds.
+- Create, rename and reparent teams and sub-teams.
+- Archive or delete a team or a project, after deciding explicitly what happens to
+  what it holds.
 - Create, edit and archive projects, with or without a team.
 - Create tickets with their team, project, priority and assignee chosen up front.
 - A sidebar that shows the team tree with its projects, and filters on click.
@@ -43,77 +44,88 @@ admin decision, the daily work is not.
 `/api/me` already carries `instanceRole`, so the client hides what it may not do. The
 403 is the backstop, not the mechanism.
 
-### Archiving a team walks the tree
+### Archiving and deleting take the same plan
 
-**Invariant: an unarchived team never has an archived ancestor.**
-
-Archiving a team archives its whole subtree; unarchiving one unarchives its ancestors.
-A team left visible under a hidden parent is unreachable in the sidebar and confusing
-everywhere else, and the asymmetric alternative — archive cascades, unarchive does not
-— makes restoring a subtree a manual walk.
-
-One transaction, one `sync_jobs` row per team touched, one realtime event per team.
-
-The cascade stops at teams. A team's projects and tickets keep their own `archived`
-flag: archiving a team is an organisational statement, not a claim that the work
-inside it is finished. Its tickets stay in *All tickets* and reachable by identifier;
-only the team and its sub-teams leave the sidebar.
-
-Archive is the light action, reachable from a menu in one click. Delete is a separate,
-heavier one — below.
-
-### Deleting a team asks what happens to its contents
+Removing a team from view raises the same question whichever way it is removed: what
+happens to what it holds? So both actions take one shape — a **disposition plan** —
+and differ only in what they do with it and in what they ask of the person first.
 
 `tickets.team_id` is `ON DELETE CASCADE` (`V2__sync_engine.sql:80`) and
-`teams.parent_team_id` is `ON DELETE SET NULL` (`V1__init.sql:9`). Left as they are,
+`teams.parent_team_id` is `ON DELETE SET NULL` (`V1__init.sql:9`). Left to themselves,
 deleting a team destroys every ticket under it in Postgres while Notion merely
 archives the page — the mirror outlives the source of truth — and silently promotes
-its sub-teams to the root. Neither is a decision anyone made.
-
-So `DELETE /api/teams/{id}` takes a body saying, per category, what to do:
+its sub-teams to the root. Neither is a decision anyone made. The plan is what takes
+those decisions back from the foreign keys.
 
 ```jsonc
 {
-  "subTeams": "delete" | "reparent",   // reparent → the grandparent, or root
-  "projects": "delete" | "reparent",   // reparent → the parent team, or no team
-  "tickets":  "delete" | "move",
-  "ticketsTargetTeamId": "…"           // required when tickets = "move"
+  "subTeams": "take" | "keep",   // keep → reparented to the grandparent, or root
+  "projects": "take" | "keep",   // keep → to the parent team, or no team
+  "tickets":  "take" | "keep",
+  "ticketsTargetTeamId": "…",    // required when tickets = "keep"
+  "counts": { "subTeams": 2, "projects": 3, "tickets": 47 }
 }
 ```
 
-Server-side the whole thing is one transaction, and the counts are recomputed inside
-it, so contents created while the modal was open are handled by the chosen plan
-instead of falling through to whatever the foreign keys do.
+`take` means *goes with the team* — archived alongside it, or deleted with it. `keep`
+means *stays active*, which always implies re-homing, since what is kept cannot hang
+under something that is gone. Every category defaults to `keep`.
 
-The request also carries the counts the modal displayed. If the recount disagrees,
-the server changes nothing and returns `409` with the new figures; the modal reopens
-with them and the name has to be retyped. Recounting keeps the operation coherent,
-but it cannot keep a person's consent honest — someone who agreed to destroy 47
-tickets did not agree to destroy 50. Everywhere else in Kanso an optimistic write
-that turns out wrong simply snaps back; here it does not come back at all, which is
-what buys the extra round trip.
+`PUT /api/teams/{id}` carries the plan when `archived` turns true;
+`DELETE /api/teams/{id}` carries it always. One transaction either way, one `sync_jobs`
+row and one realtime event per entity touched.
 
-**Tickets are the constrained case.** `tickets.team_id` is `NOT NULL`, so a ticket has
-no team-less state to fall back to the way a project does. Two situations:
+**Invariant: an unarchived team never has an archived ancestor.** `keep` upholds it by
+reparenting the sub-team out; `take` upholds it by archiving the subtree. Unarchiving
+a team unarchives its ancestors, so a subtree archived together can be restored from
+any point in it rather than walked by hand.
 
-- Tickets of **sub-teams that are kept** move with their sub-team. Nothing happens to
+#### The two severities
+
+Both open the same modal with the same categories. They part on what confirms them:
+
+| | Archive | Delete |
+|---|---|---|
+| Reversible | yes | no |
+| Confirmation | one button | retype the team name |
+| Counts changed under the modal | proceeds | `409`, nothing happens |
+
+The `409` exists because recounting keeps the *operation* coherent but cannot keep a
+person's *consent* honest: someone who agreed to destroy 47 tickets did not agree to
+destroy 50. Everywhere else in Kanso an optimistic write that turns out wrong simply
+snaps back; here it does not come back at all, which is what buys the extra round
+trip. Archiving snaps back, so it does not pay it.
+
+Counts are recomputed inside the transaction in both cases, so contents created while
+the modal was open are handled by the chosen plan rather than falling through to
+whatever the foreign keys do.
+
+#### Tickets are the constrained case
+
+`tickets.team_id` is `NOT NULL`, so a ticket has no team-less state to fall back to
+the way a project does. Two situations:
+
+- Tickets of **sub-teams that are kept** go with their sub-team. Nothing happens to
   them at all — no renumbering, identifiers unchanged. This is the common case.
-- Tickets of **the deleted team itself** need a destination team, chosen in the modal.
-  Moving them renumbers them: `UNIQUE (team_id, number)` (`V2:103`) and
-  `teams.ticket_counter` mean `KAN-42` becomes `GRW-17`. That identifier is what
-  people paste into Slack and commits and what is written into Notion, so the modal
-  says so in as many words, with the count.
+- Tickets of **the team itself, kept active**, need a destination team, chosen in the
+  modal. Moving them renumbers them: `UNIQUE (team_id, number)` (`V2:103`) and
+  `teams.ticket_counter` mean `KAN-42` becomes `GRW-17`. That identifier is what people
+  paste into Slack and commits and what is written into Notion, so the modal says so
+  in as many words, with the count — for archiving as much as for deleting, because
+  the renumbering is permanent either way.
 
-Renumbering draws from the destination team's `ticket_counter` with the same
-`UPDATE … RETURNING` used at creation, so a concurrent creation in the destination
-team cannot collide with the move.
+Renumbering takes the whole block at once —
+`UPDATE teams SET ticket_counter = ticket_counter + n … RETURNING` — and hands out
+`(new − n + 1 … new)`. Allocating one at a time would hold the same row lock for the
+same span while adding a round trip per ticket inside it, so every `c` pressed in the
+destination team would wait longer for no benefit.
 
-Sub-teams are reparented to the grandparent (root when there is none) before the row
-goes, rather than relying on `ON DELETE SET NULL` — the difference matters when the
-grandparent exists, which is exactly when the cascade's answer is wrong. Projects go
-to the parent team, or to the team-less section when there is none.
+Sub-teams are reparented to the grandparent (root when there is none) explicitly,
+rather than relying on `ON DELETE SET NULL` — the difference shows exactly when a
+grandparent exists, which is when the cascade's answer is wrong. Projects go to the
+parent team, or to the team-less section when there is none.
 
-Deleting anything is admin-only, like every other team write.
+Both actions are admin-only, like every other team write.
 
 ### A ticket's project must belong to its team
 
@@ -197,8 +209,8 @@ a `⋯` menu: *New project*, *New sub-team*, *Rename*, *Archive*, *Delete*. Hove
 project row reveals *Edit*, *Archive* and *Delete*. `+` on the Projets header creates
 a project with no team.
 
-*Delete* is last in the menu, separated, and never the default. It opens the modal
-below; *Archive* does not.
+*Delete* is last in the menu, separated, and never the default. Both it and *Archive*
+open the disposition modal below, at their own severity.
 
 Depth stays capped at two indents, as today (`sidebar.tsx:20`).
 
@@ -267,38 +279,44 @@ a project becomes transverse; the `PUT` simply omits `teamId`.
 Server errors land on the field that caused them: `409 Team key 'KAN' is already
 taken` under the key, `409 Moving team … would create a cycle` under the parent.
 
-**Delete** — one modal, one choice per category, nothing preselected as destructive:
+**Disposition** — one component, one choice per category, driven by a `severity` prop.
+Archiving and deleting ask the same questions; only the last two rows differ.
 
 ```
-┌─ Supprimer « Core » ─────────────────────────┐
-│ Cette équipe contient :                      │
-│                                              │
-│  2 sous-équipes    (•) Rattacher à la racine │
-│                    ( ) Supprimer             │
-│                                              │
-│  3 projets         (•) Rattacher à la racine │
-│                    ( ) Supprimer             │
-│                                              │
-│  47 tickets        (•) Déplacer vers [Growth ▾]
-│                    ( ) Supprimer             │
-│                                              │
-│  ⚠ Les 47 tickets seront renumérotés :       │
-│    KAN-1…KAN-47 deviennent GRW-…             │
-│    Les liens existants cesseront de résoudre.│
-│                                              │
-│  Tapez « Core » pour confirmer : [________]  │
-│                     [Annuler]  [Supprimer]   │
-└──────────────────────────────────────────────┘
+┌─ Archiver « Core » ──────────────────────────┐   ┌─ Supprimer « Core » ─────────────────────────┐
+│ Cette équipe contient :                      │   │ Cette équipe contient :                      │
+│                                              │   │                                              │
+│  2 sous-équipes    (•) Garder actives        │   │  2 sous-équipes    (•) Garder actives        │
+│                    ( ) Archiver avec         │   │                    ( ) Supprimer avec        │
+│                                              │   │                                              │
+│  3 projets         (•) Garder actifs         │   │  3 projets         (•) Garder actifs         │
+│                    ( ) Archiver avec         │   │                    ( ) Supprimer avec        │
+│                                              │   │                                              │
+│  47 tickets        (•) Déplacer vers [Growth▾]   │  47 tickets        (•) Déplacer vers [Growth▾]
+│                    ( ) Archiver avec         │   │                    ( ) Supprimer avec        │
+│                                              │   │                                              │
+│  ⚠ Les 47 tickets seront renumérotés :       │   │  ⚠ Les 47 tickets seront renumérotés :       │
+│    KAN-1…KAN-47 deviennent GRW-…             │   │    KAN-1…KAN-47 deviennent GRW-…             │
+│    Les liens existants cesseront de résoudre.│   │    Les liens existants cesseront de résoudre.│
+│                                              │   │                                              │
+│  Réversible depuis « Afficher les archivées »│   │  Tapez « Core » pour confirmer : [________]  │
+│                     [Annuler]  [Archiver]    │   │                     [Annuler]  [Supprimer]   │
+└──────────────────────────────────────────────┘   └──────────────────────────────────────────────┘
 ```
 
-Every option defaults to keeping. The name has to be retyped — the modal deletes
-records that took months to accumulate, and it is the only place in Kanso that does.
-The counts come from the server, and it recounts before acting.
+Every category defaults to keeping, in both severities. The renumbering warning shows
+in both, because moving a ticket renames it for good whether the team it left was
+archived or deleted.
 
-An empty team gets a plain confirmation: there is nothing to decide.
+Only the destructive side asks for the name to be retyped, and only it fails on a
+count that drifted. Making archiving pay the same price would teach people to type
+names without reading them, which is precisely what would make the delete modal stop
+working.
 
-Deleting a **project** is the same modal with one row — its tickets, kept (they only
-lose their `project_id`) or deleted.
+An entity with nothing under it gets a plain confirmation: there is nothing to decide.
+
+A **project** uses the same component with one row — its tickets, kept (they only lose
+their `project_id`) or taken along.
 
 ---
 
@@ -318,23 +336,26 @@ No toast system — there is none today and it would be one more mechanism to ma
 ### Kotlin — JUnit + Testcontainers, as today
 
 - A member gets 403 on every team write; an admin succeeds.
-- Archiving a team archives its whole subtree.
+- The plan is exercised against both verbs, since both take it:
+  - `subTeams: "take"` archives (resp. deletes) the whole subtree.
+  - `subTeams: "keep"` moves them to the grandparent, not to the root, when a
+    grandparent exists.
+  - `projects: "keep"` sends them to the parent team, and to no team when the team
+    was a root.
+  - `tickets: "keep"` renumbers from the destination team's counter, leaves no gap and
+    no collision, and a concurrent creation in the destination team gets a distinct
+    number.
+  - Tickets of a kept sub-team keep their identifier untouched.
+  - `tickets: "keep"` without `ticketsTargetTeamId` is a 400, and the team is
+    untouched afterwards.
 - Unarchiving a nested team unarchives its ancestors.
-- After a sequence of archive/unarchive operations, no unarchived team has an
-  archived ancestor.
-- Archiving a team enqueues one sync job per team touched.
-- Deleting a team with `subTeams: "reparent"` moves them to the grandparent, not to
-  the root, when a grandparent exists.
-- Deleting a team with `projects: "reparent"` sends them to the parent team, and to
-  no team when the deleted team was a root.
-- Deleting a team with `tickets: "move"` renumbers from the destination team's
-  counter, leaves no gap and no collision, and a concurrent creation in the
-  destination team gets a distinct number.
-- Tickets of a kept sub-team keep their identifier untouched.
-- `tickets: "move"` without `ticketsTargetTeamId` is a 400, and the team still exists
-  afterwards.
-- A ticket created after the counts were read makes the delete return 409 and change
-  nothing; replaying with the new counts succeeds.
+- After a sequence of archive/unarchive operations under any plan, no unarchived team
+  has an archived ancestor.
+- One sync job per entity touched, whichever plan ran.
+- A ticket created after the counts were read makes the **delete** return 409 and
+  change nothing; replaying with the new counts succeeds. The same drift lets the
+  **archive** through — the severity difference is a tested behaviour, not a UI
+  detail.
 - Patching a ticket's team clears a `project_id` pointing at another team's project,
   and leaves a team-less project alone.
 
@@ -384,7 +405,7 @@ apps/web/src/
   components/composer.tsx               +  moved out of overlays.tsx, context bar
   components/dialogs/team-dialog.tsx    +
   components/dialogs/project-dialog.tsx +
-  components/dialogs/delete-dialog.tsx  +  per-category choices, typed confirmation
+  components/dialogs/disposition-dialog.tsx + per-category plan, severity prop
 apps/api/src/main/kotlin/dev/kanso/
   service/TeamService.kt                ~  role guard, recursive archive, delete plan
   service/TicketService.kt              ~  move between teams, project coherence
@@ -395,9 +416,25 @@ e2e/                                    +  Playwright
 
 ---
 
-## Deferred
+## Next, and deferred
 
-Kept here so they are not rediscovered as surprises:
+**Its own spec, straight after this one — entity locks.** While someone holds the
+disposition modal open on a team, nobody else should be editing or removing that same
+team. A database row lock cannot express this: it dies with its transaction, and no
+transaction stays open across a person's think-time. It needs an application lock —
+holder, expiry, heartbeat, release on close, an answer for the tab that was closed
+mid-modal, and a realtime broadcast so other clients grey the entity out rather than
+discovering the conflict on submit.
+
+The lock covers the targeted entity only, never its contents: changing a ticket's
+status while its project is being deleted stays allowed. That is also why the count
+`409` above is not made redundant by locking — the contents keep moving by design.
+
+It earns a spec of its own because it is the same mechanism the Notion page lock below
+needs. Written once, it serves both. Until it exists, the `409` is the only guard, and
+a second person can fill in the modal before failing at the last step.
+
+Deferred, kept here so they are not rediscovered as surprises:
 
 - **N8N webhooks** on domain events (ticket created, team created, deadline reached),
   so anyone can wire their own integration.
