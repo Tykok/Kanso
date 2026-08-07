@@ -14,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @Transactional
 class TicketProjectCoherenceTest : PostgresTest() {
@@ -86,18 +88,26 @@ class TicketProjectCoherenceTest : PostgresTest() {
 	}
 
 	@Test
-	fun `moving a ticket inside its own team leaves its project alone`() {
+	fun `an explicit projectId from another team is rejected, and the ticket is left untouched`() {
 		val core = newTeam("Core")
+		val growth = newTeam("Growth")
+		val growthProject = newProject(growth.id)
 		val coreProject = newProject(core.id)
 		val ticket = newTicket(core.id, coreProject.id)
 
-		val renamed = tickets.patch(ticket.ticket.id, TicketPatch(title = "Still grouped"))
+		val failure = assertFailsWith<BadRequestException> {
+			tickets.patch(ticket.ticket.id, TicketPatch(projectId = growthProject.id))
+		}
+		assertTrue(failure.message!!.contains(growth.id.toString()), failure.message!!)
+		assertTrue(failure.message!!.contains(core.id.toString()), failure.message!!)
 
-		assertEquals(coreProject.id, renamed.ticket.projectId)
+		val unchanged = tickets.get(ticket.ticket.id)
+		assertEquals(core.id, unchanged.ticket.teamId)
+		assertEquals(coreProject.id, unchanged.ticket.projectId, "a rejected patch must not partially apply")
 	}
 
 	@Test
-	fun `setting a team and a matching project in one patch keeps the link`() {
+	fun `an explicit projectId from another team is accepted alongside a teamId change to that team`() {
 		val core = newTeam("Core")
 		val growth = newTeam("Growth")
 		val growthProject = newProject(growth.id)
@@ -109,6 +119,30 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		)
 
 		assertEquals(growth.id, moved.ticket.teamId)
-		assertEquals(growthProject.id, moved.ticket.projectId)
+		assertEquals(growthProject.id, moved.ticket.projectId, "the effective team now matches the project's")
+	}
+
+	@Test
+	fun `an explicit projectId matching the ticket's current team is accepted`() {
+		val core = newTeam("Core")
+		val coreProject = newProject(core.id)
+		val ticket = newTicket(core.id, null)
+
+		val patched = tickets.patch(ticket.ticket.id, TicketPatch(projectId = coreProject.id))
+
+		assertEquals(core.id, patched.ticket.teamId)
+		assertEquals(coreProject.id, patched.ticket.projectId)
+	}
+
+	@Test
+	fun `unsetting projectId clears it without throwing`() {
+		val core = newTeam("Core")
+		val coreProject = newProject(core.id)
+		val ticket = newTicket(core.id, coreProject.id)
+
+		val patched = tickets.patch(ticket.ticket.id, TicketPatch(unset = setOf("projectId")))
+
+		assertEquals(core.id, patched.ticket.teamId)
+		assertNull(patched.ticket.projectId)
 	}
 }

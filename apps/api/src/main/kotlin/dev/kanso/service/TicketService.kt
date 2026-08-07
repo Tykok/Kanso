@@ -147,17 +147,31 @@ class TicketService(
 		if (patch.teamId != null && teams.findById(patch.teamId) == null) {
 			throw BadRequestException("No team ${patch.teamId}")
 		}
-		val requested = when {
+		// A ticket's project must belong to its effective team (`teamId` above, which
+		// accounts for a `teamId` change in this same patch). Not a database constraint:
+		// making it one would also forbid the team-less projects the sidebar shows in
+		// their own section, which are the transverse case on purpose.
+		//
+		// The two ways a stale project can appear get different answers, on purpose:
+		// an explicitly requested project that doesn't belong to the effective team is a
+		// mistake worth a 400, same class as an unknown teamId above; an inherited
+		// project left behind by a team move was never asked for, so it is dropped
+		// silently as a consequence of the move, not rejected.
+		val projectId = when {
 			"projectId" in patch.unset -> null
-			patch.projectId != null -> patch.projectId.also { requireProject(it) }
-			else -> current.projectId
-		}
-		// A ticket's project must belong to its team. Not a database constraint: making
-		// it one would also forbid the team-less projects the sidebar shows in their own
-		// section, which are the transverse case on purpose.
-		val projectId = requested?.takeIf { id ->
-			val projectTeamId = projects.findById(id)?.teamId
-			projectTeamId == null || projectTeamId == teamId
+			patch.projectId != null -> {
+				val project = requireProject(patch.projectId)
+				if (project.teamId != null && project.teamId != teamId) {
+					throw BadRequestException(
+						"Project ${patch.projectId} belongs to team ${project.teamId}, not team $teamId",
+					)
+				}
+				patch.projectId
+			}
+			else -> current.projectId?.takeIf { inheritedId ->
+				val projectTeamId = projects.findById(inheritedId)?.teamId
+				projectTeamId == null || projectTeamId == teamId
+			}
 		}
 		val startDate = if ("startDate" in patch.unset) null else patch.startDate ?: current.startDate
 		val dueDate = if ("dueDate" in patch.unset) null else patch.dueDate ?: current.dueDate
@@ -249,9 +263,8 @@ class TicketService(
 		}
 	}
 
-	private fun requireProject(id: UUID) {
+	private fun requireProject(id: UUID) =
 		projects.findById(id) ?: throw BadRequestException("No project $id")
-	}
 
 	private fun requireUsers(ids: List<UUID>) {
 		if (ids.isEmpty()) return
