@@ -512,6 +512,147 @@ kbd {
   font-size: 11px;
 }
 
+/* --- dialogs -------------------------------------------------------------- */
+
+/*
+ * Dialogs have a body of their own rather than `.panel-body`. That one uppercases
+ * every `label` it contains, at a specificity (`.panel-body label`) higher than a
+ * bare class: reused here, it would have to be contradicted field by field. A class
+ * of one's own costs eight lines and closes the subject.
+ */
+.dialog-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* The panel takes the focus to receive Escape; it has no need to announce it. */
+.panel[tabindex]:focus {
+  outline: none;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dialog-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dialog-field-label > span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.dialog-field-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.dialog-field-error {
+  font-size: 11px;
+  color: var(--urgent);
+}
+
+.dialog-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Holds the error's place when there is none, so the two buttons stay pinned to the
+   right edge either way. */
+.dialog-footer-spacer {
+  flex: 1;
+}
+
+.dialog-footer-error {
+  flex: 1;
+  min-width: 0;
+  color: var(--urgent);
+  font-size: 11px;
+}
+
+/* --- menu ----------------------------------------------------------------- */
+
+.menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+.menu-trigger:hover,
+.menu-trigger[aria-expanded="true"] {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.menu-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 168px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 4px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text);
+  outline: none;
+}
+
+/*
+ * The destructive entry is set apart here rather than with an element of its own: an
+ * `<hr>` between two `role="menuitem"` would break the relationship a menu is
+ * expected to have with its entries.
+ */
+.menu-item[data-danger="true"] {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--urgent);
+}
+
 /* --- misc ---------------------------------------------------------------- */
 
 .empty {
@@ -545,6 +686,38 @@ kbd {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
+}
+
+/*
+ * The red is written out rather than taken from the theme: `--urgent` is the same
+ * value in both schemes, and white on top of it holds contrast on both sides, which
+ * `--accent-contrast` would not guarantee here.
+ */
+.button-danger {
+  background: var(--urgent);
+  border-color: var(--urgent);
+  color: #ffffff;
+}
+
+.button-danger:hover {
+  background: color-mix(in srgb, var(--urgent) 85%, black);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.button:disabled:hover {
+  background: var(--surface);
+}
+
+.button-primary:disabled:hover {
+  background: var(--accent);
+}
+
+.button-danger:disabled:hover {
+  background: var(--urgent);
 }
 
 /* --- settings ------------------------------------------------------------- */
