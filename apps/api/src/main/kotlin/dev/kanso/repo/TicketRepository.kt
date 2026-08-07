@@ -157,6 +157,19 @@ class TicketRepository {
 		return ids
 	}
 
+	/**
+	 * Returns what it removed. `tickets.team_id` is ON DELETE CASCADE, so dropping the
+	 * team would take these with it in Postgres while leaving the Notion page behind —
+	 * the mirror outliving the source of truth. Removing them here means one sync job
+	 * each.
+	 */
+	fun deleteByTeams(teamIds: Collection<UUID>): List<UUID> {
+		if (teamIds.isEmpty()) return emptyList()
+		val ids = Tickets.select(Tickets.id).where { Tickets.teamId inList teamIds }.map { it[Tickets.id] }
+		if (ids.isNotEmpty()) Tickets.deleteWhere { Tickets.id inList ids }
+		return ids
+	}
+
 	// --- assignees -----------------------------------------------------------
 
 	fun assigneeIds(ticketId: UUID): List<UUID> =

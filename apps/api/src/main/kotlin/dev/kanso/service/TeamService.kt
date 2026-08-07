@@ -78,7 +78,7 @@ class TeamService(
 		val team = get(id)
 		val ticketsTarget = requireTicketDestination(team, plan)
 
-		val doomed = disperse(team, plan, ticketsTarget)
+		val doomed = disperse(team, plan, ticketsTarget, destructive = false)
 		teams.setArchived(doomed, true)
 		doomed.forEach {
 			syncJobs.enqueue(SyncEntityType.TEAM, it, SyncOperation.ARCHIVE)
@@ -133,8 +133,16 @@ class TeamService(
 	 * Empties the team of everything the plan keeps and returns the teams that are
 	 * actually going away — this one alone when its sub-teams were kept, the whole
 	 * subtree when they were taken.
+	 *
+	 * [destructive] is the only difference between archiving and deleting: `take` means
+	 * archived-alongside in one case and deleted-with in the other.
 	 */
-	private fun disperse(team: Team, plan: DispositionPlan, ticketsTarget: UUID?): List<UUID> {
+	private fun disperse(
+		team: Team,
+		plan: DispositionPlan,
+		ticketsTarget: UUID?,
+		destructive: Boolean,
+	): List<UUID> {
 		val doomed = if (plan.subTeams == DispositionChoice.TAKE) {
 			teams.descendantIds(team.id)
 		} else {
@@ -149,54 +157,98 @@ class TeamService(
 			listOf(team.id)
 		}
 
-		disperseProjects(team, plan, doomed)
-		disperseTickets(plan, doomed, ticketsTarget)
+		// Projects first: a ticket whose project has just been deleted must be read with
+		// its project_id already cleared, not carry a stale one into its mirror push.
+		disperseProjects(team, plan, doomed, destructive)
+		disperseTickets(plan, doomed, ticketsTarget, destructive)
 		return doomed
 	}
 
-	private fun disperseProjects(team: Team, plan: DispositionPlan, doomed: List<UUID>) {
+	private fun disperseProjects(
+		team: Team,
+		plan: DispositionPlan,
+		doomed: List<UUID>,
+		destructive: Boolean,
+	) {
 		val held = projects.findAllById(doomed.flatMap { projects.idsByTeam(it) })
 		if (held.isEmpty()) return
 
-		if (plan.projects == DispositionChoice.KEEP) {
-			held.forEach {
+		when {
+			plan.projects == DispositionChoice.KEEP -> held.forEach {
 				projects.setTeam(it.id, team.parentTeamId)
 				syncJobs.enqueue(SyncEntityType.PROJECT, it.id, SyncOperation.UPSERT)
 				events.publish(KansoEvent.project(ChangeKind.UPDATED, it.id, team.parentTeamId))
 			}
-			return
-		}
 
-		val teamOf = held.associate { it.id to it.teamId }
-		projects.setArchivedByTeams(doomed, true).forEach {
-			syncJobs.enqueue(SyncEntityType.PROJECT, it, SyncOperation.ARCHIVE)
-			events.publish(KansoEvent.project(ChangeKind.UPDATED, it, teamOf[it]))
+			destructive -> {
+				// Read before the delete: the job carries the Notion page id, and by the
+				// time the worker runs there is no row left to look it up from.
+				projects.deleteByTeams(doomed)
+				held.forEach {
+					syncJobs.enqueue(
+						SyncEntityType.PROJECT,
+						it.id,
+						SyncOperation.DELETE,
+						payload = deletePayload(it.mirror.notionPageId),
+					)
+					events.publish(KansoEvent.project(ChangeKind.DELETED, it.id, it.teamId))
+				}
+			}
+
+			else -> {
+				val teamOf = held.associate { it.id to it.teamId }
+				projects.setArchivedByTeams(doomed, true).forEach {
+					syncJobs.enqueue(SyncEntityType.PROJECT, it, SyncOperation.ARCHIVE)
+					events.publish(KansoEvent.project(ChangeKind.UPDATED, it, teamOf[it]))
+				}
+			}
 		}
 	}
 
-	private fun disperseTickets(plan: DispositionPlan, doomed: List<UUID>, ticketsTarget: UUID?) {
+	private fun disperseTickets(
+		plan: DispositionPlan,
+		doomed: List<UUID>,
+		ticketsTarget: UUID?,
+		destructive: Boolean,
+	) {
 		val held = tickets.search(teamIds = doomed, includeArchived = true, limit = Int.MAX_VALUE)
 			.sortedWith(compareBy<Ticket>({ it.teamId }, { it.number }))
 		if (held.isEmpty()) return
 
-		if (plan.tickets == DispositionChoice.KEEP) {
-			val target = checkNotNull(ticketsTarget) { "the destination is validated before dispersal" }
-			// One statement for the whole block: the row lock on the destination team is
-			// held for the same span either way, so allocating one number at a time would
-			// only add a round trip per ticket inside it.
-			val numbers = teams.nextTicketNumbers(target, held.size)
-			held.forEachIndexed { index, ticket ->
-				tickets.moveToTeam(ticket.id, target, numbers[index])
-				syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
-				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, target, ticket.projectId))
+		when {
+			plan.tickets == DispositionChoice.KEEP -> {
+				val target = checkNotNull(ticketsTarget) { "the destination is validated before dispersal" }
+				// One statement for the whole block: the row lock on the destination team
+				// is held for the same span either way, so allocating one number at a time
+				// would only add a round trip per ticket inside it.
+				val numbers = teams.nextTicketNumbers(target, held.size)
+				held.forEachIndexed { index, ticket ->
+					tickets.moveToTeam(ticket.id, target, numbers[index])
+					syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+					events.publish(KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, target, ticket.projectId))
+				}
 			}
-			return
-		}
 
-		val byId = held.associateBy { it.id }
-		tickets.setArchivedByTeams(doomed, true).forEach {
-			syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.ARCHIVE)
-			events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, byId[it]?.projectId))
+			destructive -> {
+				tickets.deleteByTeams(doomed)
+				held.forEach {
+					syncJobs.enqueue(
+						SyncEntityType.TICKET,
+						it.id,
+						SyncOperation.DELETE,
+						payload = deletePayload(it.mirror.notionPageId),
+					)
+					events.publish(KansoEvent.ticket(ChangeKind.DELETED, it.id, it.teamId, it.projectId))
+				}
+			}
+
+			else -> {
+				val byId = held.associateBy { it.id }
+				tickets.setArchivedByTeams(doomed, true).forEach {
+					syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.ARCHIVE)
+					events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, byId[it]?.projectId))
+				}
+			}
 		}
 	}
 
@@ -240,21 +292,45 @@ class TeamService(
 	}
 
 	/**
+	 * Removes the team for good, after checking that the person is still agreeing to
+	 * what they were shown.
+	 *
+	 * Recounting inside the transaction keeps the *operation* coherent but cannot keep
+	 * *consent* honest: whoever agreed to destroy 47 tickets did not agree to destroy
+	 * 50. Everywhere else in Kanso a write that turns out wrong snaps back; this one
+	 * does not come back at all, which is what buys the extra round trip. Archiving
+	 * snaps back, so it ignores [DispositionPlan.counts] entirely.
+	 *
 	 * Deleting locally still archives in Notion: Notion has no hard delete worth
-	 * relying on, and a page that silently disappears from the mirror is worse
-	 * than one marked archived.
+	 * relying on, and a page that silently disappears from the mirror is worse than one
+	 * marked archived.
 	 */
 	@Transactional
-	fun delete(id: UUID) {
-		val existing = get(id)
-		syncJobs.enqueue(
-			SyncEntityType.TEAM,
-			id,
-			SyncOperation.DELETE,
-			payload = deletePayload(existing.mirror.notionPageId),
-		)
-		teams.delete(id)
-		events.publish(KansoEvent.team(ChangeKind.DELETED, id))
+	fun delete(actor: User, id: UUID, plan: DispositionPlan) {
+		requireConfigurator(actor)
+		val team = get(id)
+
+		val declared = plan.counts
+			?: throw BadRequestException("Deleting a team requires the counts the confirmation showed")
+		val fresh = countsOf(id)
+		if (declared != fresh) throw CountsChangedException(fresh)
+
+		val ticketsTarget = requireTicketDestination(team, plan)
+		val doomed = disperse(team, plan, ticketsTarget, destructive = true)
+
+		val rows = teams.findAllById(doomed)
+		rows.forEach {
+			syncJobs.enqueue(
+				SyncEntityType.TEAM,
+				it.id,
+				SyncOperation.DELETE,
+				payload = deletePayload(it.mirror.notionPageId),
+			)
+		}
+		// Order is irrelevant: parent_team_id is ON DELETE SET NULL, so no delete can
+		// fail on a child that is still present.
+		doomed.forEach { teams.delete(it) }
+		rows.forEach { events.publish(KansoEvent.team(ChangeKind.DELETED, it.id)) }
 	}
 
 	// --- members -------------------------------------------------------------

@@ -113,6 +113,13 @@ class ProjectRepository {
 		return ids
 	}
 
+	fun deleteByTeams(teamIds: Collection<UUID>): List<UUID> {
+		if (teamIds.isEmpty()) return emptyList()
+		val ids = Projects.select(Projects.id).where { Projects.teamId inList teamIds }.map { it[Projects.id] }
+		if (ids.isNotEmpty()) Projects.deleteWhere { Projects.id inList ids }
+		return ids
+	}
+
 	// --- docs ----------------------------------------------------------------
 
 	fun docIds(projectId: UUID): List<UUID> =

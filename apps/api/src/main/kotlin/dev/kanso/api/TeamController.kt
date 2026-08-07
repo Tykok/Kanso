@@ -61,9 +61,15 @@ class TeamController(
 	fun unarchive(@PathVariable id: UUID): TeamResponse =
 		TeamResponse.of(teams.unarchive(currentUser.require(), id))
 
+	/**
+	 * The body is optional at this layer so a request without one gets the service's
+	 * own message about the missing counts rather than Spring's "required request body
+	 * is missing".
+	 */
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	fun delete(@PathVariable id: UUID) = teams.delete(id)
+	fun delete(@PathVariable id: UUID, @RequestBody(required = false) request: DispositionPlanRequest?) =
+		teams.delete(currentUser.require(), id, (request ?: DispositionPlanRequest()).toPlan())
 
 	@GetMapping("/{id}/members")
 	fun members(@PathVariable id: UUID): List<MemberResponse> =
