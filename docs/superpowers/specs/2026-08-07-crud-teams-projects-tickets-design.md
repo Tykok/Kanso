@@ -12,6 +12,7 @@ action comes next, web notifications after that.
 ## What ships
 
 - Create, rename, reparent and archive teams and sub-teams.
+- Delete a team or a project, after deciding explicitly what happens to what it holds.
 - Create, edit and archive projects, with or without a team.
 - Create tickets with their team, project, priority and assignee chosen up front.
 - A sidebar that shows the team tree with its projects, and filters on click.
@@ -29,7 +30,8 @@ introduces.
 
 ## Server
 
-Three changes. No migration: the schema already says what we need it to.
+Four changes. No migration: the schema already says what we need it to — the work is
+in deciding what the existing foreign keys are allowed to do on their own.
 
 ### Team writes are an admin action
 
@@ -57,10 +59,62 @@ flag: archiving a team is an organisational statement, not a claim that the work
 inside it is finished. Its tickets stay in *All tickets* and reachable by identifier;
 only the team and its sub-teams leave the sidebar.
 
-`DELETE /api/teams/{id}` stays in the API and no menu points at it. `tickets.team_id`
-is `ON DELETE CASCADE` (`V2__sync_engine.sql:80`): deleting a team destroys its
-tickets in Postgres while Notion merely archives the page, so the mirror outlives the
-source of truth. Archive is what the UI offers.
+Archive is the light action, reachable from a menu in one click. Delete is a separate,
+heavier one — below.
+
+### Deleting a team asks what happens to its contents
+
+`tickets.team_id` is `ON DELETE CASCADE` (`V2__sync_engine.sql:80`) and
+`teams.parent_team_id` is `ON DELETE SET NULL` (`V1__init.sql:9`). Left as they are,
+deleting a team destroys every ticket under it in Postgres while Notion merely
+archives the page — the mirror outlives the source of truth — and silently promotes
+its sub-teams to the root. Neither is a decision anyone made.
+
+So `DELETE /api/teams/{id}` takes a body saying, per category, what to do:
+
+```jsonc
+{
+  "subTeams": "delete" | "reparent",   // reparent → the grandparent, or root
+  "projects": "delete" | "reparent",   // reparent → the parent team, or no team
+  "tickets":  "delete" | "move",
+  "ticketsTargetTeamId": "…"           // required when tickets = "move"
+}
+```
+
+Server-side the whole thing is one transaction, and the counts are recomputed inside
+it: the client's numbers are for the human, never for the decision.
+
+**Tickets are the constrained case.** `tickets.team_id` is `NOT NULL`, so a ticket has
+no team-less state to fall back to the way a project does. Two situations:
+
+- Tickets of **sub-teams that are kept** move with their sub-team. Nothing happens to
+  them at all — no renumbering, identifiers unchanged. This is the common case.
+- Tickets of **the deleted team itself** need a destination team, chosen in the modal.
+  Moving them renumbers them: `UNIQUE (team_id, number)` (`V2:103`) and
+  `teams.ticket_counter` mean `KAN-42` becomes `GRW-17`. That identifier is what
+  people paste into Slack and commits and what is written into Notion, so the modal
+  says so in as many words, with the count.
+
+Renumbering draws from the destination team's `ticket_counter` with the same
+`UPDATE … RETURNING` used at creation, so a concurrent creation in the destination
+team cannot collide with the move.
+
+Sub-teams are reparented to the grandparent (root when there is none) before the row
+goes, rather than relying on `ON DELETE SET NULL` — the difference matters when the
+grandparent exists, which is exactly when the cascade's answer is wrong. Projects go
+to the parent team, or to the team-less section when there is none.
+
+Deleting anything is admin-only, like every other team write.
+
+### A ticket's project must belong to its team
+
+`TicketPatchRequest` accepts a `teamId`, so a ticket created in Core against a Core
+project can be moved to Growth and keep pointing at a project no view of its team
+shows. The composer's project list cannot prevent this — it only bounds creation.
+
+`TicketService.patch` therefore clears `project_id` when the new team is not the
+project's team and the project is not team-less. Not a database constraint: making it
+one would also forbid the team-less projects this spec deliberately allows.
 
 ### Nothing else
 
@@ -130,9 +184,12 @@ Projects belonging to a team are nested under it. Projects with no team live in 
 root-level `Projets` section. Every project appears exactly once.
 
 `+` on the Teams header creates a root team (admin only). Hovering a team row reveals
-a `⋯` menu: *New project*, *New sub-team*, *Rename*, *Archive*. Hovering a project
-row reveals *Edit* and *Archive*. `+` on the Projets header creates a project with no
-team.
+a `⋯` menu: *New project*, *New sub-team*, *Rename*, *Archive*, *Delete*. Hovering a
+project row reveals *Edit*, *Archive* and *Delete*. `+` on the Projets header creates
+a project with no team.
+
+*Delete* is last in the menu, separated, and never the default. It opens the modal
+below; *Archive* does not.
 
 Depth stays capped at two indents, as today (`sidebar.tsx:20`).
 
@@ -201,6 +258,39 @@ a project becomes transverse; the `PUT` simply omits `teamId`.
 Server errors land on the field that caused them: `409 Team key 'KAN' is already
 taken` under the key, `409 Moving team … would create a cycle` under the parent.
 
+**Delete** — one modal, one choice per category, nothing preselected as destructive:
+
+```
+┌─ Supprimer « Core » ─────────────────────────┐
+│ Cette équipe contient :                      │
+│                                              │
+│  2 sous-équipes    (•) Rattacher à la racine │
+│                    ( ) Supprimer             │
+│                                              │
+│  3 projets         (•) Rattacher à la racine │
+│                    ( ) Supprimer             │
+│                                              │
+│  47 tickets        (•) Déplacer vers [Growth ▾]
+│                    ( ) Supprimer             │
+│                                              │
+│  ⚠ Les 47 tickets seront renumérotés :       │
+│    KAN-1…KAN-47 deviennent GRW-…             │
+│    Les liens existants cesseront de résoudre.│
+│                                              │
+│  Tapez « Core » pour confirmer : [________]  │
+│                     [Annuler]  [Supprimer]   │
+└──────────────────────────────────────────────┘
+```
+
+Every option defaults to keeping. The name has to be retyped — the modal deletes
+records that took months to accumulate, and it is the only place in Kanso that does.
+The counts come from the server, and it recounts before acting.
+
+An empty team gets a plain confirmation: there is nothing to decide.
+
+Deleting a **project** is the same modal with one row — its tickets, kept (they only
+lose their `project_id`) or deleted.
+
 ---
 
 ## Errors
@@ -224,6 +314,18 @@ No toast system — there is none today and it would be one more mechanism to ma
 - After a sequence of archive/unarchive operations, no unarchived team has an
   archived ancestor.
 - Archiving a team enqueues one sync job per team touched.
+- Deleting a team with `subTeams: "reparent"` moves them to the grandparent, not to
+  the root, when a grandparent exists.
+- Deleting a team with `projects: "reparent"` sends them to the parent team, and to
+  no team when the deleted team was a root.
+- Deleting a team with `tickets: "move"` renumbers from the destination team's
+  counter, leaves no gap and no collision, and a concurrent creation in the
+  destination team gets a distinct number.
+- Tickets of a kept sub-team keep their identifier untouched.
+- `tickets: "move"` without `ticketsTargetTeamId` is a 400, and the team still exists
+  afterwards.
+- Patching a ticket's team clears a `project_id` pointing at another team's project,
+  and leaves a team-less project alone.
 
 ### Vitest — new in `apps/web`
 
@@ -246,10 +348,13 @@ specs will need after that.
 2. Selecting a parent team shows its sub-teams' tickets; selecting a project filters
    to it.
 3. A member sees neither the Teams `+` nor a team `⋯` menu; an admin sees both.
-4. **Keyboard non-regression:** `j/k`, `1..6`, `c`, `e`, `x`, `/`, `⌘K`, `,`, `?` do
+4. Delete a team keeping everything: the sub-teams, projects and tickets are all still
+   reachable afterwards, at their new place, and the renumbered identifiers are the
+   ones the modal announced.
+5. **Keyboard non-regression:** `j/k`, `1..6`, `c`, `e`, `x`, `/`, `⌘K`, `,`, `?` do
    exactly what they do today.
 
-Scenario 4 is the point. The registry rewrites the keyboard path; this test is what
+Scenario 5 is the point. The registry rewrites the keyboard path; this test is what
 says whether behaviour moved with it.
 
 ---
@@ -268,9 +373,12 @@ apps/web/src/
   components/composer.tsx               +  moved out of overlays.tsx, context bar
   components/dialogs/team-dialog.tsx    +
   components/dialogs/project-dialog.tsx +
+  components/dialogs/delete-dialog.tsx  +  per-category choices, typed confirmation
 apps/api/src/main/kotlin/dev/kanso/
-  service/TeamService.kt                ~  role guard, recursive archive
-  repo/TeamRepository.kt                ~  subtree archive, ancestor walk
+  service/TeamService.kt                ~  role guard, recursive archive, delete plan
+  service/TicketService.kt              ~  move between teams, project coherence
+  repo/TeamRepository.kt                ~  subtree archive, ancestor walk, counts
+  api/Dtos.kt                           ~  delete-plan request
 e2e/                                    +  Playwright
 ```
 
