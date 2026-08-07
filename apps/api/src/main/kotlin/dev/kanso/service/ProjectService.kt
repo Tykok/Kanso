@@ -1,6 +1,8 @@
 package dev.kanso.service
 
+import dev.kanso.domain.DispositionChoice
 import dev.kanso.domain.DispositionCounts
+import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.realtime.ChangeKind
@@ -88,31 +90,53 @@ class ProjectService(
 		endDate: LocalDate?,
 		leadUserId: UUID?,
 		teamId: UUID?,
-		archived: Boolean,
 		docIds: List<UUID>?,
 	): ProjectDetail {
-		projects.findById(id) ?: throw NotFoundException("No project $id")
+		val existing = projects.findById(id) ?: throw NotFoundException("No project $id")
 		validateDates(startDate, endDate)
 		teamId?.let { requireTeam(it) }
 		leadUserId?.let { requireUser(it) }
 		docIds?.let { requireDocs(it) }
 
-		val updated = projects.update(id, name, status, startDate, endDate, leadUserId, teamId, archived)
+		// Archiving has its own verb; an edit never changes that flag by accident.
+		val updated = projects.update(id, name, status, startDate, endDate, leadUserId, teamId, existing.archived)
 			?: throw NotFoundException("No project $id")
 		if (docIds != null) projects.setDocs(id, docIds)
 
-		syncJobs.enqueue(
-			SyncEntityType.PROJECT,
-			id,
-			if (archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
-		)
+		syncJobs.enqueue(SyncEntityType.PROJECT, id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.project(ChangeKind.UPDATED, id, teamId))
 		return ProjectDetail(updated, projects.docIds(id))
 	}
 
 	@Transactional
-	fun delete(id: UUID) {
+	fun archive(id: UUID, plan: DispositionPlan): ProjectDetail {
 		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
+		disperseTickets(id, plan, destructive = false)
+		return setArchived(project, true)
+	}
+
+	/** Only the project comes back: its tickets were disposed of by an explicit choice. */
+	@Transactional
+	fun unarchive(id: UUID): ProjectDetail {
+		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
+		return setArchived(project, false)
+	}
+
+	/**
+	 * Deleting locally still archives in Notion, and still asks whether the counts on
+	 * screen are the ones being agreed to — see `TeamService.delete` for why only the
+	 * destructive side pays for that.
+	 */
+	@Transactional
+	fun delete(id: UUID, plan: DispositionPlan) {
+		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
+
+		val declared = plan.counts
+			?: throw BadRequestException("Deleting a project requires the counts the confirmation showed")
+		val fresh = DispositionCounts(subTeams = 0, projects = 0, tickets = tickets.countByProject(id))
+		if (declared != fresh) throw CountsChangedException(fresh)
+
+		disperseTickets(id, plan, destructive = true)
 		syncJobs.enqueue(
 			SyncEntityType.PROJECT,
 			id,
@@ -121,6 +145,62 @@ class ProjectService(
 		)
 		projects.delete(id)
 		events.publish(KansoEvent.project(ChangeKind.DELETED, id, project.teamId))
+	}
+
+	/**
+	 * `ticketsTargetTeamId` plays no part here: a ticket already has a team of its own,
+	 * so keeping one costs it only its `project_id`. That is the whole difference
+	 * between a project and a team.
+	 */
+	private fun disperseTickets(projectId: UUID, plan: DispositionPlan, destructive: Boolean) {
+		val held = tickets.search(projectId = projectId, includeArchived = true, limit = Int.MAX_VALUE)
+		if (held.isEmpty()) return
+		val byId = held.associateBy { it.id }
+
+		when {
+			plan.tickets == DispositionChoice.KEEP -> tickets.clearProject(projectId).forEach {
+				syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.UPSERT)
+				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, null))
+			}
+
+			destructive -> {
+				tickets.deleteByProject(projectId)
+				held.forEach {
+					syncJobs.enqueue(
+						SyncEntityType.TICKET,
+						it.id,
+						SyncOperation.DELETE,
+						payload = deletePayload(it.mirror.notionPageId),
+					)
+					events.publish(KansoEvent.ticket(ChangeKind.DELETED, it.id, it.teamId, projectId))
+				}
+			}
+
+			else -> tickets.setArchivedByProject(projectId, true).forEach {
+				syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.ARCHIVE)
+				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, projectId))
+			}
+		}
+	}
+
+	private fun setArchived(project: Project, archived: Boolean): ProjectDetail {
+		val updated = projects.update(
+			id = project.id,
+			name = project.name,
+			status = project.status,
+			startDate = project.startDate,
+			endDate = project.endDate,
+			leadUserId = project.leadUserId,
+			teamId = project.teamId,
+			archived = archived,
+		) ?: throw NotFoundException("No project ${project.id}")
+		syncJobs.enqueue(
+			SyncEntityType.PROJECT,
+			project.id,
+			if (archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+		)
+		events.publish(KansoEvent.project(ChangeKind.UPDATED, project.id, project.teamId))
+		return ProjectDetail(updated, projects.docIds(project.id))
 	}
 
 	private fun validateDates(startDate: LocalDate?, endDate: LocalDate?) {

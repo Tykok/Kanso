@@ -170,6 +170,30 @@ class TicketRepository {
 		return ids
 	}
 
+	fun idsByProject(projectId: UUID): List<UUID> =
+		Tickets.select(Tickets.id).where { Tickets.projectId eq projectId }.map { it[Tickets.id] }
+
+	/** Keeping a ticket whose project goes away costs it only the grouping. */
+	fun clearProject(projectId: UUID): List<UUID> {
+		val ids = idsByProject(projectId)
+		if (ids.isNotEmpty()) Tickets.update({ Tickets.id inList ids }) { it[Tickets.projectId] = null }
+		return ids
+	}
+
+	fun setArchivedByProject(projectId: UUID, archived: Boolean): List<UUID> {
+		val ids = Tickets.select(Tickets.id)
+			.where { (Tickets.projectId eq projectId) and (Tickets.archived neq archived) }
+			.map { it[Tickets.id] }
+		if (ids.isNotEmpty()) Tickets.update({ Tickets.id inList ids }) { it[Tickets.archived] = archived }
+		return ids
+	}
+
+	fun deleteByProject(projectId: UUID): List<UUID> {
+		val ids = idsByProject(projectId)
+		if (ids.isNotEmpty()) Tickets.deleteWhere { Tickets.id inList ids }
+		return ids
+	}
+
 	// --- assignees -----------------------------------------------------------
 
 	fun assigneeIds(ticketId: UUID): List<UUID> =

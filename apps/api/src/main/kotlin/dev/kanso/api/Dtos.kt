@@ -141,7 +141,6 @@ data class ProjectRequest(
 	val leadUserId: UUID? = null,
 	val teamId: UUID? = null,
 	val docIds: List<UUID>? = null,
-	val archived: Boolean = false,
 )
 
 data class ProjectResponse(

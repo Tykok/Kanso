@@ -52,12 +52,20 @@ class ProjectController(private val projects: ProjectService) {
 				endDate = request.endDate,
 				leadUserId = request.leadUserId,
 				teamId = request.teamId,
-				archived = request.archived,
 				docIds = request.docIds,
 			)
 		)
 
+	@PutMapping("/{id}/archive")
+	fun archive(@PathVariable id: UUID, @RequestBody request: DispositionPlanRequest): ProjectResponse =
+		ProjectResponse.of(projects.archive(id, request.toPlan()))
+
+	@PostMapping("/{id}/unarchive")
+	fun unarchive(@PathVariable id: UUID): ProjectResponse = ProjectResponse.of(projects.unarchive(id))
+
+	/** Body optional so a missing one yields the service's message, not Spring's. */
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	fun delete(@PathVariable id: UUID) = projects.delete(id)
+	fun delete(@PathVariable id: UUID, @RequestBody(required = false) request: DispositionPlanRequest?) =
+		projects.delete(id, (request ?: DispositionPlanRequest()).toPlan())
 }
