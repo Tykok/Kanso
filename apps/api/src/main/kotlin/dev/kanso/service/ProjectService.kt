@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.realtime.ChangeKind
@@ -9,6 +10,7 @@ import dev.kanso.repo.DocRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
@@ -25,6 +27,7 @@ data class ProjectDetail(val project: Project, val docIds: List<UUID>)
 class ProjectService(
 	private val projects: ProjectRepository,
 	private val teams: TeamRepository,
+	private val tickets: TicketRepository,
 	private val users: UserRepository,
 	private val docs: DocRepository,
 	private val syncJobs: SyncJobRepository,
@@ -43,6 +46,15 @@ class ProjectService(
 	fun get(id: UUID): ProjectDetail {
 		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
 		return ProjectDetail(project, projects.docIds(id))
+	}
+
+	// --- disposition ---------------------------------------------------------
+
+	/** A project holds no teams and no projects; only its tickets need a decision. */
+	@Transactional(readOnly = true)
+	fun contents(id: UUID): DispositionCounts {
+		get(id)
+		return DispositionCounts(subTeams = 0, projects = 0, tickets = tickets.countByProject(id))
 	}
 
 	@Transactional

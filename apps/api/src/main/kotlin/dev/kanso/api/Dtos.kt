@@ -1,5 +1,8 @@
 package dev.kanso.api
 
+import dev.kanso.domain.DispositionChoice
+import dev.kanso.domain.DispositionCounts
+import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.NotionDoc
 import dev.kanso.domain.Project
@@ -28,6 +31,35 @@ data class MirrorDto(
 	val state: String,
 	val syncedAt: OffsetDateTime?,
 )
+
+// --- disposition -------------------------------------------------------------
+
+data class DispositionCountsResponse(val subTeams: Int, val projects: Int, val tickets: Int) {
+	companion object {
+		fun of(counts: DispositionCounts) =
+			DispositionCountsResponse(counts.subTeams, counts.projects, counts.tickets)
+	}
+}
+
+/**
+ * What happens to the contents. Every category defaults to `keep`: the destructive
+ * reading of a missing field is never the safe one.
+ */
+data class DispositionPlanRequest(
+	val subTeams: String = "keep",
+	val projects: String = "keep",
+	val tickets: String = "keep",
+	val ticketsTargetTeamId: UUID? = null,
+	val counts: DispositionCountsResponse? = null,
+) {
+	fun toPlan() = DispositionPlan(
+		subTeams = DispositionChoice.from(subTeams),
+		projects = DispositionChoice.from(projects),
+		tickets = DispositionChoice.from(tickets),
+		ticketsTargetTeamId = ticketsTargetTeamId,
+		counts = counts?.let { DispositionCounts(it.subTeams, it.projects, it.tickets) },
+	)
+}
 
 // --- teams -------------------------------------------------------------------
 

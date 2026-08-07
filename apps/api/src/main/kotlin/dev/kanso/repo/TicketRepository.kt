@@ -117,6 +117,24 @@ class TicketRepository {
 
 	fun delete(id: UUID): Boolean = Tickets.deleteWhere { Tickets.id eq id } > 0
 
+	// --- bulk reads ----------------------------------------------------------
+
+	/** Archived tickets count: they still need a decision when their team goes away. */
+	fun countByTeams(teamIds: Collection<UUID>, includeArchived: Boolean = true): Int {
+		if (teamIds.isEmpty()) return 0
+		val where =
+			if (includeArchived) Tickets.teamId inList teamIds
+			else (Tickets.teamId inList teamIds) and (Tickets.archived eq false)
+		return Tickets.selectAll().where(where).count().toInt()
+	}
+
+	fun countByProject(projectId: UUID, includeArchived: Boolean = true): Int {
+		val where =
+			if (includeArchived) Tickets.projectId eq projectId
+			else (Tickets.projectId eq projectId) and (Tickets.archived eq false)
+		return Tickets.selectAll().where(where).count().toInt()
+	}
+
 	// --- assignees -----------------------------------------------------------
 
 	fun assigneeIds(ticketId: UUID): List<UUID> =

@@ -87,6 +87,16 @@ class ProjectRepository {
 
 	fun delete(id: UUID): Boolean = Projects.deleteWhere { Projects.id eq id } > 0
 
+	// --- bulk reads ----------------------------------------------------------
+
+	fun countByTeams(teamIds: Collection<UUID>, includeArchived: Boolean = true): Int {
+		if (teamIds.isEmpty()) return 0
+		val where =
+			if (includeArchived) Projects.teamId inList teamIds
+			else (Projects.teamId inList teamIds) and (Projects.archived eq false)
+		return Projects.selectAll().where(where).count().toInt()
+	}
+
 	// --- docs ----------------------------------------------------------------
 
 	fun docIds(projectId: UUID): List<UUID> =

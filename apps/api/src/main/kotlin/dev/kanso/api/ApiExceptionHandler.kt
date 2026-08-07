@@ -2,6 +2,7 @@ package dev.kanso.api
 
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
+import dev.kanso.service.CountsChangedException
 import dev.kanso.service.NotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
@@ -34,6 +35,24 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
 
 	@ExceptionHandler(ConflictException::class)
 	fun conflict(e: ConflictException): ProblemDetail = problem(HttpStatus.CONFLICT, e.message)
+
+	/**
+	 * A 409 that carries data: the client reopens the modal on the fresh numbers rather
+	 * than asking the person to guess what changed.
+	 */
+	@ExceptionHandler(CountsChangedException::class)
+	fun countsChanged(e: CountsChangedException): ProblemDetail {
+		val problem = problem(HttpStatus.CONFLICT, e.message)
+		problem.setProperty(
+			"counts",
+			mapOf(
+				"subTeams" to e.counts.subTeams,
+				"projects" to e.counts.projects,
+				"tickets" to e.counts.tickets,
+			),
+		)
+		return problem
+	}
 
 	@ExceptionHandler(BadRequestException::class)
 	fun badRequest(e: BadRequestException): ProblemDetail = problem(HttpStatus.BAD_REQUEST, e.message)

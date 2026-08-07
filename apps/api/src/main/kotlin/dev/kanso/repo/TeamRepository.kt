@@ -120,6 +120,10 @@ class TeamRepository(private val jdbc: JdbcClient) {
 		return ((last - count + 1)..last).toList()
 	}
 
+	/** Only the teams whose parent is [id] — the ones a plan can actually re-home. */
+	fun directChildIds(id: UUID): List<UUID> =
+		Teams.select(Teams.id).where { Teams.parentTeamId eq id }.map { it[Teams.id] }
+
 	// --- members -------------------------------------------------------------
 
 	fun members(teamId: UUID): List<TeamMember> =

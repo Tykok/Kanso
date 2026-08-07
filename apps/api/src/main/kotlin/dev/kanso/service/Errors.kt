@@ -7,3 +7,10 @@ class ConflictException(message: String) : RuntimeException(message)
 
 /** The request is understandable but wrong (unknown status, missing team). */
 class BadRequestException(message: String) : RuntimeException(message)
+
+/**
+ * The contents changed between the preview the person saw and the request. Carries the
+ * fresh counts so the modal can reopen on the truth.
+ */
+class CountsChangedException(val counts: dev.kanso.domain.DispositionCounts) :
+	RuntimeException("The contents changed since they were counted")

@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.TeamMember
@@ -7,8 +8,10 @@ import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
+import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
@@ -21,6 +24,8 @@ import java.util.UUID
 @Service
 class TeamService(
 	private val teams: TeamRepository,
+	private val projects: ProjectRepository,
+	private val tickets: TicketRepository,
 	private val users: UserRepository,
 	private val syncJobs: SyncJobRepository,
 	private val events: EventPublisher,
@@ -37,6 +42,25 @@ class TeamService(
 		get(id)
 		return teams.descendants(id)
 	}
+
+	// --- disposition ---------------------------------------------------------
+
+	@Transactional(readOnly = true)
+	fun contents(id: UUID): DispositionCounts {
+		get(id)
+		return countsOf(id)
+	}
+
+	/**
+	 * What the team holds directly. A kept sub-team leaves with its own projects and
+	 * tickets untouched, so counting those would describe a decision nobody was
+	 * offered.
+	 */
+	private fun countsOf(id: UUID) = DispositionCounts(
+		subTeams = teams.directChildIds(id).size,
+		projects = projects.countByTeams(listOf(id)),
+		tickets = tickets.countByTeams(listOf(id)),
+	)
 
 	@Transactional
 	fun create(actor: User, name: String, key: String?, parentTeamId: UUID?): Team {

@@ -27,6 +27,11 @@ class TeamController(
 	fun descendants(@PathVariable id: UUID): List<TeamResponse> =
 		teams.descendants(id).map(TeamResponse::of)
 
+	/** What the modal shows before anyone chooses anything. */
+	@GetMapping("/{id}/contents")
+	fun contents(@PathVariable id: UUID): DispositionCountsResponse =
+		DispositionCountsResponse.of(teams.contents(id))
+
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
 	fun create(@Valid @RequestBody request: TeamRequest): TeamResponse = TeamResponse.of(

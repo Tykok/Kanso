@@ -13,7 +13,7 @@ interface Wire {
 	val wire: String
 }
 
-private inline fun <reified E> parse(values: Array<E>, raw: String): E where E : Enum<E>, E : Wire =
+internal inline fun <reified E> parse(values: Array<E>, raw: String): E where E : Enum<E>, E : Wire =
 	values.firstOrNull { it.wire == raw }
 		?: throw IllegalArgumentException(
 			"Unknown ${E::class.simpleName} '$raw' (expected one of ${values.joinToString { it.wire }})"
