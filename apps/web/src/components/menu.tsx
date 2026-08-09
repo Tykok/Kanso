@@ -5,6 +5,12 @@ import { useEffect, useId, useRef, useState } from "react";
 export type MenuItem = {
   id: string;
   label: string;
+  /**
+   * The key that fires the same action from anywhere. Shown against the entry because
+   * the menus are where a keyboard-first application's keyboard is discovered: nobody
+   * reads the help overlay to find out that `e` renames.
+   */
+  hint?: string;
   /** Last, detached, never the default choice. */
   danger?: boolean;
   onSelect: () => void;
@@ -176,7 +182,17 @@ export function Menu({
                   item.onSelect();
                 }}
               >
-                {item.label}
+                <span className="menu-label">{item.label}</span>
+                {item.hint && (
+                  <>
+                    {/* A real space, not a CSS gap: it is what separates label from
+                        hint in the accessible name and in `textContent`, so both read
+                        as "Rename ticket e". The flex container drops the
+                        whitespace-only box, so nothing is drawn for it. */}
+                    {" "}
+                    <span className="menu-hint">{item.hint}</span>
+                  </>
+                )}
               </button>
             ))}
           </div>

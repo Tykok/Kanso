@@ -87,7 +87,14 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
   // The shipped bug was two of each; this is the regression guard for it.
   await page.getByRole("button", { name: team.name, exact: true }).click();
   await newTrigger.click();
-  await expect(newMenu.getByRole("menuitem")).toHaveText(["New ticket", "New project", "New team"]);
+  // The keyboard hint rides along with the label: `c` is what creates a ticket from
+  // anywhere, and a menu that hid it taught nobody the keyboard it is named after.
+  // Entries whose action carries no shortcut show none — the absence is asserted too.
+  await expect(newMenu.getByRole("menuitem")).toHaveText([
+    "New ticket c",
+    "New project",
+    "New team",
+  ]);
 
   // "New team" on the team's own scope pre-fills that team as the parent — the
   // dialog's title says so too, which is where the context reappears now that the
@@ -120,7 +127,7 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
   // The actual creation: a ticket filed from the project scope carries both ids —
   // checked against the API, not merely that a row appeared in the list.
   await newTrigger.click();
-  await newMenu.getByRole("menuitem", { name: "New ticket", exact: true }).click();
+  await newMenu.getByRole("menuitem", { name: /^New ticket\b/ }).click();
   const title = page.getByPlaceholder("New ticket…");
   await expect(title).toBeFocused();
   const ticketTitle = unique("Ticket from the scope");
@@ -144,7 +151,7 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
   // blocked, points at the team selector, and files nothing.
   await page.getByRole("button", { name: "All tickets", exact: true }).click();
   await newTrigger.click();
-  await newMenu.getByRole("menuitem", { name: "New ticket", exact: true }).click();
+  await newMenu.getByRole("menuitem", { name: /^New ticket\b/ }).click();
   const blockedTitleInput = page.getByPlaceholder("New ticket…");
   await expect(blockedTitleInput).toBeFocused();
   const teamSelect = page.getByLabel("Ticket team");
@@ -172,7 +179,7 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
   for (const scopeButton of ["All tickets", team.name, project.name]) {
     await member.getByRole("button", { name: scopeButton, exact: true }).click();
     await memberNewTrigger.click();
-    await expect(memberNewMenu.getByRole("menuitem")).toHaveText(["New ticket", "New project"]);
+    await expect(memberNewMenu.getByRole("menuitem")).toHaveText(["New ticket c", "New project"]);
     await member.keyboard.press("Escape");
   }
 });
@@ -209,10 +216,12 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await expect(menu.locator(".menu-header")).toHaveCount(0);
   await expect(menu.locator(".menu-footer")).toHaveCount(0);
 
-  // The exact list: an item leaking in or out fails this rather than a "contains".
+  // The exact list: an item leaking in or out fails this rather than a "contains",
+  // and so does a hint going missing. `,` and `?` are the keys that open the same
+  // two overlays from anywhere; the palette and sign-out own no key, and show none.
   await expect(menu.getByRole("menuitem")).toHaveText([
-    "Settings",
-    "Keyboard shortcuts",
+    "Settings ,",
+    "Keyboard shortcuts ?",
     "Command palette",
     "Sign out",
   ]);

@@ -907,12 +907,27 @@ kbd {
 }
 
 .menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   width: 100%;
   padding: 6px 8px;
   border-radius: 4px;
   text-align: left;
   white-space: nowrap;
+  color: var(--text-dim);
+}
+
+/* The key that runs the same action from anywhere, right-aligned against the entry. */
+.menu-hint {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.menu-item:hover .menu-hint,
+.menu-item:focus-visible .menu-hint {
   color: var(--text-dim);
 }
 
