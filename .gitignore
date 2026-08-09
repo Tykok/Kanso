@@ -22,6 +22,12 @@ apps/web/out/
 apps/web/next-env.d.ts
 .pnpm-store/
 
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # editors
 .idea/
 .vscode/
