@@ -202,24 +202,36 @@ kbd {
 
 .brand {
   position: relative;
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 0 6px;
 }
 
-.brand-name {
-  display: flex;
+/*
+ * The base `.menu-trigger` is sized and colored for a 20×20 `⋯` glyph. Here the
+ * trigger *is* the brand: it fills the header's width and reads as plain text
+ * until hovered or focused, rather than as a small icon button.
+ */
+.brand .menu-trigger {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
   align-items: baseline;
   gap: 7px;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  color: inherit;
 }
 
-.brand-name strong {
+.brand .menu-trigger:hover,
+.brand .menu-trigger[aria-expanded="true"] {
+  background: var(--surface-hover);
+  color: inherit;
+}
+
+.brand .menu-trigger strong {
   font-size: 14px;
   letter-spacing: -0.01em;
 }
 
-.brand-name span {
+.brand .menu-trigger span {
   font-size: 11px;
   color: var(--text-faint);
 }

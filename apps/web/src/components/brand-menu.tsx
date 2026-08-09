@@ -29,6 +29,12 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
       <Menu
         label="Account and settings"
         items={items}
+        trigger={
+          <>
+            <strong>Kanso</strong>
+            <span>簡素</span>
+          </>
+        }
         header={
           user && (
             <>
@@ -50,10 +56,6 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
           )
         }
       />
-      <div className="brand-name">
-        <strong>Kanso</strong>
-        <span>簡素</span>
-      </div>
     </div>
   );
 }
