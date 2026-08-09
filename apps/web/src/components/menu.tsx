@@ -146,6 +146,11 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
               onMouseEnter={() => setActive(index)}
               onClick={(event) => {
                 event.stopPropagation();
+                // Before the popover unmounts, and before the action runs: an entry
+                // that opens a dialog is about to become the thing that dialog
+                // restores focus to when it closes, and this button will not be there
+                // any more. The trigger will. Same reasoning as the Tab branch above.
+                triggerRef.current?.focus();
                 setOpen(false);
                 item.onSelect();
               }}

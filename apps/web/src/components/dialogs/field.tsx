@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * One dialog field: its label, its control, and a line of hint or error underneath.
@@ -76,16 +76,39 @@ export function DialogFrame({
   const panelRef = useRef<HTMLDivElement>(null);
 
   /**
+   * Whatever held the focus when this dialog was asked for.
+   *
+   * Read in a lazy state initialiser, which runs during the first render — before
+   * React commits, so before `autoFocus` and the effect below have moved the focus
+   * anywhere. An effect would only ever see the panel.
+   */
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
+
+  /**
    * The dialog takes the focus if it does not already hold it. Without this, a dialog
    * opened from a menu would leave the focus on the document body, and Escape would
    * go to the `window` handler in `page.tsx`, which does not read it as a dialog
    * keystroke. Fields carrying `autoFocus` win: they focused during the same commit,
    * before this effect ran.
+   *
+   * On the way out the focus goes back where it came from, which is what `menu.tsx`
+   * already established for its own popover: closing an overlay must not drop a
+   * keyboard user on `<body>`, with the next Tab starting again from the top of the
+   * document. `isConnected` is the guard for the case this cannot serve — the row
+   * that opened the dialog was what the dialog deleted.
+   *
+   * A full focus trap is still missing, here as in `overlays.tsx`; that is a separate
+   * piece of work and this is not it.
    */
   useEffect(() => {
     const panel = panelRef.current;
     if (panel && !panel.contains(document.activeElement)) panel.focus();
-  }, []);
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [opener]);
 
   return (
     <div className="backdrop" onClick={onClose}>

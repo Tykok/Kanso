@@ -121,20 +121,32 @@ export default function InboxPage() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const dismiss = () => {
+        close();
+        setEditingId(undefined);
+        (event.target as HTMLElement | null)?.blur?.();
+      };
+
+      // Overlays and dialogs own their own keys; the list must not react behind them.
+      // This comes first, ⌘K included: the composer's title input stops propagation
+      // but its four `<select>`s do not, so ⌘K from one of them used to throw away a
+      // typed title by opening the palette over it.
+      if (overlay !== "none" || dialog.kind !== "none" || editingId) {
+        if (event.key === "Escape") dismiss();
+        return;
+      }
+
       // A modified key, so it never reaches the registry, which only owns bare ones.
+      // Still answered while typing in the filter — that field is part of the list,
+      // not an overlay over it.
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         open("palette");
         return;
       }
 
-      // Overlays and dialogs own their own keys; the list must not react behind them.
-      if (overlay !== "none" || dialog.kind !== "none" || editingId || isTypingTarget(event.target)) {
-        if (event.key === "Escape") {
-          close();
-          setEditingId(undefined);
-          (event.target as HTMLElement | null)?.blur?.();
-        }
+      if (isTypingTarget(event.target)) {
+        if (event.key === "Escape") dismiss();
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;

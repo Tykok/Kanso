@@ -10,6 +10,7 @@ import {
   type TicketPriority,
   type User,
 } from "@/lib/api";
+import { composerSeed } from "@/lib/composer-seed";
 import { keys, useMe } from "@/lib/queries";
 import type { Scope } from "@/store/ui";
 import { Backdrop } from "./overlays";
@@ -45,13 +46,14 @@ function ComposerForm({
   const queryClient = useQueryClient();
   const teamRef = useRef<HTMLSelectElement>(null);
 
-  const scopeProject = scope.kind === "project" ? projects.find((row) => row.id === scope.id) : undefined;
+  // Validated against the lists actually fetched, not taken on trust — see
+  // `composerSeed`. Read once, in the initialisers: the form mounts with the data
+  // already in hand, and re-seeding later would overwrite what somebody has changed.
+  const [seed] = useState(() => composerSeed(scope, teams, projects));
 
   const [title, setTitle] = useState("");
-  const [teamId, setTeamId] = useState(
-    scope.kind === "team" ? scope.id : (scopeProject?.teamId ?? ""),
-  );
-  const [projectId, setProjectId] = useState(scopeProject?.id ?? "");
+  const [teamId, setTeamId] = useState(seed.teamId);
+  const [projectId, setProjectId] = useState(seed.projectId);
   const [priority, setPriority] = useState<TicketPriority>("none");
   const [assigneeId, setAssigneeId] = useState(meId ?? "");
   const [blocked, setBlocked] = useState(false);
@@ -127,7 +129,11 @@ function ComposerForm({
       <div className="composer-context">
         <select
           ref={teamRef}
-          aria-label="Team"
+          // "Ticket team", not "Team": a `<select>`'s accessible name folds in its
+          // options, so a bare "Team" collides across regions with the sidebar's
+          // "New team" button. Named at the source rather than worked around in the
+          // test's locator.
+          aria-label="Ticket team"
           aria-invalid={blocked && !teamId ? true : undefined}
           value={teamId}
           disabled={create.isPending}

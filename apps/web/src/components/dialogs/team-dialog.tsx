@@ -32,6 +32,11 @@ type TeamErrors = { key?: string; parent?: string; general?: string };
  *  - `TeamService.update` (`TeamService.kt:282`): the *parent* is archived, not this
  *    team — `"Team X is archived; unarchive it before moving a team under it"` (409).
  *    The dropdown already filters archived rows, so this only fires on a race.
+ *  - `TeamService.create`/`update`: `"Parent team X does not exist"` (400) — a stale
+ *    option pointing at a team removed since the list was drawn.
+ *  - `TeamService.update` (`TeamService.kt:272`): `"A team cannot be its own parent"`
+ *    (409). Unreachable from the dropdown, which excludes the team itself, but the
+ *    field it belongs under is the same one either way.
  */
 function route(error: unknown): TeamErrors {
   if (!(error instanceof ApiError)) {
@@ -45,7 +50,11 @@ function route(error: unknown): TeamErrors {
   const derivedKeyExhausted = status === 409 && lower.includes("derive a free team key");
   if (beanValidationOnKey || customKeyMessage || derivedKeyExhausted) return { key: detail };
 
+  if (status === 400 && lower.includes("parent team ") && lower.includes("does not exist")) {
+    return { parent: detail };
+  }
   if (status === 409 && lower.includes("would create a cycle")) return { parent: detail };
+  if (status === 409 && lower.includes("cannot be its own parent")) return { parent: detail };
   if (status === 409 && lower.includes("before moving a team under it")) return { parent: detail };
 
   return { general: detail };
@@ -101,6 +110,10 @@ function TeamForm({
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       // Reparenting: projects are drawn under the team, so their place changes.
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // And so does what an ancestor's `includeDescendants` list contains — a scope
+      // showing a whole subtree now holds different tickets. Without this the list
+      // stays wrong for the client-wide 30s `staleTime`.
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
       onClose();
     },
   });

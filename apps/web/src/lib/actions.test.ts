@@ -219,6 +219,16 @@ describe("availableActions", () => {
     expect(archived).not.toContain("project.archive");
   });
 
+  it("withholds the cursor moves when the list is empty, and offers them when it is not", () => {
+    const empty = ids(context({ tickets: [] }));
+    expect(empty).not.toContain("ticket.moveDown");
+    expect(empty).not.toContain("ticket.moveUp");
+
+    const populated = ids(context());
+    expect(populated).toContain("ticket.moveDown");
+    expect(populated).toContain("ticket.moveUp");
+  });
+
   it("drops the all-tickets view when it is already the scope", () => {
     expect(ids(context())).not.toContain("view.all");
     expect(ids(context({ scope: { kind: "team", id: core.id } }))).toContain("view.all");
