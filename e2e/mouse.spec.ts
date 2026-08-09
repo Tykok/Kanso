@@ -1,7 +1,8 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import {
   ADMIN,
   MEMBER,
+  WEB_URL,
   apiAs,
   openAs,
   openRowMenu,
@@ -15,6 +16,29 @@ import {
 } from "./support";
 
 test.beforeAll(seedInstance);
+
+/**
+ * Like `openAs`, but the identity is written once via `evaluate` after the first
+ * navigation rather than through `context.addInitScript`. `openAs` uses the
+ * script deliberately because it replays on every navigation — useful whenever a
+ * test's own reload should keep acting as the same person. That is exactly wrong
+ * for scenario 10's last step: sign-out ends in a real, client-triggered full
+ * navigation, and a script re-asserting the old identity on every navigation
+ * would make the sign-in screen unreachable no matter what the application does
+ * — the client would clear `kanso.devUser`, and the harness would put it right
+ * back before the page's own code ever ran. A genuinely signed-in browser has no
+ * such script; this reproduces that, so the reload after "Sign out" is read
+ * honestly.
+ */
+async function openOnceAs(browser: Browser, email: string): Promise<Page> {
+  const context = await browser.newContext({ baseURL: WEB_URL });
+  const page = await context.newPage();
+  await page.goto("/");
+  await page.evaluate((who) => window.localStorage.setItem("kanso.devUser", who), email);
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  return page;
+}
 
 /**
  * A ticket's server-side truth, read fresh rather than trusted from a prior
@@ -158,7 +182,7 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
  * anything but a human eye and `tsc` until now.
  */
 test("scenario 10 — the brand menu names who you are, and signs you out", async ({ browser }) => {
-  const page = await openAs(browser, ADMIN);
+  const page = await openOnceAs(browser, ADMIN);
 
   // The brand text itself is the trigger — there is no ellipsis in the sidebar
   // header, unlike every row's own `⋯`.
@@ -208,12 +232,24 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.locator(".panel-header").filter({ hasText: "Settings" })).toHaveCount(0);
 
-  // Sign out returns the sign-in screen.
+  // Sign out drops the identity this browser was asserting. Under
+  // `KANSO_AUTH_MODE=dev` the API never actually answers "unauthenticated" —
+  // `DevAuthenticationFilter` authenticates every request as somebody, falling
+  // back to a default identity when no header is attached — so the generic
+  // sign-in screen is not what a fixed "Sign out" produces here; a session
+  // cookie is what earns that screen under `oidc`, which this stack is not
+  // running. What dev mode *can* prove, and what actually distinguishes the fix
+  // from the defect, is that the old identity is gone: `kanso.devUser` is
+  // cleared client-side, and the very next request lands as a different,
+  // never-onboarded person, who the app sends to first-run setup rather than
+  // straight back to the ticket list as "E2E owner".
   await page.getByText("Kanso", { exact: true }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
-  await expect(
-    page.getByText("A keyboard-first tracker. Postgres holds the truth; Notion keeps a readable copy."),
-  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("kanso.devUser")))
+    .toBeNull();
+  await expect(page.getByRole("heading", { level: 1, name: "Preferences" })).toBeVisible();
+  await expect(page.getByText("E2E owner")).toHaveCount(0);
 });
 
 /**

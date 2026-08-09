@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { useUi } from "@/store/ui";
 import type { ActionContext } from "./actions";
-import { api, type Ticket } from "./api";
+import { api, setDevUser, type Ticket } from "./api";
 import { actionErrorMessage } from "./errors";
 import {
   useDeleteTicket,
@@ -43,7 +43,22 @@ export function useActionContext(local: {
 
   // Signing out is a full page transition, not a cache update: everything on screen
   // belongs to the session that is ending, so a reload is the honest way to drop it.
+  //
+  // Dev mode's identity is not a session the server manages — it is a header the
+  // client reads out of this one `localStorage` key and reattaches to every
+  // request ("nothing is verified", `DevAuthenticationFilter`). The server's
+  // `/api/auth/logout` has no authority over it and never did, so its outcome —
+  // success, a rejection, or the network dropping the request entirely — has no
+  // bearing on whether this browser should keep asserting that identity. Cleared
+  // here, before `api.logout()` is even called, unconditionally and before any
+  // request goes out: no request from this point on, including the logout call
+  // itself and any background refetch racing it, can still carry the old header.
+  // Placing it inside `.then()` or `.finally()` would leave exactly that window
+  // open for the length of the request. Under `oidc` this is a no-op — the key
+  // was never set — and the session cookie `api.logout()` clears is what actually
+  // signs that mode out.
   const logout = useCallback(() => {
+    setDevUser(null);
     void api.logout().finally(() => window.location.assign("/"));
   }, []);
 
