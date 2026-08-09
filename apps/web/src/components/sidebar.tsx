@@ -6,7 +6,8 @@ import { actionById, type ActionContext } from "@/lib/actions";
 import { api, type Project, type Team } from "@/lib/api";
 import { keys } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
-import { Menu, type MenuItem } from "./menu";
+import { menuItems } from "./menu-items";
+import { Menu } from "./menu";
 
 type Row =
   | { kind: "team"; team: Team; depth: number }
@@ -59,23 +60,6 @@ function rootProjects(teams: Team[], projects: Project[]): Project[] {
   return projects
     .filter((project) => !project.teamId || !known.has(project.teamId))
     .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
- * Turns registry ids into menu entries, dropping the ones this context forbids.
- * `actionById` throws on an unknown id: a menu pointing at a dead action is a bug,
- * not a missing entry.
- */
-function menuItems(ctx: ActionContext, ids: string[]): MenuItem[] {
-  return ids
-    .map((id) => actionById(id))
-    .filter((action) => action.when(ctx))
-    .map((action) => ({
-      id: action.id,
-      label: action.label,
-      danger: action.id === "team.delete" || action.id === "project.delete",
-      onSelect: () => action.run(ctx),
-    }));
 }
 
 function TeamRow({

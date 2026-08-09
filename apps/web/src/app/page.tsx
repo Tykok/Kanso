@@ -15,7 +15,6 @@ import { availableActions, resolveShortcut } from "@/lib/actions";
 import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
 import {
   useAuthMode,
-  useDeleteTicket,
   useMe,
   usePatchTicket,
   usePreferences,
@@ -50,7 +49,6 @@ export default function InboxPage() {
   const sync = useSyncStatus();
 
   const patch = usePatchTicket();
-  const remove = useDeleteTicket();
 
   const visible = useMemo(() => {
     const rows = tickets.data ?? [];
@@ -302,7 +300,7 @@ export default function InboxPage() {
           projects={projects.data ?? []}
           onPatch={(body) => patch.mutate({ id: selected.id, ...body })}
           onDelete={() => {
-            remove.mutate(selected.id);
+            ctx.deleteTicket(selected.id);
             close();
           }}
           onClose={close}

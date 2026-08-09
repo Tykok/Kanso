@@ -64,6 +64,8 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     startRename: vi.fn(),
     patchTicket: vi.fn(),
     unarchive: vi.fn(),
+    deleteTicket: vi.fn(),
+    logout: vi.fn(),
     ...overrides,
   };
 }
@@ -101,6 +103,8 @@ const REQUIRED_IDS = [
   "app.palette",
   "app.settings",
   "app.help",
+  "ticket.delete",
+  "app.logout",
 ];
 
 describe("the registry", () => {
@@ -112,6 +116,25 @@ describe("the registry", () => {
 
   it("throws on an unknown id rather than silently doing nothing", () => {
     expect(() => actionById("team.rename-v2")).toThrow(/Unknown action/);
+  });
+
+  it("offers a delete for the selected ticket, and none without a selection", () => {
+    expect(ids(context({ selected: ticket }))).toContain("ticket.delete");
+    expect(ids(context({ selected: undefined }))).not.toContain("ticket.delete");
+  });
+
+  it("offers sign-out to everyone, member or admin", () => {
+    expect(ids(context({ canConfigure: false }))).toContain("app.logout");
+    expect(ids(context({ canConfigure: true }))).toContain("app.logout");
+  });
+
+  it("runs delete against the selected ticket, and sign-out against the session", () => {
+    const deleteTicket = vi.fn();
+    const logout = vi.fn();
+    actionById("ticket.delete").run(context({ selected: ticket, deleteTicket }));
+    actionById("app.logout").run(context({ logout }));
+    expect(deleteTicket).toHaveBeenCalledWith(ticket.id);
+    expect(logout).toHaveBeenCalledTimes(1);
   });
 });
 

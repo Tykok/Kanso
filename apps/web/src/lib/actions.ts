@@ -19,7 +19,9 @@ export type ActionContext = {
   focusFilter: () => void;
   startRename: (id: string) => void;
   patchTicket: (input: { id: string } & Record<string, unknown>) => void;
+  deleteTicket: (id: string) => void;
   unarchive: (target: { kind: "team" | "project"; id: string }) => void;
+  logout: () => void;
 };
 
 export type Action = {
@@ -106,6 +108,13 @@ export const ACTIONS: readonly Action[] = [
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => ctx.patchTicket({ id: ticket.id, archived: !ticket.archived })),
+  },
+  {
+    id: "ticket.delete",
+    label: "Delete ticket",
+    group: "ticket",
+    when: hasSelection,
+    run: onSelected((ctx, ticket) => ctx.deleteTicket(ticket.id)),
   },
   {
     id: "ticket.moveDown",
@@ -398,6 +407,13 @@ export const ACTIONS: readonly Action[] = [
     group: "app",
     when: () => true,
     run: (ctx) => ctx.open("help"),
+  },
+  {
+    id: "app.logout",
+    label: "Sign out",
+    group: "app",
+    when: () => true,
+    run: (ctx) => ctx.logout(),
   },
 ];
 

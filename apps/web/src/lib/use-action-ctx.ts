@@ -3,9 +3,16 @@
 import { useCallback, useMemo } from "react";
 import { useUi } from "@/store/ui";
 import type { ActionContext } from "./actions";
-import type { Ticket } from "./api";
+import { api, type Ticket } from "./api";
 import { actionErrorMessage } from "./errors";
-import { useMe, usePatchTicket, useProjects, useTeams, useUnarchive } from "./queries";
+import {
+  useDeleteTicket,
+  useMe,
+  usePatchTicket,
+  useProjects,
+  useTeams,
+  useUnarchive,
+} from "./queries";
 
 /** The id the filter input carries, so focusing it needs no React ref. */
 export const FILTER_INPUT_ID = "ticket-filter";
@@ -32,6 +39,13 @@ export function useActionContext(local: {
   const projects = useProjects();
   const { mutate: patchTicket } = usePatchTicket();
   const { mutate: unarchiveEntity } = useUnarchive();
+  const { mutate: deleteTicket } = useDeleteTicket();
+
+  // Signing out is a full page transition, not a cache update: everything on screen
+  // belongs to the session that is ending, so a reload is the honest way to drop it.
+  const logout = useCallback(() => {
+    void api.logout().finally(() => window.location.assign("/"));
+  }, []);
 
   // A ref would tie this hook to one component's tree, and a context holding one
   // cannot be read while rendering. The filter is a single element; its id is
@@ -61,6 +75,7 @@ export function useActionContext(local: {
       // Left alone on purpose: a patch is optimistic, so a failure is already
       // visible as the row snapping back to what it was.
       patchTicket,
+      deleteTicket,
       // Unarchiving is run from a menu, with no dialog to report into and nothing
       // optimistic to snap back, so its 403s and 409s go to the top bar instead.
       unarchive: (target) =>
@@ -68,6 +83,7 @@ export function useActionContext(local: {
           onError: (error) => reportError(actionErrorMessage(error)),
           onSuccess: () => reportError(null),
         }),
+      logout,
     }),
     [
       scope,
@@ -85,7 +101,9 @@ export function useActionContext(local: {
       startRename,
       reportError,
       patchTicket,
+      deleteTicket,
       unarchiveEntity,
+      logout,
     ],
   );
 }
