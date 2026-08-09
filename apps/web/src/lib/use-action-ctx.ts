@@ -59,7 +59,18 @@ export function useActionContext(local: {
   // signs that mode out.
   const logout = useCallback(() => {
     setDevUser(null);
-    void api.logout().finally(() => window.location.assign("/"));
+    api
+      // Swallowed, not ignored: `api.logout()` rejects on a 4xx, and a rejection
+      // `finally` does not handle propagates on to become an unhandled rejection in
+      // the console — noise from the one path where the outcome provably does not
+      // matter, since the reload below happens either way.
+      .logout()
+      .catch(() => {})
+      // Not `useRouter().push()`: signing out is not a client-side navigation. Every
+      // cache, store and subscription on screen belongs to the session that is ending,
+      // and a full document load is the only thing that provably drops all of them.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      .finally(() => window.location.assign("/"));
   }, []);
 
   // A ref would tie this hook to one component's tree, and a context holding one
