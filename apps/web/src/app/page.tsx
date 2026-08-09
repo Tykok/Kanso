@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DispositionDialog } from "@/components/dialogs/disposition-dialog";
 import { ProjectDialog } from "@/components/dialogs/project-dialog";
 import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
@@ -312,6 +313,9 @@ export default function InboxPage() {
       )}
       {dialog.kind === "project" && (
         <ProjectDialog id={dialog.id} teamId={dialog.teamId} onClose={close} />
+      )}
+      {dialog.kind === "disposition" && (
+        <DispositionDialog target={dialog.target} severity={dialog.severity} onClose={close} />
       )}
     </div>
   );

@@ -800,6 +800,88 @@ kbd {
   color: var(--urgent);
 }
 
+/* --- disposition ---------------------------------------------------------- */
+
+.disposition-lede {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.disposition-row {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.disposition-count {
+  font-weight: 500;
+}
+
+.disposition-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.disposition-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.disposition-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* The global `input` rules put a background and a border on everything, including a
+   radio button, which wants neither. */
+.disposition-choice input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+/*
+ * Amber, not red: this is not an error but a permanent consequence of a legitimate
+ * choice. Red is kept for what failed and for what destroys.
+ */
+.disposition-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--high) 45%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--high) 10%, transparent);
+  font-size: 12px;
+}
+
+.disposition-warning code {
+  font: 11px/1.5 var(--mono);
+}
+
+.disposition-drift {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--urgent) 45%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--urgent) 10%, transparent);
+  font-size: 12px;
+}
+
+.disposition-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
 /* --- misc ---------------------------------------------------------------- */
 
 .empty {
