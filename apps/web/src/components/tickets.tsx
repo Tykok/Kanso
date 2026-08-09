@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Ticket } from "@/lib/api";
+import type { ActionContext } from "@/lib/actions";
 import { PriorityMark, StatusPill, SyncBadge } from "./pills";
 
 type RowProps = {
   ticket: Ticket;
   selected: boolean;
   editing: boolean;
+  ctx: ActionContext;
   onSelect: () => void;
   onOpen: () => void;
   onRename: (title: string) => void;
@@ -58,7 +60,7 @@ function TitleEditor({
   );
 }
 
-function TicketRow({ ticket, selected, editing, onSelect, onOpen, onRename, onCancelEdit }: RowProps) {
+function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename, onCancelEdit }: RowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   // Keep the cursor on screen when it moves by keyboard rather than by wheel.
@@ -76,8 +78,8 @@ function TicketRow({ ticket, selected, editing, onSelect, onOpen, onRename, onCa
       onDoubleClick={onOpen}
     >
       <span className="row-id">{ticket.identifier}</span>
-      <PriorityMark priority={ticket.priority} />
-      <StatusPill status={ticket.status} />
+      <PriorityMark priority={ticket.priority} ctx={ctx} />
+      <StatusPill status={ticket.status} ctx={ctx} />
 
       {editing ? (
         <TitleEditor initialTitle={ticket.title} onCommit={onRename} onCancel={onCancelEdit} />
@@ -98,6 +100,7 @@ type ListProps = {
   tickets: Ticket[];
   selectedId?: string;
   editingId?: string;
+  ctx: ActionContext;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
@@ -108,6 +111,7 @@ export function TicketList({
   tickets,
   selectedId,
   editingId,
+  ctx,
   onSelect,
   onOpen,
   onRename,
@@ -123,18 +127,22 @@ export function TicketList({
 
   return (
     <div className="list">
-      {tickets.map((ticket) => (
-        <TicketRow
-          key={ticket.id}
-          ticket={ticket}
-          selected={ticket.id === selectedId}
-          editing={ticket.id === editingId}
-          onSelect={() => onSelect(ticket.id)}
-          onOpen={() => onOpen(ticket.id)}
-          onRename={(title) => onRename(ticket.id, title)}
-          onCancelEdit={onCancelEdit}
-        />
-      ))}
+      {tickets.map((ticket) => {
+        const rowCtx: ActionContext = { ...ctx, selected: ticket };
+        return (
+          <TicketRow
+            key={ticket.id}
+            ticket={ticket}
+            selected={ticket.id === selectedId}
+            editing={ticket.id === editingId}
+            ctx={rowCtx}
+            onSelect={() => onSelect(ticket.id)}
+            onOpen={() => onOpen(ticket.id)}
+            onRename={(title) => onRename(ticket.id, title)}
+            onCancelEdit={onCancelEdit}
+          />
+        );
+      })}
     </div>
   );
 }

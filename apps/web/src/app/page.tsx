@@ -250,6 +250,7 @@ export default function InboxPage() {
             tickets={visible}
             selectedId={selectedId}
             editingId={editingId}
+            ctx={ctx}
             onSelect={select}
             onOpen={(id) => {
               select(id);

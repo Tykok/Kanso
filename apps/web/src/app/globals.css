@@ -584,6 +584,29 @@ kbd {
   border-color: color-mix(in srgb, var(--status-done) 40%, transparent);
 }
 
+/* The pill IS the trigger: an empty button covers it and carries the accessible name
+   (`trigger={null}`), while the glyph and label underneath stay purely visual. */
+.status-menu,
+.priority-menu {
+  position: relative;
+}
+
+.status-menu .menu-trigger,
+.priority-menu .menu-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.status-menu .menu-popover,
+.priority-menu .menu-popover {
+  left: 0;
+  right: auto;
+  min-width: 152px;
+}
+
 /* --- overlays ------------------------------------------------------------- */
 
 .backdrop {
