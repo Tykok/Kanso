@@ -211,3 +211,81 @@ test("scenario 7 — archiving a project asks one question, and a failed unarchi
   await expect(sidebarRow(page, project.name)).toHaveAttribute("data-archived", "false");
   await expect(page.locator(".topbar-error")).toHaveCount(0);
 });
+
+/**
+ * Scenario 8. Three things a `node` vitest run cannot see, and a browser can.
+ *
+ * Each is a fix whose whole effect is in the DOM — which list refetches, where the
+ * focus lands, which handler answers a keystroke — so a suite with no rendering could
+ * only assert that the code says what it says. Grouped in one test because they share
+ * a stage, and each section is independent of the ones before it.
+ */
+test("scenario 8 — reparenting refreshes the list, a dialog gives the focus back, ⌘K stays out of the composer", async ({
+  browser,
+}) => {
+  const api = await apiAs(ADMIN);
+
+  const host = await seedTeam(api, { name: unique("Host"), key: uniqueKey() });
+  const guest = await seedTeam(api, { name: unique("Guest"), key: uniqueKey() });
+  const hostTitle = unique("Work already at the host");
+  const guestTitle = unique("Work arriving with the guest");
+  await seedTicket(api, { teamId: host.id, title: hostTitle });
+  await seedTicket(api, { teamId: guest.id, title: guestTitle });
+  await api.dispose();
+
+  const page = await openAs(browser, ADMIN);
+
+  // Scoped to Host, which shows its own work and its descendants'. Guest is a root
+  // team, so its ticket is not here yet.
+  await page.getByRole("button", { name: host.name, exact: true }).click();
+  await expect(ticketRow(page, hostTitle)).toBeVisible();
+  await expect(ticketRow(page, guestTitle)).toHaveCount(0);
+
+  // --- the list follows the tree ------------------------------------------------
+  // Moving Guest under Host changes what Host's `includeDescendants` list contains.
+  // Nothing in the realtime channel says so — a team event invalidates teams — so
+  // the dialog has to invalidate the ticket lists itself, or this stays wrong for
+  // the client-wide 30s `staleTime`.
+  await (await openRowMenu(page, guest.name)).getByRole("menuitem", { name: /^Rename team$/ }).click();
+  const teamDialog = page.getByRole("dialog");
+  await teamDialog.getByLabel("Parent team").selectOption({ label: host.name });
+  await teamDialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await expect(sidebarRow(page, guest.name)).toHaveClass(/nav-depth-1/);
+  // No reload anywhere in this test: the list is refetched or it is not.
+  await expect(ticketRow(page, guestTitle)).toBeVisible();
+
+  // --- the focus comes back -----------------------------------------------------
+  // A dialog that takes the focus and never gives it back leaves a keyboard user on
+  // `<body>`, with the next Tab starting again from the top of the document. The
+  // menu refocuses its trigger before running an entry, so there is something still
+  // mounted for the dialog to return to.
+  const trigger = page.getByRole("button", { name: `Actions for ${guest.name}`, exact: true });
+  await (await openRowMenu(page, guest.name)).getByRole("menuitem", { name: /^Rename team$/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  // --- ⌘K does not reach behind the composer ------------------------------------
+  // The title input stops propagation; its four `<select>`s do not. Handled ahead of
+  // the overlay guard, ⌘K from one of them opened the palette over the composer and
+  // threw the typed title away.
+  await page.keyboard.press("c");
+  const title = page.getByPlaceholder("New ticket…");
+  await expect(title).toBeFocused();
+  const draft = unique("A title worth not losing");
+  await title.fill(draft);
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Ticket team")).toBeFocused();
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByPlaceholder("Type a command…")).toHaveCount(0);
+  await expect(title).toHaveValue(draft);
+
+  // Still the same composer, and it still files the ticket it was holding.
+  await title.press("Enter");
+  await expect(page.getByPlaceholder("New ticket…")).toHaveCount(0);
+  await expect(ticketRow(page, draft)).toBeVisible();
+});

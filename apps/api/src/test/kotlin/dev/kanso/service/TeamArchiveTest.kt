@@ -59,7 +59,9 @@ class TeamArchiveTest : PostgresTest() {
 		docIds = emptyList(),
 	).project
 
-	private fun newTicket(teamId: UUID, title: String = "Ticket") = tickets.create(
+	private fun newTicket(teamId: UUID, title: String = "Ticket") = newTicketIn(teamId, null, title)
+
+	private fun newTicketIn(teamId: UUID, projectId: UUID?, title: String = "Ticket") = tickets.create(
 		teamId = teamId,
 		title = title,
 		description = null,
@@ -67,7 +69,7 @@ class TeamArchiveTest : PostgresTest() {
 		priority = TicketPriority.NONE,
 		startDate = null,
 		dueDate = null,
-		projectId = null,
+		projectId = projectId,
 		assigneeIds = emptyList(),
 		docIds = emptyList(),
 	)
@@ -173,6 +175,77 @@ class TeamArchiveTest : PostgresTest() {
 		val after = tickets.get(untouched.ticket.id)
 		assertEquals(mobile.id, after.ticket.teamId)
 		assertEquals(untouched.identifier, after.identifier, "nothing happens to them at all")
+	}
+
+	/**
+	 * The archive path strands tickets exactly as the delete path does, and by a route
+	 * the review did not name: the tickets are *taken* — they never move — while the
+	 * projects are *kept*, which sends them to the parent team. The ticket ends up
+	 * archived in a team whose projects have left, still pointing at one of them.
+	 *
+	 * Every other fixture in this file creates tickets with `projectId = null`, so
+	 * nothing here had ever archived a ticket that had a project to lose.
+	 */
+	@Test
+	fun `a taken ticket loses a project that was kept and sent to the parent`() {
+		val core = newTeam("Core")
+		val mobile = newTeam("Mobile", core.id)
+		val project = newProject(mobile.id)
+		val ticket = newTicketIn(mobile.id, project.id)
+		jobs.claimBatch(200, "drain")
+
+		teams.archive(
+			admin,
+			mobile.id,
+			DispositionPlan(projects = DispositionChoice.KEEP, tickets = DispositionChoice.TAKE),
+		)
+
+		assertEquals(core.id, projects.get(project.id).project.teamId, "the project went to the parent")
+		val after = tickets.get(ticket.ticket.id).ticket
+		assertTrue(after.archived, "taken means archived alongside the team")
+		assertEquals(mobile.id, after.teamId, "and it never leaves its own team")
+		assertNull(
+			after.projectId,
+			"the project belongs to Core now, and this ticket does not",
+		)
+		assertEquals(
+			SyncOperation.ARCHIVE,
+			jobs.claimBatch(200, "test").single { it.entityId == ticket.ticket.id }.operation,
+		)
+	}
+
+	/**
+	 * The same split, over a ticket that was already archived. `setArchivedByTeams`
+	 * returns only the rows it actually changed, so this one is not among them — but
+	 * it still lost its project, and the mirror has to hear about that or the Notion
+	 * page keeps a relation Postgres no longer has.
+	 */
+	@Test
+	fun `an already archived ticket still gets a push when the split takes its project`() {
+		val core = newTeam("Core")
+		val mobile = newTeam("Mobile", core.id)
+		val project = newProject(mobile.id)
+		val ticket = newTicketIn(mobile.id, project.id)
+		tickets.patch(ticket.ticket.id, TicketPatch(archived = true))
+		assertEquals(
+			project.id,
+			tickets.get(ticket.ticket.id).ticket.projectId,
+			"the ordinary archive keypress leaves a matching project alone",
+		)
+		jobs.claimBatch(200, "drain")
+
+		teams.archive(
+			admin,
+			mobile.id,
+			DispositionPlan(projects = DispositionChoice.KEEP, tickets = DispositionChoice.TAKE),
+		)
+
+		assertNull(tickets.get(ticket.ticket.id).ticket.projectId)
+		assertEquals(
+			SyncOperation.ARCHIVE,
+			jobs.claimBatch(200, "test").single { it.entityId == ticket.ticket.id }.operation,
+			"nothing about its archived flag changed, but its project did",
+		)
 	}
 
 	@Test
