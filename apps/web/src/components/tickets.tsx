@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
 import { PriorityMark, StatusPill, SyncBadge } from "./pills";
+import { Menu } from "./menu";
+import { menuItems } from "./menu-items";
 
 type RowProps = {
   ticket: Ticket;
@@ -75,7 +77,15 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       data-selected={selected}
       data-archived={ticket.archived}
       onClick={onSelect}
-      onDoubleClick={onOpen}
+      onDoubleClick={(event) => {
+        // `dblclick` is its own native event, dispatched and bubbled independently of
+        // `click` — the menu trigger's `stopPropagation()` on click never touches it.
+        // Without this guard, double-clicking the row's `⋯` (or the status/priority
+        // pill, whose trigger covers the whole pill) would still reach here and open
+        // the ticket.
+        if ((event.target as Element).closest(".menu")) return;
+        onOpen();
+      }}
     >
       <span className="row-id">{ticket.identifier}</span>
       <PriorityMark priority={ticket.priority} ctx={ctx} />
@@ -91,6 +101,10 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
         {ticket.dueDate && <span title="Due date">{ticket.dueDate.slice(5)}</span>}
         {ticket.assigneeIds.length > 0 && <span title="Assignees">{ticket.assigneeIds.length}👤</span>}
         <SyncBadge mirror={ticket.mirror} />
+        <Menu
+          label={`Actions for ${ticket.identifier}`}
+          items={menuItems(ctx, ["ticket.rename", "ticket.archive", "ticket.delete"])}
+        />
       </span>
     </div>
   );
