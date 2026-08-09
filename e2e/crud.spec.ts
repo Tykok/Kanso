@@ -44,9 +44,10 @@ test("scenario 1 — a team, a sub-team, a project inside it, a team-less projec
   await teamDialog.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("button", { name: team, exact: true })).toBeVisible();
 
-  // A sub-team, from the row's menu.
+  // A sub-team, from the row's menu — "New team" on a team's own row, not the
+  // retired "New sub-team" action folded into it (`dd55d86`).
   await openRowMenu(page, team);
-  await page.getByRole("menuitem", { name: /sub-team/i }).click();
+  await page.getByRole("menuitem", { name: "New team", exact: true }).click();
   const childDialog = page.getByRole("dialog");
   // The parent is prefilled by the registry action, not retyped by hand.
   await expect(childDialog.getByLabel("Parent team")).not.toHaveValue("");
