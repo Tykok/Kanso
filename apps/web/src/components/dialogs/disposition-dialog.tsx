@@ -10,7 +10,7 @@ import {
   type DispositionPlan,
   type Team,
 } from "@/lib/api";
-import { keys } from "@/lib/queries";
+import { keys, useContents } from "@/lib/queries";
 import { useUi } from "@/store/ui";
 import { DialogFrame, Field } from "./field";
 
@@ -137,14 +137,11 @@ export function DispositionDialog({
     queryFn: () => api.projects({ includeArchived: true }),
     enabled: target.kind === "project",
   });
-  const contents = useQuery({
-    queryKey: keys.contents(target.kind, target.id),
-    queryFn: () =>
-      target.kind === "team" ? api.teamContents(target.id) : api.projectContents(target.id),
-    // The whole point of this dialog is a fresh count; the client-wide 30s
-    // `staleTime` would open it on a number read half a minute ago.
-    staleTime: 0,
-  });
+  // `useContents`, not a second copy of it: that hook carries `gcTime: 0` as well as
+  // `staleTime: 0`, and without the eviction a dialog reopened inside five minutes
+  // paints the counts of the previous visit — and archiving sends no counts, so the
+  // server has nothing to catch it with.
+  const contents = useContents(target.kind, target.id);
 
   const [subTeams, setSubTeams] = useState<DispositionChoice>("keep");
   const [projectChoice, setProjectChoice] = useState<DispositionChoice>("keep");
@@ -189,17 +186,23 @@ export function DispositionDialog({
       onClose();
     },
     onError: (error) => {
-      const fresh = countsFrom(error);
-      if (!fresh) return;
+      if (!countsFrom(error)) return;
       // The dialog reopens on the truth, and consent starts over: whoever agreed to
-      // destroy 47 tickets did not agree to destroy 50.
-      queryClient.setQueryData(keys.contents(target.kind, target.id), fresh);
+      // destroy 47 tickets did not agree to destroy 50. The 409 carries only the
+      // counts for the plan that was sent, so both readings are asked for again
+      // rather than written from it — flipping the radio afterwards has to be right
+      // too.
+      contents.refetch();
       setConfirmation("");
       setProblem(null);
     },
   });
 
-  const counts = contents.data;
+  // What the chosen plan will actually reach. The sub-teams radio is the only thing
+  // that moves it: keep, and the sub-trees leave intact; take, and everything under
+  // them is what is being destroyed, archived and renumbered.
+  const counts: DispositionCounts | undefined =
+    contents.data && (subTeams === "take" ? contents.data.subtree : contents.data.direct);
   const drift = run.error ? countsFrom(run.error) : undefined;
   const footerError = run.error && !drift ? (run.error as Error).message : null;
 

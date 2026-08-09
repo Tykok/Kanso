@@ -83,6 +83,16 @@ export type DispositionChoice = "take" | "keep";
 export type DispositionCounts = { subTeams: number; projects: number; tickets: number };
 
 /**
+ * Both readings of what a container holds, because the plan decides which one is
+ * true. `subTeams: "keep"` lets the sub-teams leave first with their own contents
+ * untouched, so the operation reaches this container alone — `direct`.
+ * `subTeams: "take"` takes the whole subtree, and every project and ticket in it is
+ * destroyed, archived or renumbered — `subtree`. The two coincide for a project,
+ * which holds no teams, and for a team with no children.
+ */
+export type DispositionContents = { direct: DispositionCounts; subtree: DispositionCounts };
+
+/**
  * `counts` is what the modal displayed. Deleting sends it so the server can refuse
  * on drift; archiving may omit it, because archiving comes back.
  */
@@ -340,7 +350,7 @@ export const api = {
   updateTeam: (id: string, body: { name: string; key?: string; parentTeamId?: string }) =>
     request<Team>(`/api/teams/${id}`, { method: "PUT", body: JSON.stringify(body) }),
 
-  teamContents: (id: string) => request<DispositionCounts>(`/api/teams/${id}/contents`),
+  teamContents: (id: string) => request<DispositionContents>(`/api/teams/${id}/contents`),
 
   archiveTeam: (id: string, plan: DispositionPlan) =>
     request<Team>(`/api/teams/${id}/archive`, { method: "PUT", body: JSON.stringify(plan) }),
@@ -372,7 +382,7 @@ export const api = {
   updateProject: (id: string, body: ProjectBody) =>
     request<Project>(`/api/projects/${id}`, { method: "PUT", body: JSON.stringify(body) }),
 
-  projectContents: (id: string) => request<DispositionCounts>(`/api/projects/${id}/contents`),
+  projectContents: (id: string) => request<DispositionContents>(`/api/projects/${id}/contents`),
 
   archiveProject: (id: string, plan: DispositionPlan) =>
     request<Project>(`/api/projects/${id}/archive`, { method: "PUT", body: JSON.stringify(plan) }),
