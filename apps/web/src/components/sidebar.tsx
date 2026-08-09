@@ -8,6 +8,7 @@ import { keys } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
 import { menuItems } from "./menu-items";
 import { Menu } from "./menu";
+import { BrandMenu } from "./brand-menu";
 
 type Row =
   | { kind: "team"; team: Team; depth: number }
@@ -180,10 +181,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
 
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <strong>Kanso</strong>
-        <span>簡素</span>
-      </div>
+      <BrandMenu ctx={rootCtx} />
 
       <div>
         <div className="nav-label">Views</div>

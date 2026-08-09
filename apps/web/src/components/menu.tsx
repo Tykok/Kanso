@@ -26,10 +26,14 @@ export function Menu({
   label,
   items,
   trigger = "⋯",
+  header,
+  footer,
 }: {
   label: string;
   items: MenuItem[];
   trigger?: React.ReactNode;
+  header?: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -140,6 +144,7 @@ export function Menu({
             // the browser already fires them.
           }}
         >
+          {header && <div className="menu-header">{header}</div>}
           {items.map((item, index) => (
             <button
               key={item.id}
@@ -166,6 +171,7 @@ export function Menu({
               {item.label}
             </button>
           ))}
+          {footer && <div className="menu-footer">{footer}</div>}
         </div>
       )}
     </div>
