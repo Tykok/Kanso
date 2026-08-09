@@ -108,7 +108,19 @@ class TicketService(
 	): TicketDetail {
 		val team = teams.findById(teamId) ?: throw BadRequestException("No team $teamId")
 		validateDates(startDate, dueDate)
-		projectId?.let { requireProject(it) }
+		// A ticket's project belongs to its team — the same invariant `patch` upholds,
+		// and the same answer for the same reason: a project named explicitly and
+		// belonging to another team is a mistake worth a 400, not something to swallow.
+		// The composer only bounds what it offers; this is what makes the rule true of
+		// every caller. A team-less project is transverse and belongs everywhere.
+		projectId?.let {
+			val project = requireProject(it)
+			if (project.teamId != null && project.teamId != teamId) {
+				throw BadRequestException(
+					"Project $it belongs to team ${project.teamId}, not team $teamId",
+				)
+			}
+		}
 		requireUsers(assigneeIds)
 		requireDocs(docIds)
 
@@ -179,6 +191,15 @@ class TicketService(
 
 		patch.assigneeIds?.let { requireUsers(it) }
 		patch.docIds?.let { requireDocs(it) }
+
+		// Crossing into another team means taking that team's next number, from its own
+		// counter. `UNIQUE (team_id, number)` leaves no choice: keeping the old number
+		// either collides with one already in use over there, or squats one the
+		// destination's counter will hand out again later. Same allocation the
+		// disposition makes for a whole block, for one ticket.
+		if (patch.teamId != null && patch.teamId != current.teamId) {
+			tickets.moveToTeam(id, patch.teamId, teams.nextTicketNumber(patch.teamId))
+		}
 
 		val updated = tickets.update(
 			id = id,

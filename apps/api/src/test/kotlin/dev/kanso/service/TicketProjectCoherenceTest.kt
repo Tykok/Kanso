@@ -49,6 +49,20 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		docIds = emptyList(),
 	).project
 
+	/** The one field under test; everything else is handed back unchanged. */
+	private fun moveProject(id: UUID, teamId: UUID?) = projects.get(id).let { current ->
+		projects.update(
+			id = id,
+			name = current.project.name,
+			status = current.project.status,
+			startDate = current.project.startDate,
+			endDate = current.project.endDate,
+			leadUserId = current.project.leadUserId,
+			teamId = teamId,
+			docIds = null,
+		)
+	}
+
 	private fun newTicket(teamId: UUID, projectId: UUID?) = tickets.create(
 		teamId = teamId,
 		title = "Ticket ${UUID.randomUUID().toString().take(4)}",
@@ -148,6 +162,79 @@ class TicketProjectCoherenceTest : PostgresTest() {
 
 		assertEquals(core.id, patched.ticket.teamId)
 		assertEquals(coreProject.id, patched.ticket.projectId)
+	}
+
+	@Test
+	fun `creating a ticket against another team's project is refused`() {
+		val core = newTeam("Core")
+		val growth = newTeam("Growth")
+		val growthProject = newProject(growth.id)
+
+		val failure = assertFailsWith<BadRequestException> { newTicket(core.id, growthProject.id) }
+
+		assertTrue(failure.message!!.contains(growth.id.toString()), failure.message!!)
+		assertTrue(failure.message!!.contains(core.id.toString()), failure.message!!)
+	}
+
+	@Test
+	fun `creating a ticket against a team-less project is allowed from any team`() {
+		val core = newTeam("Core")
+		val transverse = newProject(null)
+
+		assertEquals(transverse.id, newTicket(core.id, transverse.id).ticket.projectId)
+	}
+
+	@Test
+	fun `moving a project into another team is refused while its tickets are elsewhere`() {
+		val core = newTeam("Core")
+		val growth = newTeam("Growth")
+		val project = newProject(core.id)
+		val ticket = newTicket(core.id, project.id)
+
+		val failure = assertFailsWith<ConflictException> { moveProject(project.id, growth.id) }
+
+		assertTrue(failure.message!!.contains(growth.id.toString()), failure.message!!)
+		assertEquals(core.id, projects.get(project.id).project.teamId, "a refused move writes nothing")
+		assertEquals(project.id, tickets.get(ticket.ticket.id).ticket.projectId, "and orphans nothing")
+	}
+
+	@Test
+	fun `the same move goes through once nothing points at it from outside`() {
+		val core = newTeam("Core")
+		val growth = newTeam("Growth")
+		val project = newProject(core.id)
+		newTicket(core.id, null)
+
+		assertEquals(growth.id, moveProject(project.id, growth.id).project.teamId)
+	}
+
+	@Test
+	fun `clearing a project's team is always allowed, since transverse belongs everywhere`() {
+		val core = newTeam("Core")
+		val project = newProject(core.id)
+		val ticket = newTicket(core.id, project.id)
+
+		assertNull(moveProject(project.id, null).project.teamId)
+		assertEquals(project.id, tickets.get(ticket.ticket.id).ticket.projectId)
+	}
+
+	@Test
+	fun `moving a ticket to another team takes that team's next number`() {
+		val core = newTeam("Core")
+		val growth = newTeam("Growth")
+		// The destination is not empty, which is what a move into a fresh team hides:
+		// keeping the source's number here either collides on `UNIQUE (team_id, number)`
+		// or squats a number the destination's counter will hand out again.
+		val squatter = newTicket(growth.id, null)
+		val ticket = newTicket(core.id, null)
+		assertEquals("${core.key}-1", ticket.identifier)
+
+		val moved = tickets.patch(ticket.ticket.id, TicketPatch(teamId = growth.id))
+
+		assertEquals("${growth.key}-2", moved.identifier, "renumbered from the destination's counter")
+		assertEquals("${growth.key}-1", tickets.get(squatter.ticket.id).identifier, "and nothing else moved")
+		// The counter really moved, so the next creation there does not collide either.
+		assertEquals("${growth.key}-3", newTicket(growth.id, null).identifier)
 	}
 
 	@Test
