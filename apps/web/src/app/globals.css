@@ -585,10 +585,21 @@ kbd {
 }
 
 /* The pill IS the trigger: an empty button covers it and carries the accessible name
-   (`trigger={null}`), while the glyph and label underneath stay purely visual. */
+   (`trigger={null}`), while the glyph and label underneath stay purely visual.
+   `.menu`'s own box (relative, flex-shrink: 0) has no in-flow content once the trigger
+   is pulled out of flow below, so it collapses to 0×0 and "100%" of that is nothing.
+   Making `.menu` static here removes it as a containing block, so `inset: 0` resolves
+   against `.status-menu`/`.priority-menu` instead — the pill itself, which is sized by
+   the dot and label that stay in flow beside it. Scoped to `> .menu` so the row's own
+   `⋯` menu and every other caller keep `.menu`'s default `position: relative`. */
 .status-menu,
 .priority-menu {
   position: relative;
+}
+
+.status-menu > .menu,
+.priority-menu > .menu {
+  position: static;
 }
 
 .status-menu .menu-trigger,

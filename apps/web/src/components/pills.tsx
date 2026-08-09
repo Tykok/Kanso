@@ -93,7 +93,7 @@ export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?
   }
 
   return (
-    <span className="priority priority-menu" style={{ color }}>
+    <span className="priority priority-menu" style={{ color }} title={label}>
       <Menu
         label={`Priority: ${label}`}
         trigger={null}
