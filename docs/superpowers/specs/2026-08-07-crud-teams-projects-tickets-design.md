@@ -44,6 +44,11 @@ admin decision, the daily work is not.
 `/api/me` already carries `instanceRole`, so the client hides what it may not do. The
 403 is the backstop, not the mechanism.
 
+This means a team's `⋯` menu is not itself an admin-only surface: it is a surface
+whose items are filtered per action. Creating a project inside a team is a project
+action, not a team action, so it stays in that menu for every member even though the
+other four items — sub-team, rename, archive, delete — require `canConfigure`.
+
 ### Archiving and deleting take the same plan
 
 Removing a team from view raises the same question whichever way it is removed: what
@@ -205,9 +210,10 @@ Projects belonging to a team are nested under it. Projects with no team live in 
 root-level `Projets` section. Every project appears exactly once.
 
 `+` on the Teams header creates a root team (admin only). Hovering a team row reveals
-a `⋯` menu: *New project*, *New sub-team*, *Rename*, *Archive*, *Delete*. Hovering a
-project row reveals *Edit*, *Archive* and *Delete*. `+` on the Projets header creates
-a project with no team.
+a `⋯` menu: *New project in this team*, open to every member, and — admin only —
+*New sub-team*, *Rename*, *Archive*, *Delete*. A member's menu on that row is that
+one item alone; an admin's is all five. Hovering a project row reveals *Edit*,
+*Archive* and *Delete*. `+` on the Projets header creates a project with no team.
 
 *Delete* is last in the menu, separated, and never the default. Both it and *Archive*
 open the disposition modal below, at their own severity.
@@ -379,7 +385,12 @@ specs will need after that.
    and find each one in the sidebar.
 2. Selecting a parent team shows its sub-teams' tickets; selecting a project filters
    to it.
-3. A member sees neither the Teams `+` nor a team `⋯` menu; an admin sees both.
+3. A member sees no Teams `+`, but does see a team row's `⋯`; its menu holds only
+   *New project in this team*. An admin sees the `+` and a `⋯` whose menu holds all
+   five items: *New project in this team*, *New sub-team*, *Rename*, *Archive*,
+   *Delete*. The Playwright test asserts both item lists exactly, not just presence
+   of the trigger, so a management action leaking back into a member's menu fails
+   the suite.
 4. Delete a team keeping everything: the sub-teams, projects and tickets are all still
    reachable afterwards, at their new place, and the renumbered identifiers are the
    ones the modal announced.
