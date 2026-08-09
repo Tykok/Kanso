@@ -6,7 +6,8 @@ import { DispositionDialog } from "@/components/dialogs/disposition-dialog";
 import { ProjectDialog } from "@/components/dialogs/project-dialog";
 import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
-import { CommandPalette, Composer, DetailPanel, HelpOverlay } from "@/components/overlays";
+import { Composer } from "@/components/composer";
+import { CommandPalette, DetailPanel, HelpOverlay } from "@/components/overlays";
 import { SettingsPanel } from "@/components/settings/panel";
 import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
@@ -14,7 +15,6 @@ import { availableActions, resolveShortcut } from "@/lib/actions";
 import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
 import {
   useAuthMode,
-  useCreateTicket,
   useDeleteTicket,
   useMe,
   usePatchTicket,
@@ -50,7 +50,6 @@ export default function InboxPage() {
   const sync = useSyncStatus();
 
   const patch = usePatchTicket();
-  const create = useCreateTicket();
   const remove = useDeleteTicket();
 
   const visible = useMemo(() => {
@@ -105,15 +104,6 @@ export default function InboxPage() {
   );
 
   const startRename = useCallback((id: string) => setEditingId(id), []);
-
-  const createTicket = useCallback(
-    (title: string) => {
-      const target = scope.kind === "team" ? scope.id : teams.data?.[0]?.id;
-      if (!target) return;
-      create.mutate({ teamId: target, title }, { onSuccess: () => close() });
-    },
-    [scope, teams.data, create, close],
-  );
 
   /**
    * A failure belongs to the view it happened in, so the scope it was reported
@@ -290,9 +280,7 @@ export default function InboxPage() {
         )}
       </div>
 
-      {overlay === "composer" && (
-        <Composer onCreate={createTicket} onClose={close} pending={create.isPending} />
-      )}
+      {overlay === "composer" && <Composer scope={scope} onClose={close} />}
       {overlay === "palette" && <CommandPalette commands={commands} onClose={close} />}
       {overlay === "help" && <HelpOverlay onClose={close} />}
       {overlay === "settings" && <SettingsPanel onClose={close} />}

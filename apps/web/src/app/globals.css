@@ -629,6 +629,29 @@ kbd {
   outline: none;
 }
 
+/*
+ * The composer's context bar. The four selectors share the width evenly and wrap
+ * rather than squeeze themselves down to an unreadable size.
+ */
+.composer-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.composer-context select {
+  flex: 1;
+  min-width: 108px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.composer-footer .error {
+  margin-left: auto;
+}
+
 .composer-footer,
 .palette-footer {
   padding: 8px 12px;

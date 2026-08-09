@@ -12,52 +12,18 @@ import {
 } from "@/lib/api";
 import { statusLabel } from "./pills";
 
-function Backdrop({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+/**
+ * Exported since the composer moved into a file of its own. `DialogFrame`, for its
+ * part, rewrites these four lines: it needs `role="dialog"`, a `tabIndex` and a
+ * `keydown` boundary, none of which this wrapper takes.
+ */
+export function Backdrop({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="backdrop" onClick={onClose}>
       <div className="panel" onClick={(event) => event.stopPropagation()}>
         {children}
       </div>
     </div>
-  );
-}
-
-/**
- * One input, Enter to create. Anything else about the ticket is a keystroke away
- * once it exists — asking for a status and a project up front is what makes other
- * trackers slow to file into.
- */
-export function Composer({
-  onCreate,
-  onClose,
-  pending,
-}: {
-  onCreate: (title: string) => void;
-  onClose: () => void;
-  pending: boolean;
-}) {
-  const [title, setTitle] = useState("");
-
-  return (
-    <Backdrop onClose={onClose}>
-      <input
-        className="composer-input"
-        autoFocus
-        placeholder="New ticket…"
-        value={title}
-        disabled={pending}
-        onChange={(event) => setTitle(event.target.value)}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (event.key === "Enter" && title.trim()) onCreate(title.trim());
-          if (event.key === "Escape") onClose();
-        }}
-      />
-      <div className="composer-footer">
-        <kbd>↵</kbd> create <kbd>esc</kbd> cancel
-        {pending && <span style={{ marginLeft: "auto" }}>saving…</span>}
-      </div>
-    </Backdrop>
   );
 }
 
