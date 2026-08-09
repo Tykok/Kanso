@@ -22,7 +22,15 @@ export type MenuItem = {
  * An empty list renders nothing: that is what makes a member see no `⋯` at all on a
  * team row, without the caller having to know about it.
  */
-export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
+export function Menu({
+  label,
+  items,
+  trigger = "⋯",
+}: {
+  label: string;
+  items: MenuItem[];
+  trigger?: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -80,7 +88,7 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
           }
         }}
       >
-        ⋯
+        {trigger}
       </button>
 
       {open && (

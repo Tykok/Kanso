@@ -6,6 +6,7 @@ import { DispositionDialog } from "@/components/dialogs/disposition-dialog";
 import { ProjectDialog } from "@/components/dialogs/project-dialog";
 import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
+import { NewMenu } from "@/components/new-menu";
 import { Composer } from "@/components/composer";
 import { CommandPalette, DetailPanel, HelpOverlay } from "@/components/overlays";
 import { SettingsPanel } from "@/components/settings/panel";
@@ -225,9 +226,7 @@ export default function InboxPage() {
               }
             }}
           />
-          <button className="button" onClick={() => open("composer")}>
-            New <kbd>c</kbd>
-          </button>
+          <NewMenu ctx={ctx} />
         </div>
 
         {shownError && (
