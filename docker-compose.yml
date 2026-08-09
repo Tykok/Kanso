@@ -61,6 +61,7 @@ services:
         # Next.js inlines NEXT_PUBLIC_* at build time, so the API origin is a
         # build arg. The browser talks to the API directly (CORS + cookie).
         NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
+        NEXT_PUBLIC_KANSO_COMMIT: ${KANSO_COMMIT:-dev}
     restart: unless-stopped
     depends_on:
       - api

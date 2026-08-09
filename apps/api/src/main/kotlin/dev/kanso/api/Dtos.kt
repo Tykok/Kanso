@@ -323,4 +323,5 @@ data class MeResponse(
 	 * rather than two — the second one would be the one deciding the theme.
 	 */
 	val preferences: PreferencesResponse,
+	val version: String,
 )

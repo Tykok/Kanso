@@ -14,6 +14,8 @@ COPY . .
 # NEXT_PUBLIC_* is inlined at build time, so the API origin has to be known here.
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_KANSO_COMMIT=dev
+ENV NEXT_PUBLIC_KANSO_COMMIT=$NEXT_PUBLIC_KANSO_COMMIT
 RUN pnpm build
 
 # ---- run ----

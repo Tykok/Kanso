@@ -157,7 +157,13 @@ export const DEFAULT_PREFERENCES: Preferences = {
 };
 
 /** Preferences travel with the session so the first paint needs one round trip, not two. */
-export type Me = { user: User; teamIds: string[]; preferences: Preferences };
+export type Me = {
+  user: User;
+  teamIds: string[];
+  preferences: Preferences;
+  /** The API's build version. Compared against WEB_VERSION: a skew is worth seeing. */
+  version: string;
+};
 
 // --- first-run setup ---------------------------------------------------------
 

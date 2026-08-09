@@ -72,3 +72,9 @@ kotlin {
 tasks.withType<Test> {
 	useJUnitPlatform()
 }
+
+// Spring exposes this as a BuildProperties bean; without it there is no version to
+// report but the one hard-coded somewhere, which is the failure mode this avoids.
+springBoot {
+	buildInfo()
+}

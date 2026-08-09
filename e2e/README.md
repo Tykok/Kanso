@@ -99,3 +99,12 @@ Scenario 5 is the point of the whole thing. The action registry rewrites the key
 path; this test is what says whether behaviour moved with it. When an assertion is in
 doubt, the reference is what the key did before the switch, not what one would like it
 to do.
+
+## Stamping a version
+
+`docker compose build` reads `KANSO_COMMIT`; without it the web bundle reports `dev`:
+
+```bash
+KANSO_COMMIT=$(git rev-parse --short HEAD) docker compose build web
+```
+

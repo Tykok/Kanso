@@ -9,6 +9,7 @@ import dev.kanso.repo.DocRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
 import jakarta.validation.Valid
+import org.springframework.boot.info.BuildProperties
 import org.springframework.http.HttpStatus
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
@@ -63,6 +64,7 @@ class AuthController(
 	private val registrations: DynamicClientRegistrationRepository,
 	private val localAuth: LocalAuthService,
 	private val preferences: PreferencesService,
+	private val build: BuildProperties,
 ) {
 
 	/**
@@ -97,6 +99,9 @@ class AuthController(
 			user = UserResponse.of(user),
 			teamIds = teams.teamIdsFor(user.id),
 			preferences = PreferencesResponse.of(preferences.get(user.id)),
+			// BuildProperties.getVersion() is @Nullable: only absent if buildInfo()
+			// never ran, which MeVersionTest catches at the bean level.
+			version = build.version ?: "unknown",
 		)
 	}
 }
