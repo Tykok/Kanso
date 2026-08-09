@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import org.springframework.boot.info.BuildProperties
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -64,6 +65,7 @@ class LocalAuthController(
 	private val currentUser: CurrentUser,
 	private val preferences: PreferencesService,
 	private val props: KansoProperties,
+	private val build: BuildProperties,
 ) {
 
 	private val sessions = HttpSessionSecurityContextRepository()
@@ -87,6 +89,7 @@ class LocalAuthController(
 			user = UserResponse.of(user),
 			teamIds = emptyList(),
 			preferences = PreferencesResponse.of(preferences.get(user.id)),
+			version = build.version ?: "unknown",
 		)
 	}
 
@@ -118,6 +121,7 @@ class LocalAuthController(
 			user = UserResponse.of(user),
 			teamIds = emptyList(),
 			preferences = PreferencesResponse.of(preferences.get(user.id)),
+			version = build.version ?: "unknown",
 		)
 	}
 
