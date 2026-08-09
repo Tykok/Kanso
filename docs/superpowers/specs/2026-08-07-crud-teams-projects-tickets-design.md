@@ -80,10 +80,39 @@ under something that is gone. Every category defaults to `keep`.
 `DELETE /api/teams/{id}` carries it always. One transaction either way, one `sync_jobs`
 row and one realtime event per entity touched.
 
+#### The counts belong to the plan, not to the team
+
+`subTeams` is not one choice among three; it decides how far the other two reach.
+With `keep`, the sub-teams leave first with their own contents untouched, and the
+operation reaches this team alone. With `take`, the whole subtree goes, and every
+project and ticket anywhere under it is what is being destroyed, archived or
+renumbered.
+
+So there is no single "what this team holds". `GET /api/teams/{id}/contents` returns
+both readings — `{ "direct": {…}, "subtree": {…} }` — and the modal shows whichever
+the current plan makes true, repainting the instant the sub-teams radio moves. Sending
+both rather than taking the plan as a query parameter keeps the endpoint a plain GET
+and leaves no round trip, and no frame, in which the numbers on screen belong to a
+choice nobody has made. `/api/projects/{id}/contents` answers the same shape with the
+two equal: a project holds no teams, so there is no subtree to reach.
+
+Everything downstream reads the same number: which category rows appear, whether a
+destination team is asked for, what the renumbering warning says, what is sent as
+`counts`, and what the server recounts before it destroys anything. A team that holds
+no ticket of its own but whose sub-teams hold forty is the ordinary shape of a parent
+that delegates, and it is exactly the case a direct-only count gets wrong in both
+directions: no destination offered where one is required, and a confirmation that
+understates what it is about to destroy.
+
 **Invariant: an unarchived team never has an archived ancestor.** `keep` upholds it by
 reparenting the sub-team out; `take` upholds it by archiving the subtree. Unarchiving
 a team unarchives its ancestors, so a subtree archived together can be restored from
-any point in it rather than walked by hand.
+any point in it rather than walked by hand. `TeamService.update` refuses to move a
+live team under an archived one, and inbound sync refuses a team's `archived` flag
+outright — a checkbox in Notion carries no disposition plan, and there is no actor
+behind it to authorise one, so accepting it would break the invariant in both
+directions with nothing anywhere to repair it. A disagreement queues a corrective push
+instead, so Notion converges rather than the two disagreeing forever.
 
 #### The two severities
 
@@ -101,9 +130,12 @@ destroy 50. Everywhere else in Kanso an optimistic write that turns out wrong si
 snaps back; here it does not come back at all, which is what buys the extra round
 trip. Archiving snaps back, so it does not pay it.
 
-Counts are recomputed inside the transaction in both cases, so contents created while
-the modal was open are handled by the chosen plan rather than falling through to
-whatever the foreign keys do.
+Counts are recomputed inside the transaction in both cases, and recomputed **at the
+plan's own reach** — a plan that takes the subtree is compared against the subtree.
+Comparing direct rows against it would let a ticket created in a sub-team since the
+preview be destroyed without a word, which is the one thing the retyped name exists to
+prevent. Contents created while the modal was open are then handled by the chosen plan
+rather than falling through to whatever the foreign keys do.
 
 #### Tickets are the constrained case
 
@@ -132,15 +164,36 @@ parent team, or to the team-less section when there is none.
 
 Both actions are admin-only, like every other team write.
 
-### A ticket's project must belong to its team
+### Invariant: a ticket's project belongs to its team
 
-`TicketPatchRequest` accepts a `teamId`, so a ticket created in Core against a Core
-project can be moved to Growth and keep pointing at a project no view of its team
-shows. The composer's project list cannot prevent this — it only bounds creation.
+Either the project has no team at all — the transverse case this spec deliberately
+allows — or it has the ticket's. This is an **invariant**, not a repair one writer
+performs: it holds after every write, and every writer that could break it upholds it
+at the moment it would. Not a database constraint, because making it one would also
+forbid the team-less projects; the writers are the enforcement.
 
-`TicketService.patch` therefore clears `project_id` when the new team is not the
-project's team and the project is not team-less. Not a database constraint: making it
-one would also forbid the team-less projects this spec deliberately allows.
+There are four ways to break it, and each has its own answer:
+
+- **`TicketService.create`** — an explicitly named project belonging to another team is
+  a `400`, the same class as an unknown `teamId`. The composer's project list bounds
+  what it offers, which is not the same as the rule being true of every caller.
+- **`TicketService.patch`** — the two ways a stale project appears get different
+  answers, on purpose. A project named explicitly in the patch and belonging elsewhere
+  is a mistake worth a `400`. A project merely *inherited*, left behind by a `teamId`
+  change in the same patch, was never asked for, so it is dropped silently as a
+  consequence of the move rather than rejected.
+- **`ProjectService.update`** — moving a project into another team is refused with a
+  `409` while tickets outside that team still point at it, naming how many. Silently
+  dropping the grouping of tickets nobody named is the loss reserved for the one case
+  that *was* asked for, and this path is open to every member and is the primary UI
+  route. Clearing a project's team is always allowed: transverse belongs everywhere.
+- **`TeamService.archive` / `.delete`** — the disposition is the operation that splits
+  the two apart on purpose, sending a team's projects to its parent and its tickets to
+  whichever team the plan names. Whatever survives that split pointing across it loses
+  its `project_id` there and then, at the action that causes it, rather than silently
+  on the owner's next ordinary keystroke.
+
+`NotionPoller` writes no `project_id` at all: relations stay Kanso-authoritative.
 
 ### Nothing else
 
@@ -357,13 +410,25 @@ No toast system — there is none today and it would be one more mechanism to ma
 - Unarchiving a nested team unarchives its ancestors.
 - After a sequence of archive/unarchive operations under any plan, no unarchived team
   has an archived ancestor.
-- One sync job per entity touched, whichever plan ran.
+- One sync job per entity touched, whichever plan ran — asserted by *operation*, not
+  only by count, and with the rows mirrored first so the delete jobs' Notion page id
+  can actually be missing.
+- `/contents` reads the subtree when the plan takes it and stops at the team when it
+  does not; the two coincide for a childless team and for any project.
 - A ticket created after the counts were read makes the **delete** return 409 and
-  change nothing; replaying with the new counts succeeds. The same drift lets the
+  change nothing; replaying with the new counts succeeds. The same holds for a ticket
+  created in a *sub-team* under a plan that takes the subtree. The same drift lets the
   **archive** through — the severity difference is a tested behaviour, not a UI
   detail.
 - Patching a ticket's team clears a `project_id` pointing at another team's project,
-  and leaves a team-less project alone.
+  and leaves a team-less project alone; it also takes the destination team's next
+  number, into a destination that is not empty.
+- Creating a ticket against another team's project is refused; moving a project into
+  another team is refused while tickets outside it still point at it; a disposition
+  that sends projects and tickets to different teams clears what it strands.
+- Archiving and unarchiving walked in sequence under both plans, re-checking after
+  every step that no unarchived team has an archived ancestor — and the poller
+  refusing an `archived` flag in either direction, pushing back instead.
 
 ### Vitest — new in `apps/web`
 
@@ -396,6 +461,13 @@ specs will need after that.
    ones the modal announced.
 5. **Keyboard non-regression:** `j/k`, `1..6`, `c`, `e`, `x`, `/`, `⌘K`, `,`, `?` do
    exactly what they do today.
+6. Archive a team that delegates its work: with the sub-teams kept there is no ticket
+   row at all, and taking them makes the same tickets — and their destination selector
+   — appear. Then *Show archived* brings the team back and its menu offers *Unarchive*
+   in place of *Archive*.
+7. Archive a project: one question, no destination, no name to retype. *Show archived*
+   and *Unarchive project* put it back, and a failing unarchive puts the server's own
+   sentence in the top bar, dismissible, with nothing else having changed.
 
 Scenario 5 is the point. The registry rewrites the keyboard path; this test is what
 says whether behaviour moved with it.
