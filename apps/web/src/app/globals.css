@@ -588,10 +588,12 @@ kbd {
    (`trigger={null}`), while the glyph and label underneath stay purely visual.
    `.menu`'s own box (relative, flex-shrink: 0) has no in-flow content once the trigger
    is pulled out of flow below, so it collapses to 0×0 and "100%" of that is nothing.
-   Making `.menu` static here removes it as a containing block, so `inset: 0` resolves
-   against `.status-menu`/`.priority-menu` instead — the pill itself, which is sized by
-   the dot and label that stay in flow beside it. Scoped to `> .menu` so the row's own
-   `⋯` menu and every other caller keep `.menu`'s default `position: relative`. */
+   `display: contents` removes that box altogether: it is neither a containing block
+   nor a flex item, so `inset: 0` resolves against `.status-menu`/`.priority-menu` —
+   the pill itself, sized by the dot and label that stay in flow — and `.status`'s
+   6px flex gap no longer counts an empty box as an item, which used to push the dot
+   of an interactive pill 6px right of a non-interactive one. Scoped to `> .menu` so
+   the row's own `⋯` menu and every other caller keep `.menu` intact. */
 .status-menu,
 .priority-menu {
   position: relative;
@@ -599,7 +601,7 @@ kbd {
 
 .status-menu > .menu,
 .priority-menu > .menu {
-  position: static;
+  display: contents;
 }
 
 .status-menu .menu-trigger,
@@ -895,6 +897,13 @@ kbd {
   border-top: 1px solid var(--border);
   margin-top: 4px;
   font-family: var(--mono);
+}
+
+/* The entries, and only the entries: `role="menu"` lives here so the header and the
+   footer stay outside it. See `menu.tsx`. */
+.menu-list {
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-item {

@@ -188,16 +188,26 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   // header, unlike every row's own `⋯`.
   const trigger = page.locator(".brand .menu-trigger");
   await expect(trigger).not.toContainText("⋯");
+  // The accessible name starts with the visible one: a voice-control user saying
+  // "click Kanso" has to reach this button (WCAG 2.5.3, Label in Name).
+  await expect(trigger).toHaveAccessibleName(/^Kanso\b/);
   await page.getByText("Kanso", { exact: true }).click();
 
-  const menu = page.getByRole("menu", { name: "Account and settings" });
+  const popover = page.locator(".brand .menu-popover");
+  const menu = page.getByRole("menu", { name: /account and settings/i });
   await expect(menu).toBeVisible();
 
-  // Who you are, in the header — not a menu item, decoration inside role="menu".
-  const header = menu.locator(".menu-header");
+  // Who you are, in the header — and the header is a SIBLING of `role="menu"`, not
+  // a child of it. A `menu` may only own menuitem/menuitemradio/menuitemcheckbox/
+  // group/separator; assistive technology is free to drop anything else it finds
+  // inside one, and what would be dropped here is the only answer the interface
+  // gives to "who am I signed in as".
+  const header = popover.locator(".menu-header");
   await expect(header).toContainText("E2E owner");
   await expect(header).toContainText("owner@kanso.test");
   await expect(header).toContainText("owner");
+  await expect(menu.locator(".menu-header")).toHaveCount(0);
+  await expect(menu.locator(".menu-footer")).toHaveCount(0);
 
   // The exact list: an item leaking in or out fails this rather than a "contains".
   await expect(menu.getByRole("menuitem")).toHaveText([
@@ -212,11 +222,18 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await expect(
     header.locator("button, a, input, select, textarea, [tabindex]"),
   ).toHaveCount(0);
-  const footer = menu.locator(".menu-footer");
+  const footer = popover.locator(".menu-footer");
   await expect(footer).toBeVisible();
   await expect(
     footer.locator("button, a, input, select, textarea, [tabindex]"),
   ).toHaveCount(0);
+
+  // The version, read rather than merely seen to exist — an empty `<span>` used to
+  // satisfy a `toBeVisible()`. One line, not two: web and API are built from the same
+  // KANSO_COMMIT, so there is no skew to report. The two-line form was structurally
+  // unreachable while the API answered with a hand-edited `0.1.0`, because a short
+  // sha and a semver are never equal — a warning permanently on is one nobody reads.
+  await expect(footer).toHaveText(/^(dev|[0-9a-f]{7,40})$/);
 
   // The arrow-key rotation only ever touches the four real items: a full cycle of
   // four presses lands back on the first one, which could not happen if the header
@@ -276,12 +293,23 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   await expect(rowA).toHaveAttribute("data-selected", "true");
   await expect(rowB).toHaveAttribute("data-selected", "false");
 
-  // The pill's trigger must have a real hit box: the shipped defect rendered it at
-  // 0×0, passing every check that never opened a browser.
+  // The pill's trigger must cover the pill, not merely exist: the shipped defect
+  // rendered it at 0×0, and `> 0` would be satisfied by a 1×1 hit box nobody can
+  // hit — the same failure one pixel further along. The claim is "the pill IS the
+  // trigger", so the assertion is that the two boxes are the same box.
+  const statusPill = rowB.locator(".status-menu");
   const statusTrigger = rowB.getByRole("button", { name: /^Status: / });
+  const pillBox = await statusPill.boundingBox();
   const statusBox = await statusTrigger.boundingBox();
-  expect(statusBox?.width).toBeGreaterThan(0);
-  expect(statusBox?.height).toBeGreaterThan(0);
+  expect(pillBox, "the status pill has no box at all").toBeTruthy();
+  expect(statusBox, "the status trigger has no box at all").toBeTruthy();
+  expect(statusBox?.width).toBeCloseTo(pillBox?.width ?? 0, 0);
+  expect(statusBox?.height).toBeCloseTo(pillBox?.height ?? 0, 0);
+  expect(statusBox?.x).toBeCloseTo(pillBox?.x ?? 0, 0);
+  expect(statusBox?.y).toBeCloseTo(pillBox?.y ?? 0, 0);
+  // And that box is big enough to be a target rather than a coincidence.
+  expect(statusBox?.width).toBeGreaterThan(40);
+  expect(statusBox?.height).toBeGreaterThan(10);
 
   await statusTrigger.click();
   const statusMenu = page.getByRole("menu", { name: /^Status: / });

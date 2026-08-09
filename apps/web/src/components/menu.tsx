@@ -11,13 +11,23 @@ export type MenuItem = {
 };
 
 /**
- * A row's `⋯` menu.
+ * The dropdown every mouse path in the application goes through: a row's `⋯`, the
+ * sidebar's team and project rows, the top bar's `New`, the brand block's account
+ * menu, and a ticket's status and priority pills — the last two passing `trigger={null}`
+ * so the pill itself is the button.
  *
- * Nothing like it exists in the application today — no dropdown, no context menu — so
- * everything is written here: the roving focus pattern (`tabindex` 0 on the current
- * entry, −1 on the others), closing on an outside click, and stopping key propagation
- * so the `window` handler in `page.tsx` does not move the list cursor while someone
- * is walking the menu.
+ * Nothing like it existed before — no dropdown, no context menu — so everything is
+ * written here: the roving focus pattern (`tabindex` 0 on the current entry, −1 on the
+ * others), closing on an outside click, and stopping key propagation so the `window`
+ * handler in `page.tsx` does not move the list cursor while someone is walking the menu.
+ *
+ * `role="menu"` sits on the list of entries, not on the popover. A `menu` may only own
+ * `menuitem`, `menuitemradio`, `menuitemcheckbox`, `group` and `separator`; the header
+ * and the footer are neither, and assistive technology is free to drop whatever else it
+ * finds inside one. What would be dropped is the identity block — the one thing the
+ * spec says answers a question nothing else in the interface answers — so they are
+ * siblings of the list instead. `aria-hidden` would have guaranteed the loss it was
+ * meant to license.
  *
  * An empty list renders nothing: that is what makes a member see no `⋯` at all on a
  * team row, without the caller having to know about it.
@@ -97,10 +107,7 @@ export function Menu({
 
       {open && (
         <div
-          id={menuId}
           className="menu-popover"
-          role="menu"
-          aria-label={label}
           onKeyDown={(event) => {
             // `page.tsx` listens on window: without this stop, every arrow would
             // also move the cursor in the ticket list.
@@ -145,32 +152,34 @@ export function Menu({
           }}
         >
           {header && <div className="menu-header">{header}</div>}
-          {items.map((item, index) => (
-            <button
-              key={item.id}
-              ref={(node) => {
-                itemRefs.current[index] = node;
-              }}
-              type="button"
-              role="menuitem"
-              className="menu-item"
-              data-danger={item.danger ? "true" : undefined}
-              tabIndex={index === active ? 0 : -1}
-              onMouseEnter={() => setActive(index)}
-              onClick={(event) => {
-                event.stopPropagation();
-                // Before the popover unmounts, and before the action runs: an entry
-                // that opens a dialog is about to become the thing that dialog
-                // restores focus to when it closes, and this button will not be there
-                // any more. The trigger will. Same reasoning as the Tab branch above.
-                triggerRef.current?.focus();
-                setOpen(false);
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+          <div id={menuId} className="menu-list" role="menu" aria-label={label}>
+            {items.map((item, index) => (
+              <button
+                key={item.id}
+                ref={(node) => {
+                  itemRefs.current[index] = node;
+                }}
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                data-danger={item.danger ? "true" : undefined}
+                tabIndex={index === active ? 0 : -1}
+                onMouseEnter={() => setActive(index)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  // Before the popover unmounts, and before the action runs: an entry
+                  // that opens a dialog is about to become the thing that dialog
+                  // restores focus to when it closes, and this button will not be
+                  // there any more. The trigger will. Same reasoning as Tab above.
+                  triggerRef.current?.focus();
+                  setOpen(false);
+                  item.onSelect();
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           {footer && <div className="menu-footer">{footer}</div>}
         </div>
       )}

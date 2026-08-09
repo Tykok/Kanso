@@ -16,6 +16,10 @@ import { WEB_VERSION } from "@/lib/version";
  *
  * The version is not a menu item either. Two lines appear when the web bundle and the
  * API disagree, because a skew is exactly what you want written down in a bug report.
+ * Both halves are the short commit the image was built from — the same `KANSO_COMMIT`
+ * reaches `NEXT_PUBLIC_KANSO_COMMIT` and the API's Gradle build — so the comparison
+ * has something to compare. While the API answered with a hand-edited `0.1.0` the two
+ * were different kinds of string, never equal, and the skew warning was permanently on.
  */
 export function BrandMenu({ ctx }: { ctx: ActionContext }) {
   const me = useMe();
@@ -27,7 +31,10 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
   return (
     <div className="brand">
       <Menu
-        label="Account and settings"
+        // The visible label is "Kanso 簡素", so the accessible name has to start with
+        // it (WCAG 2.5.3, Label in Name): "Account and settings" alone left a
+        // voice-control user saying "click Kanso" with nothing to click.
+        label="Kanso — account and settings"
         items={items}
         trigger={
           <>
