@@ -10,7 +10,7 @@ import {
   type TicketPriority,
   type User,
 } from "@/lib/api";
-import { composerSeed } from "@/lib/composer-seed";
+import { creationSeed } from "@/lib/creation-seed";
 import { keys, useMe } from "@/lib/queries";
 import type { Scope } from "@/store/ui";
 import { Backdrop } from "./overlays";
@@ -46,10 +46,16 @@ function ComposerForm({
   const queryClient = useQueryClient();
   const teamRef = useRef<HTMLSelectElement>(null);
 
-  // Validated against the lists actually fetched, not taken on trust — see
-  // `composerSeed`. Read once, in the initialisers: the form mounts with the data
-  // already in hand, and re-seeding later would overwrite what somebody has changed.
-  const [seed] = useState(() => composerSeed(scope, teams, projects));
+  // One rule for what a new thing inherits from where it was created, shared with the
+  // team and project dialogs: `creationSeed`'s `ticket` branch is this form's column
+  // of the spec's table. Validated against the lists actually fetched, not taken on
+  // trust. Read once, in the initialisers: the form mounts with the data already in
+  // hand, and re-seeding later would overwrite what somebody has changed.
+  //
+  // `seed.blocked` is the same condition as `!seed.teamId` and is not read here: the
+  // form asks before it complains, so the error under the footer belongs to a submit
+  // attempt, not to opening the composer.
+  const [seed] = useState(() => creationSeed(scope, teams, projects).ticket);
 
   const [title, setTitle] = useState("");
   const [teamId, setTeamId] = useState(seed.teamId);

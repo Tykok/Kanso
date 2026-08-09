@@ -39,6 +39,20 @@ describe("from a team scope", () => {
     expect(seed({ kind: "team", id: legacy.id }).ticket.blocked).toBe(true);
     expect(seed({ kind: "team", id: legacy.id }).team.parentTeamId).toBeUndefined();
   });
+
+  /**
+   * Not the same case as the archived one above, and the difference is the one that
+   * mattered: an admin deletes the team you are scoped to in another browser, minutes
+   * apart. The id survives in the store and matches nothing at all in the fetched
+   * list — there is no `archived` flag to consult. Seeded blind, the Team select
+   * renders empty while `teamId` still holds the dead id.
+   */
+  it("infers nothing from a team the lists do not hold at all", () => {
+    const s = seed({ kind: "team", id: "team-vanished" });
+    expect(s.ticket).toEqual({ teamId: "", projectId: "", blocked: true });
+    expect(s.project.teamId).toBeUndefined();
+    expect(s.team.parentTeamId).toBeUndefined();
+  });
 });
 
 describe("from a project scope", () => {
@@ -56,9 +70,23 @@ describe("from a project scope", () => {
     expect(s.team.parentTeamId).toBeUndefined();
   });
 
+  /**
+   * The whole object, not just `blocked`: the project has to be dropped too. A
+   * project whose team did not resolve is no longer a legal home for a ticket, and an
+   * assertion narrow enough to ignore `projectId` would pass while the composer
+   * pre-filled a project the chosen team does not own.
+   */
   it("infers nothing from a project whose team is archived and off the list", () => {
     const s = seed({ kind: "project", id: orphaned.id });
-    expect(s.ticket.blocked).toBe(true);
+    expect(s.ticket).toEqual({ teamId: "", projectId: "", blocked: true });
+    expect(s.project.teamId).toBeUndefined();
+    expect(s.team.parentTeamId).toBeUndefined();
+  });
+
+  it("seeds nothing from a scope naming a project the lists do not hold", () => {
+    const s = seed({ kind: "project", id: "proj-gone" });
+    expect(s.ticket).toEqual({ teamId: "", projectId: "", blocked: true });
+    expect(s.project.teamId).toBeUndefined();
     expect(s.team.parentTeamId).toBeUndefined();
   });
 });
