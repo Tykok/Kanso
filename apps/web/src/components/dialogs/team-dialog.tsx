@@ -13,19 +13,42 @@ type TeamErrors = { key?: string; parent?: string; general?: string };
  * The sentence is therefore what decides where the message lands. Anything
  * unrecognised stays at the foot of the dialog rather than under a field that has
  * nothing to do with it.
+ *
+ * Every pattern below is copied from the server, not guessed, and each is gated on
+ * the status it is actually thrown with so an unrelated future message cannot drift
+ * into the wrong field just because it happens to share a word:
+ *  - Bean Validation renders every violated field as `"field: message"`, joined by
+ *    `"; "` when there is more than one (`ApiExceptionHandler.handleMethodArgumentNotValid`),
+ *    always a 400 — `"key: size must be between 2 and 8"` for `TeamRequest.key`'s
+ *    `@field:Size(min = 2, max = 8)` (`Dtos.kt:69`).
+ *  - `TeamService.validateKey` (`TeamService.kt:381-386`) quotes the key the same way
+ *    whichever of its two checks fails: `"Team key 'X' must be 2-8 characters, A-Z or
+ *    0-9"` (400, bad shape) or `"Team key 'X' is already taken"` (409, duplicate).
+ *  - `TeamService.resolveKey` (`TeamService.kt:405`) — only reachable by leaving Key
+ *    empty on create when every derived candidate is already taken:
+ *    `"Could not derive a free team key from 'name'; pass one explicitly"` (409).
+ *  - `TeamService.update` (`TeamService.kt:277`): `"Moving team X under Y would
+ *    create a cycle"` (409).
+ *  - `TeamService.update` (`TeamService.kt:282`): the *parent* is archived, not this
+ *    team — `"Team X is archived; unarchive it before moving a team under it"` (409).
+ *    The dropdown already filters archived rows, so this only fires on a race.
  */
 function route(error: unknown): TeamErrors {
   if (!(error instanceof ApiError)) {
     return { general: error instanceof Error ? error.message : "The team was not saved." };
   }
-  const detail = error.detail.toLowerCase();
-  if (error.status === 409 && detail.includes("key") && detail.includes("taken")) {
-    return { key: error.detail };
-  }
-  if (error.status === 409 && detail.includes("cycle")) {
-    return { parent: error.detail };
-  }
-  return { general: error.detail };
+  const { status, detail } = error;
+  const lower = detail.toLowerCase();
+
+  const beanValidationOnKey = status === 400 && /(^|;\s*)key\s*:/i.test(detail);
+  const customKeyMessage = (status === 400 || status === 409) && lower.includes("team key '");
+  const derivedKeyExhausted = status === 409 && lower.includes("derive a free team key");
+  if (beanValidationOnKey || customKeyMessage || derivedKeyExhausted) return { key: detail };
+
+  if (status === 409 && lower.includes("would create a cycle")) return { parent: detail };
+  if (status === 409 && lower.includes("before moving a team under it")) return { parent: detail };
+
+  return { general: detail };
 }
 
 /**
@@ -129,6 +152,7 @@ function TeamForm({
         <input
           placeholder="KAN"
           value={key}
+          maxLength={8}
           aria-invalid={errors.key ? true : undefined}
           onChange={(event) => setKey(event.target.value)}
         />

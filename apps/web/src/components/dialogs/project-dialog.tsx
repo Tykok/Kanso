@@ -23,11 +23,20 @@ const PROJECT_STATUS_LABELS: Record<(typeof PROJECT_STATUSES)[number], string> =
 
 type ProjectErrors = { team?: string; general?: string };
 
+/**
+ * The only "team"-mentioning message this dialog can provoke today is
+ * `ProjectService.requireTeam` (`ProjectService.kt:212-213`): `"No team $id"`, always
+ * a 400 (a stale option in the Team dropdown pointing at a team removed since the
+ * list was drawn). Gated on that status too, not just the word, so a later message
+ * that happens to mention "team" for an unrelated reason cannot be misrouted here.
+ */
 function route(error: unknown): ProjectErrors {
   if (!(error instanceof ApiError)) {
     return { general: error instanceof Error ? error.message : "The project was not saved." };
   }
-  if (error.detail.toLowerCase().includes("team")) return { team: error.detail };
+  if (error.status === 400 && error.detail.toLowerCase().includes("team")) {
+    return { team: error.detail };
+  }
   return { general: error.detail };
 }
 
