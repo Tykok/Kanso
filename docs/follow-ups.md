@@ -58,3 +58,57 @@ largest single investment is currently unenforced.
 
 **`app.palette` is a dead action.** ⌘K is intercepted ahead of the registry, and no menu
 references it, so its only surface is the palette itself.
+
+---
+
+# Carried out of the mouse-parity branch
+
+Every action reachable with a mouse (commits `da2e6bc`..`HEAD`). Same rule as above:
+each was found by the whole-branch review, judged not to block the merge, and the
+reasoning is written down so it is not rediscovered.
+
+## Worth a decision
+
+**`ProjectDialog` has no contextual title.** `TeamDialog` renders `New team under X`
+when `creationSeed` pre-fills a parent, and scenario 9 asserts that title as the place
+the context reappears now that the dedicated "New sub-team" action is gone. The project
+dialog gets the same kind of pre-fill — the team select is seeded from the scope — and
+still says only `New project`. Nothing on screen says *which* team it will land in
+except the select itself, which a person who did not open it has not read. Two dialogs
+answering the same question two ways is the part worth deciding, not the wording.
+
+**A ticket row now costs three tab stops instead of one.** The status pill, the
+priority mark and the `⋯` are each a `<button>` in the tab order, so tabbing through a
+list of twenty tickets is sixty stops. Every one of them is reachable by keyboard
+without tabbing — `1`-`6`, `e`, `x` and the palette all act on the selected row — so
+the tab stops buy a keyboard user nothing they did not already have, while making Tab
+a worse way to leave the list. Roving `tabindex` across a row, or taking the pills out
+of the tab order entirely, are both defensible; picking one is a decision about who Tab
+is for.
+
+## Test shape, not test count
+
+**`ticket.delete` from the command palette is unconfirmed.** The action's `when` is
+`hasSelection`, so `availableActions` offers it in the palette, and `page.tsx` runs it
+against the same context — it should work. Nothing exercises it: scenario 11 deletes
+through a row's `⋯`, and the palette's own coverage stops at the actions the keyboard
+already had. "Should work" is the phrasing that preceded three of this branch's
+regressions.
+
+**No menu shows `⌘K` against *Command palette*.** Menu hints are mapped from
+`Action.shortcut`, which is a list of `KeyboardEvent.key` values `resolveShortcut`
+dispatches on; `app.palette` deliberately carries none, because ⌘K is intercepted ahead
+of the registry (see the dead-action note above) and registering `k` there would
+collide with `ticket.prev`. The spec's mock draws the hint. Showing it needs a display
+string that is not also a dispatch key — a second field, or a shortcut type that
+separates the two.
+
+## Small and mechanical
+
+- **The brand block is contingent on the registry.** `Menu` renders `null` for an empty
+  item list, which is what makes a member see no `⋯` on a team row. The same rule
+  applies to the brand: if `app.settings`, `app.help`, `app.palette` and `app.logout`
+  ever all fail their `when`, the identity header and the version footer disappear with
+  them — the two pieces of the popover that are not menu items at all, and the ones the
+  spec says answer a question nothing else answers. All four are `when: () => true`
+  today, so it is unreachable rather than broken.

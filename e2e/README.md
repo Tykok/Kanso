@@ -84,9 +84,9 @@ scratch:
 docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wait
 ```
 
-## The five scenarios
+## The eleven scenarios
 
-| File                     | What it holds                                                               |
+| File                     | What it holds                                                                |
 | ------------------------ | ---------------------------------------------------------------------------- |
 | `crud.spec.ts`           | 1. Create team, sub-team, project, team-less project, ticket. 2. Scopes.      |
 | `permissions.spec.ts`    | 3. A member's team `⋯` holds only project creation; an admin's holds all five.|
@@ -94,6 +94,10 @@ docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wai
 | `keyboard.spec.ts`       | 5. Keyboard non-regression.                                                  |
 | `archive.spec.ts`        | 6. Archive a team: counts follow the plan; Show archived and unarchive.       |
 |                          | 7. Archive a project; a failed unarchive in the topbar error line.            |
+|                          | 8. Reparenting refreshes the list; a dialog gives focus back; ⌘K in the composer.|
+| `mouse.spec.ts`          | 9. The New menu creates into the scope you are standing in.                   |
+|                          | 10. The brand menu: identity, the hinted entries, the version, sign-out.      |
+|                          | 11. A ticket row worked entirely by mouse: pills, rename, archive, delete.    |
 
 Scenario 5 is the point of the whole thing. The action registry rewrites the keyboard
 path; this test is what says whether behaviour moved with it. When an assertion is in
@@ -102,9 +106,12 @@ to do.
 
 ## Stamping a version
 
-`docker compose build` reads `KANSO_COMMIT`; without it the web bundle reports `dev`:
+`docker compose build` reads `KANSO_COMMIT` and passes it to both halves — the web
+bundle inlines it as `NEXT_PUBLIC_KANSO_COMMIT`, and the API's Gradle build stamps it
+into `build-info.properties` for `/api/me` to report. Without it both say `dev`, which
+is what makes the brand menu's version footer show one line instead of a skew warning:
 
 ```bash
-KANSO_COMMIT=$(git rev-parse --short HEAD) docker compose build web
+KANSO_COMMIT=$(git rev-parse --short HEAD) docker compose build
 ```
 
