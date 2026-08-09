@@ -146,7 +146,7 @@ here adds a second error mechanism.
 
 ## Tests
 
-**Vitest** — the seeding function against all eight cells of the table above; the two
+**Vitest** — the seeding function against all twelve cells of the table above; the two
 new registry actions; and the `New` menu's filtering by role.
 
 **Playwright** — creating each of the three from each scope and asserting the resulting
