@@ -62,21 +62,41 @@ class DispositionCountsTest : PostgresTest() {
 	)
 
 	@Test
-	fun `a team counts what it holds directly, not what its sub-teams hold`() {
+	fun `the direct reading stops at the team, the subtree reading does not`() {
 		val core = teams.create(admin, "Core", key(), null)
 		val mobile = teams.create(admin, "Mobile", key(), core.id)
-		teams.create(admin, "iOS", key(), mobile.id)
+		val ios = teams.create(admin, "iOS", key(), mobile.id)
 		newProject(core.id)
 		newProject(mobile.id)
+		newProject(ios.id)
 		newTicket(core.id)
 		newTicket(core.id)
 		newTicket(mobile.id)
+		newTicket(ios.id)
+
+		val contents = teams.contents(core.id)
 
 		assertEquals(
 			DispositionCounts(subTeams = 1, projects = 1, tickets = 2),
-			teams.contents(core.id),
+			contents.direct,
 			"a kept sub-team leaves with its own contents, so they are not Core's to dispose of",
 		)
+		assertEquals(
+			DispositionCounts(subTeams = 2, projects = 3, tickets = 4),
+			contents.subtree,
+			"a taken sub-team takes its own subtree with it, and every row in it is on the table",
+		)
+	}
+
+	@Test
+	fun `a childless team reads the same either way`() {
+		val core = teams.create(admin, "Core", key(), null)
+		newProject(core.id)
+		newTicket(core.id)
+
+		val contents = teams.contents(core.id)
+		assertEquals(contents.direct, contents.subtree, "there is no subtree to reach")
+		assertEquals(DispositionCounts(subTeams = 0, projects = 1, tickets = 1), contents.direct)
 	}
 
 	@Test
@@ -85,22 +105,24 @@ class DispositionCountsTest : PostgresTest() {
 		val ticket = newTicket(team.id)
 		tickets.patch(ticket.ticket.id, TicketPatch(archived = true))
 
-		assertEquals(1, teams.contents(team.id).tickets)
+		assertEquals(1, teams.contents(team.id).direct.tickets)
 	}
 
 	@Test
-	fun `a project counts only its tickets`() {
+	fun `a project counts only its tickets, and holds no subtree to read twice`() {
 		val team = teams.create(admin, "Core", key(), null)
 		val project = newProject(team.id)
 		newTicket(team.id, project.project.id)
 		newTicket(team.id, project.project.id)
 		newTicket(team.id)
 
+		val contents = projects.contents(project.project.id)
 		assertEquals(
 			DispositionCounts(subTeams = 0, projects = 0, tickets = 2),
-			projects.contents(project.project.id),
+			contents.direct,
 			"a project holds no teams and no projects; only its tickets need a decision",
 		)
+		assertEquals(contents.direct, contents.subtree)
 	}
 
 	@Test

@@ -29,8 +29,8 @@ class TeamController(
 
 	/** What the modal shows before anyone chooses anything. */
 	@GetMapping("/{id}/contents")
-	fun contents(@PathVariable id: UUID): DispositionCountsResponse =
-		DispositionCountsResponse.of(teams.contents(id))
+	fun contents(@PathVariable id: UUID): DispositionContentsResponse =
+		DispositionContentsResponse.of(teams.contents(id))
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)

@@ -112,10 +112,25 @@ class ProjectDispositionTest : PostgresTest() {
 		val project = newProject(team.id)
 		val ticket = newTicket(team.id, project.id)
 
-		projects.delete(project.id, DispositionPlan(counts = projects.contents(project.id)))
+		jobs.claimBatch(200, "drain")
+
+		projects.delete(project.id, DispositionPlan(counts = projects.contents(project.id).direct))
 
 		assertFailsWith<NotFoundException> { projects.get(project.id) }
 		assertNull(tickets.get(ticket.ticket.id).ticket.projectId)
+		assertEquals(team.id, tickets.get(ticket.ticket.id).ticket.teamId, "and never its team")
+
+		// The FK's ON DELETE SET NULL would produce the same NULL on its own, so what
+		// actually says the service did the work is the mirror push: without the
+		// explicit clear there is no job for the ticket at all, and Notion keeps a page
+		// still related to a project that no longer exists.
+		val queued = jobs.claimBatch(200, "test")
+		assertEquals(SyncOperation.DELETE, queued.single { it.entityId == project.id }.operation)
+		assertEquals(
+			SyncOperation.UPSERT,
+			queued.single { it.entityId == ticket.ticket.id }.operation,
+			"the kept ticket is pushed as it now stands, not deleted and not archived",
+		)
 	}
 
 	@Test
@@ -127,7 +142,7 @@ class ProjectDispositionTest : PostgresTest() {
 
 		projects.delete(
 			project.id,
-			DispositionPlan(tickets = DispositionChoice.TAKE, counts = projects.contents(project.id)),
+			DispositionPlan(tickets = DispositionChoice.TAKE, counts = projects.contents(project.id).direct),
 		)
 
 		assertFailsWith<NotFoundException> { tickets.get(ticket.ticket.id) }
@@ -141,7 +156,7 @@ class ProjectDispositionTest : PostgresTest() {
 		val team = newTeam()
 		val project = newProject(team.id)
 		newTicket(team.id, project.id)
-		val stale = projects.contents(project.id)
+		val stale = projects.contents(project.id).direct
 		newTicket(team.id, project.id)
 
 		val failure = assertFailsWith<CountsChangedException> {

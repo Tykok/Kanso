@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.domain.DispositionChoice
+import dev.kanso.domain.DispositionContents
 import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.MemberRole
@@ -38,6 +39,22 @@ data class DispositionCountsResponse(val subTeams: Int, val projects: Int, val t
 	companion object {
 		fun of(counts: DispositionCounts) =
 			DispositionCountsResponse(counts.subTeams, counts.projects, counts.tickets)
+	}
+}
+
+/**
+ * Both readings, so the modal can repaint the instant the sub-teams radio moves
+ * without asking again — see [dev.kanso.domain.DispositionContents].
+ */
+data class DispositionContentsResponse(
+	val direct: DispositionCountsResponse,
+	val subtree: DispositionCountsResponse,
+) {
+	companion object {
+		fun of(contents: DispositionContents) = DispositionContentsResponse(
+			direct = DispositionCountsResponse.of(contents.direct),
+			subtree = DispositionCountsResponse.of(contents.subtree),
+		)
 	}
 }
 

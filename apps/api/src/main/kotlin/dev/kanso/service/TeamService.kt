@@ -1,6 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.DispositionChoice
+import dev.kanso.domain.DispositionContents
 import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.MemberRole
@@ -49,21 +50,36 @@ class TeamService(
 	// --- disposition ---------------------------------------------------------
 
 	@Transactional(readOnly = true)
-	fun contents(id: UUID): DispositionCounts {
+	fun contents(id: UUID): DispositionContents {
 		get(id)
-		return countsOf(id)
+		return DispositionContents(
+			direct = countsOf(id, DispositionChoice.KEEP),
+			subtree = countsOf(id, DispositionChoice.TAKE),
+		)
 	}
 
 	/**
-	 * What the team holds directly. A kept sub-team leaves with its own projects and
-	 * tickets untouched, so counting those would describe a decision nobody was
-	 * offered.
+	 * What the operation will actually reach, for the given `subTeams` choice.
+	 *
+	 * With [DispositionChoice.KEEP] the sub-teams leave first, with their own projects
+	 * and tickets untouched, so counting those would describe a decision nobody was
+	 * offered: only what the team holds directly is on the table.
+	 *
+	 * With [DispositionChoice.TAKE] the whole subtree goes, so every project and ticket
+	 * under it is what is being archived, destroyed or renumbered — and the sub-team
+	 * count is the whole subtree, not just the children one level down. Counting the
+	 * direct rows there would understate what the confirmation is asking consent for,
+	 * which is exactly what the retyped name exists to prevent.
 	 */
-	private fun countsOf(id: UUID) = DispositionCounts(
-		subTeams = teams.directChildIds(id).size,
-		projects = projects.countByTeams(listOf(id)),
-		tickets = tickets.countByTeams(listOf(id)),
-	)
+	private fun countsOf(id: UUID, subTeams: DispositionChoice): DispositionCounts {
+		val doomed = if (subTeams == DispositionChoice.TAKE) teams.descendantIds(id) else listOf(id)
+		return DispositionCounts(
+			// `descendantIds` includes the root; the sub-teams are what is left of it.
+			subTeams = if (subTeams == DispositionChoice.TAKE) doomed.size - 1 else teams.directChildIds(id).size,
+			projects = projects.countByTeams(doomed),
+			tickets = tickets.countByTeams(doomed),
+		)
+	}
 
 	/**
 	 * Removes the team from view after deciding what happens to what it holds.
@@ -218,6 +234,8 @@ class TeamService(
 		when {
 			plan.tickets == DispositionChoice.KEEP -> {
 				val target = checkNotNull(ticketsTarget) { "the destination is validated before dispersal" }
+				val stranded = strandedTickets(held) { target }
+				tickets.clearProjectFor(stranded)
 				// One statement for the whole block: the row lock on the destination team
 				// is held for the same span either way, so allocating one number at a time
 				// would only add a round trip per ticket inside it.
@@ -225,7 +243,14 @@ class TeamService(
 				held.forEachIndexed { index, ticket ->
 					tickets.moveToTeam(ticket.id, target, numbers[index])
 					syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
-					events.publish(KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, target, ticket.projectId))
+					events.publish(
+						KansoEvent.ticket(
+							ChangeKind.UPDATED,
+							ticket.id,
+							target,
+							ticket.projectId.takeUnless { ticket.id in stranded },
+						)
+					)
 				}
 			}
 
@@ -243,13 +268,52 @@ class TeamService(
 			}
 
 			else -> {
+				// A taken ticket keeps its team, but the projects may have just left for
+				// the parent, so the same check applies against the team it stays in.
+				val stranded = strandedTickets(held) { it.teamId }
+				tickets.clearProjectFor(stranded)
 				val byId = held.associateBy { it.id }
-				tickets.setArchivedByTeams(doomed, true).forEach {
-					syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.ARCHIVE)
-					events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, byId[it]?.projectId))
+				val touched = tickets.setArchivedByTeams(doomed, true).toMutableSet()
+				// A ticket that was already archived changes nothing by being archived
+				// again, but losing its project is a change the mirror has to hear about.
+				touched += stranded
+				touched.forEach { ticketId ->
+					syncJobs.enqueue(SyncEntityType.TICKET, ticketId, SyncOperation.ARCHIVE)
+					events.publish(
+						KansoEvent.ticket(
+							ChangeKind.UPDATED,
+							ticketId,
+							byId[ticketId]?.teamId,
+							if (ticketId in stranded) null else byId[ticketId]?.projectId,
+						)
+					)
 				}
 			}
 		}
+	}
+
+	/**
+	 * The tickets whose project is not coming with them.
+	 *
+	 * A ticket's project belongs to its team, and a disposition is the one operation
+	 * that can break that on purpose: projects go to the parent team while tickets go
+	 * to whichever team the plan names, which is a different team by design. The
+	 * survivors of that split lose their grouping here, at the action that causes it,
+	 * rather than silently on the next ordinary keystroke — the same answer, and the
+	 * same reasoning, as `ProjectService.disperseTickets`.
+	 *
+	 * A project that is absent from the read is one the plan has just deleted, whose
+	 * `project_id` the foreign key already set to NULL; a project with no team is the
+	 * transverse case and belongs everywhere. Neither is stranded.
+	 */
+	private fun strandedTickets(held: List<Ticket>, teamOf: (Ticket) -> UUID): Set<UUID> {
+		val projectIds = held.mapNotNull { it.projectId }.toSet()
+		if (projectIds.isEmpty()) return emptySet()
+		val teamOfProject = projects.findAllById(projectIds).associate { it.id to it.teamId }
+		return held.filter { ticket ->
+			val projectTeamId = ticket.projectId?.let { teamOfProject[it] } ?: return@filter false
+			projectTeamId != teamOf(ticket)
+		}.map { it.id }.toSet()
 	}
 
 	@Transactional
@@ -312,7 +376,10 @@ class TeamService(
 
 		val declared = plan.counts
 			?: throw BadRequestException("Deleting a team requires the counts the confirmation showed")
-		val fresh = countsOf(id)
+		// Recounted at the plan's own reach: comparing direct rows against a plan that
+		// takes the subtree would let a ticket created in a sub-team since the preview be
+		// destroyed without a word, which is the one thing this check exists to prevent.
+		val fresh = countsOf(id, plan.subTeams)
 		if (declared != fresh) throw CountsChangedException(fresh)
 
 		val ticketsTarget = requireTicketDestination(team, plan)

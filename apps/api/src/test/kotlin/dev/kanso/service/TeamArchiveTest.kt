@@ -10,6 +10,7 @@ import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.SyncJobRepository
+import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncOperation
 import org.springframework.beans.factory.annotation.Autowired
@@ -33,6 +34,7 @@ class TeamArchiveTest : PostgresTest() {
 	@Autowired lateinit var jobs: SyncJobRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var teamRows: TeamRepository
 
 	private fun user(role: InstanceRole): User = users.createLocalUser(
 		email = "arch-${UUID.randomUUID()}@kanso.test",
@@ -254,5 +256,105 @@ class TeamArchiveTest : PostgresTest() {
 		assertEquals(1, queued.count { it.entityId == mobile.id })
 		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == project.id }.operation)
 		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == ticket.ticket.id }.operation)
+		// The team rows too: nothing else in the suite says which operation they carry,
+		// so ARCHIVE could be written UPSERT here and nothing would notice.
+		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == core.id }.operation)
+		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == mobile.id }.operation)
+	}
+
+	@Test
+	fun `unarchiving pushes the team and its ancestors back as live pages`() {
+		val core = newTeam("Core")
+		val mobile = newTeam("Mobile", core.id)
+		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
+		jobs.claimBatch(200, "drain")
+
+		teams.unarchive(admin, mobile.id)
+
+		val queued = jobs.claimBatch(200, "test").associateBy { it.entityId }
+		assertEquals(SyncOperation.UPSERT, queued[mobile.id]?.operation)
+		assertEquals(SyncOperation.UPSERT, queued[core.id]?.operation, "the ancestor comes back too")
+	}
+
+	@Test
+	fun `everything the plan re-homes is pushed as an update, not archived with the team`() {
+		val core = newTeam("Core")
+		val mobile = newTeam("Mobile", core.id)
+		val ios = newTeam("iOS", mobile.id)
+		val growth = newTeam("Growth")
+		val project = newProject(mobile.id)
+		val ticket = newTicket(mobile.id)
+		jobs.claimBatch(200, "drain")
+
+		teams.archive(
+			admin,
+			mobile.id,
+			DispositionPlan(
+				subTeams = DispositionChoice.KEEP,
+				projects = DispositionChoice.KEEP,
+				tickets = DispositionChoice.KEEP,
+				ticketsTargetTeamId = growth.id,
+			),
+		)
+
+		val queued = jobs.claimBatch(200, "test").associateBy { it.entityId }
+		assertEquals(SyncOperation.ARCHIVE, queued[mobile.id]?.operation)
+		assertEquals(SyncOperation.UPSERT, queued[ios.id]?.operation, "reparented to the grandparent")
+		assertEquals(SyncOperation.UPSERT, queued[project.id]?.operation, "re-homed to the parent team")
+		assertEquals(SyncOperation.UPSERT, queued[ticket.ticket.id]?.operation, "moved and renumbered")
+		assertNull(queued[core.id], "the grandparent changed in no way and needs no push")
+	}
+
+	/**
+	 * The invariant the spec states and nothing tested: **an unarchived team never has
+	 * an archived ancestor.** Every path that can move a team's archived flag or its
+	 * parent is walked in sequence, and the whole tree is re-checked after each one —
+	 * a single scenario would only ever show that one path happens to be safe.
+	 */
+	@Test
+	fun `no sequence of archive and unarchive leaves a live team under an archived one`() {
+		val core = newTeam("Core")
+		val mobile = newTeam("Mobile", core.id)
+		val ios = newTeam("iOS", mobile.id)
+		val tree = listOf(core.id, mobile.id, ios.id)
+
+		fun check(step: String) {
+			for (id in tree) {
+				val team = teams.get(id)
+				if (team.archived) continue
+				val archivedAbove = teamRows.ancestorIds(id).map { teams.get(it) }.filter { it.archived }
+				assertTrue(
+					archivedAbove.isEmpty(),
+					"after $step, ${team.name} is live under ${archivedAbove.map { it.name }}",
+				)
+			}
+		}
+
+		check("nothing at all")
+
+		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
+		check("archiving the root, taking the subtree")
+
+		teams.unarchive(admin, ios.id)
+		check("unarchiving the leaf, which pulls its ancestors back")
+
+		teams.archive(admin, mobile.id, DispositionPlan(subTeams = DispositionChoice.KEEP))
+		check("archiving the middle, keeping the sub-teams")
+
+		teams.unarchive(admin, mobile.id)
+		check("unarchiving the middle again")
+
+		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.KEEP))
+		check("archiving the root, keeping the sub-teams")
+
+		teams.unarchive(admin, core.id)
+		check("unarchiving the root")
+
+		// The last way in: reparenting. Refused outright rather than repaired after.
+		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.KEEP))
+		assertFailsWith<ConflictException> {
+			teams.update(admin, mobile.id, mobile.name, mobile.key, core.id)
+		}
+		check("trying to move a live team under an archived one")
 	}
 }

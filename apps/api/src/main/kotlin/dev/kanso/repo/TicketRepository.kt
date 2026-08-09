@@ -173,6 +173,26 @@ class TicketRepository {
 	fun idsByProject(projectId: UUID): List<UUID> =
 		Tickets.select(Tickets.id).where { Tickets.projectId eq projectId }.map { it[Tickets.id] }
 
+	/**
+	 * Keeping a ticket whose project does not travel with it costs it only the
+	 * grouping — the by-ticket counterpart of [clearProject], for the disposition that
+	 * sends a team's projects and its tickets to two different places.
+	 */
+	fun clearProjectFor(ticketIds: Collection<UUID>): List<UUID> {
+		if (ticketIds.isEmpty()) return emptyList()
+		val ids = Tickets.select(Tickets.id)
+			.where { (Tickets.id inList ticketIds) and Tickets.projectId.isNotNull() }
+			.map { it[Tickets.id] }
+		if (ids.isNotEmpty()) Tickets.update({ Tickets.id inList ids }) { it[Tickets.projectId] = null }
+		return ids
+	}
+
+	/** Every ticket of this project that sits outside [teamId] — what a move would orphan. */
+	fun countByProjectOutsideTeam(projectId: UUID, teamId: UUID): Int =
+		Tickets.selectAll()
+			.where { (Tickets.projectId eq projectId) and (Tickets.teamId neq teamId) }
+			.count().toInt()
+
 	/** Keeping a ticket whose project goes away costs it only the grouping. */
 	fun clearProject(projectId: UUID): List<UUID> {
 		val ids = idsByProject(projectId)

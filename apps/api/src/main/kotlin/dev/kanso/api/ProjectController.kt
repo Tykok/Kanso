@@ -24,8 +24,8 @@ class ProjectController(private val projects: ProjectService) {
 	fun get(@PathVariable id: UUID): ProjectResponse = ProjectResponse.of(projects.get(id))
 
 	@GetMapping("/{id}/contents")
-	fun contents(@PathVariable id: UUID): DispositionCountsResponse =
-		DispositionCountsResponse.of(projects.contents(id))
+	fun contents(@PathVariable id: UUID): DispositionContentsResponse =
+		DispositionContentsResponse.of(projects.contents(id))
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)

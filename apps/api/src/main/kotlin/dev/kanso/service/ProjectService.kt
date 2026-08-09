@@ -1,6 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.DispositionChoice
+import dev.kanso.domain.DispositionContents
 import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.Project
@@ -54,10 +55,16 @@ class ProjectService(
 
 	/** A project holds no teams and no projects; only its tickets need a decision. */
 	@Transactional(readOnly = true)
-	fun contents(id: UUID): DispositionCounts {
+	fun contents(id: UUID): DispositionContents {
 		get(id)
-		return DispositionCounts(subTeams = 0, projects = 0, tickets = tickets.countByProject(id))
+		// A project holds no teams, so there is no subtree for a plan to reach: the two
+		// readings the modal switches between are the same number here.
+		val counts = countsOf(id)
+		return DispositionContents(direct = counts, subtree = counts)
 	}
+
+	private fun countsOf(id: UUID) =
+		DispositionCounts(subTeams = 0, projects = 0, tickets = tickets.countByProject(id))
 
 	@Transactional
 	fun create(
@@ -98,6 +105,23 @@ class ProjectService(
 		leadUserId?.let { requireUser(it) }
 		docIds?.let { requireDocs(it) }
 
+		// A ticket's project belongs to its team, and this is the writer that can break
+		// it wholesale: moving a project into another team leaves every ticket still
+		// pointing at it in a team that never had it. Refused rather than repaired,
+		// because the repair — silently dropping the grouping of tickets nobody named —
+		// is the loss `TicketService.patch` reserves for the one case that *was* asked
+		// for. Clearing the team instead is always allowed: a team-less project is the
+		// transverse case and belongs everywhere.
+		if (teamId != null && teamId != existing.teamId) {
+			val strays = tickets.countByProjectOutsideTeam(id, teamId)
+			if (strays > 0) {
+				throw ConflictException(
+					"Project $id still holds $strays ticket(s) outside team $teamId; " +
+						"move them first, or clear the project's team",
+				)
+			}
+		}
+
 		// Archiving has its own verb; an edit never changes that flag by accident.
 		val updated = projects.update(id, name, status, startDate, endDate, leadUserId, teamId, existing.archived)
 			?: throw NotFoundException("No project $id")
@@ -133,7 +157,7 @@ class ProjectService(
 
 		val declared = plan.counts
 			?: throw BadRequestException("Deleting a project requires the counts the confirmation showed")
-		val fresh = DispositionCounts(subTeams = 0, projects = 0, tickets = tickets.countByProject(id))
+		val fresh = countsOf(id)
 		if (declared != fresh) throw CountsChangedException(fresh)
 
 		disperseTickets(id, plan, destructive = true)
