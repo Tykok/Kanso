@@ -9,7 +9,23 @@ val exposedVersion = "1.4.0"
 val testcontainersVersion = "2.0.5"
 
 group = "dev.kanso"
-version = "0.1.0"
+
+/**
+ * The version is the commit that produced the build, injected the same way the web
+ * bundle receives `NEXT_PUBLIC_KANSO_COMMIT` — `docker-compose.yml` passes the same
+ * `KANSO_COMMIT` to both halves, so `/api/me` and the footer can be compared at all.
+ *
+ * A hand-edited semver here would be the exact constant this was built to abolish:
+ * it only changes when somebody remembers, and people quote it in bug reports. `dev`
+ * is what a local `./gradlew` with no commit passed reports, and saying "dev" is
+ * honest where "0.1.0" is a lie.
+ */
+version = (providers.gradleProperty("kansoCommit").orNull
+	?: providers.environmentVariable("KANSO_COMMIT").orNull)
+	?.trim()
+	?.takeIf { it.isNotEmpty() }
+	?: "dev"
+
 description = "Kanso API — Postgres is the source of truth, Notion is an async mirror"
 
 java {

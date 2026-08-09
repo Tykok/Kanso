@@ -8,6 +8,12 @@ COPY gradle ./gradle
 RUN ./gradlew --no-daemon dependencies || true
 
 COPY src ./src
+
+# The commit the image was built from, stamped into build-info.properties and reported
+# by /api/me. Declared here rather than at the top so it cannot invalidate the
+# dependency-cache layer above. Docker exports build args as environment variables to
+# RUN, and `build.gradle.kts` reads KANSO_COMMIT from there; unset, it stays `dev`.
+ARG KANSO_COMMIT=dev
 RUN ./gradlew --no-daemon clean bootJar -x test
 
 # ---- run ----

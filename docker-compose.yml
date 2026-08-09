@@ -22,6 +22,11 @@ services:
   api:
     build:
       context: ./apps/api
+      args:
+        # The same commit the web bundle is stamped with, so the two halves are
+        # comparable: `springBoot { buildInfo() }` writes it into
+        # build-info.properties and /api/me reports it. Unset, both report `dev`.
+        KANSO_COMMIT: ${KANSO_COMMIT:-dev}
     restart: unless-stopped
     depends_on:
       db:
