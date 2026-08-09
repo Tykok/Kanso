@@ -89,9 +89,11 @@ docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wai
 | File                     | What it holds                                                               |
 | ------------------------ | ---------------------------------------------------------------------------- |
 | `crud.spec.ts`           | 1. Create team, sub-team, project, team-less project, ticket. 2. Scopes.      |
-| `permissions.spec.ts`    | 3. A member sees neither the teams `+` nor any team `⋯`.                     |
+| `permissions.spec.ts`    | 3. A member's team `⋯` holds only project creation; an admin's holds all five.|
 | `disposition.spec.ts`    | 4. Delete a team keeping everything: re-homing and renumbering.               |
 | `keyboard.spec.ts`       | 5. Keyboard non-regression.                                                  |
+| `archive.spec.ts`        | 6. Archive a team: counts follow the plan; Show archived and unarchive.       |
+|                          | 7. Archive a project; a failed unarchive in the topbar error line.            |
 
 Scenario 5 is the point of the whole thing. The action registry rewrites the keyboard
 path; this test is what says whether behaviour moved with it. When an assertion is in

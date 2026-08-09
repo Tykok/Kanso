@@ -82,10 +82,10 @@ test("scenario 1 — a team, a sub-team, a project inside it, a team-less projec
   await page.keyboard.press("c");
   const title = page.getByPlaceholder("New ticket…");
   await expect(title).toBeFocused();
-  // The scope resolved the team: this is the `teams.data[0]` fallback, fixed.
-  // Scoped to the composer's own context bar: a bare `getByLabel("Team")` also
-  // matches the sidebar's "New team" button, whose accessible name contains "team".
-  await expect(page.locator(".composer-context").getByLabel("Team")).not.toHaveValue("");
+  // The scope resolved the team: this is the `teams.data[0]` fallback, fixed. The
+  // field is called "Ticket team", which is what removes the cross-region collision
+  // with the sidebar's "New team" button at its source rather than in this locator.
+  await expect(page.getByLabel("Ticket team")).not.toHaveValue("");
   await title.fill(ticket);
   await title.press("Enter");
   await expect(ticketRow(page, ticket)).toBeVisible();

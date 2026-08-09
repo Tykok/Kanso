@@ -64,10 +64,13 @@ test("scenario 4 — deleting a team keeping everything re-homes and renumbers w
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
 
-  // Everything defaults to "keep", in all three categories.
+  // Everything defaults to "keep", in all three categories. Asserted by the choice's
+  // own name: `.first()` would only say that whichever radio the markup happens to
+  // put first is checked, which stays true if the two ever swap places.
   for (const noun of ["sub-teams", "projects", "tickets"]) {
     const group = dialog.getByRole("radiogroup", { name: noun });
-    await expect(group.getByRole("radio").first()).toBeChecked();
+    await expect(group.getByRole("radio", { name: /^Keep active/ })).toBeChecked();
+    await expect(group.getByRole("radio", { name: /^Delete with it$/ })).not.toBeChecked();
   }
 
   // Kept tickets need a destination.
