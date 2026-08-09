@@ -103,6 +103,15 @@ function TeamForm({
   const [key, setKey] = useState(team?.key ?? "");
   const [parent, setParent] = useState(defaultParentId);
 
+  /**
+   * The row menu that opens this dialog says "New team" now, not "New sub-team" — the
+   * dedicated `team.createChild` action is gone, folded into `team.create` with the
+   * parent pre-filled by `creationSeed`. The title is where that context reappears, so
+   * standing on a team and creating one still reads as "under here", not as a plain,
+   * unscoped "New team".
+   */
+  const parentName = !team ? teams.find((row) => row.id === defaultParentId)?.name : undefined;
+
   const save = useMutation({
     mutationFn: (body: { name: string; key?: string; parentTeamId?: string }) =>
       team ? api.updateTeam(team.id, body) : api.createTeam(body),
@@ -141,7 +150,7 @@ function TeamForm({
 
   return (
     <DialogFrame
-      title={team ? `Edit ${team.name}` : "New team"}
+      title={team ? `Edit ${team.name}` : parentName ? `New team under ${parentName}` : "New team"}
       onClose={onClose}
       onSubmit={submit}
       submitLabel={team ? "Save" : "Create"}

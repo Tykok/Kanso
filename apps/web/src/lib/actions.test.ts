@@ -87,13 +87,11 @@ const REQUIRED_IDS = [
   "ticket.status.done",
   "ticket.status.canceled",
   "team.create",
-  "team.createChild",
   "team.rename",
   "team.archive",
   "team.unarchive",
   "team.delete",
   "project.create",
-  "project.createInTeam",
   "project.edit",
   "project.archive",
   "project.unarchive",
@@ -188,7 +186,6 @@ describe("availableActions", () => {
   it("offers them to an admin on the same scope", () => {
     const admin = ids(context({ scope: { kind: "team", id: core.id } }));
     expect(admin).toContain("team.create");
-    expect(admin).toContain("team.createChild");
     expect(admin).toContain("team.rename");
     expect(admin).toContain("team.delete");
   });
@@ -287,10 +284,36 @@ describe("running an action", () => {
     });
   });
 
-  it("opens the team dialog with a parent when creating a sub-team", () => {
+  it("opens the project dialog carrying the scoped team's id", () => {
     const ctx = context({ scope: { kind: "team", id: core.id } });
-    actionById("team.createChild").run(ctx);
+    actionById("project.create").run(ctx);
+    expect(ctx.openDialog).toHaveBeenCalledWith({ kind: "project", teamId: core.id });
+  });
+
+  it("opens the project dialog carrying a project scope's own team, one level up", () => {
+    const ctx = context({ scope: { kind: "project", id: refonte.id } });
+    actionById("project.create").run(ctx);
+    expect(ctx.openDialog).toHaveBeenCalledWith({ kind: "project", teamId: core.id });
+  });
+
+  it("opens the team dialog with the scoped team as parent", () => {
+    const ctx = context({ scope: { kind: "team", id: core.id } });
+    actionById("team.create").run(ctx);
     expect(ctx.openDialog).toHaveBeenCalledWith({ kind: "team", parentTeamId: core.id });
+  });
+
+  it("opens the team dialog with a project scope's own team as parent, one level up", () => {
+    const ctx = context({ scope: { kind: "project", id: refonte.id } });
+    actionById("team.create").run(ctx);
+    expect(ctx.openDialog).toHaveBeenCalledWith({ kind: "team", parentTeamId: core.id });
+  });
+
+  it("leaves both dialogs unseeded from the all-tickets scope", () => {
+    const ctx = context({ scope: { kind: "all" } });
+    actionById("project.create").run(ctx);
+    expect(ctx.openDialog).toHaveBeenCalledWith({ kind: "project", teamId: undefined });
+    actionById("team.create").run(ctx);
+    expect(ctx.openDialog).toHaveBeenCalledWith({ kind: "team", parentTeamId: undefined });
   });
 
   it("closes the palette after a status change, so the list is visible again", () => {

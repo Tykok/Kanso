@@ -1,5 +1,6 @@
 import type { Dialog, Overlay, Scope } from "@/store/ui";
 import type { Project, Team, Ticket, TicketPriority, TicketStatus } from "./api";
+import { creationSeed } from "./creation-seed";
 
 export type ActionGroup = "ticket" | "team" | "project" | "view" | "app";
 
@@ -258,14 +259,11 @@ export const ACTIONS: readonly Action[] = [
     label: "New team",
     group: "team",
     when: (ctx) => ctx.canConfigure,
-    run: (ctx) => ctx.openDialog({ kind: "team" }),
-  },
-  {
-    id: "team.createChild",
-    label: "New sub-team",
-    group: "team",
-    when: (ctx) => ctx.canConfigure && ctx.scope.kind === "team",
-    run: onTeam((ctx, id) => ctx.openDialog({ kind: "team", parentTeamId: id })),
+    run: (ctx) =>
+      ctx.openDialog({
+        kind: "team",
+        parentTeamId: creationSeed(ctx.scope, ctx.teams, ctx.projects).team.parentTeamId,
+      }),
   },
   {
     id: "team.rename",
@@ -313,14 +311,11 @@ export const ACTIONS: readonly Action[] = [
     label: "New project",
     group: "project",
     when: () => true,
-    run: (ctx) => ctx.openDialog({ kind: "project" }),
-  },
-  {
-    id: "project.createInTeam",
-    label: "New project in this team",
-    group: "project",
-    when: (ctx) => ctx.scope.kind === "team",
-    run: onTeam((ctx, id) => ctx.openDialog({ kind: "project", teamId: id })),
+    run: (ctx) =>
+      ctx.openDialog({
+        kind: "project",
+        teamId: creationSeed(ctx.scope, ctx.teams, ctx.projects).project.teamId,
+      }),
   },
   {
     id: "project.edit",

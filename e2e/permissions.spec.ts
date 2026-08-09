@@ -19,16 +19,17 @@ test.beforeAll(seedInstance);
  * no OAuth to simulate: the same page, two headers.
  *
  * Ruling from the human partner, against the first version of this test: a member
- * DOES see a team row's `⋯` — the path to "New project in this team" runs through it,
- * and creating a project is work open to every member (`actions.ts:313`,
- * `project.createInTeam`'s `when` is deliberately ungated on role). What a member must
- * never see is the *shape of the organisation* changing under them: the Teams header
- * `+`, and every team-management entry that would otherwise share that same menu
- * (rename, sub-team, archive, delete). So the guard worth having here is not "the
- * member sees no team `⋯`" but "the member's team `⋯`, when it does show, contains
- * exactly the one item it is entitled to — no more." Asserting the full item list
- * rather than just the presence of one is what actually catches a management action
- * leaking back into a member's menu later.
+ * DOES see a team row's `⋯` — the path to "New project" runs through it, and creating
+ * a project is work open to every member (`actions.ts`, `project.create`'s `when` is
+ * deliberately ungated on role). What a member must never see is the *shape of the
+ * organisation* changing under them: the Teams header `+`, and every team-management
+ * entry that would otherwise share that same menu (create, rename, archive, delete —
+ * "New team" on a team's own row opens the dialog with that team pre-filled as parent,
+ * same as the old dedicated "New sub-team" action did). So the guard worth having here
+ * is not "the member sees no team `⋯`" but "the member's team `⋯`, when it does show,
+ * contains exactly the one item it is entitled to — no more." Asserting the full item
+ * list rather than just the presence of one is what actually catches a management
+ * action leaking back into a member's menu later.
  */
 test("scenario 3 — a member's team menu holds only project creation, an admin's holds every team action", async ({
   browser,
@@ -46,8 +47,8 @@ test("scenario 3 — a member's team menu holds only project creation, an admin'
   // … and every team-management action on the row's ⋯, in full.
   const adminMenu = await openRowMenu(admin, team.name);
   await expect(adminMenu.getByRole("menuitem")).toHaveText([
-    "New project in this team",
-    "New sub-team",
+    "New project",
+    "New team",
     "Rename team",
     "Archive team",
     "Delete team",
@@ -59,7 +60,7 @@ test("scenario 3 — a member's team menu holds only project creation, an admin'
   await expect(member.getByRole("button", { name: "New team", exact: true })).toHaveCount(0);
   // The row's ⋯ DOES show — but holds exactly the one entry a member is entitled to.
   const memberMenu = await openRowMenu(member, team.name);
-  await expect(memberMenu.getByRole("menuitem")).toHaveText(["New project in this team"]);
+  await expect(memberMenu.getByRole("menuitem")).toHaveText(["New project"]);
   await member.keyboard.press("Escape");
 
   // The daily work stays open to both: the Projects + and a project's own ⋯.

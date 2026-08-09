@@ -77,8 +77,8 @@ function TeamRow({
   onSelect: () => void;
 }) {
   const items = menuItems(ctx, [
-    "project.createInTeam",
-    "team.createChild",
+    "project.create",
+    "team.create",
     "team.rename",
     team.archived ? "team.unarchive" : "team.archive",
     "team.delete",
