@@ -179,9 +179,22 @@ class NotionPoller(
 	}
 
 	/**
-	 * Teams accept only the archived flag and the name from Notion. The parent
-	 * relation is refused: Notion's self-referencing relation can be made cyclic,
-	 * and repairing that after the fact is worse than never accepting it.
+	 * Teams accept nothing from Notion. The page is acknowledged, and that is all.
+	 *
+	 * The parent relation is refused because Notion's self-referencing relation can be
+	 * made cyclic, and repairing that after the fact is worse than never accepting it.
+	 * The archived flag is refused for the same class of reason, and the reasoning
+	 * transfers verbatim. Archiving a team in Kanso is a whole operation — a
+	 * disposition plan deciding what becomes of its sub-teams, projects and tickets,
+	 * and the invariant that an unarchived team never has an archived ancestor
+	 * (`TeamService.update`, `TeamService.archive`, `TeamService.unarchive`). A
+	 * checkbox in Notion carries none of that, and this class has no actor to authorise
+	 * it either. Letting it through breaks the invariant in *both* directions —
+	 * archiving a parent leaves live children under an archived ancestor, unarchiving a
+	 * child leaves it under one — and nothing anywhere repairs it afterwards.
+	 *
+	 * A disagreement queues a corrective push instead, for the same reason [kansoWins]
+	 * does: Notion converges back on its own rather than the two disagreeing forever.
 	 */
 	private fun applyTeam(page: NotionPage) {
 		val team = teams.findByNotionPageId(page.id) ?: return orphan("team", page)
@@ -191,13 +204,19 @@ class NotionPoller(
 			jobs.enqueue(SyncEntityType.TEAM, team.id, SyncOperation.UPSERT)
 			return
 		}
-		if (team.archived == page.archived) {
-			teams.markSynced(team.id, page.id, page.lastEditedTime)
-			return
+		if (team.archived != page.archived) {
+			log.info(
+				"Ignoring the archived flag on Notion page {}: a team's archived state is decided in Kanso, " +
+					"with a disposition plan; re-pushing",
+				page.id,
+			)
+			jobs.enqueue(
+				SyncEntityType.TEAM,
+				team.id,
+				if (team.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+			)
 		}
-		teams.update(team.id, team.name, team.key, team.parentTeamId, page.archived)
 		teams.markSynced(team.id, page.id, page.lastEditedTime)
-		events.publish(KansoEvent.team(ChangeKind.UPDATED, team.id, origin = "notion"))
 	}
 
 	/** Guard 2: nothing newer than what our own push produced. */
