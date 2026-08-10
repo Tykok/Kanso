@@ -11,6 +11,7 @@ import {
   usePatchTicket,
   useProjects,
   useTeams,
+  useTimeline,
   useUnarchive,
 } from "./queries";
 
@@ -39,6 +40,8 @@ export function useActionContext(local: {
   startRename: (id: string) => void;
   /** Opens the predecessor picker for a ticket. Page-local: the palette is its list. */
   startLink: (successorId: string) => void;
+  /** Opens the same picker to erase one instead of to draw one. */
+  startUnlink: (successorId: string) => void;
   /** Where a failure with no dialog to land in goes. `null` clears it. */
   reportError: (message: string | null) => void;
 }): ActionContext {
@@ -46,6 +49,10 @@ export function useActionContext(local: {
   const me = useMe();
   const teams = useTeams();
   const projects = useProjects();
+  // The chart's own query, asked for again rather than passed down: same key, so this is
+  // the same cache entry the chart reads and no second request exists. `enabled` is the
+  // view, so the list pays nothing for edges no action there can use.
+  const timeline = useTimeline(view === "timeline");
   const { mutate: patchTicket } = usePatchTicket();
   const { mutate: unarchiveEntity } = useUnarchive();
   const { mutate: deleteTicket } = useDeleteTicket();
@@ -104,7 +111,7 @@ export function useActionContext(local: {
   const role = me.data?.user.instanceRole;
   const canConfigure = role === "owner" || role === "admin";
 
-  const { tickets, selected, move, startRename, startLink, reportError } = local;
+  const { tickets, selected, move, startRename, startLink, startUnlink, reportError } = local;
 
   return useMemo(
     () => ({
@@ -125,7 +132,9 @@ export function useActionContext(local: {
       focusFilter,
       startRename,
       recentre,
+      dependencies: timeline.data?.dependencies ?? [],
       startLink,
+      startUnlink,
       // Left alone on purpose: a patch is optimistic, so a failure is already
       // visible as the row snapping back to what it was.
       patchTicket,
@@ -157,7 +166,9 @@ export function useActionContext(local: {
       focusFilter,
       startRename,
       recentre,
+      timeline.data,
       startLink,
+      startUnlink,
       reportError,
       patchTicket,
       deleteTicket,

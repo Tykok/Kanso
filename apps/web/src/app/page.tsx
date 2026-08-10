@@ -13,7 +13,7 @@ import { SettingsPanel } from "@/components/settings/panel";
 import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
-import { availableActions, resolveShortcut } from "@/lib/actions";
+import { availableActions, predecessorsOf, resolveShortcut } from "@/lib/actions";
 import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
 import {
@@ -27,6 +27,7 @@ import {
   useSyncStatus,
   useTeams,
   useTickets,
+  useUnlinkDependency,
 } from "@/lib/queries";
 import { ZOOMS } from "@/lib/timeline-geometry";
 import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
@@ -67,11 +68,11 @@ export default function InboxPage() {
   const [editingId, setEditingId] = useState<string | undefined>();
   const [actionError, setActionError] = useState<{ scope: Scope; message: string } | null>(null);
   /**
-   * The successor waiting for a predecessor, while `d` has the palette open on the
-   * candidates. Page-local rather than in the store: it lives exactly as long as the
-   * overlay it re-labels, and the palette is rendered here.
+   * The ticket whose arrows the palette is asking about, and which question it is
+   * asking. Page-local rather than in the store: it lives exactly as long as the overlay
+   * it re-labels, and the palette is rendered here.
    */
-  const [linkFor, setLinkFor] = useState<string | undefined>();
+  const [picker, setPicker] = useState<{ kind: "link" | "unlink"; ticketId: string }>();
 
   const teams = useTeams();
   const tickets = useTickets();
@@ -80,6 +81,7 @@ export default function InboxPage() {
 
   const patch = usePatchTicket();
   const link = useLinkDependency();
+  const unlink = useUnlinkDependency();
 
   const filtered = useMemo(() => {
     const rows = tickets.data ?? [];
@@ -162,22 +164,30 @@ export default function InboxPage() {
   const startRename = useCallback((id: string) => setEditingId(id), []);
 
   /**
-   * `d` on the chart. The predecessor is picked from the palette the app already has
-   * rather than from a link mode of its own: nothing else in this interface is modal,
+   * `d` and `D` on the chart. The predecessor is picked from the palette the app already
+   * has rather than from a link mode of its own: nothing else in this interface is modal,
    * and one keyboard gesture is not worth teaching a second way to be in a state.
    */
   const startLink = useCallback(
     (successorId: string) => {
-      setLinkFor(successorId);
+      setPicker({ kind: "link", ticketId: successorId });
       open("palette");
     },
     [open],
   );
 
-  // The palette is one overlay with two lists, so leaving it has to put the ordinary
+  const startUnlink = useCallback(
+    (successorId: string) => {
+      setPicker({ kind: "unlink", ticketId: successorId });
+      open("palette");
+    },
+    [open],
+  );
+
+  // The palette is one overlay with three lists, so leaving it has to put the ordinary
   // one back — otherwise ⌘K afterwards would still be asking about a dependency.
   const closeOverlay = useCallback(() => {
-    setLinkFor(undefined);
+    setPicker(undefined);
     close();
   }, [close]);
 
@@ -199,6 +209,7 @@ export default function InboxPage() {
     move,
     startRename,
     startLink,
+    startUnlink,
     reportError,
   });
 
@@ -254,15 +265,15 @@ export default function InboxPage() {
   const commands = useMemo(() => {
     // Asked for a predecessor, the palette lists tickets instead of commands: same
     // overlay, same filtering, same keys, so `d` costs nobody a new mental model.
-    if (linkFor) {
+    if (picker?.kind === "link") {
       return visible
-        .filter((candidate) => candidate.id !== linkFor)
+        .filter((candidate) => candidate.id !== picker.ticketId)
         .map((candidate) => ({
           id: `timeline.link.${candidate.id}`,
           label: `Wait for ${candidate.identifier}: ${candidate.title}`,
           run: () => {
             link.mutate(
-              { successorId: linkFor, predecessorId: candidate.id },
+              { successorId: picker.ticketId, predecessorId: candidate.id },
               {
                 // A cycle is a 409 naming the chain. It belongs on the screen the
                 // arrow was drawn on, in the same strip every other refusal uses.
@@ -273,6 +284,29 @@ export default function InboxPage() {
             closeOverlay();
           },
         }));
+    }
+
+    // The inverse list, in the same overlay. "Stop waiting for" against "Wait for", so
+    // the two are legible as opposites rather than as two unrelated pickers.
+    if (picker?.kind === "unlink") {
+      const successorId = picker.ticketId;
+      return predecessorsOf(ctx, successorId).map((predecessor) => ({
+        id: `timeline.unlink.${predecessor.id}`,
+        label: `Stop waiting for ${predecessor.identifier}: ${predecessor.title}`,
+        run: () => {
+          unlink.mutate(
+            { successorId, predecessorId: predecessor.id },
+            {
+              // Nothing here is optimistic — freeing slack pulls nothing earlier — so a
+              // refusal has no row snapping back to serve as its signal, and goes to the
+              // strip every other failed action reports into.
+              onError: (error) => reportError(actionErrorMessage(error)),
+              onSuccess: () => reportError(null),
+            },
+          );
+          closeOverlay();
+        },
+      }));
     }
 
     return [
@@ -292,7 +326,7 @@ export default function InboxPage() {
         },
       })),
     ];
-  }, [ctx, teams.data, setScope, close, linkFor, visible, link, reportError, closeOverlay]);
+  }, [ctx, teams.data, setScope, close, picker, visible, link, unlink, reportError, closeOverlay]);
 
   if (me.isLoading || authMode.isLoading || setup.isLoading) {
     return <div className="centered">Loading…</div>;
