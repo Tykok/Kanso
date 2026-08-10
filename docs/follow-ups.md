@@ -95,13 +95,15 @@ through a row's `⋯`, and the palette's own coverage stops at the actions the k
 already had. "Should work" is the phrasing that preceded three of this branch's
 regressions.
 
-**No menu shows `⌘K` against *Command palette*.** Menu hints are mapped from
+**No menu shows `⌘K` against *Command palette* — closed.** Menu hints are mapped from
 `Action.shortcut`, which is a list of `KeyboardEvent.key` values `resolveShortcut`
 dispatches on; `app.palette` deliberately carries none, because ⌘K is intercepted ahead
-of the registry (see the dead-action note above) and registering `k` there would
-collide with `ticket.prev`. The spec's mock draws the hint. Showing it needs a display
-string that is not also a dispatch key — a second field, or a shortcut type that
-separates the two.
+of the registry and registering `k` there would collide with `ticket.moveUp`. It now
+carries `hint: "Mod+K"` instead — a display string that is never dispatched — and
+`hintOf` expands `Mod` to the modifier the reader's own keyboard has. The three surfaces
+that each spelled the rule out themselves (`menu-items.ts`, the palette in `page.tsx`,
+`shortcutRows`) read that one function, and the overlay's hardcoded `⌘K / Ctrl+K` pair is
+gone with it.
 
 ## Small and mechanical
 
@@ -133,14 +135,6 @@ reads the date in the session's timezone — a server in Paris would have stored
 existing day as 22:00 the day before. No test covers it: Testcontainers starts empty,
 so there is no legacy row to convert. Any future backfill of a date column has the same
 trap.
-
-**Clearing a due date only takes effect on refetch.** `PatchInput` in
-`apps/web/src/lib/queries.ts` never listed the date field, and ticket patches reach it
-through `ActionContext.patchTicket`'s `Record<string, unknown>`, so the field is
-unchecked end to end. The optimistic `setQueryData` spread applies `due` but not
-`unset: ["due"]`, so the cleared date reappears until the server answers. This predates
-the timeline work — it behaved identically when the field was `dueDate` — and it will
-be more visible once bars can be dragged.
 
 **The cascade is not separately observable.** `TicketService.patch` publishes one event
 for the edit, and that event announces the cascade only by construction: `EventPublisher`
@@ -218,12 +212,28 @@ projects the two orders differ and `j` can jump a screenful. It was already so b
 timeline's cursor list widened; it is more visible now that the chart's cursor covers
 every row rather than the filtered few.
 
-**Erasing an arrow starts with a click or a Tab.** A dependency is selected by clicking
-its line or tabbing onto it, and then `Backspace` or the `×` removes it. There is no key
-that walks the arrows the way `j`/`k` walk the rows, so the arrows are focusable — one tab
-stop per dependency — which is what keeps erasing reachable without a mouse at all. A
-`timeline.unlink` action in the registry, listing the selected ticket's predecessors in
-the palette the way `d` lists its candidates, would be the symmetrical answer.
+**Erasing an arrow starts with a click or a Tab — closed.** `timeline.unlink` on `D` is
+the inverse of `d` through the same palette: it lists the selected ticket's predecessors
+by name and `Enter` erases one. The arrows stay focusable — one tab stop per dependency —
+so the pointer path is unchanged; what was missing was a key that reaches a dependency
+through the ticket it constrains, the way `d` already reaches one. There is still no key
+that walks arrow to arrow, and that is a second selection model rather than a gap.
+
+**`timeline.unlink` is the first action gated on a fetch.** `ActionContext.dependencies`
+comes from the timeline query, so while that query is in flight `D` is inert and the
+action is absent from the palette — `when` counts edges rather than assuming there is
+something to erase. Every other `when` in the registry answers from the store or from a
+list the page already holds. If a second action ever needs the graph, the question worth
+asking first is whether `ActionContext` should carry a loading state rather than an empty
+list that reads as "no arrows".
+
+**An out-of-scope arrow is still pointer-only.** `predecessorsOf` lists an edge exactly
+when its other end resolves in `ctx.tickets`, which is what silently excludes the ones the
+timeline response marks `outOfScope`: outside the current scope, they are absent from that
+query too, so there is no name to print. Two unnameable rows in the picker would be two
+identical rows with different consequences. Their stubs remain clickable, and naming them
+properly means fetching each missing ticket by id when the palette opens — a request per
+edge, and a loading state in an overlay that has none.
 
 **The link handle has no accessible name.** It is an `aria-hidden` span, like the two
 resize grips beside it: pressing it does nothing, only dragging it does, and `d` already
