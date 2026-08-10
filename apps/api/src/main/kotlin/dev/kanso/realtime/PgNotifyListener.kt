@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
 import java.sql.Connection
 import java.sql.DriverManager
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
@@ -32,22 +33,31 @@ class PgNotifyListener(
 ) : SmartLifecycle {
 
 	private val log = LoggerFactory.getLogger(javaClass)
-	private val executor = Executors.newSingleThreadExecutor { runnable ->
-		Thread(runnable, "pg-notify-listener").apply { isDaemon = true }
-	}
+
+	/**
+	 * Created per [start] rather than once per bean: `shutdownNow` terminates an
+	 * executor for good, so a lifecycle that stops and starts again — which the Spring
+	 * test context cache does whenever it parks a context and comes back to it — would
+	 * otherwise resubmit into a dead pool and fail to start the bean at all.
+	 */
+	@Volatile
+	private var executor: ExecutorService? = null
 
 	@Volatile
 	private var active = false
 
 	override fun start() {
 		active = true
-		executor.submit(::listenLoop)
+		executor = Executors.newSingleThreadExecutor { runnable ->
+			Thread(runnable, "pg-notify-listener").apply { isDaemon = true }
+		}.also { it.submit(::listenLoop) }
 		log.info("Listening on Postgres channel '{}'", props.realtime.channel)
 	}
 
 	override fun stop() {
 		active = false
-		executor.shutdownNow()
+		executor?.shutdownNow()
+		executor = null
 	}
 
 	override fun isRunning(): Boolean = active
