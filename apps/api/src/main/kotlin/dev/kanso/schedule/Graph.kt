@@ -55,16 +55,3 @@ internal fun topologicalOrder(ids: Set<UUID>, edges: Collection<Edge>): List<UUI
 	check(order.size == ids.size) { "the dependency graph has a cycle, which the insert guard should have refused" }
 	return order
 }
-
-/** Everything reachable from [rootId] by following arrows forward, [rootId] included. */
-internal fun reachableFrom(rootId: UUID, edges: Collection<Edge>): Set<UUID> {
-	val bySource = edges.groupBy { it.predecessorId }
-	val seen = mutableSetOf(rootId)
-	val queue = ArrayDeque(listOf(rootId))
-	while (queue.isNotEmpty()) {
-		for (edge in bySource[queue.removeFirst()].orEmpty()) {
-			if (seen.add(edge.successorId)) queue += edge.successorId
-		}
-	}
-	return seen
-}

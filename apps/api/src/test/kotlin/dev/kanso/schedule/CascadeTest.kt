@@ -122,4 +122,40 @@ class CascadeTest {
 		assertEquals(day(22), moved.start, "the binding constraint is the later predecessor")
 		assertTrue(result.moved.count { it.id == c } == 1, "and C is written once, not twice")
 	}
+
+	@Test
+	fun `a violation that predates the edit is left alone`() {
+		// B has slack and does not move, so C — already overlapping B before anyone
+		// touched anything — is none of this edit's business.
+		val nodes = listOf(
+			Node(a, day(1), day(3), done = false),
+			Node(b, day(20), day(25), done = false),
+			Node(c, day(1), day(2), done = false),
+		)
+
+		val result = Cascade.apply(nodes, listOf(Edge(a, b), Edge(b, c)), changedId = a)
+
+		assertEquals(
+			emptyList(),
+			result.moved,
+			"the descent stops at B, so C keeps the dates it had — repairing it here would move a ticket nobody touched",
+		)
+	}
+
+	@Test
+	fun `every edge a done ticket breaks is reported, not just the binding one`() {
+		val nodes = listOf(
+			Node(a, day(1), day(18), done = false),
+			Node(b, day(1), day(22), done = false),
+			Node(c, day(15), day(16), done = true),
+		)
+
+		val result = Cascade.apply(nodes, listOf(Edge(a, c), Edge(b, c)), changedId = a)
+
+		assertEquals(
+			setOf(Edge(a, c), Edge(b, c)),
+			result.violated,
+			"two broken promises are two red arrows; drawing one under-reports the damage",
+		)
+	}
 }

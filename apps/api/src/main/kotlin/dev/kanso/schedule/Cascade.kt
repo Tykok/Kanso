@@ -25,39 +25,45 @@ object Cascade {
 		val current = nodes.associateBy { it.id }.toMutableMap()
 		if (changedId !in current) return CascadeResult(emptyList(), emptySet())
 
-		// Only what sits downstream of the change is settled. Repairing a violation
-		// elsewhere in the component would move tickets the person did not touch, in a
-		// request they did not make.
-		val downstream = reachableFrom(changedId, edges) - changedId
 		val byTarget = edges.groupBy { it.successorId }
 		val moved = LinkedHashMap<UUID, Placement>()
 		val violated = mutableSetOf<Edge>()
+
+		// What has actually moved so far, seeded with the ticket the person edited.
+		//
+		// This set is what stops the descent. Reaching a node from the change is not
+		// enough to consider it: a node whose predecessors all held still has no new
+		// constraint on it, and settling it anyway would repair a violation that
+		// predates the request — moving tickets nobody touched, in an edit nobody made.
+		val dirty = mutableSetOf(changedId)
 
 		// Topological order over the whole graph, so a node is settled only once every
 		// predecessor of it has been. A diamond — two chains meeting at one ticket — is
 		// exactly the case that breaks if the order is the one the edges were stored in.
 		for (id in topologicalOrder(current.keys, edges)) {
-			if (id !in downstream) continue
+			val incoming = byTarget[id].orEmpty()
+			if (incoming.none { it.predecessorId in dirty }) continue
+
 			val node = current.getValue(id)
 			val startsAt = node.from ?: continue
 
-			// Every predecessor, not just the ones the change reached: the binding
-			// constraint may come from a chain that did not move at all.
-			val binding = byTarget[id].orEmpty()
-				.mapNotNull { edge -> current[edge.predecessorId]?.to?.let { edge to it } }
-				.maxByOrNull { (_, end) -> end }
-				?: continue
-			val (edge, requiredStart) = binding
+			// Every predecessor, not just the ones that moved: the binding constraint may
+			// come from a chain that held still, and settling against the mover alone
+			// would leave the other edge broken.
+			val ends = incoming.mapNotNull { edge -> current[edge.predecessorId]?.to?.let { edge to it } }
+			val requiredStart = ends.maxOfOrNull { (_, end) -> end } ?: continue
 			if (!startsAt.isBefore(requiredStart)) continue
 
 			if (node.done) {
-				violated += edge
+				// Every edge this node breaks, not only the binding one: two red arrows
+				// are two facts, and drawing one of them is a plan that under-reports.
+				violated += ends.filter { (_, end) -> startsAt.isBefore(end) }.map { (edge, _) -> edge }
 				continue
 			}
 
-			val shifted = node.copy(start = requiredStart, end = requiredStart.plus(node.duration))
-			current[id] = shifted
+			current[id] = node.copy(start = requiredStart, end = requiredStart.plus(node.duration))
 			moved[id] = Placement(id, requiredStart, requiredStart.plus(node.duration))
+			dirty += id
 		}
 
 		return CascadeResult(moved.values.toList(), violated)
