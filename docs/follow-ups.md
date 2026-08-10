@@ -157,3 +157,10 @@ own `violated` set and nothing persists it. The two agree today because both enc
 same rule — an edge is violated exactly when a `done` successor starts before its
 predecessor ends — but they are two implementations of one fact. If violations ever
 become a stored column, the timeline should read it rather than recompute.
+
+**Which column a *timed* bound occupies is unspecified.** `xOf` places a bar by
+`dayValue`, which slices the UTC day, so a due at `2026-08-12T23:00Z` sits in the 12th's
+column while its own tooltip reads `13/08 08:00` to a Tokyo reader. Harmless today —
+every bound the timeline draws is floating, because nothing in the interface can yet
+create a timed one — and unremarked, which is why it is written down here. It surfaces
+the first time a ticket carries a time.

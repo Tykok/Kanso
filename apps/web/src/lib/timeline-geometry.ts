@@ -1,4 +1,4 @@
-import type { KansoInstant } from "./api";
+import { dayValue, type KansoInstant } from "./api";
 
 /**
  * Geometry only. No React, no DOM — Vitest runs in `environment: "node"`, so this is
@@ -16,8 +16,14 @@ export const ZOOMS: readonly Zoom[] = ["day", "week", "month"] as const;
 /** Pixels per calendar day. The zoom names describe the label density, not the unit. */
 export const PX_PER_DAY: Record<Zoom, number> = { day: 28, week: 10, month: 3 };
 
-/** The civil day a bound sits on, taken by slicing rather than by converting. */
-export const dayKey = (instant: KansoInstant): string => instant.at.slice(0, 10);
+/**
+ * The civil day a bound sits on.
+ *
+ * Re-exported from the API module rather than written a second time: `dayValue` is
+ * the same slice, carrying the same "never `new Date`" rule. Two spellings of the one
+ * rule this feature exists to protect is how it eventually gets half-fixed.
+ */
+export { dayValue as dayKey } from "./api";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -34,12 +40,12 @@ export function daysBetween(from: string, to: string): number {
  * day, and carrying the old hour over would be an arithmetic on a moment nobody moved.
  */
 export function addDays(instant: KansoInstant, days: number): KansoInstant {
-  const shifted = new Date(Date.parse(`${dayKey(instant)}T00:00:00Z`) + days * MS_PER_DAY);
+  const shifted = new Date(Date.parse(`${dayValue(instant)}T00:00:00Z`) + days * MS_PER_DAY);
   return floatingDay(shifted.toISOString().slice(0, 10));
 }
 
 export function xOf(instant: KansoInstant, origin: string, zoom: Zoom): number {
-  return daysBetween(origin, dayKey(instant)) * PX_PER_DAY[zoom];
+  return daysBetween(origin, dayValue(instant)) * PX_PER_DAY[zoom];
 }
 
 /**
@@ -48,7 +54,7 @@ export function xOf(instant: KansoInstant, origin: string, zoom: Zoom): number {
  * and a pair held inverted mid-drag would otherwise be drawn backwards.
  */
 export function widthOf(start: KansoInstant, end: KansoInstant, zoom: Zoom): number {
-  const days = daysBetween(dayKey(start), dayKey(end)) + 1;
+  const days = daysBetween(dayValue(start), dayValue(end)) + 1;
   return Math.max(days, 1) * PX_PER_DAY[zoom];
 }
 
@@ -62,21 +68,22 @@ export function snapDays(dx: number, zoom: Zoom): number {
 }
 
 /**
- * How a bound reads to one person. A floating bound is formatted from its own string
- * with no zone applied; a timed one is converted, because it names a moment.
+ * How a bound reads to one person.
+ *
+ * Both branches go through `Intl` so the two orderings never appear side by side: a
+ * hardcoded `dd/mm` next to a locale-formatted `mm/dd` would show an American reader
+ * `04/08 → 08/12` for a bar running from August 4th to August 12th, written two ways
+ * in one tooltip.
+ *
+ * The floating branch pins `timeZone: "UTC"`, which is what keeps a day a day. Swapping
+ * that for [timezone] is the one edit that breaks this, and the "reads the same in
+ * Tokyo and in Los Angeles" test exists to fail loudly when someone tries.
  */
 export function boundLabel(instant: KansoInstant, timezone: string): string {
-  if (!instant.hasTime) {
-    const [, month, day] = dayKey(instant).split("-");
-    return `${day}/${month}`;
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    timeZone: timezone,
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(instant.at));
+  const parts: Intl.DateTimeFormatOptions = instant.hasTime
+    ? { timeZone: timezone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }
+    : { timeZone: "UTC", day: "2-digit", month: "2-digit" };
+  return new Intl.DateTimeFormat(undefined, parts).format(new Date(instant.at));
 }
 
 export type AxisTick = { day: string; x: number; label: string };
@@ -85,7 +92,7 @@ export type AxisTick = { day: string; x: number; label: string };
 export function axisTicks(origin: string, dayCount: number, zoom: Zoom): AxisTick[] {
   const ticks: AxisTick[] = [];
   for (let offset = 0; offset < dayCount; offset += 1) {
-    const day = dayKey(addDays(floatingDay(origin), offset));
+    const day = dayValue(addDays(floatingDay(origin), offset));
     const [year, month, dayOfMonth] = day.split("-");
     const isFirst = dayOfMonth === "01";
     // `getUTCDay` on a day parsed as UTC: the weekday of the column, not of the reader.

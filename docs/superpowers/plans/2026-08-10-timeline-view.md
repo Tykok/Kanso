@@ -301,7 +301,7 @@ export function axisTicks(origin: string, dayCount: number, zoom: Zoom): AxisTic
 - [ ] **Step 4: Run the tests**
 
 Run: `pnpm --dir apps/web test`
-Expected: PASS — all fourteen cases.
+Expected: PASS — all thirteen cases.
 
 - [ ] **Step 5: Typecheck and commit**
 
@@ -987,6 +987,13 @@ arrow can be drawn by keyboard costs a whole mental model for one gesture.
 
 `ActionContext` gains the fields these need: `view`, `zoom`, `setZoom`, `shiftSelected`,
 `resizeSelected`, `scheduleSelected`, `unscheduleSelected`, `recentre`.
+
+**Also narrow `ActionContext.patchTicket`.** It is typed
+`(input: { id: string } & Record<string, unknown>) => void`, so every keyboard-driven
+patch bypasses `PatchInput` entirely — a caller can pass a misspelled field and nothing
+objects. Retype it as `(input: PatchInput) => void` and fix whatever that surfaces. This
+is the other half of the `unset` follow-up Task 2 closed in the mutation but not in the
+type.
 
 - [ ] **Step 5: Pass the mode from the key handler**
 
