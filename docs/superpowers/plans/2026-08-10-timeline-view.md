@@ -1042,9 +1042,16 @@ test("lengthening a ticket pushes the one that depends on it", async ({ page }) 
   const second = page.getByRole("button", { name: /Follows on/ });
   const before = await second.boundingBox();
 
-  // Draw the arrow: the handle on the predecessor, dropped on the successor.
-  await first.hover();
-  await page.getByRole("button", { name: /depends on Groundwork/i }).dragTo(second);
+  // Draw the arrow by coordinate. The link handle carries no accessible name on
+  // purpose — pressing it does nothing, only dragging does, and `d` already draws an
+  // arrow from the keyboard. A named button here would promise an activation that
+  // does not exist.
+  const handle = await first.boundingBox();
+  const target = await second.boundingBox();
+  await page.mouse.move(handle!.x + handle!.width + 3, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 8 });
+  await page.mouse.up();
 
   // Then lengthen the predecessor by dragging its right edge two columns out.
   const box = await first.boundingBox();
@@ -1063,7 +1070,12 @@ test("lengthening a ticket pushes the one that depends on it", async ({ page }) 
 
 `signIn`, `newTeam` and `newTicket` are illustrative names — read `e2e/support.ts` and
 use whatever it actually exports, extending it if a ticket cannot yet be created with
-dates. `56` is two day-columns at `PX_PER_DAY.day = 28`; import the constant rather than
+dates.
+
+**The interface moved while this plan was being executed.** Bars are `role="button"`
+named `${identifier}: ${title}`; tray chips are `<button>`; the resize grip is the last
+6px inside a bar's right edge and the link handle begins one pixel past it, neither
+named. Read the components rather than trusting this sketch. `56` is two day-columns at `PX_PER_DAY.day = 28`; import the constant rather than
 repeating the number if the suite can reach it.
 
 Drive it through the interface, not the API — the point of this scenario is that the
