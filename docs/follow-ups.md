@@ -141,3 +141,19 @@ unchecked end to end. The optimistic `setQueryData` spread applies `due` but not
 `unset: ["due"]`, so the cleared date reappears until the server answers. This predates
 the timeline work — it behaved identically when the field was `dueDate` — and it will
 be more visible once bars can be dragged.
+
+**The cascade is not separately observable.** `TicketService.patch` publishes one event
+for the edit, and that event announces the cascade only by construction: `EventPublisher`
+fires `afterCommit`, so it lands after the moved rows are written, and every receiver
+answers it by invalidating `["tickets"]` wholesale. Nothing names *which* tickets moved.
+That is enough for the current client and deliberately so — the plan's second event was
+a byte-identical duplicate and was not shipped. A client that ever wants to animate the
+moved bars rather than refetch them needs `KansoEvent` to carry ids, which is a change
+to `Events.kt`, not to the scheduler.
+
+**The timeline computes violated edges independently of the cascade.**
+`TimelineService.violatedEdges` re-derives them from stored dates; `Cascade` returns its
+own `violated` set and nothing persists it. The two agree today because both encode the
+same rule — an edge is violated exactly when a `done` successor starts before its
+predecessor ends — but they are two implementations of one fact. If violations ever
+become a stored column, the timeline should read it rather than recompute.

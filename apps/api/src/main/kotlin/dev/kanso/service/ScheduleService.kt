@@ -40,11 +40,20 @@ class ScheduleService(
 		if (componentIds.size < 2) return emptyList()
 
 		val edges = dependencies.edgesTouching(componentIds)
-		val nodes = tickets.findAllById(componentIds).map(::toNode)
+		val loaded = tickets.findAllById(componentIds).associateBy { it.id }
 
-		val result = Cascade.apply(nodes, edges, changedId)
+		val result = Cascade.apply(loaded.values.map(::toNode), edges, changedId)
 		for (placement in result.moved) {
-			tickets.reschedule(placement.id, placement.start, placement.end)
+			// Only the bounds the ticket already had. A milestone carries one of the two
+			// on purpose — a deadline with no start is a normal shape — and writing both
+			// would turn it into a dated span nobody asked for, with a granularity flag
+			// that never matched the bound it was invented for.
+			val before = loaded.getValue(placement.id)
+			tickets.reschedule(
+				id = placement.id,
+				start = placement.start.takeIf { before.start != null },
+				end = placement.end.takeIf { before.due != null },
+			)
 			syncJobs.enqueue(SyncEntityType.TICKET, placement.id, SyncOperation.UPSERT)
 		}
 		return result.moved.map { it.id }

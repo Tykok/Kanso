@@ -19,6 +19,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 @Transactional
 class ScheduleServiceTest : PostgresTest() {
@@ -100,5 +101,19 @@ class ScheduleServiceTest : PostgresTest() {
 
 		val untouched = repo.findById(b)!!
 		assertEquals(day(20).at, untouched.start!!.at, "eight days of slack absorbed two days of delay")
+	}
+	@Test
+	fun `a milestone stays a milestone when the cascade moves it`() {
+		val a = ticket("A", 1, 10)
+		// A deadline with no start: one bound on purpose, and the shape `Node` calls a
+		// milestone. Writing both bounds would silently turn it into a dated span.
+		val milestone = ticket("Deadline", null, 12)
+		deps.insert(a, milestone)
+
+		tickets.patch(a, TicketPatch(due = day(14)))
+
+		val moved = repo.findById(milestone)!!
+		assertEquals(day(14).at, moved.due!!.at, "the milestone follows its predecessor")
+		assertNull(moved.start, "and does not sprout a start it never had")
 	}
 }

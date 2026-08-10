@@ -138,11 +138,16 @@ class TicketRepository {
 	 * The granularity flags are left as they are: shifting a day-granularity ticket
 	 * keeps it a day, and a chain of floating dates does not sprout times because
 	 * something upstream slipped.
+	 *
+	 * A null bound means "this ticket never had one" and is left untouched, so a
+	 * milestone stays a milestone rather than gaining an invented start whose
+	 * granularity flag was never set for it.
 	 */
-	fun reschedule(id: UUID, start: OffsetDateTime, end: OffsetDateTime) {
+	fun reschedule(id: UUID, start: OffsetDateTime?, end: OffsetDateTime?) {
+		if (start == null && end == null) return
 		Tickets.update({ Tickets.id eq id }) {
-			it[startAt] = start
-			it[dueAt] = end
+			if (start != null) it[startAt] = start
+			if (end != null) it[dueAt] = end
 		}
 	}
 
