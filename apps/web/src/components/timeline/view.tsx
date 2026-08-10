@@ -1,14 +1,33 @@
 "use client";
 
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { TimelineArrows } from "./arrows";
-import type { BarEdit } from "./bar";
+import { barAt, type BarEdit } from "./bar";
 import { TimelineGrid } from "./grid";
 import { TimelineRow } from "./row";
 import { TimelineTray } from "./tray";
-import type { TimelineProject, TimelineTicket, TimelineView as TimelineData } from "@/lib/api";
-import { usePatchTicket, useTimeline } from "@/lib/queries";
-import { addDays, dayKey, daysBetween, PX_PER_DAY, today } from "@/lib/timeline-geometry";
+import type {
+  KansoInstant,
+  TimelineDependency,
+  TimelineProject,
+  TimelineTicket,
+  TimelineView as TimelineData,
+} from "@/lib/api";
+import { actionErrorMessage } from "@/lib/errors";
+import {
+  useLinkDependency,
+  usePatchTicket,
+  useTimeline,
+  useUnlinkDependency,
+} from "@/lib/queries";
+import {
+  addDays,
+  boundLabel,
+  dayKey,
+  daysBetween,
+  PX_PER_DAY,
+  today,
+} from "@/lib/timeline-geometry";
 import { useUi } from "@/store/ui";
 
 /**
@@ -55,14 +74,42 @@ type Hold = {
   edit?: { ticketId: string } & BarEdit;
 };
 
-export function TimelineView() {
+export function TimelineView({
+  /**
+   * Where a refusal goes. The page owns the `topbar-error` strip every other failed
+   * action reports into — a cycle refused with a 409 naming the chain is not a different
+   * kind of news because a mouse caused it, so it reads in the same place.
+   */
+  reportError,
+}: {
+  reportError: (message: string | null) => void;
+}) {
   const zoom = useUi((state) => state.zoom);
   const selectedId = useUi((state) => state.selectedId);
   const select = useUi((state) => state.select);
+  const linking = useUi((state) => state.linking);
+  const startLinking = useUi((state) => state.startLinking);
+  const stopLinking = useUi((state) => state.stopLinking);
   const timeline = useTimeline(true);
   const { mutate: patchTicket } = usePatchTicket();
+  const { mutate: linkDependency } = useLinkDependency();
+  const { mutate: unlinkDependency } = useUnlinkDependency();
 
   const [held, setHeld] = useState<Hold | null>(null);
+
+  /**
+   * The column a chip dragged out of the tray would land on, and the day it names.
+   * Painted through these rather than rendered: the pointer moves sixty times a second
+   * and the chart it is moving over is the one thing that must not be re-rendered while
+   * it does.
+   */
+  const dropLayer = useRef<HTMLDivElement>(null);
+  const dropBand = useRef<HTMLDivElement>(null);
+  const dropLabel = useRef<HTMLSpanElement>(null);
+
+  // A chart that goes away mid-gesture — the view switched, the scope changed — leaves
+  // a rubber band in the store with nothing drawing it and nothing to end it.
+  useEffect(() => stopLinking, [stopLinking]);
 
   /**
    * The reader's zone, resolved once. Only a bound that names a moment is converted
@@ -185,9 +232,131 @@ export function TimelineView() {
     return [...grouped, ...orphans];
   }, [view]);
 
+  /**
+   * The day under a point on the page, or nothing if that point is not over the grid.
+   *
+   * Measured off the drop layer, which is laid over the chart exactly as the rules are —
+   * same origin, same width — rather than found by hit-testing the DOM: the pointer is
+   * as often over a bar or an arrow as over bare grid, and the answer must be the same
+   * day in all three cases. The rect is a viewport rect, so a scrolled chart needs no
+   * correction.
+   *
+   * `Math.floor`, not the geometry module's `instantAtX`: that rounds to the nearest
+   * column boundary, which is the right answer for an edge being dragged and the wrong
+   * one for a drop, where the day wanted is the column the pointer is standing *in*.
+   */
+  const dayUnder = useCallback(
+    (x: number, y: number): { column: number; day: KansoInstant } | null => {
+      const box = dropLayer.current?.getBoundingClientRect();
+      if (!box || x < box.left || x >= box.right || y < box.top || y >= box.bottom) return null;
+      const column = Math.floor((x - box.left) / PX_PER_DAY[zoom]);
+      return { column, day: addDays(floating(bounds.origin), column) };
+    },
+    [zoom, bounds.origin],
+  );
+
+  /** Shows which column a drop would land on, and says which day that is. */
+  const paintDrop = useCallback(
+    (at: { column: number; day: KansoInstant } | null) => {
+      const band = dropBand.current;
+      if (!band) return;
+      if (!at) {
+        delete band.dataset.active;
+        return;
+      }
+      band.dataset.active = "";
+      band.style.transform = `translateX(${at.column * PX_PER_DAY[zoom]}px)`;
+      band.style.width = `${PX_PER_DAY[zoom]}px`;
+      // The column is three pixels wide at month zoom, so the day is written out as
+      // well: a band alone would say "somewhere around here" on the zoom where that is
+      // exactly the doubt.
+      if (dropLabel.current) dropLabel.current.textContent = boundLabel(at.day, timezone);
+    },
+    [zoom, timezone],
+  );
+
+  /**
+   * The end of a rubber band. A bar under the pointer is a successor and the arrow is
+   * posted; anything else — bare grid, the tray, the ticket's own bar, the window
+   * frame — is a cancelled gesture that writes nothing and says nothing.
+   */
+  const endLink = useCallback(
+    (x: number, y: number) => {
+      const predecessorId = linking?.fromId;
+      stopLinking();
+      if (!predecessorId) return;
+
+      const hit = barAt(x, y);
+      if (!hit || hit.id === predecessorId) return;
+
+      linkDependency(
+        { successorId: hit.id, predecessorId },
+        {
+          // A cycle is a 409 naming the chain, and a ticket in another team is a 403.
+          // Both belong in the strip the keyboard's own `d` reports into.
+          onError: (error) => reportError(actionErrorMessage(error)),
+          onSuccess: () => reportError(null),
+        },
+      );
+    },
+    [linking, stopLinking, linkDependency, reportError],
+  );
+
+  /**
+   * Erasing one. Nothing on the chart moves afterwards beyond the line going away: the
+   * API does not pull work backwards when slack is freed, so a bar sliding left here
+   * would be the browser inventing a schedule the server never agreed to.
+   */
+  const erase = useCallback(
+    (dep: TimelineDependency) =>
+      unlinkDependency(
+        { successorId: dep.successorId, predecessorId: dep.predecessorId },
+        {
+          onError: (error) => reportError(actionErrorMessage(error)),
+          onSuccess: () => reportError(null),
+        },
+      ),
+    [unlinkDependency, reportError],
+  );
+
   const control = useMemo(
-    () => ({ selectedId, onSelect: select, onDragStart: beginDrag, onDragEnd: endDrag }),
-    [selectedId, select, beginDrag, endDrag],
+    () => ({
+      selectedId,
+      onSelect: select,
+      onDragStart: beginDrag,
+      onDragEnd: endDrag,
+      onLinkStart: startLinking,
+      onLinkEnd: endLink,
+      onLinkCancel: stopLinking,
+    }),
+    [selectedId, select, beginDrag, endDrag, startLinking, endLink, stopLinking],
+  );
+
+  /**
+   * Dropping a chip schedules a one-day milestone on the day it landed on. Any other
+   * length would be a guess presented as a plan — the tray says a ticket has no dates,
+   * not that anyone knows how long it will take.
+   *
+   * Nothing optimistic: the chart draws the timeline response, and this ticket is not in
+   * it yet — it is in `unscheduled`, with no slack and no criticality of its own. Moving
+   * it across by hand would mean inventing both. The refetch `onSettled` triggers is
+   * what moves the chip onto the grid, and a refusal leaves it in the tray, which is the
+   * same signal a bar snapping back gives.
+   */
+  const trayControl = useMemo(
+    () => ({
+      selectedId,
+      onSelect: select,
+      onDragMove: (x: number, y: number) => paintDrop(dayUnder(x, y)),
+      onDrop: (ticketId: string, x: number, y: number) => {
+        const at = dayUnder(x, y);
+        paintDrop(null);
+        if (!at) return;
+        patchTicket({ id: ticketId, start: at.day, due: at.day });
+      },
+      onDragEnd: () => paintDrop(null),
+    }),
+    [selectedId, select, dayUnder, paintDrop, patchTicket],
   );
 
   // `&& !view`: once there is something to draw, a background refetch that fails must
@@ -209,41 +378,63 @@ export function TimelineView() {
     // meant to sit in. Both are children of `.main`, which is the column that gives the
     // chart the height left over.
     <>
-      <TimelineTray items={view?.unscheduled ?? []} />
+      <TimelineTray items={view?.unscheduled ?? []} control={trayControl} />
 
       {/*
-       * An empty chart is still a chart with a tray above it — and that is the ordinary
-       * first load, where nothing has been scheduled and everything is in the tray.
+       * One scroll container, not two. The names are pinned with `position: sticky` per
+       * row rather than living in a scroller of their own, so the two halves cannot
+       * drift apart vertically and no scroll handler has to hold them together.
        */}
-      {rows.length === 0 ? (
-        <div className="empty">Nothing scheduled here yet.</div>
-      ) : (
-        // One scroll container, not two. The names are pinned with `position: sticky`
-        // per row rather than living in a scroller of their own, so the two halves
-        // cannot drift apart vertically and no scroll handler has to hold them together.
-        <div className="tl">
-          <div className="tl-canvas" style={chart}>
-            <TimelineGrid origin={bounds.origin} dayCount={bounds.dayCount} zoom={zoom} />
-            {rows.map((row) => (
-              <TimelineRow
-                key={rowKey(row)}
-                row={row}
-                origin={bounds.origin}
-                zoom={zoom}
-                timezone={timezone}
-                control={control}
-              />
-            ))}
-            {/* Last, so the arrows are painted over the bars they join. */}
-            <TimelineArrows
-              rows={rows}
-              deps={view?.dependencies ?? []}
+      <div className="tl" data-linking={linking ? "" : undefined}>
+        <div className="tl-canvas" style={chart}>
+          <TimelineGrid origin={bounds.origin} dayCount={bounds.dayCount} zoom={zoom} />
+
+          {/*
+           * An empty chart still draws its calendar, rather than being replaced by a
+           * sentence. That is the ordinary first load — everything in the tray, nothing
+           * planned — and it is exactly when a chip has to have somewhere to be dropped;
+           * a message where the days should be would leave the tray unemptiable by hand
+           * on the one screen that is all tray.
+           */}
+          {rows.length === 0 && (
+            <div className="tl-blank">Nothing scheduled here yet — drag a ticket onto a day.</div>
+          )}
+
+          {rows.map((row) => (
+            <TimelineRow
+              key={rowKey(row)}
+              row={row}
               origin={bounds.origin}
               zoom={zoom}
+              timezone={timezone}
+              control={control}
             />
+          ))}
+
+          <TimelineArrows
+            rows={rows}
+            deps={view?.dependencies ?? []}
+            origin={bounds.origin}
+            zoom={zoom}
+            linking={linking}
+            onErase={erase}
+          />
+
+          {/*
+           * The drop layer is the chart's coordinate system made into an element: the
+           * same top, left and width as the rules, which is what lets a point on the
+           * page be turned into a day by arithmetic instead of by hit-testing. It is
+           * therefore rendered whether or not anything is being dragged — `dayUnder`
+           * measures it, and a layer that only existed during a gesture would have to be
+           * measured after the gesture had already started.
+           */}
+          <div className="tl-drop-layer" ref={dropLayer} aria-hidden="true">
+            <div className="tl-drop" ref={dropBand}>
+              <span className="tl-drop-day" ref={dropLabel} />
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </>
   );
 }

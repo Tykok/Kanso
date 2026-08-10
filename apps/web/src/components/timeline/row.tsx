@@ -11,6 +11,11 @@ export type RowControl = {
   onSelect: (ticketId: string) => void;
   onDragStart: () => void;
   onDragEnd: (ticketId: string, edit?: BarEdit) => void;
+  /** The link handle was pressed on [predecessorId]: an arrow is being drawn out of it. */
+  onLinkStart: (predecessorId: string) => void;
+  /** Released at a point on the page. The view decides what, if anything, was under it. */
+  onLinkEnd: (x: number, y: number) => void;
+  onLinkCancel: () => void;
 };
 
 /**
@@ -113,6 +118,7 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
   return (
     <TimelineBar
       name={`${ticket.identifier}: ${ticket.title}`}
+      ticketId={ticket.id}
       kind="ticket"
       // Late first: a late ticket is critical too, and the worse of the two is what the
       // reader has to be told.
@@ -133,6 +139,17 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
         bounds,
         onStart: control.onDragStart,
         onEnd: (edit) => control.onDragEnd(ticket.id, edit),
+      }}
+      /*
+       * Every ticket bar can be the *start* of an arrow, scheduled or not — including a
+       * milestone and a done one. Whether the other end is a legal successor is the
+       * server's answer: a cycle is a 409 naming the chain, and guessing at it here
+       * would be a second copy of a rule the API already holds.
+       */
+      link={{
+        onStart: () => control.onLinkStart(ticket.id),
+        onEnd: control.onLinkEnd,
+        onCancel: control.onLinkCancel,
       }}
     />
   );

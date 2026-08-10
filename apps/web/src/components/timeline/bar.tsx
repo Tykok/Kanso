@@ -33,6 +33,40 @@ export type BarEdit = { start?: KansoInstant; due?: KansoInstant };
 /** Which of the bar's two edges may be taken hold of and moved on its own. */
 export type BarHandles = { start: boolean; end: boolean };
 
+/**
+ * Drawing an arrow out of this bar. Three callbacks rather than one, because the
+ * gesture has three endings and only one of them writes anything.
+ */
+export type BarLink = {
+  /** The handle was pressed: the rubber band starts here. */
+  onStart: () => void;
+  /** Released, wherever that was. The view decides whether a bar was under it. */
+  onEnd: (x: number, y: number) => void;
+  /** The system took the pointer away. Nothing is drawn and nothing is posted. */
+  onCancel: () => void;
+};
+
+/**
+ * The ticket whose bar lies under a point, if any.
+ *
+ * Lives here because this file is what writes `data-ticket-id` and `.tl-bar` — the two
+ * facts the lookup depends on — and it is read by both gestures that end on a bar: the
+ * rubber band's drop, and the highlight that says which bar it would land on.
+ *
+ * `elementsFromPoint`, not `elementFromPoint`: the topmost element over a bar may be an
+ * arrow's path, which answers the pointer and is not in the bar's ancestry, so the
+ * singular call would report "nothing here" over a perfectly good drop target.
+ */
+export function barAt(x: number, y: number): { id: string; element: HTMLElement } | undefined {
+  for (const hit of document.elementsFromPoint(x, y)) {
+    const bar = hit.closest<HTMLElement>(".tl-bar");
+    const id = bar?.dataset.ticketId;
+    // A project bar carries no id: it is not a ticket, so nothing can depend on it.
+    if (bar && id) return { id, element: bar };
+  }
+  return undefined;
+}
+
 type BarDrag = {
   handles: BarHandles;
   /**
@@ -55,6 +89,13 @@ type BarProps = {
    * reach.
    */
   name: string;
+  /**
+   * The ticket this bar draws, written onto the element as `data-ticket-id` so a
+   * pointer landing on it can be turned back into an id. Absent on a project bar, which
+   * is what makes a project bar an invalid end for an arrow rather than a special case
+   * spelled out in every gesture.
+   */
+  ticketId?: string;
   kind: "ticket" | "project";
   state: BarState;
   /** The bar's own text. Kept off the accessible name, which already carries it. */
@@ -78,6 +119,8 @@ type BarProps = {
   onSelect?: () => void;
   /** Absent on a bar that cannot be moved at all — every project bar, today. */
   drag?: BarDrag;
+  /** Absent on a bar nothing can depend on — every project bar, today. */
+  link?: BarLink;
 };
 
 /**
@@ -115,6 +158,7 @@ type Gesture = {
 
 export function TimelineBar({
   name,
+  ticketId,
   kind,
   state,
   label,
@@ -128,10 +172,24 @@ export function TimelineBar({
   selected,
   onSelect,
   drag,
+  link,
 }: BarProps) {
   const from = boundLabel(start, timezone);
   const to = boundLabel(end, timezone);
+  const left = xOf(start, origin, zoom);
   const width = widthOf(start, end, zoom);
+
+  /**
+   * The link handle is a sibling of the bar rather than a child of it, so it can sit
+   * *outside* the right edge — a bar has `overflow: hidden`, and a grip that protrudes
+   * from inside it would be cut in half. Being a sibling is also what keeps it from
+   * being mistaken for the resize grip six pixels to its left: one is a full-height
+   * strip inside the bar, the other a circle beyond its end.
+   *
+   * The cost is that it does not follow the bar during a drag, since the drag paints the
+   * bar's own element and nothing else. So it is painted too, from this ref.
+   */
+  const handle = useRef<HTMLSpanElement>(null);
 
   /**
    * The gesture lives in a ref, and the offset is written straight onto the element.
@@ -152,6 +210,10 @@ export function TimelineBar({
     element.style.width = `${
       moved.edge === "start" ? width - offset : moved.edge === "end" ? width + offset : width
     }px`;
+    // The handle rides the bar's *right* edge, which the left grip does not move.
+    if (handle.current) {
+      handle.current.style.transform = moved.edge === "start" ? "" : `translateX(${offset}px)`;
+    }
   };
 
   /**
@@ -165,6 +227,7 @@ export function TimelineBar({
   const clear = (element: HTMLElement) => {
     element.style.transform = "";
     element.style.width = `${width}px`;
+    if (handle.current) handle.current.style.transform = "";
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -246,33 +309,69 @@ export function TimelineBar({
   const handles = drag && width >= HANDLED_MIN ? drag.handles : { start: false, end: false };
 
   return (
-    <div
-      className="tl-bar"
-      role="button"
-      aria-label={name}
-      // Not `aria-pressed`: a bar is not a toggle. `aria-current` is what says "this one
-      // of the set is the one being worked on", which is exactly what the cursor is.
-      aria-current={selected ? "true" : undefined}
-      data-kind={kind}
-      data-state={state}
-      // Valueless attributes: `data-done` is present or it is not, which is what the
-      // stylesheet asks and what a `false` string would quietly break.
-      data-done={done ? "" : undefined}
-      data-derived={derived}
-      data-selected={selected ? "" : undefined}
-      data-draggable={drag ? "" : undefined}
-      style={{ left: xOf(start, origin, zoom), width }}
-      title={`${name}\n${from} → ${to}${derived ? "\nDeduced from the tickets inside" : ""}`}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(event) => finish(event, true)}
-      // The system took the pointer away — a touch became a scroll, a window lost focus.
-      // Nothing is posted, and the view is told so it can stop holding its snapshot.
-      onPointerCancel={(event) => finish(event, false)}
-    >
-      {handles.start && <span className="tl-handle" data-edge="start" aria-hidden="true" />}
-      <span className="tl-bar-label">{label}</span>
-      {handles.end && <span className="tl-handle" data-edge="end" aria-hidden="true" />}
-    </div>
+    <>
+      <div
+        className="tl-bar"
+        role="button"
+        aria-label={name}
+        data-ticket-id={ticketId}
+        // Not `aria-pressed`: a bar is not a toggle. `aria-current` is what says "this
+        // one of the set is the one being worked on", which is exactly what the cursor is.
+        aria-current={selected ? "true" : undefined}
+        data-kind={kind}
+        data-state={state}
+        // Valueless attributes: `data-done` is present or it is not, which is what the
+        // stylesheet asks and what a `false` string would quietly break.
+        data-done={done ? "" : undefined}
+        data-derived={derived}
+        data-selected={selected ? "" : undefined}
+        data-draggable={drag ? "" : undefined}
+        style={{ left, width }}
+        title={`${name}\n${from} → ${to}${derived ? "\nDeduced from the tickets inside" : ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(event) => finish(event, true)}
+        // The system took the pointer away — a touch became a scroll, a window lost
+        // focus. Nothing is posted, and the view is told so it can stop holding on.
+        onPointerCancel={(event) => finish(event, false)}
+      >
+        {handles.start && <span className="tl-handle" data-edge="start" aria-hidden="true" />}
+        <span className="tl-bar-label">{label}</span>
+        {handles.end && <span className="tl-handle" data-edge="end" aria-hidden="true" />}
+      </div>
+
+      {/*
+       * Pointer-only, and `aria-hidden` for the same reason the resize grips are: the
+       * keyboard already draws arrows with `d`, which opens the palette on the candidate
+       * predecessors, and a button per bar that a screen reader could reach but not
+       * usefully operate — the gesture *is* the drag — is a board's worth of tab stops
+       * leading nowhere. The tray's chips took the opposite decision because a chip has
+       * something to do when pressed; this has not.
+       */}
+      {link && (
+        <span
+          ref={handle}
+          className="tl-link"
+          aria-hidden="true"
+          title={`Drag to the ticket that waits for ${name}`}
+          style={{ left: left + width }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            // Capture on the handle, not on the window: every event of this gesture is
+            // then delivered here whatever it passes over, so the drop is resolved from
+            // one pointerup that cannot be missed rather than from a listener racing
+            // the render that would have attached it.
+            event.currentTarget.setPointerCapture(event.pointerId);
+            // Nothing to stop propagating — the handle is beside the bar, not inside it,
+            // so the press never reaches the move gesture. This only keeps the drag from
+            // also starting a text selection across the chart.
+            event.preventDefault();
+            link.onStart();
+          }}
+          onPointerUp={(event) => link.onEnd(event.clientX, event.clientY)}
+          onPointerCancel={() => link.onCancel()}
+        />
+      )}
+    </>
   );
 }

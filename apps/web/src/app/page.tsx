@@ -81,7 +81,7 @@ export default function InboxPage() {
   const patch = usePatchTicket();
   const link = useLinkDependency();
 
-  const visible = useMemo(() => {
+  const filtered = useMemo(() => {
     const rows = tickets.data ?? [];
     const needle = query.trim().toLowerCase();
     if (!needle) return rows;
@@ -91,6 +91,33 @@ export default function InboxPage() {
         ticket.identifier.toLowerCase().includes(needle),
     );
   }, [tickets.data, query]);
+
+  /**
+   * The rows on screen — which is not the same list in the two views.
+   *
+   * The chart draws the *timeline* query, which the filter box does not touch, while the
+   * list draws this one filtered. Keeping the cursor inside the filtered list either way
+   * meant that with a filter typed, clicking a bar the filter excluded selected it and
+   * the effect below bounced the cursor straight back to `filtered[0]` — and, less
+   * visibly, that `h`, `l`, `H` and `L` did nothing at all on such a bar, since every
+   * action reads `ctx.selected` and that is looked up in this list.
+   *
+   * So the cursor lives in whatever the view actually draws. Filtering the chart to
+   * match the list instead was the other way to make one list feed both, and it is a
+   * different feature: a Gantt with half its bars hidden draws arrows to tickets that
+   * are not there, and the filter's job here is to find a row, not to hide a plan.
+   *
+   * Archived tickets are dropped in the timeline branch because the timeline endpoint
+   * never returns them, so the cursor could otherwise land on a ticket that appears
+   * nowhere on the chart — the very bug being fixed.
+   */
+  const visible = useMemo(
+    () =>
+      view === "timeline"
+        ? (tickets.data ?? []).filter((ticket) => !ticket.archived)
+        : filtered,
+    [view, tickets.data, filtered],
+  );
 
   // The cursor follows the list: when a filter or a realtime update removes the
   // selected row, land on something sensible rather than losing the selection.
@@ -357,12 +384,15 @@ export default function InboxPage() {
         )}
 
         {view === "timeline" ? (
-          <TimelineView />
+          <TimelineView reportError={reportError} />
         ) : tickets.error ? (
           <div className="empty error">{(tickets.error as Error).message}</div>
         ) : (
           <TicketList
-            tickets={visible}
+            // `filtered`, not `visible`: the two are the same object in this branch, and
+            // naming the filtered one here is what says the list is the thing the filter
+            // box was written for.
+            tickets={filtered}
             selectedId={selectedId}
             editingId={editingId}
             ctx={ctx}

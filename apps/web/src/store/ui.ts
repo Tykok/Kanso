@@ -39,6 +39,14 @@ type UiState = {
   selectedId?: string;
   view: View;
   zoom: Zoom;
+  /**
+   * An arrow being drawn, from the bar its handle was pressed on. Set for the length of
+   * one gesture and read by three places at once — the bar that started it, the arrow
+   * layer drawing the rubber band, and the view resolving where it was dropped — which
+   * is why it lives here rather than in the chart's own state: the alternative is the
+   * same value threaded through two component trees that already read this store.
+   */
+  linking?: { fromId: string };
   overlay: Overlay;
   dialog: Dialog;
   query: string;
@@ -48,6 +56,8 @@ type UiState = {
   select: (id?: string) => void;
   setView: (view: View) => void;
   setZoom: (zoom: Zoom) => void;
+  startLinking: (fromId: string) => void;
+  stopLinking: () => void;
   open: (overlay: Overlay) => void;
   close: () => void;
   openDialog: (dialog: Dialog) => void;
@@ -74,6 +84,10 @@ export const useUi = create<UiState>((set) => ({
    */
   setView: (view) => set({ view }),
   setZoom: (zoom) => set({ zoom }),
+  startLinking: (fromId) => set({ linking: { fromId } }),
+  // Called on every ending a gesture has — dropped on a bar, dropped on nothing, or
+  // taken away by the system — so no path can leave a rubber band drawn by nobody.
+  stopLinking: () => set({ linking: undefined }),
   open: (overlay) => set({ overlay }),
   // Escape is one key and means one thing, whichever of the two is on screen.
   close: () => set({ overlay: "none", dialog: { kind: "none" } }),

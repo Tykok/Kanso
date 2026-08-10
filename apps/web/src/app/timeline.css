@@ -72,6 +72,18 @@
   overflow-y: auto;
 }
 
+/* The chip is the flex item, so the `<li>` that carries it is only a list item — it has
+   no box of its own to lay out. */
+.tl-tray-list > li {
+  display: flex;
+  min-width: 0;
+}
+
+/*
+ * A button, because a chip can be dragged onto a day and pressed to put the cursor on
+ * its ticket. `touch-action: none` is what makes the drag possible with a finger at all:
+ * without it the browser claims the gesture as a scroll of the strip a few pixels in.
+ */
 .tl-chip {
   display: flex;
   align-items: baseline;
@@ -81,8 +93,34 @@
   background: var(--surface-hover);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  font: inherit;
   font-size: 11px;
+  text-align: left;
   color: var(--text);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.tl-chip:hover {
+  border-color: var(--text-faint);
+}
+
+.tl-chip:active {
+  cursor: grabbing;
+}
+
+/* The same ring the selected bar wears, so the cursor reads the same on both halves of
+   the screen — the chip in the tray and the bar on the grid are one ticket. */
+.tl-chip[data-selected] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Left behind while it is being dragged: something has to say the chip is in flight,
+   and the drop band on the grid is where the answer is being given. */
+.tl-chip[data-dragging] {
+  opacity: 0.45;
 }
 
 .tl-chip-id {
@@ -116,6 +154,22 @@
   width: calc(var(--tl-names) + var(--tl-chart));
   /* So the axis rule still spans the viewport on a chart narrower than it. */
   min-width: 100%;
+}
+
+/*
+ * The chart with nothing on it yet. Inside the canvas rather than instead of it: the
+ * calendar is still drawn, so a chip has days to be dropped on — which on a board where
+ * everything is unscheduled is the only way to schedule anything with a mouse.
+ */
+.tl-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  color: var(--text-dim);
+  font-size: 12px;
+  /* The days underneath have to stay reachable: this is a caption, not a surface. */
+  pointer-events: none;
 }
 
 /* --- the axis -------------------------------------------------------------- */
@@ -396,6 +450,111 @@
   opacity: 1;
 }
 
+/* --- drawing an arrow ------------------------------------------------------- */
+
+/*
+ * The link handle: a circle standing just beyond the bar's right edge.
+ *
+ * *Beyond*, not straddling. The resize grip is the last six pixels **inside** that edge,
+ * and a circle centred on the edge covers half of it — it is painted later and would win
+ * every press, so the bar could be linked and never lengthened again. Nothing of this
+ * handle is inside the bar: the two gestures share an edge and not one pixel.
+ *
+ * It is a sibling of the bar rather than a child because a bar clips what it contains —
+ * `overflow: hidden` is what keeps a long title inside a short bar — so a handle drawn
+ * inside it would lose the part that protrudes.
+ */
+.tl-link {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  /* Vertically centred on the row; horizontally, it begins where the bar ends. */
+  margin: -6px 0 0 0;
+  z-index: 1;
+  border: 1px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/*
+ * Shown when the pointer is anywhere in the lane, not only on the bar itself. A handle
+ * that appeared only under `.tl-bar:hover` would vanish the moment the pointer crossed
+ * the edge to reach it — it stands half outside the bar, which is the thing that makes
+ * it unmistakable in the first place.
+ */
+.tl-lane:hover .tl-link,
+.tl-bar[data-selected] + .tl-link {
+  opacity: 1;
+}
+
+.tl-link:hover {
+  transform: scale(1.25);
+}
+
+/* Where an arrow being drawn would land. `:hover` cannot say this: the pointer is
+   captured by the handle for the length of the gesture, so the bar under it is never
+   hovered — the attribute is written by the layer drawing the band. */
+.tl-bar[data-link-target] {
+  outline: 2px dashed var(--accent);
+  outline-offset: 1px;
+}
+
+/* Every bar is a possible end while a band is out, so the whole chart says so. */
+.tl[data-linking] .tl-bar {
+  cursor: crosshair;
+}
+
+/* --- scheduling from the tray ---------------------------------------------- */
+
+/*
+ * The chart's coordinate system, made into an element: same top, left and width as the
+ * rules, so a point on the page can be turned into a day by arithmetic on this box.
+ * It answers no pointer — it is a ruler, not a surface.
+ */
+.tl-drop-layer {
+  position: absolute;
+  top: var(--tl-axis);
+  bottom: 0;
+  left: var(--tl-names);
+  width: var(--tl-chart);
+  pointer-events: none;
+}
+
+/* The column a dropped chip would land on. Hidden until a chip is in flight. */
+.tl-drop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: none;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-left: 2px solid var(--accent);
+}
+
+.tl-drop[data-active] {
+  display: block;
+}
+
+/*
+ * The day in writing, beside the band. At month zoom the column is three pixels wide,
+ * which is exactly where a band alone stops being an answer.
+ */
+.tl-drop-day {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  padding: 1px 4px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* --- the arrows ------------------------------------------------------------ */
 
 /*
@@ -460,10 +619,70 @@
   stroke-width: 2;
 }
 
+/*
+ * The arrow the cursor is on, and the only one that can be erased. Thicker and in the
+ * accent colour rather than outlined: an SVG path has no box to put a ring around, and a
+ * dependency is a line — the way to say "this one" about a line is to draw it louder.
+ */
+.tl-arrow[data-selected] {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+/* Reached by Tab as well as by pointer, since nothing else on the chart walks the
+   arrows and without a tab stop erasing one would need a mouse. */
+.tl-arrow:focus-visible {
+  outline: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
 .tl-arrowhead {
   fill: var(--text-faint);
 }
 
 .tl-arrowhead[data-violated] {
   fill: var(--urgent);
+}
+
+.tl-arrowhead[data-drawing] {
+  fill: var(--accent);
+}
+
+/*
+ * The line following the pointer while an arrow is being drawn. Dashed and in the accent
+ * colour: it is a gesture in progress, not a dependency — nothing has been posted yet,
+ * and it must not read like the lines around it that have.
+ */
+.tl-rubber {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+/* The `×` on the selected arrow. Mid-route, where the line has the most room and is
+   least likely to be lying over a bar. */
+.tl-erase {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.tl-erase circle {
+  fill: var(--urgent);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+
+.tl-erase path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.tl-erase:focus-visible circle {
+  stroke: var(--accent);
+  stroke-width: 2.5;
 }

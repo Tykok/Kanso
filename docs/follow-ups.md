@@ -202,10 +202,31 @@ a name and two bounds — a PUT built from it would silently clear the project's
 lead and team. Resizing an explicit project bound needs either a PATCH on projects or the
 timeline response carrying enough to rebuild the whole body.
 
-**Clicking a bar can lose the selection it just made.** `page.tsx` keeps `selectedId`
-inside `visible`, which is the *tickets* query filtered by the search box. The chart draws
-the *timeline* query. The two agree on the ordinary screen, but with a filter typed,
-clicking a bar the filter excludes selects it and the effect immediately moves the cursor
-back to `visible[0]`. The same mismatch already means `h`/`l`/`H`/`L` do nothing on such a
-bar, since every action reads `ctx.selected` — so the honest fix is one list feeding both,
-not a special case for the click.
+**Clicking a bar can lose the selection it just made — closed.** `page.tsx` kept
+`selectedId` inside the *tickets* query filtered by the search box while the chart drew
+the *timeline* query, so with a filter typed, clicking an excluded bar selected it and the
+cursor-keeping effect bounced straight back to `visible[0]` — and `h`/`l`/`H`/`L` then
+acted on *that* row rather than on the bar under the pointer. `visible` is now the rows
+the view on screen actually draws: the filtered list in the list view, every unarchived
+ticket in scope on the chart. Filtering the chart to match the list was the other way to
+make one list feed both and is a different feature — a Gantt with half its bars hidden
+draws arrows to tickets that are not there.
+
+**The cursor's order is the list's, not the chart's.** `j` and `k` walk the tickets query
+in its own order, while the chart groups tickets under their projects, so on a board with
+projects the two orders differ and `j` can jump a screenful. It was already so before the
+timeline's cursor list widened; it is more visible now that the chart's cursor covers
+every row rather than the filtered few.
+
+**Erasing an arrow starts with a click or a Tab.** A dependency is selected by clicking
+its line or tabbing onto it, and then `Backspace` or the `×` removes it. There is no key
+that walks the arrows the way `j`/`k` walk the rows, so the arrows are focusable — one tab
+stop per dependency — which is what keeps erasing reachable without a mouse at all. A
+`timeline.unlink` action in the registry, listing the selected ticket's predecessors in
+the palette the way `d` lists its candidates, would be the symmetrical answer.
+
+**The link handle has no accessible name.** It is an `aria-hidden` span, like the two
+resize grips beside it: pressing it does nothing, only dragging it does, and `d` already
+draws an arrow from the keyboard. The consequence is that an end-to-end test cannot reach
+it by role — the plan's sketch for scenario 12 expected a `button` named "depends on …" —
+and has to press the bar's right edge by coordinate instead.
