@@ -172,3 +172,13 @@ already there — only its vertical twin was missing. Fixed on `.main` in `globa
 rather than scoped to the timeline. **This changes how the ticket list scrolls and has
 not been seen in a browser**: the compose stack has not been started on this branch.
 Check it when the e2e suite first runs.
+
+**`DetailPanel.onPatch` is still untyped.** Task 8 narrowed `ActionContext.patchTicket`
+to `PatchInput`, closing that hole on the keyboard path. The detail panel takes the same
+kind of bag as `Record<string, unknown>` on a different path, and closing it needs
+`projectId` added to `PatchInput` — a wider change than exporting the type.
+
+**Two spellings of "today".** `actions.ts` builds it from the reader's local civil day,
+because `toISOString().slice(0, 10)` is UTC's today and names tomorrow west of Greenwich
+all evening. `view.tsx`'s axis fallback still uses the UTC form. Harmless where it sits —
+it only decides which empty window to draw — but the two should agree.
