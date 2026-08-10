@@ -101,11 +101,13 @@ test("scenario 5 — the keyboard does exactly what it did before the registry",
   await page.keyboard.press("Escape");
   await expect(page.getByRole("link", { name: "All settings" })).toHaveCount(0);
 
-  // ? opens the shortcut list.
+  // ? opens the shortcut list. Asserted on the panel's heading rather than on
+  // `.shortcuts`, which stopped being one element when the list grew a section per
+  // view — and which was a private class this suite should not have been keyed on.
   await page.keyboard.press("?");
-  await expect(page.locator(".shortcuts")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Keyboard" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.locator(".shortcuts")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Keyboard" })).toHaveCount(0);
 
   // x archives: the row leaves the list, which does not show archived tickets.
   // Last, because it is the only key that takes away something to work with.

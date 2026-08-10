@@ -245,7 +245,14 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
   return (
     <Backdrop onClose={onClose}>
       <div className="panel-header">
-        <strong style={{ flex: 1 }}>Keyboard</strong>
+        {/*
+          A real heading rather than a `<strong>`: this panel is the one thing on
+          screen, and it had no element announcing what it is. It is also what the
+          keyboard scenario asserts on — `.shortcuts` stopped being unique the moment
+          the list grew a section per mode, and keying a test on a private class is
+          what `follow-ups.md` already holds against that suite.
+        */}
+        <h2 style={{ flex: 1, margin: 0, font: "inherit", fontWeight: 600 }}>Keyboard</h2>
         <button className="button" onClick={onClose}>
           Close
         </button>
