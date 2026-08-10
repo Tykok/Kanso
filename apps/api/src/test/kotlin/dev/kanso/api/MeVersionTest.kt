@@ -36,6 +36,9 @@ class MeVersionTest {
 		@JvmStatic
 		@ServiceConnection
 		val postgres: PostgreSQLContainer = PostgresTest.postgres
+
+		/** A git short sha (7+ hex), or `dev` when the build was passed no commit. */
+		private val VERSION_SHAPE = Regex("^(dev|[0-9a-f]{7,40})$")
 	}
 
 	@Autowired
@@ -51,6 +54,17 @@ class MeVersionTest {
 		// never ran — which is exactly the case this test exists to catch.
 		assertTrue(!build.version.isNullOrBlank(), "the build must generate a version")
 		assertFalse(build.version == "unknown", "a placeholder is not a version")
+		// The shape, not merely the presence. "non-empty" is what let `0.1.0` sit in
+		// build.gradle.kts unnoticed: a hand-edited semver satisfies every assertion
+		// above while being exactly the constant the version stamp exists to abolish.
+		// Only two things are honest here — the commit the build was made from, or
+		// `dev` when no commit was passed, which is what a local ./gradlew reports.
+		// The web footer asserts the same shape, and the comparison between the two
+		// halves is meaningless unless both are the same kind of string.
+		assertTrue(
+			VERSION_SHAPE.matches(build.version.orEmpty()),
+			"the version must be a commit sha or `dev`, not a hand-edited constant: ${build.version}",
+		)
 	}
 
 	/**
