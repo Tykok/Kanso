@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, type CSSProperties } from "react";
+import { TimelineArrows } from "./arrows";
 import { TimelineGrid } from "./grid";
 import { TimelineRow } from "./row";
 import { TimelineTray } from "./tray";
@@ -125,6 +126,13 @@ export function TimelineView() {
                 timezone={timezone}
               />
             ))}
+            {/* Last, so the arrows are painted over the bars they join. */}
+            <TimelineArrows
+              rows={rows}
+              deps={timeline.data?.dependencies ?? []}
+              origin={bounds.origin}
+              zoom={zoom}
+            />
           </div>
         </div>
       )}
