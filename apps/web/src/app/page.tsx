@@ -15,8 +15,10 @@ import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
 import { availableActions, resolveShortcut } from "@/lib/actions";
 import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
+import { actionErrorMessage } from "@/lib/errors";
 import {
   useAuthMode,
+  useLinkDependency,
   useMe,
   usePatchTicket,
   usePreferences,
@@ -64,6 +66,12 @@ export default function InboxPage() {
   } = useUi();
   const [editingId, setEditingId] = useState<string | undefined>();
   const [actionError, setActionError] = useState<{ scope: Scope; message: string } | null>(null);
+  /**
+   * The successor waiting for a predecessor, while `d` has the palette open on the
+   * candidates. Page-local rather than in the store: it lives exactly as long as the
+   * overlay it re-labels, and the palette is rendered here.
+   */
+  const [linkFor, setLinkFor] = useState<string | undefined>();
 
   const teams = useTeams();
   const tickets = useTickets();
@@ -71,6 +79,7 @@ export default function InboxPage() {
   const sync = useSyncStatus();
 
   const patch = usePatchTicket();
+  const link = useLinkDependency();
 
   const visible = useMemo(() => {
     const rows = tickets.data ?? [];
@@ -126,6 +135,26 @@ export default function InboxPage() {
   const startRename = useCallback((id: string) => setEditingId(id), []);
 
   /**
+   * `d` on the chart. The predecessor is picked from the palette the app already has
+   * rather than from a link mode of its own: nothing else in this interface is modal,
+   * and one keyboard gesture is not worth teaching a second way to be in a state.
+   */
+  const startLink = useCallback(
+    (successorId: string) => {
+      setLinkFor(successorId);
+      open("palette");
+    },
+    [open],
+  );
+
+  // The palette is one overlay with two lists, so leaving it has to put the ordinary
+  // one back — otherwise ⌘K afterwards would still be asking about a dependency.
+  const closeOverlay = useCallback(() => {
+    setLinkFor(undefined);
+    close();
+  }, [close]);
+
+  /**
    * A failure belongs to the view it happened in, so the scope it was reported
    * against is stored with it and a scope change simply stops it applying. Clearing
    * it from an effect instead would leave one render showing a sentence about a team
@@ -137,12 +166,21 @@ export default function InboxPage() {
   );
   const shownError = actionError?.scope === scope ? actionError.message : null;
 
-  const ctx = useActionContext({ tickets: visible, selected, move, startRename, reportError });
+  const ctx = useActionContext({
+    tickets: visible,
+    selected,
+    move,
+    startRename,
+    startLink,
+    reportError,
+  });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const dismiss = () => {
-        close();
+        // `closeOverlay`, not `close`: Escape from anywhere in the palette but its
+        // input reaches this handler, and it must not leave the predecessor pending.
+        closeOverlay();
         setEditingId(undefined);
         (event.target as HTMLElement | null)?.blur?.();
       };
@@ -171,7 +209,10 @@ export default function InboxPage() {
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-      const action = resolveShortcut(event.key);
+      // Shift is deliberately not in the guard above: `event.key` for Shift+h is "H",
+      // which the registry holds as its own entry, so the two halves of a bar edit are
+      // two keys rather than one key and a modifier flag.
+      const action = resolveShortcut(event.key, view);
       // One predicate answers both "may I show this" and "may I run it", so a key
       // whose action is unavailable stays inert rather than half-firing.
       if (!action || !action.when(ctx)) return;
@@ -181,10 +222,33 @@ export default function InboxPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [ctx, overlay, dialog, editingId, open, close]);
+  }, [ctx, overlay, dialog, editingId, open, closeOverlay, view]);
 
-  const commands = useMemo(
-    () => [
+  const commands = useMemo(() => {
+    // Asked for a predecessor, the palette lists tickets instead of commands: same
+    // overlay, same filtering, same keys, so `d` costs nobody a new mental model.
+    if (linkFor) {
+      return visible
+        .filter((candidate) => candidate.id !== linkFor)
+        .map((candidate) => ({
+          id: `timeline.link.${candidate.id}`,
+          label: `Wait for ${candidate.identifier}: ${candidate.title}`,
+          run: () => {
+            link.mutate(
+              { successorId: linkFor, predecessorId: candidate.id },
+              {
+                // A cycle is a 409 naming the chain. It belongs on the screen the
+                // arrow was drawn on, in the same strip every other refusal uses.
+                onError: (error) => reportError(actionErrorMessage(error)),
+                onSuccess: () => reportError(null),
+              },
+            );
+            closeOverlay();
+          },
+        }));
+    }
+
+    return [
       ...availableActions(ctx).map((action) => ({
         id: action.id,
         label: action.label,
@@ -200,9 +264,8 @@ export default function InboxPage() {
           close();
         },
       })),
-    ],
-    [ctx, teams.data, setScope, close],
-  );
+    ];
+  }, [ctx, teams.data, setScope, close, linkFor, visible, link, reportError, closeOverlay]);
 
   if (me.isLoading || authMode.isLoading || setup.isLoading) {
     return <div className="centered">Loading…</div>;
@@ -327,6 +390,24 @@ export default function InboxPage() {
             <span>
               <kbd>c</kbd> new
             </span>
+            {/* The chart's keys are not guessable and are worth one line while it is
+                on screen; `?` lists them all, grouped by the view they belong to. */}
+            {view === "timeline" && (
+              <>
+                <span>
+                  <kbd>h</kbd> <kbd>l</kbd> move
+                </span>
+                <span>
+                  <kbd>[</kbd> <kbd>]</kbd> zoom
+                </span>
+                <span>
+                  <kbd>t</kbd> today
+                </span>
+                <span>
+                  <kbd>d</kbd> depends on
+                </span>
+              </>
+            )}
             <span>
               <kbd>⌘K</kbd> commands
             </span>
@@ -343,7 +424,7 @@ export default function InboxPage() {
       </div>
 
       {overlay === "composer" && <Composer scope={scope} onClose={close} />}
-      {overlay === "palette" && <CommandPalette commands={commands} onClose={close} />}
+      {overlay === "palette" && <CommandPalette commands={commands} onClose={closeOverlay} />}
       {overlay === "help" && <HelpOverlay onClose={close} />}
       {overlay === "settings" && <SettingsPanel onClose={close} />}
       {overlay === "detail" && selected && (

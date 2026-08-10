@@ -18,6 +18,13 @@ import {
 export const FILTER_INPUT_ID = "ticket-filter";
 
 /**
+ * The id the chart's today rule carries. Same trick as the filter input: the element
+ * that has to be reached lives in a component tree this hook knows nothing about, and
+ * an id is what makes it reachable from an action without a ref or a second store.
+ */
+export const TODAY_MARKER_ID = "tl-today";
+
+/**
  * Assembles the one object every action runs against: the loaded data, the
  * mutations, the store's setters, and the permission the server enforces anyway.
  *
@@ -30,10 +37,12 @@ export function useActionContext(local: {
   selected?: Ticket;
   move: (delta: number) => void;
   startRename: (id: string) => void;
+  /** Opens the predecessor picker for a ticket. Page-local: the palette is its list. */
+  startLink: (successorId: string) => void;
   /** Where a failure with no dialog to land in goes. `null` clears it. */
   reportError: (message: string | null) => void;
 }): ActionContext {
-  const { scope, setScope, open, close, openDialog } = useUi();
+  const { scope, setScope, view, zoom, setZoom, open, close, openDialog } = useUi();
   const me = useMe();
   const teams = useTeams();
   const projects = useProjects();
@@ -78,10 +87,24 @@ export function useActionContext(local: {
   // what makes it reachable from a command.
   const focusFilter = useCallback(() => document.getElementById(FILTER_INPUT_ID)?.focus(), []);
 
+  // Reached the same way, and for the same reason: the chart owns its scroll position,
+  // and the alternative — a "scroll to today" flag in the store that the view watches
+  // and then has to clear — is a second copy of state the DOM already holds.
+  //
+  // `block: "nearest"` so recentring never scrolls the page vertically: the ask is
+  // about the calendar, not about which row is on screen.
+  const recentre = useCallback(
+    () =>
+      document
+        .getElementById(TODAY_MARKER_ID)
+        ?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }),
+    [],
+  );
+
   const role = me.data?.user.instanceRole;
   const canConfigure = role === "owner" || role === "admin";
 
-  const { tickets, selected, move, startRename, reportError } = local;
+  const { tickets, selected, move, startRename, startLink, reportError } = local;
 
   return useMemo(
     () => ({
@@ -91,13 +114,18 @@ export function useActionContext(local: {
       tickets,
       selected,
       canConfigure,
+      view,
+      zoom,
       open,
       close,
       openDialog,
       setScope,
+      setZoom,
       move,
       focusFilter,
       startRename,
+      recentre,
+      startLink,
       // Left alone on purpose: a patch is optimistic, so a failure is already
       // visible as the row snapping back to what it was.
       patchTicket,
@@ -118,13 +146,18 @@ export function useActionContext(local: {
       tickets,
       selected,
       canConfigure,
+      view,
+      zoom,
       open,
       close,
       openDialog,
       setScope,
+      setZoom,
       move,
       focusFilter,
       startRename,
+      recentre,
+      startLink,
       reportError,
       patchTicket,
       deleteTicket,

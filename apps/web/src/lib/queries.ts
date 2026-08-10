@@ -201,7 +201,7 @@ export const useSyncStatus = () =>
  * only thing that clears a bound, so offering `due: null` would type-check a call
  * that silently does nothing.
  */
-type PatchInput = {
+export type PatchInput = {
   id: string;
   status?: TicketStatus;
   priority?: TicketPriority;

@@ -3,8 +3,10 @@ import {
   ACTIONS,
   actionById,
   availableActions,
+  indexActions,
   resolveShortcut,
   shortcutRows,
+  type Action,
   type ActionContext,
 } from "./actions";
 import type { Project, Team, Ticket } from "./api";
@@ -47,6 +49,15 @@ const ticket: Ticket = {
   updatedAt: "2026-08-07T09:00:00Z",
 };
 
+/** A ticket already on the chart, so the bar actions have something to move. */
+const scheduled: Ticket = {
+  ...ticket,
+  id: "ticket-2",
+  identifier: "KAN-2",
+  start: { at: "2026-08-04T00:00:00Z", hasTime: false },
+  due: { at: "2026-08-06T00:00:00Z", hasTime: false },
+};
+
 function context(overrides: Partial<ActionContext> = {}): ActionContext {
   return {
     scope: { kind: "all" },
@@ -55,20 +66,29 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     tickets: [ticket],
     selected: undefined,
     canConfigure: true,
+    view: "list",
+    zoom: "day",
     open: vi.fn(),
     close: vi.fn(),
     openDialog: vi.fn(),
     setScope: vi.fn(),
+    setZoom: vi.fn(),
     move: vi.fn(),
     focusFilter: vi.fn(),
     startRename: vi.fn(),
     patchTicket: vi.fn(),
     unarchive: vi.fn(),
     deleteTicket: vi.fn(),
+    recentre: vi.fn(),
+    startLink: vi.fn(),
     logout: vi.fn(),
     ...overrides,
   };
 }
+
+/** The same context, already on the timeline with a scheduled ticket under the cursor. */
+const timeline = (overrides: Partial<ActionContext> = {}) =>
+  context({ view: "timeline", tickets: [ticket, scheduled], selected: scheduled, ...overrides });
 
 const ids = (ctx: ActionContext) => availableActions(ctx).map((action) => action.id);
 
@@ -103,6 +123,16 @@ const REQUIRED_IDS = [
   "app.help",
   "ticket.delete",
   "app.logout",
+  "timeline.shiftEarlier",
+  "timeline.shiftLater",
+  "timeline.shrinkEnd",
+  "timeline.growEnd",
+  "timeline.schedule",
+  "timeline.unschedule",
+  "timeline.zoomOut",
+  "timeline.zoomIn",
+  "timeline.today",
+  "timeline.link",
 ];
 
 describe("the registry", () => {
@@ -138,42 +168,234 @@ describe("the registry", () => {
 
 describe("resolveShortcut", () => {
   it("maps each key the inbox handles today to exactly one action", () => {
-    expect(resolveShortcut("j")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("ArrowDown")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("k")?.id).toBe("ticket.moveUp");
-    expect(resolveShortcut("ArrowUp")?.id).toBe("ticket.moveUp");
-    expect(resolveShortcut("Enter")?.id).toBe("ticket.open");
-    expect(resolveShortcut("c")?.id).toBe("ticket.create");
-    expect(resolveShortcut("e")?.id).toBe("ticket.rename");
-    expect(resolveShortcut("x")?.id).toBe("ticket.archive");
-    expect(resolveShortcut("1")?.id).toBe("ticket.status.backlog");
-    expect(resolveShortcut("2")?.id).toBe("ticket.status.todo");
-    expect(resolveShortcut("3")?.id).toBe("ticket.status.in_progress");
-    expect(resolveShortcut("4")?.id).toBe("ticket.status.in_review");
-    expect(resolveShortcut("5")?.id).toBe("ticket.status.done");
-    expect(resolveShortcut("6")?.id).toBe("ticket.status.canceled");
-    expect(resolveShortcut("/")?.id).toBe("view.filter");
-    expect(resolveShortcut(",")?.id).toBe("app.settings");
-    expect(resolveShortcut("?")?.id).toBe("app.help");
+    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
+    expect(resolveShortcut("ArrowDown", "list")?.id).toBe("ticket.moveDown");
+    expect(resolveShortcut("k", "list")?.id).toBe("ticket.moveUp");
+    expect(resolveShortcut("ArrowUp", "list")?.id).toBe("ticket.moveUp");
+    expect(resolveShortcut("Enter", "list")?.id).toBe("ticket.open");
+    expect(resolveShortcut("c", "list")?.id).toBe("ticket.create");
+    expect(resolveShortcut("e", "list")?.id).toBe("ticket.rename");
+    expect(resolveShortcut("x", "list")?.id).toBe("ticket.archive");
+    expect(resolveShortcut("1", "list")?.id).toBe("ticket.status.backlog");
+    expect(resolveShortcut("2", "list")?.id).toBe("ticket.status.todo");
+    expect(resolveShortcut("3", "list")?.id).toBe("ticket.status.in_progress");
+    expect(resolveShortcut("4", "list")?.id).toBe("ticket.status.in_review");
+    expect(resolveShortcut("5", "list")?.id).toBe("ticket.status.done");
+    expect(resolveShortcut("6", "list")?.id).toBe("ticket.status.canceled");
+    expect(resolveShortcut("/", "list")?.id).toBe("view.filter");
+    expect(resolveShortcut(",", "list")?.id).toBe("app.settings");
+    expect(resolveShortcut("?", "list")?.id).toBe("app.help");
   });
 
-  it("lets no two actions claim the same key", () => {
+  it("one key means different things in the two views", () => {
+    expect(resolveShortcut("h", "timeline")?.id).toBe("timeline.shiftEarlier");
+    expect(resolveShortcut("h", "list")).toBeUndefined();
+  });
+
+  it("a shared key still resolves in both", () => {
+    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
+    expect(resolveShortcut("j", "timeline")?.id).toBe("ticket.moveDown");
+  });
+
+  it("the shift and resize pair are distinct keys, not a modifier", () => {
+    // `event.key` for Shift+h is "H", so the registry needs no modifier plumbing.
+    expect(resolveShortcut("H", "timeline")?.id).toBe("timeline.shrinkEnd");
+    expect(resolveShortcut("l", "timeline")?.id).toBe("timeline.shiftLater");
+    expect(resolveShortcut("L", "timeline")?.id).toBe("timeline.growEnd");
+  });
+
+  it("keeps a key the list owns out of the timeline's reach when the mode says so", () => {
+    // Renaming edits a row of the list; there is no row to edit on the chart, and
+    // `e` there would arm an editor nothing renders and swallow every later key.
+    expect(resolveShortcut("e", "timeline")).toBeUndefined();
+  });
+
+  it("lets no two actions claim the same key inside one mode", () => {
     const claimed = new Map<string, string>();
     for (const action of ACTIONS) {
       for (const key of action.shortcut?.split(" ") ?? []) {
-        expect(claimed.get(key)).toBeUndefined();
-        claimed.set(key, action.id);
+        const bucket = `${action.mode ?? "any"}:${key}`;
+        expect(claimed.get(bucket)).toBeUndefined();
+        claimed.set(bucket, action.id);
       }
     }
   });
 
+  it("lets no mode-specific key shadow one that works everywhere", () => {
+    // Legal by the registry's rules — a mode bucket wins over `any` — but it would
+    // mean one printed key doing two things, so nothing does it today.
+    const shared = new Set(
+      ACTIONS.filter((action) => action.mode === undefined).flatMap(
+        (action) => action.shortcut?.split(" ") ?? [],
+      ),
+    );
+    for (const action of ACTIONS.filter((candidate) => candidate.mode !== undefined)) {
+      for (const key of action.shortcut?.split(" ") ?? []) {
+        expect({ id: action.id, shadows: shared.has(key) }).toEqual({
+          id: action.id,
+          shadows: false,
+        });
+      }
+    }
+  });
+
+  it("a duplicate key inside one mode is still a build-time error", () => {
+    // The guard that made the registry trustworthy must survive the split.
+    const clashing: Action[] = [
+      { id: "a", label: "A", shortcut: "z", mode: "timeline", group: "view", when: () => true, run: () => {} },
+      { id: "b", label: "B", shortcut: "z", mode: "timeline", group: "view", when: () => true, run: () => {} },
+    ];
+    expect(() => indexActions(clashing)).toThrow(/claimed by both/);
+  });
+
+  it("lets the two modes claim the same key, which is the point of the split", () => {
+    const both: Action[] = [
+      { id: "a", label: "A", shortcut: "z", mode: "timeline", group: "view", when: () => true, run: () => {} },
+      { id: "b", label: "B", shortcut: "z", mode: "list", group: "view", when: () => true, run: () => {} },
+    ];
+    expect(() => indexActions(both)).not.toThrow();
+  });
+
+  it("still refuses two actions sharing an id, whatever their modes", () => {
+    const twins: Action[] = [
+      { id: "a", label: "A", mode: "timeline", group: "view", when: () => true, run: () => {} },
+      { id: "a", label: "A again", mode: "list", group: "view", when: () => true, run: () => {} },
+    ];
+    expect(() => indexActions(twins)).toThrow(/Duplicate action id/);
+  });
+
   it("leaves an unbound key alone", () => {
-    expect(resolveShortcut("z")).toBeUndefined();
-    expect(resolveShortcut("Escape")).toBeUndefined();
+    expect(resolveShortcut("z", "list")).toBeUndefined();
+    expect(resolveShortcut("Escape", "list")).toBeUndefined();
+    expect(resolveShortcut("z", "timeline")).toBeUndefined();
   });
 
   it("keeps the palette off the bare keys, since it needs a modifier", () => {
     expect(actionById("app.palette").shortcut).toBeUndefined();
+  });
+});
+
+describe("the timeline actions", () => {
+  it("are offered on the chart and withheld from the list", () => {
+    const onChart = ids(timeline());
+    expect(onChart).toContain("timeline.shiftEarlier");
+    expect(onChart).toContain("timeline.growEnd");
+    expect(onChart).toContain("timeline.today");
+
+    const inList = ids(context({ selected: scheduled }));
+    expect(inList).not.toContain("timeline.shiftEarlier");
+    expect(inList).not.toContain("timeline.today");
+  });
+
+  it("moves both bounds by one day, so the bar slides rather than stretches", () => {
+    const ctx = timeline();
+    actionById("timeline.shiftLater").run(ctx);
+    expect(ctx.patchTicket).toHaveBeenCalledWith({
+      id: scheduled.id,
+      start: { at: "2026-08-05T00:00:00Z", hasTime: false },
+      due: { at: "2026-08-07T00:00:00Z", hasTime: false },
+    });
+  });
+
+  it("sends only the bound a milestone has, rather than inventing the other", () => {
+    const milestone = { ...scheduled, start: undefined };
+    const ctx = timeline({ selected: milestone, tickets: [milestone] });
+    actionById("timeline.shiftEarlier").run(ctx);
+    expect(ctx.patchTicket).toHaveBeenCalledWith({
+      id: milestone.id,
+      due: { at: "2026-08-05T00:00:00Z", hasTime: false },
+    });
+  });
+
+  it("keeps the hour on a bound that names one", () => {
+    const timed = {
+      ...scheduled,
+      start: undefined,
+      due: { at: "2026-08-06T17:30:00Z", hasTime: true },
+    };
+    const ctx = timeline({ selected: timed, tickets: [timed] });
+    actionById("timeline.growEnd").run(ctx);
+    expect(ctx.patchTicket).toHaveBeenCalledWith({
+      id: timed.id,
+      due: { at: "2026-08-07T17:30:00Z", hasTime: true },
+    });
+  });
+
+  it("moves only the end when resizing", () => {
+    const ctx = timeline();
+    actionById("timeline.growEnd").run(ctx);
+    expect(ctx.patchTicket).toHaveBeenCalledWith({
+      id: scheduled.id,
+      due: { at: "2026-08-07T00:00:00Z", hasTime: false },
+    });
+  });
+
+  it("refuses to pull the end back past the start, because the API answers that with a 400", () => {
+    const oneDay = { ...scheduled, due: scheduled.start };
+    const ctx = timeline({ selected: oneDay, tickets: [oneDay] });
+    actionById("timeline.shrinkEnd").run(ctx);
+    expect(ctx.patchTicket).not.toHaveBeenCalled();
+  });
+
+  it("offers resizing only to a bar that has an end to move", () => {
+    const started = { ...scheduled, due: undefined };
+    expect(ids(timeline({ selected: started, tickets: [started] }))).not.toContain(
+      "timeline.growEnd",
+    );
+  });
+
+  it("schedules an unplanned ticket as a one-day milestone, and only then", () => {
+    const ctx = timeline({ selected: ticket, tickets: [ticket] });
+    expect(ids(ctx)).toContain("timeline.schedule");
+    expect(ids(timeline())).not.toContain("timeline.schedule");
+
+    actionById("timeline.schedule").run(ctx);
+    const [[patch]] = (ctx.patchTicket as ReturnType<typeof vi.fn>).mock.calls;
+    expect(patch.id).toBe(ticket.id);
+    expect(patch.start).toEqual(patch.due);
+    expect(patch.start.hasTime).toBe(false);
+    expect(patch.start.at).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/);
+  });
+
+  it("sends a scheduled ticket back to the tray by clearing both bounds", () => {
+    const ctx = timeline();
+    actionById("timeline.unschedule").run(ctx);
+    expect(ctx.patchTicket).toHaveBeenCalledWith({
+      id: scheduled.id,
+      unset: ["start", "due"],
+    });
+    expect(ids(timeline({ selected: ticket, tickets: [ticket] }))).not.toContain(
+      "timeline.unschedule",
+    );
+  });
+
+  it("steps the zoom out and in, and stops at either end rather than wrapping", () => {
+    const out = timeline({ zoom: "week" });
+    actionById("timeline.zoomOut").run(out);
+    expect(out.setZoom).toHaveBeenCalledWith("month");
+
+    const inwards = timeline({ zoom: "week" });
+    actionById("timeline.zoomIn").run(inwards);
+    expect(inwards.setZoom).toHaveBeenCalledWith("day");
+
+    const widest = timeline({ zoom: "month" });
+    actionById("timeline.zoomOut").run(widest);
+    expect(widest.setZoom).toHaveBeenCalledWith("month");
+  });
+
+  it("asks the palette for a predecessor rather than opening a mode of its own", () => {
+    const ctx = timeline();
+    actionById("timeline.link").run(ctx);
+    expect(ctx.startLink).toHaveBeenCalledWith(scheduled.id);
+    // No second ticket to depend on means nothing to pick from.
+    expect(ids(timeline({ tickets: [scheduled] }))).not.toContain("timeline.link");
+  });
+
+  it("recentres on today with no selection at all", () => {
+    const ctx = timeline({ selected: undefined });
+    expect(ids(ctx)).toContain("timeline.today");
+    actionById("timeline.today").run(ctx);
+    expect(ctx.recentre).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -343,5 +565,13 @@ describe("shortcutRows", () => {
 
   it("carries no row for an action the keyboard cannot reach", () => {
     expect(shortcutRows().some((row) => row.label === "New project")).toBe(false);
+  });
+
+  it("names the mode of every row, so the help overlay can group them", () => {
+    const rows = shortcutRows();
+    // Undefined, not "list": the row belongs to both views and the overlay says so.
+    expect(rows.find((row) => row.label === "Move down")?.mode).toBeUndefined();
+    expect(rows.find((row) => row.label === "Move bar earlier")?.mode).toBe("timeline");
+    expect(rows.find((row) => row.label === "Rename ticket")?.mode).toBe("list");
   });
 });

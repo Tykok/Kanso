@@ -12,6 +12,7 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from "@/lib/api";
+import type { View } from "@/store/ui";
 import { statusLabel } from "./pills";
 
 /**
@@ -228,7 +229,19 @@ export function DetailPanel({
   );
 }
 
+/**
+ * The three sections, in the order they are shown. A key that works everywhere is
+ * listed once at the top rather than repeated under both views.
+ */
+const SHORTCUT_SECTIONS: { mode: View | undefined; title: string }[] = [
+  { mode: undefined, title: "Anywhere" },
+  { mode: "list", title: "In the list" },
+  { mode: "timeline", title: "On the timeline" },
+];
+
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
+  const rows = shortcutRows();
+
   return (
     <Backdrop onClose={onClose}>
       <div className="panel-header">
@@ -238,27 +251,59 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <div className="panel-body">
-        <div className="shortcuts">
-          {shortcutRows().map((row) => (
-            <div key={row.keys} style={{ display: "contents" }}>
-              <kbd>{row.keys}</kbd>
-              <span>{row.label}</span>
+        {/*
+          Grouped by mode, because a flat list would offer the chart's `h` `l` `H` `L`
+          to somebody in the list, where those keys resolve to nothing at all. A
+          section with no rows is not printed: an empty heading reads as a gap.
+        */}
+        {SHORTCUT_SECTIONS.map((section) => {
+          const inSection = rows.filter((row) => row.mode === section.mode);
+          if (inSection.length === 0) return null;
+
+          return (
+            <div key={section.title}>
+              {/* Inline rather than a new class: it is the same label treatment
+                  `.panel-body label` already gives every field in this panel. */}
+              <div
+                style={{
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  color: "var(--text-faint)",
+                  marginBottom: 8,
+                }}
+              >
+                {section.title}
+              </div>
+              <div className="shortcuts">
+                {inSection.map((row) => (
+                  <div key={`${section.title}:${row.keys}`} style={{ display: "contents" }}>
+                    <kbd>{row.keys}</kbd>
+                    <span>{row.label}</span>
+                  </div>
+                ))}
+                {/*
+                  The two keys the registry cannot own: the palette is a modified key,
+                  resolved before the registry is consulted, and Escape is not an action
+                  but the way out of whatever is on top of the list. Both belong under
+                  "Anywhere", which is exactly what they are.
+                */}
+                {section.mode === undefined && (
+                  <>
+                    <div style={{ display: "contents" }}>
+                      <kbd>⌘K / Ctrl+K</kbd>
+                      <span>Command palette</span>
+                    </div>
+                    <div style={{ display: "contents" }}>
+                      <kbd>Esc</kbd>
+                      <span>Close</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          ))}
-          {/*
-            The two keys the registry cannot own: the palette is a modified key,
-            resolved before the registry is consulted, and Escape is not an action
-            but the way out of whatever is on top of the list.
-          */}
-          <div style={{ display: "contents" }}>
-            <kbd>⌘K / Ctrl+K</kbd>
-            <span>Command palette</span>
-          </div>
-          <div style={{ display: "contents" }}>
-            <kbd>Esc</kbd>
-            <span>Close</span>
-          </div>
-        </div>
+          );
+        })}
       </div>
     </Backdrop>
   );

@@ -1,6 +1,8 @@
-import type { Dialog, Overlay, Scope } from "@/store/ui";
-import type { Project, Team, Ticket, TicketPriority, TicketStatus } from "./api";
+import type { Dialog, Overlay, Scope, View } from "@/store/ui";
+import type { KansoInstant, Project, Team, Ticket, TicketPriority, TicketStatus } from "./api";
 import { creationSeed } from "./creation-seed";
+import type { PatchInput } from "./queries";
+import { addDays, dayKey, ZOOMS, type Zoom } from "./timeline-geometry";
 
 export type ActionGroup = "ticket" | "team" | "project" | "view" | "app";
 
@@ -11,17 +13,35 @@ export type ActionContext = {
   tickets: Ticket[];
   selected?: Ticket;
   canConfigure: boolean;
+  /** Which drawing of the same rows is on screen — the list, or the chart. */
+  view: View;
+  zoom: Zoom;
 
   open: (overlay: Overlay) => void;
   close: () => void;
   openDialog: (dialog: Dialog) => void;
   setScope: (scope: Scope) => void;
+  setZoom: (zoom: Zoom) => void;
   move: (delta: number) => void;
   focusFilter: () => void;
   startRename: (id: string) => void;
-  patchTicket: (input: { id: string } & Record<string, unknown>) => void;
+  /**
+   * `PatchInput`, not `{ id } & Record<string, unknown>`: every keyboard-driven patch
+   * used to reach the wire unchecked, so a misspelled field type-checked its way to a
+   * 400. The `satisfies` clauses below predate this and are now redundant — they are
+   * kept because a wire value written out in full is still worth reading.
+   */
+  patchTicket: (input: PatchInput) => void;
   deleteTicket: (id: string) => void;
   unarchive: (target: { kind: "team" | "project"; id: string }) => void;
+  /** Scrolls the chart back to today. A no-op anywhere the chart is not rendered. */
+  recentre: () => void;
+  /**
+   * Asks for a predecessor for [successorId]. The picker is the command palette the
+   * app already has, filtered to candidates — a modal link mode would be the only
+   * modal gesture in the interface, a whole mental model bought for one arrow.
+   */
+  startLink: (successorId: string) => void;
   logout: () => void;
 };
 
@@ -32,14 +52,24 @@ export type Action = {
    * Space-separated `KeyboardEvent.key` values, so one action can own the two
    * spellings of the same intent (`j` and `ArrowDown`) without a second field
    * that could disagree with this one.
+   *
+   * Shift is spelled by the key itself: `event.key` for Shift+h is `"H"`, a separate
+   * entry, so nothing here has to carry modifier state.
    */
   shortcut?: string;
+  /**
+   * The view this action belongs to. Absent means both — most of the registry, since
+   * a status change means the same thing wherever the ticket is drawn.
+   */
+  mode?: View;
   group: ActionGroup;
   when: (ctx: ActionContext) => boolean;
   run: (ctx: ActionContext) => void;
 };
 
 const hasSelection = (ctx: ActionContext) => ctx.selected !== undefined;
+
+const onTimeline = (ctx: ActionContext) => ctx.view === "timeline";
 
 /**
  * `when` has already answered this, but the compiler cannot know that a predicate
@@ -77,6 +107,62 @@ const scopedProject = (ctx: ActionContext): Project | undefined => {
   return ctx.projects.find((project) => project.id === id);
 };
 
+/**
+ * A bound [days] later, in the shape it arrived in. `addDays` answers in floating
+ * days, which is what the grid is made of, but applied to a bound that names an hour
+ * it would quietly turn a deadline of 17:30 into a whole day. The moved day is taken
+ * from the geometry — one implementation of "a day later" — and the original
+ * time-of-day text is put back verbatim, so no zone is consulted either way.
+ */
+const laterBy = (instant: KansoInstant, days: number): KansoInstant =>
+  instant.hasTime
+    ? { at: `${dayKey(addDays(instant, days))}${instant.at.slice(10)}`, hasTime: true }
+    : addDays(instant, days);
+
+/**
+ * Slides the whole bar. A ticket carrying one bound sends only that bound: giving a
+ * milestone a start it never had would undo the shape the API was deliberately given.
+ */
+const shiftBy = (days: number) =>
+  onSelected((ctx, ticket) => {
+    const patch: PatchInput = { id: ticket.id };
+    if (ticket.start) patch.start = laterBy(ticket.start, days);
+    if (ticket.due) patch.due = laterBy(ticket.due, days);
+    ctx.patchTicket(patch);
+  });
+
+/**
+ * Moves the end alone. Clamped at the start rather than allowed to cross it — an
+ * inverted bar is a 400 and a dialog nobody asked for, and the keyboard repeats.
+ */
+const resizeBy = (days: number) =>
+  onSelected((ctx, ticket) => {
+    if (!ticket.due) return;
+    const due = laterBy(ticket.due, days);
+    if (ticket.start && dayKey(due) < dayKey(ticket.start)) return;
+    ctx.patchTicket({ id: ticket.id, due });
+  });
+
+const isScheduled = (ticket: Ticket) => ticket.start !== undefined || ticket.due !== undefined;
+
+/**
+ * Today as the reader's own civil day, assembled from the local clock rather than
+ * sliced off `toISOString()` — that is UTC's today, and west of Greenwich it names
+ * tomorrow for most of the evening.
+ */
+const today = (): KansoInstant => {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return { at: `${day}T00:00:00Z`, hasTime: false };
+};
+
+/** Steps along [ZOOMS] and stops at the ends: a zoom that wraps is a lost place. */
+const zoomBy = (delta: number) => (ctx: ActionContext) => {
+  const index = ZOOMS.indexOf(ctx.zoom) + delta;
+  ctx.setZoom(ZOOMS[Math.min(Math.max(index, 0), ZOOMS.length - 1)]);
+};
+
 export const ACTIONS: readonly Action[] = [
   {
     id: "ticket.create",
@@ -94,12 +180,17 @@ export const ACTIONS: readonly Action[] = [
     when: hasSelection,
     run: (ctx) => ctx.open("detail"),
   },
+  // The one existing action the split had to claim: renaming edits a row of the list
+  // in place, and the chart has no row to edit. Left shared, `e` on the timeline would
+  // arm an editor nothing renders — and the page stops answering keys while one is
+  // armed, so the keyboard would go dead until Escape.
   {
     id: "ticket.rename",
     label: "Rename ticket",
     shortcut: "e",
+    mode: "list",
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => hasSelection(ctx) && ctx.view === "list",
     run: onSelected((ctx, ticket) => ctx.startRename(ticket.id)),
   },
   {
@@ -134,8 +225,8 @@ export const ACTIONS: readonly Action[] = [
     run: (ctx) => ctx.move(-1),
   },
 
-  // `patchTicket` takes `Record<string, unknown>`, so `satisfies` is the only thing
-  // standing between a typo in a wire value and a 400 at runtime.
+  // `PatchInput` now checks the field itself; `satisfies` is kept for the value, which
+  // is a string the wire cares about and the field type alone would not spell out.
   {
     id: "ticket.status.backlog",
     label: "Set status: Backlog",
@@ -380,6 +471,109 @@ export const ACTIONS: readonly Action[] = [
     },
   },
 
+  /*
+   * The chart's own keys. All `mode: "timeline"`, so none of them resolves in the
+   * list, and each `when` repeats the view because `availableActions` — what the
+   * palette and the menus read — knows nothing about modes.
+   */
+  {
+    id: "timeline.shiftEarlier",
+    label: "Move bar earlier",
+    shortcut: "h",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
+    run: shiftBy(-1),
+  },
+  {
+    id: "timeline.shiftLater",
+    label: "Move bar later",
+    shortcut: "l",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
+    run: shiftBy(1),
+  },
+  {
+    id: "timeline.shrinkEnd",
+    label: "Pull the end in",
+    shortcut: "H",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && ctx.selected?.due !== undefined,
+    run: resizeBy(-1),
+  },
+  {
+    id: "timeline.growEnd",
+    label: "Push the end out",
+    shortcut: "L",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && ctx.selected?.due !== undefined,
+    run: resizeBy(1),
+  },
+  {
+    id: "timeline.schedule",
+    label: "Schedule this ticket",
+    shortcut: "p",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && !isScheduled(ctx.selected),
+    // A one-day milestone on today, the same default the tray drop takes: any other
+    // length would be a guess presented as a plan.
+    run: onSelected((ctx, ticket) => {
+      const day = today();
+      ctx.patchTicket({ id: ticket.id, start: day, due: day });
+    }),
+  },
+  {
+    id: "timeline.unschedule",
+    label: "Send back to the tray",
+    shortcut: "u",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
+    // `unset`, not two nulls: an explicit null reads as "leave unchanged" on the wire.
+    run: onSelected((ctx, ticket) => ctx.patchTicket({ id: ticket.id, unset: ["start", "due"] })),
+  },
+  {
+    id: "timeline.zoomOut",
+    label: "Zoom out",
+    shortcut: "[",
+    mode: "timeline",
+    group: "view",
+    when: onTimeline,
+    run: zoomBy(1),
+  },
+  {
+    id: "timeline.zoomIn",
+    label: "Zoom in",
+    shortcut: "]",
+    mode: "timeline",
+    group: "view",
+    when: onTimeline,
+    run: zoomBy(-1),
+  },
+  {
+    id: "timeline.today",
+    label: "Recentre on today",
+    shortcut: "t",
+    mode: "timeline",
+    group: "view",
+    // No selection needed: finding today again is about the viewport, not a ticket.
+    when: onTimeline,
+    run: (ctx) => ctx.recentre(),
+  },
+  {
+    id: "timeline.link",
+    label: "Add a dependency",
+    shortcut: "d",
+    mode: "timeline",
+    group: "ticket",
+    when: (ctx) => onTimeline(ctx) && hasSelection(ctx) && ctx.tickets.length > 1,
+    run: onSelected((ctx, ticket) => ctx.startLink(ticket.id)),
+  },
+
   {
     id: "app.palette",
     label: "Command palette",
@@ -412,25 +606,49 @@ export const ACTIONS: readonly Action[] = [
   },
 ];
 
-const BY_ID = new Map<string, Action>();
-const BY_KEY = new Map<string, Action>();
+/** Where a key lives: one bucket per mode, plus `any` for the keys both views share. */
+const bucket = (mode: View | undefined, key: string) => `${mode ?? "any"}:${key}`;
 
-for (const action of ACTIONS) {
-  if (BY_ID.has(action.id)) throw new Error(`Duplicate action id "${action.id}"`);
-  BY_ID.set(action.id, action);
+/**
+ * Indexes a set of actions, refusing a set that cannot be resolved unambiguously.
+ * Both throws are load-bearing and both run at module load below: a duplicate id
+ * silently loses an action a menu still names, and two actions on one key make a
+ * keypress mean whichever was written last.
+ *
+ * The key check is per mode, not global — `h` on the chart and `h` in the list are two
+ * different intents and the whole point of the split — so it is the *bucket* that must
+ * be unique, not the key. Exported so the guard can be exercised on a set of its own
+ * rather than by breaking the real registry.
+ */
+export function indexActions(actions: readonly Action[]) {
+  const byId = new Map<string, Action>();
+  const byKey = new Map<string, Action>();
 
-  for (const key of action.shortcut?.split(" ") ?? []) {
-    const claimed = BY_KEY.get(key);
-    if (claimed) {
-      throw new Error(`Key "${key}" is claimed by both "${claimed.id}" and "${action.id}"`);
+  for (const action of actions) {
+    if (byId.has(action.id)) throw new Error(`Duplicate action id "${action.id}"`);
+    byId.set(action.id, action);
+
+    for (const key of action.shortcut?.split(" ") ?? []) {
+      const claimed = byKey.get(bucket(action.mode, key));
+      if (claimed) {
+        throw new Error(`Key "${key}" is claimed by both "${claimed.id}" and "${action.id}"`);
+      }
+      byKey.set(bucket(action.mode, key), action);
     }
-    BY_KEY.set(key, action);
   }
+
+  return { byId, byKey };
 }
 
-/** The action a bare keypress means, before `when` is consulted. */
-export function resolveShortcut(key: string): Action | undefined {
-  return BY_KEY.get(key);
+const { byId: BY_ID, byKey: BY_KEY } = indexActions(ACTIONS);
+
+/**
+ * The action a bare keypress means in [mode], before `when` is consulted. The mode's
+ * own bucket first, then the shared one, so a view can claim a key without the keys
+ * every view answers having to be repeated in each.
+ */
+export function resolveShortcut(key: string, mode: View): Action | undefined {
+  return BY_KEY.get(bucket(mode, key)) ?? BY_KEY.get(bucket(undefined, key));
 }
 
 /** Everything currently permitted — what the palette lists and menus filter. */
@@ -450,13 +668,20 @@ const KEY_LABELS: Record<string, string> = {
   ArrowUp: "↑",
 };
 
-/** Rows for the help overlay, generated from the shortcuts. */
-export function shortcutRows(): { keys: string; label: string }[] {
+/**
+ * Rows for the help overlay, generated from the shortcuts.
+ *
+ * Each row carries its mode — undefined for the keys both views answer — because a
+ * flat list would offer `h` `l` `H` `L` to someone in the list, where they do nothing
+ * at all.
+ */
+export function shortcutRows(): { mode: View | undefined; keys: string; label: string }[] {
   return ACTIONS.flatMap((action) =>
     action.shortcut === undefined
       ? []
       : [
           {
+            mode: action.mode,
             keys: action.shortcut
               .split(" ")
               .map((key) => KEY_LABELS[key] ?? key)
