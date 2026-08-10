@@ -210,6 +210,15 @@ data class ProjectResponse(
 
 // --- tickets -----------------------------------------------------------------
 
+/**
+ * The body of a dependency write. Only the predecessor: the successor is the ticket in
+ * the path, which is the direction the arrow is drawn in the timeline.
+ */
+data class DependencyRequest(val predecessorId: UUID)
+
+/** What a write returns: the tickets the cascade moved, so the client settles at once. */
+data class CascadeResponse(val movedTicketIds: List<UUID>)
+
 data class TicketCreateRequest(
 	val teamId: UUID,
 	@field:NotBlank val title: String,

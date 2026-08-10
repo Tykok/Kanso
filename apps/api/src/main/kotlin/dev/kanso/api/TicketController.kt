@@ -2,6 +2,7 @@ package dev.kanso.api
 
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
+import dev.kanso.service.ScheduleService
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
 import jakarta.validation.Valid
@@ -11,7 +12,10 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/tickets")
-class TicketController(private val tickets: TicketService) {
+class TicketController(
+	private val tickets: TicketService,
+	private val schedule: ScheduleService,
+) {
 
 	@GetMapping
 	fun list(
@@ -91,4 +95,21 @@ class TicketController(private val tickets: TicketService) {
 	@PutMapping("/{id}/docs")
 	fun setDocs(@PathVariable id: UUID, @RequestBody docIds: List<UUID>): TicketResponse =
 		TicketResponse.of(tickets.setDocs(id, docIds))
+
+	/**
+	 * `POST /api/tickets/{id}/dependencies` — `{id}` is the successor, the body names
+	 * the predecessor, which is the direction the arrow is drawn in the timeline.
+	 */
+	@PostMapping("/{id}/dependencies")
+	@ResponseStatus(HttpStatus.CREATED)
+	fun addDependency(
+		@PathVariable id: UUID,
+		@RequestBody request: DependencyRequest,
+	): CascadeResponse = CascadeResponse(schedule.link(request.predecessorId, id))
+
+	@DeleteMapping("/{id}/dependencies/{predecessorId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	fun removeDependency(@PathVariable id: UUID, @PathVariable predecessorId: UUID) {
+		schedule.unlink(predecessorId, id)
+	}
 }
