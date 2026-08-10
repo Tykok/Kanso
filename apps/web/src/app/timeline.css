@@ -13,6 +13,93 @@
  * track has nowhere to go and never sticks at all. A cell inside a full-width row does.
  */
 
+/* --- the unscheduled tray -------------------------------------------------- */
+
+/*
+ * Above the chart and outside its scroller, so it holds still while the grid moves
+ * under it. `flex: none` because it is a sibling of `.tl` inside `.main`: the chart
+ * takes the height that is left, and the strip is as tall as what it lists — up to the
+ * cap below, which stops most of the board from becoming most of the screen.
+ */
+.tl-tray {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tl-tray-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: var(--bar-pad-sm) var(--gutter);
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tl-tray-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* One glyph turned, rather than two glyphs swapped: a caret that changes character
+   changes width too, and the label beside it shifts every time the strip is opened. */
+.tl-tray-caret {
+  display: inline-block;
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.tl-tray[data-open] .tl-tray-caret {
+  transform: rotate(90deg);
+}
+
+.tl-tray-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0 var(--gutter) var(--bar-pad-sm);
+  list-style: none;
+  /* Almost everything is unscheduled today, so the strip scrolls rather than growing:
+     it reports what is left to plan, and it must not push the plan off the screen. */
+  max-height: 22vh;
+  overflow-y: auto;
+}
+
+.tl-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 260px;
+  padding: 2px 8px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.tl-chip-id {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.tl-chip-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- the chart ------------------------------------------------------------- */
+
 .tl {
   flex: 1;
   min-height: 0;

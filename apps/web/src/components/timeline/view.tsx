@@ -3,6 +3,7 @@
 import { useMemo, type CSSProperties } from "react";
 import { TimelineGrid } from "./grid";
 import { TimelineRow } from "./row";
+import { TimelineTray } from "./tray";
 import type { TimelineProject, TimelineTicket } from "@/lib/api";
 import { useTimeline } from "@/lib/queries";
 import { addDays, dayKey, daysBetween, PX_PER_DAY } from "@/lib/timeline-geometry";
@@ -88,9 +89,6 @@ export function TimelineView() {
 
   if (timeline.error) return <div className="empty error">{(timeline.error as Error).message}</div>;
   if (timeline.isPending) return <div className="empty">Loading…</div>;
-  if (rows.length === 0) {
-    return <div className="empty">Nothing scheduled here yet.</div>;
-  }
 
   // The chart's own width, in pixels, handed to the stylesheet: the axis, the rules
   // layer and every lane are that wide, and the names column is what the rest of the
@@ -98,22 +96,38 @@ export function TimelineView() {
   const chart = { "--tl-chart": `${bounds.dayCount * PX_PER_DAY[zoom]}px` } as CSSProperties;
 
   return (
-    // One scroll container, not two. The names are pinned with `position: sticky` per
-    // row rather than living in a scroller of their own, so the two halves cannot drift
-    // apart vertically and no scroll handler has to hold them together.
-    <div className="tl">
-      <div className="tl-canvas" style={chart}>
-        <TimelineGrid origin={bounds.origin} dayCount={bounds.dayCount} zoom={zoom} />
-        {rows.map((row) => (
-          <TimelineRow
-            key={rowKey(row)}
-            row={row}
-            origin={bounds.origin}
-            zoom={zoom}
-            timezone={timezone}
-          />
-        ))}
-      </div>
-    </div>
+    // The tray is a sibling of the scroller, not something inside it: `.tl` scrolls in
+    // both directions, and a strip placed within it would slide out of the corner it is
+    // meant to sit in. Both are children of `.main`, which is the column that gives the
+    // chart the height left over.
+    <>
+      <TimelineTray items={timeline.data?.unscheduled ?? []} />
+
+      {/*
+       * An empty chart is still a chart with a tray above it — and that is the ordinary
+       * first load, where nothing has been scheduled and everything is in the tray.
+       */}
+      {rows.length === 0 ? (
+        <div className="empty">Nothing scheduled here yet.</div>
+      ) : (
+        // One scroll container, not two. The names are pinned with `position: sticky`
+        // per row rather than living in a scroller of their own, so the two halves
+        // cannot drift apart vertically and no scroll handler has to hold them together.
+        <div className="tl">
+          <div className="tl-canvas" style={chart}>
+            <TimelineGrid origin={bounds.origin} dayCount={bounds.dayCount} zoom={zoom} />
+            {rows.map((row) => (
+              <TimelineRow
+                key={rowKey(row)}
+                row={row}
+                origin={bounds.origin}
+                zoom={zoom}
+                timezone={timezone}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
