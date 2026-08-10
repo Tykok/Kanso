@@ -272,7 +272,22 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await page.getByText("Kanso", { exact: true }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem("kanso.devUser")))
+    .poll(async () => {
+      try {
+        return await page.evaluate(() => window.localStorage.getItem("kanso.devUser"));
+      } catch {
+        // `logout()` clears the key and then calls `window.location.assign("/")`.
+        // An evaluate that lands in the window between the two is torn down with
+        // the old document — "Execution context was destroyed" — which is the
+        // navigation this assertion is waiting behind, not the assertion failing.
+        // Retrying against the new document is the whole point of polling; letting
+        // the error out made the scenario fail roughly one cold run in three.
+        // The value itself does not race: `openOnceAs` writes `kanso.devUser` once
+        // with `page.evaluate`, not with an init script that would replay on every
+        // navigation, so nothing puts the identity back after the reload.
+        return "the document is being replaced";
+      }
+    })
     .toBeNull();
   await expect(page.getByRole("heading", { level: 1, name: "Preferences" })).toBeVisible();
   await expect(page.getByText("E2E owner")).toHaveCount(0);
