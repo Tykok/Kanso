@@ -175,6 +175,11 @@ const isScheduled = (ticket: Ticket) => ticket.start !== undefined || ticket.due
  * from that query too, resolves to nothing, and drops out. The palette lists names, and
  * two edges nothing can name would be two identical rows with different consequences.
  *
+ * The equivalence has a bound: `api.tickets` caps at `limit: 200`, while the timeline's
+ * own scope cap (`SCOPE_LIMIT` in `TimelineService.kt`) is 2000, so past 200 tickets in
+ * scope an edge can be `outOfScope: false` — drawn as a full arrow — and still resolve
+ * to nothing here, leaving `D` inert with no listing to explain why.
+ *
  * Read by `when` and by the picker in `page.tsx`, which is what keeps an inert key from
  * opening an empty list and a listed row from failing to resolve.
  */

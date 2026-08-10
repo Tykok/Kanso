@@ -233,7 +233,9 @@ timeline response marks `outOfScope`: outside the current scope, they are absent
 query too, so there is no name to print. Two unnameable rows in the picker would be two
 identical rows with different consequences. Their stubs remain clickable, and naming them
 properly means fetching each missing ticket by id when the palette opens — a request per
-edge, and a loading state in an overlay that has none.
+edge, and a loading state in an overlay that has none. The same drop-out can happen fully
+*inside* scope: `api.tickets` caps at 200 while the timeline's own scope cap is 2000, so
+past 200 tickets a same-scope edge can still be undrawable-as-a-name and `D` inert on it.
 
 **The link handle has no accessible name.** It is an `aria-hidden` span, like the two
 resize grips beside it: pressing it does nothing, only dragging it does, and `d` already

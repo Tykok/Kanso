@@ -217,12 +217,17 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await expect(menu.locator(".menu-footer")).toHaveCount(0);
 
   // The exact list: an item leaking in or out fails this rather than a "contains",
-  // and so does a hint going missing. `,` and `?` are the keys that open the same
-  // two overlays from anywhere; the palette and sign-out own no key, and show none.
+  // and so does a hint going missing. `,` and `?` are the keys `resolveShortcut`
+  // dispatches on for the same two overlays from anywhere. The palette dispatches on
+  // no key at all — ⌘K is caught in `page.tsx` ahead of the registry — and shows one
+  // anyway, because `Action.hint` is a label, not a binding; which modifier prints
+  // depends on the machine the browser runs on, so the palette's entry is matched
+  // loosely and sign-out's is not. Sign-out owns neither a key nor a hint, and is the
+  // one entry here that still shows nothing.
   await expect(menu.getByRole("menuitem")).toHaveText([
     "Settings ,",
     "Keyboard shortcuts ?",
-    "Command palette",
+    /^Command palette (⌘K|Ctrl\+K)$/,
     "Sign out",
   ]);
 
