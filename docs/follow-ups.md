@@ -112,3 +112,24 @@ separates the two.
   them — the two pieces of the popover that are not menu items at all, and the ones the
   spec says answer a question nothing else answers. All four are `when: () => true`
   today, so it is unreachable rather than broken.
+
+---
+
+# Carried out of the timeline branch
+
+## Not a defect, but load-bearing to know
+
+**An undated ticket in the middle of a chain blanks the critical path around it.**
+`CriticalPath` drops any edge with an unscheduled end, so `A → B(no dates) → C` leaves
+A and C as singleton components and neither gets a slack figure. Splicing `A → C` past
+the hole was considered and refused: `Cascade` stops its descent at that same undated
+node, so the splice would have the critical path assert a constraint the engine does
+not enforce. Two components disagreeing about what the arrows mean is worse than the
+surprise. Revisit only if the cascade ever learns to traverse an undated ticket.
+
+**The migration cast is the kind that ships silently.** `V6__timeline_dates.sql` uses
+`start_date::timestamp AT TIME ZONE 'UTC'`, not `::timestamptz`, because the bare cast
+reads the date in the session's timezone — a server in Paris would have stored every
+existing day as 22:00 the day before. No test covers it: Testcontainers starts empty,
+so there is no legacy row to convert. Any future backfill of a date column has the same
+trap.
