@@ -164,3 +164,11 @@ column while its own tooltip reads `13/08 08:00` to a Tokyo reader. Harmless tod
 every bound the timeline draws is floating, because nothing in the interface can yet
 create a timed one — and unremarked, which is why it is written down here. It surfaces
 the first time a ticket carries a time.
+
+**`.main` never let `.list` scroll, and nobody noticed for two branches.** A grid item's
+automatic minimum size is its content height, so `.main` grew past `.shell` and the
+document scrolled; `.list { overflow-y: auto }` had never engaged. `min-width: 0` was
+already there — only its vertical twin was missing. Fixed on `.main` in `globals.css`
+rather than scoped to the timeline. **This changes how the ticket list scrolls and has
+not been seen in a browser**: the compose stack has not been started on this branch.
+Check it when the e2e suite first runs.

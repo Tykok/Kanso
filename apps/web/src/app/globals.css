@@ -437,6 +437,14 @@ kbd {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /*
+   * The vertical twin of `min-width: 0`, and load-bearing for the same reason: a grid
+   * item's automatic minimum size is its content, so without this `.main` grows past
+   * `.shell` and the document scrolls instead of `.list`. Its `overflow-y: auto` had
+   * never engaged. Invisible in the list, which has no sticky header — the timeline is
+   * the first screen with one, and it exposed this.
+   */
+  min-height: 0;
 }
 
 .topbar {

@@ -13,19 +13,6 @@
  * track has nowhere to go and never sticks at all. A cell inside a full-width row does.
  */
 
-/*
- * `.main` is a grid item, so its automatic minimum size is the height of its content:
- * it grows past the shell, the *document* scrolls, and `.tl`'s own scrollport therefore
- * never scrolls at all — which would leave the sticky axis stuck to nothing.
- *
- * The fix belongs in globals.css, on `.main`, and it is not the timeline's: `.list` has
- * exactly the same shape and the same latent overflow today, it simply has no sticky
- * header to reveal it. Scoped here rather than reached for over there, and reported.
- */
-.main:has(> .tl) {
-  min-height: 0;
-}
-
 .tl {
   flex: 1;
   min-height: 0;
