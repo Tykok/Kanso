@@ -12,6 +12,7 @@ import { CommandPalette, DetailPanel, HelpOverlay } from "@/components/overlays"
 import { SettingsPanel } from "@/components/settings/panel";
 import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
+import { TimelineView } from "@/components/timeline/view";
 import { availableActions, resolveShortcut } from "@/lib/actions";
 import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
 import {
@@ -25,8 +26,14 @@ import {
   useTeams,
   useTickets,
 } from "@/lib/queries";
+import { ZOOMS } from "@/lib/timeline-geometry";
 import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
 import { useUi, type Scope } from "@/store/ui";
+
+// The stylesheet for the timeline, imported from the route rather than from the
+// components that use it: global CSS belongs to a layout or a page in the app router,
+// and this file is the only page that renders a Gantt.
+import "./timeline.css";
 
 const isTypingTarget = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -39,8 +46,22 @@ export default function InboxPage() {
   const setup = useSetupState();
   const preferences = usePreferences();
 
-  const { scope, selectedId, overlay, dialog, query, setScope, select, open, close, setQuery } =
-    useUi();
+  const {
+    scope,
+    selectedId,
+    view,
+    zoom,
+    overlay,
+    dialog,
+    query,
+    setScope,
+    select,
+    setView,
+    setZoom,
+    open,
+    close,
+    setQuery,
+  } = useUi();
   const [editingId, setEditingId] = useState<string | undefined>();
   const [actionError, setActionError] = useState<{ scope: Scope; message: string } | null>(null);
 
@@ -213,6 +234,35 @@ export default function InboxPage() {
           <h1>{currentTeam ? currentTeam.name : "All tickets"}</h1>
           <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{visible.length}</span>
           <span className="spacer" />
+
+          {view === "timeline" && (
+            <div className="segmented" role="group" aria-label="Zoom">
+              {ZOOMS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  aria-pressed={zoom === level}
+                  onClick={() => setZoom(level)}
+                >
+                  {level[0].toUpperCase() + level.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="segmented" role="group" aria-label="View">
+            <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")}>
+              List
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "timeline"}
+              onClick={() => setView("timeline")}
+            >
+              Timeline
+            </button>
+          </div>
+
           <input
             id={FILTER_INPUT_ID}
             className="filter-input"
@@ -243,7 +293,9 @@ export default function InboxPage() {
           </div>
         )}
 
-        {tickets.error ? (
+        {view === "timeline" ? (
+          <TimelineView />
+        ) : tickets.error ? (
           <div className="empty error">{(tickets.error as Error).message}</div>
         ) : (
           <TicketList

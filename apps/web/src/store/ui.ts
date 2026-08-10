@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import type { Zoom } from "@/lib/timeline-geometry";
+
+/** The two ways the same tickets are drawn: a list of rows, or a Gantt of bars. */
+export type View = "list" | "timeline";
 
 /** What the ticket list is showing — and, verbatim, part of the tickets query key. */
 export type Scope =
@@ -33,6 +37,8 @@ export type Dialog =
 type UiState = {
   scope: Scope;
   selectedId?: string;
+  view: View;
+  zoom: Zoom;
   overlay: Overlay;
   dialog: Dialog;
   query: string;
@@ -40,6 +46,8 @@ type UiState = {
 
   setScope: (scope: Scope) => void;
   select: (id?: string) => void;
+  setView: (view: View) => void;
+  setZoom: (zoom: Zoom) => void;
   open: (overlay: Overlay) => void;
   close: () => void;
   openDialog: (dialog: Dialog) => void;
@@ -49,6 +57,8 @@ type UiState = {
 
 export const useUi = create<UiState>((set) => ({
   scope: { kind: "all" },
+  view: "list",
+  zoom: "day",
   overlay: "none",
   dialog: { kind: "none" },
   query: "",
@@ -57,6 +67,13 @@ export const useUi = create<UiState>((set) => ({
   // A new scope is a new list, so no cursor from the old one can survive it.
   setScope: (scope) => set({ scope, selectedId: undefined }),
   select: (selectedId) => set({ selectedId }),
+  /**
+   * `selectedId` deliberately survives: the same ticket is selected in both views, and
+   * dropping the cursor here would make a toggle between two drawings of one set of
+   * rows feel like a navigation away from the row being looked at.
+   */
+  setView: (view) => set({ view }),
+  setZoom: (zoom) => set({ zoom }),
   open: (overlay) => set({ overlay }),
   // Escape is one key and means one thing, whichever of the two is on screen.
   close: () => set({ overlay: "none", dialog: { kind: "none" } }),

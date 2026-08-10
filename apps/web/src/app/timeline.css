@@ -1,0 +1,234 @@
+/*
+ * The timeline. Every colour, radius and row height here comes from globals.css: a
+ * Gantt is another drawing of the same rows, so it must not introduce a second palette
+ * that drifts from the list's.
+ *
+ * One scroll container, `.tl`, and two sticky things inside it — the name cell of every
+ * row pinned to the left, the axis strip pinned to the top. Two scrollers held in step
+ * by JavaScript would be a handler firing on every wheel event and a frame of visible
+ * disagreement each time it missed one.
+ *
+ * The names are pinned per row rather than as a column of their own because a sticky
+ * element may only move inside its containing block: a 200px column in a 200px grid
+ * track has nowhere to go and never sticks at all. A cell inside a full-width row does.
+ */
+
+/*
+ * `.main` is a grid item, so its automatic minimum size is the height of its content:
+ * it grows past the shell, the *document* scrolls, and `.tl`'s own scrollport therefore
+ * never scrolls at all — which would leave the sticky axis stuck to nothing.
+ *
+ * The fix belongs in globals.css, on `.main`, and it is not the timeline's: `.list` has
+ * exactly the same shape and the same latent overflow today, it simply has no sticky
+ * header to reveal it. Scoped here rather than reached for over there, and reported.
+ */
+.main:has(> .tl) {
+  min-height: 0;
+}
+
+.tl {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+
+  --tl-names: 200px;
+  --tl-axis: 26px;
+  /* Overwritten inline by the view, which is the only thing that knows the zoom. */
+  --tl-chart: 0px;
+}
+
+.tl-canvas {
+  position: relative;
+  width: calc(var(--tl-names) + var(--tl-chart));
+  /* So the axis rule still spans the viewport on a chart narrower than it. */
+  min-width: 100%;
+}
+
+/* --- the axis -------------------------------------------------------------- */
+
+.tl-axis-row {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  height: var(--tl-axis);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Where the two sticky edges meet. Pinned on both, or the first name scrolls up into
+   the axis and the first day scrolls left under nothing. */
+.tl-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: 0 0 var(--tl-names);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.tl-axis {
+  position: relative;
+  flex: 0 0 var(--tl-chart);
+}
+
+.tl-tick {
+  position: absolute;
+  top: 0;
+  padding-left: 4px;
+  line-height: calc(var(--tl-axis) - 1px);
+  white-space: nowrap;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+/* One layer of rules for the whole chart, under every bar. */
+.tl-rules {
+  position: absolute;
+  top: var(--tl-axis);
+  bottom: 0;
+  left: var(--tl-names);
+  width: var(--tl-chart);
+  pointer-events: none;
+}
+
+.tl-rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+/* --- the rows -------------------------------------------------------------- */
+
+.tl-row {
+  display: flex;
+  height: var(--row-height);
+  border-bottom: 1px solid var(--border);
+}
+
+.tl-name {
+  position: sticky;
+  left: 0;
+  /* Above the bars, which pass underneath it as the chart scrolls sideways. */
+  z-index: 2;
+  flex: 0 0 var(--tl-names);
+  padding: 0 10px;
+  /* Minus the row's border, which `box-sizing: border-box` counts inside the height. */
+  line-height: calc(var(--row-height) - 1px);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.tl-row[data-kind="project"] .tl-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Indented under the project above it: the grouping is the only thing saying which
+   tickets belong to which project, and it has to read without comparing names. */
+.tl-row[data-kind="ticket"] .tl-name {
+  padding-left: 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.tl-lane {
+  position: relative;
+  flex: 0 0 var(--tl-chart);
+}
+
+/* --- the bars -------------------------------------------------------------- */
+
+/* Inset rather than sized: the height then follows `--row-height` through both
+   densities without a second calculation to keep in step with it. */
+.tl-bar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.tl-bar-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tl-bar[data-state="normal"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.tl-bar[data-state="critical"] {
+  background: var(--urgent);
+  border-color: var(--urgent);
+  color: #fff;
+}
+
+/*
+ * Late is critical plus a hatch. The two are both red on purpose — a chain that
+ * overruns its deadline is a worse case of the same thing — so the difference cannot
+ * be carried by colour alone, or it disappears for a colour-blind reader and in every
+ * greyscale screenshot.
+ */
+.tl-bar[data-state="late"] {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--urgent),
+    var(--urgent) 6px,
+    color-mix(in srgb, var(--urgent) 70%, #000) 6px,
+    color-mix(in srgb, var(--urgent) 70%, #000) 12px
+  );
+  border-color: color-mix(in srgb, var(--urgent) 70%, #000);
+  color: #fff;
+}
+
+/* The stripes run under the text, so the label needs contrast of its own. */
+.tl-bar[data-state="late"] .tl-bar-label {
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.7);
+}
+
+.tl-bar[data-done] {
+  opacity: 0.55;
+}
+
+/* A project's bar summarises the rows under it, so it reads as a band rather than as a
+   piece of work: slimmer, quieter, and never red. */
+.tl-bar[data-kind="project"] {
+  top: 9px;
+  bottom: 9px;
+  background: var(--surface-hover);
+  border-color: var(--text-faint);
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+/*
+ * A dashed edge is a bound nobody posted — it was read off the tickets inside. Marked
+ * per edge, because a project may have an explicit start and a deduced end, and only
+ * one of the two is a date somebody chose.
+ */
+.tl-bar[data-derived="start"],
+.tl-bar[data-derived="both"] {
+  border-left-style: dashed;
+}
+
+.tl-bar[data-derived="end"],
+.tl-bar[data-derived="both"] {
+  border-right-style: dashed;
+}
