@@ -82,7 +82,10 @@ class TicketRepository {
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at
 			it[Tickets.dueHasTime] = due?.hasTime ?: false
-			it[Tickets.completedAt] = null
+			// A ticket can be created already done — logging work that is finished is a
+			// normal thing to do. Leaving this null would hide it from the project bounds,
+			// which fall back on completion dates precisely when nobody planned anything.
+			it[Tickets.completedAt] = if (status == TicketStatus.DONE) now else null
 			it[Tickets.projectId] = projectId
 			it[archived] = false
 			it[syncState] = SyncState.PENDING.wire

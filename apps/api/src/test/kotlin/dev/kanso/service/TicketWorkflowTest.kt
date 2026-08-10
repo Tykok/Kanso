@@ -297,4 +297,26 @@ class TicketWorkflowTest : PostgresTest() {
 			teams.update(admin, root.id, root.name, root.key, child.id)
 		}
 	}
+	@Test
+	fun `a ticket created already done is stamped at creation`() {
+		val team = newTeam()
+
+		val created = tickets.create(
+			teamId = team.id,
+			title = "Logged after the fact",
+			description = null,
+			status = TicketStatus.DONE,
+			priority = TicketPriority.NONE,
+			start = null,
+			due = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		assertNotNull(
+			created.ticket.completedAt,
+			"logging finished work is normal, and a project's bounds fall back on completion dates",
+		)
+	}
 }
