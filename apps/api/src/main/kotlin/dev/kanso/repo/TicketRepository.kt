@@ -21,6 +21,11 @@ class TicketRepository {
 	fun findById(id: UUID): Ticket? =
 		Tickets.selectAll().where { Tickets.id eq id }.singleOrNull()?.toTicket()
 
+	/** Whole rows for a set of ids — what the scheduler loads a dependency graph with. */
+	fun findAllById(ids: Collection<UUID>): List<Ticket> =
+		if (ids.isEmpty()) emptyList()
+		else Tickets.selectAll().where { Tickets.id inList ids }.map { it.toTicket() }
+
 	fun findByNotionPageId(pageId: String): Ticket? =
 		Tickets.selectAll().where { Tickets.notionPageId eq pageId }.singleOrNull()?.toTicket()
 
