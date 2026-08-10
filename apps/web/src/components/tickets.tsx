@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Ticket } from "@/lib/api";
+import { dayValue, type Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
 import { PriorityMark, StatusPill, SyncBadge } from "./pills";
 import { Menu } from "./menu";
@@ -98,7 +98,8 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       )}
 
       <span className="row-meta">
-        {ticket.dueDate && <span title="Due date">{ticket.dueDate.slice(5)}</span>}
+        {/* `MM-DD`, sliced off the ISO string: a day is never run through a Date. */}
+        {ticket.due && <span title="Due date">{dayValue(ticket.due).slice(5)}</span>}
         {ticket.assigneeIds.length > 0 && <span title="Assignees">{ticket.assigneeIds.length}👤</span>}
         <SyncBadge mirror={ticket.mirror} />
         <Menu

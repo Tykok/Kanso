@@ -5,6 +5,8 @@ import { shortcutRows } from "@/lib/actions";
 import {
   TICKET_PRIORITIES,
   TICKET_STATUSES,
+  dayValue,
+  fromDayValue,
   type Project,
   type Ticket,
   type TicketPriority,
@@ -183,9 +185,13 @@ export function DetailPanel({
           Due date
           <input
             type="date"
-            value={ticket.dueDate ?? ""}
+            value={dayValue(ticket.due)}
             onChange={(event) =>
-              onPatch(event.target.value ? { dueDate: event.target.value } : { unset: ["dueDate"] })
+              onPatch(
+                event.target.value
+                  ? { due: fromDayValue(event.target.value) }
+                  : { unset: ["due"] },
+              )
             }
           />
         </label>

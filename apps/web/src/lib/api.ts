@@ -26,6 +26,24 @@ export type Mirror = {
   syncedAt?: string;
 };
 
+/**
+ * A date from the API. `hasTime: false` means the value names a *day*, not a
+ * moment: render it without timezone conversion, or a reader west of UTC sees the
+ * previous day. `at` is always a full instant so the server can do arithmetic on it.
+ */
+export type KansoInstant = { at: string; hasTime: boolean };
+
+/**
+ * The `YYYY-MM-DD` an `<input type="date">` wants, taken by slicing the ISO string.
+ * Never `new Date(instant.at)`: that converts, and a day must not be converted.
+ */
+export const dayValue = (instant: KansoInstant | null | undefined): string =>
+  instant ? instant.at.slice(0, 10) : "";
+
+/** The inverse: a date input's value as a floating instant. */
+export const fromDayValue = (value: string): KansoInstant | null =>
+  value ? { at: `${value}T00:00:00Z`, hasTime: false } : null;
+
 export type Ticket = {
   id: string;
   identifier: string;
@@ -35,8 +53,8 @@ export type Ticket = {
   description?: string;
   status: TicketStatus;
   priority: TicketPriority;
-  startDate?: string;
-  dueDate?: string;
+  start?: KansoInstant;
+  due?: KansoInstant;
   projectId?: string;
   assigneeIds: string[];
   docIds: string[];
@@ -60,8 +78,8 @@ export type Project = {
   id: string;
   name: string;
   status: string;
-  startDate?: string;
-  endDate?: string;
+  start?: KansoInstant;
+  end?: KansoInstant;
   leadUserId?: string;
   teamId?: string;
   archived: boolean;
@@ -71,8 +89,9 @@ export type Project = {
 export type ProjectBody = {
   name: string;
   status?: string;
-  startDate?: string;
-  endDate?: string;
+  /** Null clears the bound; the PUT replaces the project wholesale either way. */
+  start?: KansoInstant | null;
+  end?: KansoInstant | null;
   leadUserId?: string;
   teamId?: string;
 };
@@ -432,7 +451,8 @@ export const api = {
       description: string;
       status: TicketStatus;
       priority: TicketPriority;
-      dueDate: string;
+      start: KansoInstant;
+      due: KansoInstant;
       projectId: string;
       archived: boolean;
       unset: string[];

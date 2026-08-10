@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, type Project, type Team, type User } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  dayValue,
+  fromDayValue,
+  type Project,
+  type ProjectBody,
+  type Team,
+  type User,
+} from "@/lib/api";
 import { keys } from "@/lib/queries";
 import { DialogFrame, Field } from "./field";
 
@@ -57,19 +66,16 @@ function ProjectForm({
   const [name, setName] = useState(project?.name ?? "");
   const [status, setStatus] = useState(project?.status ?? "planned");
   const [lead, setLead] = useState(project?.leadUserId ?? "");
-  const [startDate, setStartDate] = useState(project?.startDate ?? "");
-  const [endDate, setEndDate] = useState(project?.endDate ?? "");
+  // Held as the `YYYY-MM-DD` the input speaks, not as an instant: the bounds a
+  // project poses are days, and converting one to a moment and back is where a
+  // timezone gets the chance to move it.
+  const [startDay, setStartDay] = useState(dayValue(project?.start));
+  const [endDay, setEndDay] = useState(dayValue(project?.end));
   const [team, setTeam] = useState(defaultTeamId);
 
   const save = useMutation({
-    mutationFn: (body: {
-      name: string;
-      status?: string;
-      startDate?: string;
-      endDate?: string;
-      leadUserId?: string;
-      teamId?: string;
-    }) => (project ? api.updateProject(project.id, body) : api.createProject(body)),
+    mutationFn: (body: ProjectBody) =>
+      project ? api.updateProject(project.id, body) : api.createProject(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       onClose();
@@ -84,8 +90,8 @@ function ProjectForm({
     save.mutate({
       name: trimmed,
       status,
-      startDate: startDate ? startDate : undefined,
-      endDate: endDate ? endDate : undefined,
+      start: fromDayValue(startDay),
+      end: fromDayValue(endDay),
       leadUserId: lead ? lead : undefined,
       // Clearing the team makes the project transverse: the PUT simply omits `teamId`.
       teamId: team ? team : undefined,
@@ -156,11 +162,11 @@ function ProjectForm({
       </Field>
 
       <Field label="Start date">
-        <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+        <input type="date" value={startDay} onChange={(event) => setStartDay(event.target.value)} />
       </Field>
 
       <Field label="End date">
-        <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+        <input type="date" value={endDay} onChange={(event) => setEndDay(event.target.value)} />
       </Field>
     </DialogFrame>
   );
