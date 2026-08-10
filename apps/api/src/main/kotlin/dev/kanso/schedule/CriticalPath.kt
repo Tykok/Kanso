@@ -38,9 +38,9 @@ object CriticalPath {
 			val members = component.mapNotNull { byId[it] }.filter { it.scheduled }
 			if (members.size < 2) continue
 
+			// The end of the longest chain anchors whatever has no successor, which is
+			// what keeps a chain with no deadline anywhere on it still showing a red path.
 			val chainEnd = members.mapNotNull { it.to }.max()
-			val deadline = component.mapNotNull { deadlines[it] }.minOrNull()
-			val anchor = if (deadline != null && deadline.isBefore(chainEnd)) deadline else chainEnd
 
 			val inner = usable.filter { it.predecessorId in component && it.successorId in component }
 			val bySource = inner.groupBy { it.predecessorId }
@@ -50,9 +50,20 @@ object CriticalPath {
 			// successors, so every successor must already be settled.
 			for (id in topologicalOrder(component, inner).asReversed()) {
 				val successors = bySource[id].orEmpty()
-				lateFinish[id] = successors
+				val bound = successors
 					.mapNotNull { edge -> byId[edge.successorId]?.let { lateFinish.getValue(it.id).minus(it.duration) } }
-					.minOrNull() ?: anchor
+					.minOrNull() ?: chainEnd
+
+				// A deadline binds the ticket whose project posted it, and only that
+				// ticket. Taking the tightest one in the component and applying it to
+				// everybody made a ticket finishing ten days inside its own project's end
+				// read as late, because something upstream in a *different* project was
+				// tight — a predecessor's deadline cannot constrain a successor's finish.
+				//
+				// It only ever tightens, never loosens: a generous deadline must not buy
+				// the chain slack it does not have, or nothing would be critical.
+				val own = deadlines[id]
+				lateFinish[id] = if (own != null && own.isBefore(bound)) own else bound
 			}
 
 			for (node in members) {

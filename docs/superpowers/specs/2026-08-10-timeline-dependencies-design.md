@@ -191,12 +191,22 @@ A backward pass over the **weakly connected component** of the dependency graph 
 over the project, and not over what happens to be on screen.
 
 ```
-anchor        = min( latest end in the component,
-                     nearest explicit project end among the projects involved )
-lateFinish(sink) = anchor
-lateFinish(A)    = min over successors B of ( lateFinish(B) − duration(B) )
+chainEnd         = latest end in the component
+bound(X)         = min over successors B of ( lateFinish(B) − duration(B) ),
+                   or chainEnd when X has no successor
+lateFinish(X)    = min( bound(X), X's own project end when one is posted )
 slack(X)         = lateFinish(X) − end(X)
 ```
+
+**A deadline binds the ticket whose project posted it, and nobody else.** Taking the
+tightest deadline in the component and applying it to every node was tried first, and
+it made a ticket finishing ten days inside its own project's end read as late because
+something upstream in a *different* project was tight. A predecessor's deadline cannot
+constrain a successor's finish.
+
+**A deadline only ever tightens.** A generous one does not buy the chain slack it does
+not have — otherwise a distant project end would leave nothing critical anywhere, and
+the red would vanish exactly when the plan is comfortable rather than when it is safe.
 
 `slack = 0` → critical. `slack < 0` → the chain overruns a posted deadline. A component
 of one ticket is never critical: a ticket with no arrows painted red would be saying

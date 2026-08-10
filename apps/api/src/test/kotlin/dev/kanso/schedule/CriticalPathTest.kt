@@ -63,7 +63,9 @@ class CriticalPathTest {
 	}
 
 	@Test
-	fun `the tightest deadline in the component wins, even across projects`() {
+	fun `a deadline binds the ticket whose project posted it, and nobody else`() {
+		// A is in a project due the 12th and ends the 10th; B is in a project due the
+		// 30th and ends the 20th. Neither overruns the end that concerns it.
 		val nodes = listOf(
 			Node(a, day(1), day(10), done = false),
 			Node(b, day(10), day(20), done = false),
@@ -72,9 +74,30 @@ class CriticalPathTest {
 		val slack = CriticalPath.slack(nodes, listOf(Edge(a, b)), mapOf(a to day(12), b to day(30)))
 
 		assertEquals(
-			Duration.ofDays(-8),
+			Duration.ZERO,
 			slack.getValue(b),
-			"a chain crossing two projects takes the tighter of the two ends",
+			"B ends its chain, so it is critical — but it is not late for a deadline in someone else's project",
+		)
+		assertEquals(
+			Duration.ZERO,
+			slack.getValue(a),
+			"and A binds B, which is what critical means; its own deadline is two days away and unbroken",
+		)
+	}
+
+	@Test
+	fun `a generous deadline does not buy the chain slack it does not have`() {
+		val nodes = listOf(
+			Node(a, day(1), day(10), done = false),
+			Node(b, day(10), day(20), done = false),
+		)
+
+		val slack = CriticalPath.slack(nodes, listOf(Edge(a, b)), mapOf(b to day(31)))
+
+		assertEquals(
+			Duration.ZERO,
+			slack.getValue(b),
+			"a deadline only ever tightens the anchor; loosening it would leave nothing critical anywhere",
 		)
 	}
 
