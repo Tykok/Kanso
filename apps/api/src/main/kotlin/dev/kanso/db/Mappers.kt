@@ -1,5 +1,6 @@
 package dev.kanso.db
 
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.MirrorInfo
 import dev.kanso.domain.NotionDoc
@@ -12,6 +13,11 @@ import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import org.jetbrains.exposed.v1.core.ResultRow
+import java.time.OffsetDateTime
+
+/** Null unless the instant itself is present — a granularity flag alone means nothing. */
+private fun instant(at: OffsetDateTime?, hasTime: Boolean): KansoInstant? =
+	at?.let { KansoInstant(it, hasTime) }
 
 fun ResultRow.toTeam() = Team(
 	id = this[Teams.id],
@@ -47,8 +53,8 @@ fun ResultRow.toProject() = Project(
 	id = this[Projects.id],
 	name = this[Projects.name],
 	status = ProjectStatus.from(this[Projects.status]),
-	startDate = this[Projects.startDate],
-	endDate = this[Projects.endDate],
+	start = instant(this[Projects.startAt], this[Projects.startHasTime]),
+	end = instant(this[Projects.endAt], this[Projects.endHasTime]),
 	leadUserId = this[Projects.leadUserId],
 	teamId = this[Projects.teamId],
 	archived = this[Projects.archived],
@@ -70,8 +76,9 @@ fun ResultRow.toTicket() = Ticket(
 	description = this[Tickets.description],
 	status = TicketStatus.from(this[Tickets.status]),
 	priority = this[Tickets.priority]?.let(TicketPriority::from) ?: TicketPriority.NONE,
-	startDate = this[Tickets.startDate],
-	dueDate = this[Tickets.dueDate],
+	start = instant(this[Tickets.startAt], this[Tickets.startHasTime]),
+	due = instant(this[Tickets.dueAt], this[Tickets.dueHasTime]),
+	completedAt = this[Tickets.completedAt],
 	projectId = this[Tickets.projectId],
 	archived = this[Tickets.archived],
 	mirror = MirrorInfo(

@@ -4,6 +4,7 @@ import dev.kanso.domain.DispositionChoice
 import dev.kanso.domain.DispositionContents
 import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.DispositionPlan
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.NotionDoc
 import dev.kanso.domain.Project
@@ -18,7 +19,6 @@ import dev.kanso.service.ProjectDetail
 import dev.kanso.service.TicketDetail
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
-import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -32,6 +32,18 @@ data class MirrorDto(
 	val state: String,
 	val syncedAt: OffsetDateTime?,
 )
+
+/**
+ * A date on the wire. `hasTime` false means the value names a day: the client renders
+ * it without timezone conversion, so it reads identically everywhere.
+ */
+data class InstantDto(val at: OffsetDateTime, val hasTime: Boolean = false) {
+	fun toDomain() = KansoInstant(at, hasTime)
+
+	companion object {
+		fun of(instant: KansoInstant?) = instant?.let { InstantDto(it.at, it.hasTime) }
+	}
+}
 
 // --- disposition -------------------------------------------------------------
 
@@ -153,8 +165,8 @@ data class AddMemberRequest(val userId: UUID, val role: String = MemberRole.MEMB
 data class ProjectRequest(
 	@field:NotBlank val name: String,
 	val status: String = ProjectStatus.PLANNED.wire,
-	val startDate: LocalDate? = null,
-	val endDate: LocalDate? = null,
+	val start: InstantDto? = null,
+	val end: InstantDto? = null,
 	val leadUserId: UUID? = null,
 	val teamId: UUID? = null,
 	val docIds: List<UUID>? = null,
@@ -164,8 +176,8 @@ data class ProjectResponse(
 	val id: UUID,
 	val name: String,
 	val status: String,
-	val startDate: LocalDate?,
-	val endDate: LocalDate?,
+	val start: InstantDto?,
+	val end: InstantDto?,
 	val leadUserId: UUID?,
 	val teamId: UUID?,
 	val docIds: List<UUID>,
@@ -181,8 +193,8 @@ data class ProjectResponse(
 				id = p.id,
 				name = p.name,
 				status = p.status.wire,
-				startDate = p.startDate,
-				endDate = p.endDate,
+				start = InstantDto.of(p.start),
+				end = InstantDto.of(p.end),
 				leadUserId = p.leadUserId,
 				teamId = p.teamId,
 				docIds = detail.docIds,
@@ -203,8 +215,8 @@ data class TicketCreateRequest(
 	val description: String? = null,
 	val status: String = TicketStatus.TODO.wire,
 	val priority: String = TicketPriority.NONE.wire,
-	val startDate: LocalDate? = null,
-	val dueDate: LocalDate? = null,
+	val start: InstantDto? = null,
+	val due: InstantDto? = null,
 	val projectId: UUID? = null,
 	val assigneeIds: List<UUID> = emptyList(),
 	val docIds: List<UUID> = emptyList(),
@@ -220,8 +232,8 @@ data class TicketPatchRequest(
 	val description: String? = null,
 	val status: String? = null,
 	val priority: String? = null,
-	val startDate: LocalDate? = null,
-	val dueDate: LocalDate? = null,
+	val start: InstantDto? = null,
+	val due: InstantDto? = null,
 	val projectId: UUID? = null,
 	val teamId: UUID? = null,
 	val archived: Boolean? = null,
@@ -230,7 +242,7 @@ data class TicketPatchRequest(
 	val unset: Set<String> = emptySet(),
 ) {
 	companion object {
-		val CLEARABLE = setOf("description", "startDate", "dueDate", "projectId")
+		val CLEARABLE = setOf("description", "start", "due", "projectId")
 	}
 
 	fun validated(): TicketPatchRequest {
@@ -254,8 +266,8 @@ data class TicketResponse(
 	val description: String?,
 	val status: String,
 	val priority: String,
-	val startDate: LocalDate?,
-	val dueDate: LocalDate?,
+	val start: InstantDto?,
+	val due: InstantDto?,
 	val projectId: UUID?,
 	val assigneeIds: List<UUID>,
 	val docIds: List<UUID>,
@@ -276,8 +288,8 @@ data class TicketResponse(
 				description = t.description,
 				status = t.status.wire,
 				priority = t.priority.wire,
-				startDate = t.startDate,
-				dueDate = t.dueDate,
+				start = InstantDto.of(t.start),
+				due = InstantDto.of(t.due),
 				projectId = t.projectId,
 				assigneeIds = detail.assigneeIds,
 				docIds = detail.docIds,

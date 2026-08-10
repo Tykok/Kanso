@@ -3,13 +3,13 @@ package dev.kanso.repo
 import dev.kanso.db.ProjectDocs
 import dev.kanso.db.Projects
 import dev.kanso.db.toProject
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.SyncState
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
-import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -40,8 +40,8 @@ class ProjectRepository {
 	fun insert(
 		name: String,
 		status: ProjectStatus,
-		startDate: LocalDate?,
-		endDate: LocalDate?,
+		start: KansoInstant?,
+		end: KansoInstant?,
 		leadUserId: UUID?,
 		teamId: UUID?,
 	): Project {
@@ -51,8 +51,10 @@ class ProjectRepository {
 			it[Projects.id] = id
 			it[Projects.name] = name
 			it[Projects.status] = status.wire
-			it[Projects.startDate] = startDate
-			it[Projects.endDate] = endDate
+			it[Projects.startAt] = start?.at
+			it[Projects.startHasTime] = start?.hasTime ?: false
+			it[Projects.endAt] = end?.at
+			it[Projects.endHasTime] = end?.hasTime ?: false
 			it[Projects.leadUserId] = leadUserId
 			it[Projects.teamId] = teamId
 			it[archived] = false
@@ -67,8 +69,8 @@ class ProjectRepository {
 		id: UUID,
 		name: String,
 		status: ProjectStatus,
-		startDate: LocalDate?,
-		endDate: LocalDate?,
+		start: KansoInstant?,
+		end: KansoInstant?,
 		leadUserId: UUID?,
 		teamId: UUID?,
 		archived: Boolean,
@@ -76,8 +78,10 @@ class ProjectRepository {
 		val changed = Projects.update({ Projects.id eq id }) {
 			it[Projects.name] = name
 			it[Projects.status] = status.wire
-			it[Projects.startDate] = startDate
-			it[Projects.endDate] = endDate
+			it[Projects.startAt] = start?.at
+			it[Projects.startHasTime] = start?.hasTime ?: false
+			it[Projects.endAt] = end?.at
+			it[Projects.endHasTime] = end?.hasTime ?: false
 			it[Projects.leadUserId] = leadUserId
 			it[Projects.teamId] = teamId
 			it[Projects.archived] = archived

@@ -1,8 +1,11 @@
 package dev.kanso.sync.notion
 
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -40,7 +43,23 @@ class NotionMappingTest {
 	@Test
 	fun `an absent date sends null so Notion clears the property`() {
 		assertNull(NotionProps.date(null)["date"])
-		assertEquals(mapOf("start" to "2026-08-01"), NotionProps.date(LocalDate.of(2026, 8, 1))["date"])
+		val day = KansoInstant(LocalDate.of(2026, 8, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false)
+		assertEquals(mapOf("start" to "2026-08-01"), NotionProps.date(day)["date"])
+	}
+
+	@Test
+	fun `a day is mirrored as a day, and a moment keeps its time`() {
+		val moment = OffsetDateTime.of(2026, 8, 1, 14, 30, 0, 0, ZoneOffset.UTC)
+		assertEquals(
+			mapOf("start" to moment.toString()),
+			NotionProps.date(KansoInstant(moment, true))["date"],
+			"a value that names a moment must not be flattened to its day",
+		)
+		assertEquals(
+			mapOf("start" to "2026-08-01"),
+			NotionProps.date(KansoInstant(moment, false))["date"],
+			"a floating day is written as a bare date, whatever the instant carries",
+		)
 	}
 
 	@Test

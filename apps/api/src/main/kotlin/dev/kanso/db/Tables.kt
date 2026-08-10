@@ -4,7 +4,6 @@ import org.jetbrains.exposed.v1.core.Table
 // Exposed 1.x `uuid()` yields kotlin.uuid.Uuid; `javaUUID()` keeps java.util.UUID,
 // which is what JDBC, Jackson and the rest of Spring already speak.
 import org.jetbrains.exposed.v1.core.java.javaUUID
-import org.jetbrains.exposed.v1.javatime.date
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 /**
@@ -77,6 +76,13 @@ object UserPreferences : Table("user_preferences") {
 	val showStatusBar = bool("show_status_bar")
 	val defaultTeamId = javaUUID("default_team_id").nullable()
 	val onboardedAt = timestampWithTimeZone("onboarded_at").nullable()
+
+	/**
+	 * The reader's timezone. `default` mirrors the column default Flyway wrote — it
+	 * lets Exposed fill the value on an insert that does not name it, and generates
+	 * no DDL, which this file never does.
+	 */
+	val timezone = text("timezone").default("UTC")
 	val updatedAt = timestampWithTimeZone("updated_at")
 	override val primaryKey = PrimaryKey(userId)
 }
@@ -116,8 +122,10 @@ object Projects : Table("projects") {
 	val id = javaUUID("id")
 	val name = text("name")
 	val status = text("status")
-	val startDate = date("start_date").nullable()
-	val endDate = date("end_date").nullable()
+	val startAt = timestampWithTimeZone("start_at").nullable()
+	val startHasTime = bool("start_has_time")
+	val endAt = timestampWithTimeZone("end_at").nullable()
+	val endHasTime = bool("end_has_time")
 	val leadUserId = javaUUID("lead_user_id").nullable()
 	val teamId = javaUUID("team_id").nullable()
 	val notionPageId = text("notion_page_id").nullable()
@@ -138,8 +146,11 @@ object Tickets : Table("tickets") {
 	val description = text("description").nullable()
 	val status = text("status")
 	val priority = text("priority").nullable()
-	val startDate = date("start_date").nullable()
-	val dueDate = date("due_date").nullable()
+	val startAt = timestampWithTimeZone("start_at").nullable()
+	val startHasTime = bool("start_has_time")
+	val dueAt = timestampWithTimeZone("due_at").nullable()
+	val dueHasTime = bool("due_has_time")
+	val completedAt = timestampWithTimeZone("completed_at").nullable()
 	val projectId = javaUUID("project_id").nullable()
 	val notionPageId = text("notion_page_id").nullable()
 	val archived = bool("archived")

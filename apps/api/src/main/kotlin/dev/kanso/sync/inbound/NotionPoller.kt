@@ -1,6 +1,7 @@
 package dev.kanso.sync.inbound
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -25,6 +26,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.JsonNode
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 /**
  * Pulls edits made in Notion back into Postgres.
@@ -139,8 +141,8 @@ class NotionPoller(
 			description = text(props, NotionProps.DESCRIPTION) ?: ticket.description,
 			status = status ?: ticket.status,
 			priority = priority ?: ticket.priority,
-			startDate = date(props, NotionProps.START) ?: ticket.startDate,
-			dueDate = date(props, NotionProps.DUE) ?: ticket.dueDate,
+			start = instant(props, NotionProps.START) ?: ticket.start,
+			due = instant(props, NotionProps.DUE) ?: ticket.due,
 			projectId = ticket.projectId,
 			archived = page.archived,
 		)
@@ -167,8 +169,8 @@ class NotionPoller(
 			id = project.id,
 			name = title(props) ?: project.name,
 			status = status ?: project.status,
-			startDate = date(props, NotionProps.START) ?: project.startDate,
-			endDate = date(props, NotionProps.END) ?: project.endDate,
+			start = instant(props, NotionProps.START) ?: project.start,
+			end = instant(props, NotionProps.END) ?: project.end,
 			leadUserId = project.leadUserId,
 			teamId = project.teamId,
 			archived = page.archived,
@@ -266,10 +268,21 @@ class NotionPoller(
 	private fun select(props: JsonNode?, name: String): String? =
 		props?.path(name)?.path("select")?.path("name")?.asText(null)?.takeIf { it.isNotBlank() }
 
-	private fun date(props: JsonNode?, name: String): LocalDate? =
-		props?.path(name)?.path("date")?.path("start")?.asText(null)
-			?.takeIf { it.isNotBlank() }
-			?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
+	/**
+	 * Notion writes `2026-08-12` for a day and a full ISO instant for a moment; the
+	 * length of the string is what tells them apart, and it decides `hasTime`.
+	 *
+	 * Anything unparseable is ignored rather than thrown: the value comes from a
+	 * system Kanso does not control, and one bad page must not stop the poll.
+	 */
+	private fun instant(props: JsonNode?, name: String): KansoInstant? {
+		val raw = props?.path(name)?.path("date")?.path("start")?.asText(null)?.takeIf { it.isNotBlank() }
+			?: return null
+		return runCatching {
+			if (raw.length <= 10) KansoInstant(LocalDate.parse(raw).atStartOfDay().atOffset(ZoneOffset.UTC), false)
+			else KansoInstant(OffsetDateTime.parse(raw), true)
+		}.getOrNull()
+	}
 
 	private companion object {
 		val POLLED_KINDS = setOf("teams", "projects", "tickets")

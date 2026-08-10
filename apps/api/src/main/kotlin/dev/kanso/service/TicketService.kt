@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -17,7 +18,6 @@ import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDate
 import java.util.UUID
 
 /** A ticket with its team key (for `KAN-142`) and its relations already loaded. */
@@ -33,7 +33,7 @@ data class TicketDetail(
 /**
  * Fields a PATCH may change. `null` means "leave alone"; to actually clear a
  * nullable column, name it in [unset]. JSON cannot otherwise distinguish an
- * absent key from an explicit null, and silently ignoring `"dueDate": null`
+ * absent key from an explicit null, and silently ignoring `"due": null`
  * would make clearing a date impossible.
  */
 data class TicketPatch(
@@ -41,8 +41,8 @@ data class TicketPatch(
 	val description: String? = null,
 	val status: TicketStatus? = null,
 	val priority: TicketPriority? = null,
-	val startDate: LocalDate? = null,
-	val dueDate: LocalDate? = null,
+	val start: KansoInstant? = null,
+	val due: KansoInstant? = null,
 	val projectId: UUID? = null,
 	val teamId: UUID? = null,
 	val archived: Boolean? = null,
@@ -100,14 +100,14 @@ class TicketService(
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
-		startDate: LocalDate?,
-		dueDate: LocalDate?,
+		start: KansoInstant?,
+		due: KansoInstant?,
 		projectId: UUID?,
 		assigneeIds: List<UUID>,
 		docIds: List<UUID>,
 	): TicketDetail {
 		val team = teams.findById(teamId) ?: throw BadRequestException("No team $teamId")
-		validateDates(startDate, dueDate)
+		validateDates(start, due)
 		// A ticket's project belongs to its team — the same invariant `patch` upholds,
 		// and the same answer for the same reason: a project named explicitly and
 		// belonging to another team is a mistake worth a 400, not something to swallow.
@@ -135,8 +135,8 @@ class TicketService(
 			description = description,
 			status = status,
 			priority = priority,
-			startDate = startDate,
-			dueDate = dueDate,
+			start = start,
+			due = due,
 			projectId = projectId,
 		)
 		tickets.setAssignees(ticket.id, assigneeIds)
@@ -185,9 +185,9 @@ class TicketService(
 				projectTeamId == null || projectTeamId == teamId
 			}
 		}
-		val startDate = if ("startDate" in patch.unset) null else patch.startDate ?: current.startDate
-		val dueDate = if ("dueDate" in patch.unset) null else patch.dueDate ?: current.dueDate
-		validateDates(startDate, dueDate)
+		val start = if ("start" in patch.unset) null else patch.start ?: current.start
+		val due = if ("due" in patch.unset) null else patch.due ?: current.due
+		validateDates(start, due)
 
 		patch.assigneeIds?.let { requireUsers(it) }
 		patch.docIds?.let { requireDocs(it) }
@@ -208,8 +208,8 @@ class TicketService(
 			description = if ("description" in patch.unset) null else patch.description ?: current.description,
 			status = patch.status ?: current.status,
 			priority = patch.priority ?: current.priority,
-			startDate = startDate,
-			dueDate = dueDate,
+			start = start,
+			due = due,
 			projectId = projectId,
 			archived = patch.archived ?: current.archived,
 		) ?: throw NotFoundException("No ticket $id")
@@ -278,9 +278,9 @@ class TicketService(
 		}
 	}
 
-	private fun validateDates(startDate: LocalDate?, dueDate: LocalDate?) {
-		if (startDate != null && dueDate != null && dueDate.isBefore(startDate)) {
-			throw BadRequestException("dueDate $dueDate is before startDate $startDate")
+	private fun validateDates(start: KansoInstant?, due: KansoInstant?) {
+		if (start != null && due != null && due.at.isBefore(start.at)) {
+			throw BadRequestException("due ${due.at} is before start ${start.at}")
 		}
 	}
 

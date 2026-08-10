@@ -1,9 +1,9 @@
 package dev.kanso.sync.notion
 
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
-import java.time.LocalDate
 
 /**
  * Property names and value builders, in one place.
@@ -60,8 +60,15 @@ object NotionProps {
 	fun select(label: String?): Map<String, Any?> =
 		mapOf("select" to label?.let { mapOf("name" to it) })
 
-	fun date(day: LocalDate?): Map<String, Any?> =
-		mapOf("date" to day?.let { mapOf("start" to it.toString()) })
+	/**
+	 * Notion's date value. A day-granularity instant is written as a bare date so the
+	 * mirror shows a day rather than a midnight, matching how Kanso renders it.
+	 */
+	fun date(instant: KansoInstant?): Map<String, Any?> = mapOf(
+		"date" to instant?.let {
+			mapOf("start" to if (it.hasTime) it.at.toString() else it.at.toLocalDate().toString())
+		}
+	)
 
 	fun people(notionPersonIds: Collection<String>): Map<String, Any?> =
 		mapOf("people" to notionPersonIds.distinct().map { mapOf("object" to "user", "id" to it) })

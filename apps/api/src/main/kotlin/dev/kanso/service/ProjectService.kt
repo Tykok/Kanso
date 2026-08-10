@@ -4,6 +4,7 @@ import dev.kanso.domain.DispositionChoice
 import dev.kanso.domain.DispositionContents
 import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.DispositionPlan
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.realtime.ChangeKind
@@ -20,7 +21,6 @@ import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDate
 import java.util.UUID
 
 /** A project plus the relations a caller almost always wants alongside it. */
@@ -70,18 +70,18 @@ class ProjectService(
 	fun create(
 		name: String,
 		status: ProjectStatus,
-		startDate: LocalDate?,
-		endDate: LocalDate?,
+		start: KansoInstant?,
+		end: KansoInstant?,
 		leadUserId: UUID?,
 		teamId: UUID?,
 		docIds: List<UUID>,
 	): ProjectDetail {
-		validateDates(startDate, endDate)
+		validateDates(start, end)
 		teamId?.let { requireTeam(it) }
 		leadUserId?.let { requireUser(it) }
 		requireDocs(docIds)
 
-		val project = projects.insert(name, status, startDate, endDate, leadUserId, teamId)
+		val project = projects.insert(name, status, start, end, leadUserId, teamId)
 		projects.setDocs(project.id, docIds)
 		syncJobs.enqueue(SyncEntityType.PROJECT, project.id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.project(ChangeKind.CREATED, project.id, teamId))
@@ -93,14 +93,14 @@ class ProjectService(
 		id: UUID,
 		name: String,
 		status: ProjectStatus,
-		startDate: LocalDate?,
-		endDate: LocalDate?,
+		start: KansoInstant?,
+		end: KansoInstant?,
 		leadUserId: UUID?,
 		teamId: UUID?,
 		docIds: List<UUID>?,
 	): ProjectDetail {
 		val existing = projects.findById(id) ?: throw NotFoundException("No project $id")
-		validateDates(startDate, endDate)
+		validateDates(start, end)
 		teamId?.let { requireTeam(it) }
 		leadUserId?.let { requireUser(it) }
 		docIds?.let { requireDocs(it) }
@@ -123,7 +123,7 @@ class ProjectService(
 		}
 
 		// Archiving has its own verb; an edit never changes that flag by accident.
-		val updated = projects.update(id, name, status, startDate, endDate, leadUserId, teamId, existing.archived)
+		val updated = projects.update(id, name, status, start, end, leadUserId, teamId, existing.archived)
 			?: throw NotFoundException("No project $id")
 		if (docIds != null) projects.setDocs(id, docIds)
 
@@ -212,8 +212,8 @@ class ProjectService(
 			id = project.id,
 			name = project.name,
 			status = project.status,
-			startDate = project.startDate,
-			endDate = project.endDate,
+			start = project.start,
+			end = project.end,
 			leadUserId = project.leadUserId,
 			teamId = project.teamId,
 			archived = archived,
@@ -227,9 +227,9 @@ class ProjectService(
 		return ProjectDetail(updated, projects.docIds(project.id))
 	}
 
-	private fun validateDates(startDate: LocalDate?, endDate: LocalDate?) {
-		if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
-			throw BadRequestException("endDate $endDate is before startDate $startDate")
+	private fun validateDates(start: KansoInstant?, end: KansoInstant?) {
+		if (start != null && end != null && end.at.isBefore(start.at)) {
+			throw BadRequestException("end ${end.at} is before start ${start.at}")
 		}
 	}
 

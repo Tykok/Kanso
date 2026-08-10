@@ -4,6 +4,7 @@ import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketDocs
 import dev.kanso.db.Tickets
 import dev.kanso.db.toTicket
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
@@ -11,7 +12,6 @@ import dev.kanso.domain.TicketStatus
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
-import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -65,8 +65,8 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
-		startDate: LocalDate?,
-		dueDate: LocalDate?,
+		start: KansoInstant?,
+		due: KansoInstant?,
 		projectId: UUID?,
 	): Ticket {
 		val now = OffsetDateTime.now()
@@ -78,8 +78,11 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
-			it[Tickets.startDate] = startDate
-			it[Tickets.dueDate] = dueDate
+			it[Tickets.startAt] = start?.at
+			it[Tickets.startHasTime] = start?.hasTime ?: false
+			it[Tickets.dueAt] = due?.at
+			it[Tickets.dueHasTime] = due?.hasTime ?: false
+			it[Tickets.completedAt] = null
 			it[Tickets.projectId] = projectId
 			it[archived] = false
 			it[syncState] = SyncState.PENDING.wire
@@ -96,8 +99,8 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
-		startDate: LocalDate?,
-		dueDate: LocalDate?,
+		start: KansoInstant?,
+		due: KansoInstant?,
 		projectId: UUID?,
 		archived: Boolean,
 	): Ticket? {
@@ -107,8 +110,10 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
-			it[Tickets.startDate] = startDate
-			it[Tickets.dueDate] = dueDate
+			it[Tickets.startAt] = start?.at
+			it[Tickets.startHasTime] = start?.hasTime ?: false
+			it[Tickets.dueAt] = due?.at
+			it[Tickets.dueHasTime] = due?.hasTime ?: false
 			it[Tickets.projectId] = projectId
 			it[Tickets.archived] = archived
 		}

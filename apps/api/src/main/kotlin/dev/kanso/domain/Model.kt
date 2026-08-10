@@ -1,6 +1,5 @@
 package dev.kanso.domain
 
-import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -85,6 +84,16 @@ data class MirrorInfo(
 	val notionLastEditedTime: OffsetDateTime? = null,
 )
 
+/**
+ * An instant with an explicit granularity.
+ *
+ * [hasTime] false means the value names a *day*, not a moment: it is stored as an
+ * instant so the scheduler can subtract it, and rendered without conversion so it
+ * reads as the same day for every reader. True means it names a moment and is
+ * converted to the reader's timezone.
+ */
+data class KansoInstant(val at: OffsetDateTime, val hasTime: Boolean)
+
 data class Team(
 	val id: UUID,
 	val name: String,
@@ -168,8 +177,8 @@ data class Project(
 	val id: UUID,
 	val name: String,
 	val status: ProjectStatus,
-	val startDate: LocalDate?,
-	val endDate: LocalDate?,
+	val start: KansoInstant?,
+	val end: KansoInstant?,
 	val leadUserId: UUID?,
 	val teamId: UUID?,
 	val archived: Boolean,
@@ -186,8 +195,9 @@ data class Ticket(
 	val description: String?,
 	val status: TicketStatus,
 	val priority: TicketPriority,
-	val startDate: LocalDate?,
-	val dueDate: LocalDate?,
+	val start: KansoInstant?,
+	val due: KansoInstant?,
+	val completedAt: OffsetDateTime?,
 	val projectId: UUID?,
 	val archived: Boolean,
 	val mirror: MirrorInfo,

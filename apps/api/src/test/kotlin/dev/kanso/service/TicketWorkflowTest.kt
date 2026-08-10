@@ -3,6 +3,7 @@ package dev.kanso.service
 import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
+import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,8 +55,8 @@ class TicketWorkflowTest : PostgresTest() {
 			description = null,
 			status = TicketStatus.TODO,
 			priority = TicketPriority.NONE,
-			startDate = null,
-			dueDate = null,
+			start = null,
+			due = null,
 			projectId = null,
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
@@ -65,8 +67,8 @@ class TicketWorkflowTest : PostgresTest() {
 			description = null,
 			status = TicketStatus.TODO,
 			priority = TicketPriority.NONE,
-			startDate = null,
-			dueDate = null,
+			start = null,
+			due = null,
 			projectId = null,
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
@@ -85,8 +87,8 @@ class TicketWorkflowTest : PostgresTest() {
 			description = null,
 			status = TicketStatus.TODO,
 			priority = TicketPriority.NONE,
-			startDate = null,
-			dueDate = null,
+			start = null,
+			due = null,
 			projectId = null,
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
@@ -110,8 +112,8 @@ class TicketWorkflowTest : PostgresTest() {
 			description = "Some context",
 			status = TicketStatus.TODO,
 			priority = TicketPriority.HIGH,
-			startDate = null,
-			dueDate = LocalDate.of(2026, 9, 1),
+			start = null,
+			due = KansoInstant(LocalDate.of(2026, 9, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
 			projectId = null,
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
@@ -121,10 +123,13 @@ class TicketWorkflowTest : PostgresTest() {
 		assertEquals("Keep me", afterStatus.ticket.title)
 		assertEquals("Some context", afterStatus.ticket.description)
 		assertEquals(TicketPriority.HIGH, afterStatus.ticket.priority)
-		assertEquals(LocalDate.of(2026, 9, 1), afterStatus.ticket.dueDate)
+		assertEquals(
+			KansoInstant(LocalDate.of(2026, 9, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
+			afterStatus.ticket.due,
+		)
 
-		val cleared = tickets.patch(created.ticket.id, TicketPatch(unset = setOf("dueDate")))
-		assertNull(cleared.ticket.dueDate, "naming a field in unset must actually clear it")
+		val cleared = tickets.patch(created.ticket.id, TicketPatch(unset = setOf("due")))
+		assertNull(cleared.ticket.due, "naming a field in unset must actually clear it")
 		assertEquals("Some context", cleared.ticket.description, "unset must not touch anything else")
 	}
 
@@ -138,14 +143,14 @@ class TicketWorkflowTest : PostgresTest() {
 				description = null,
 				status = TicketStatus.TODO,
 				priority = TicketPriority.NONE,
-				startDate = LocalDate.of(2026, 9, 10),
-				dueDate = LocalDate.of(2026, 9, 1),
+				start = KansoInstant(LocalDate.of(2026, 9, 10).atStartOfDay().atOffset(ZoneOffset.UTC), false),
+				due = KansoInstant(LocalDate.of(2026, 9, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
 				projectId = null,
 				assigneeIds = emptyList(),
 				docIds = emptyList(),
 			)
 		}
-		assertTrue(failure.message!!.contains("before startDate"), failure.message!!)
+		assertTrue(failure.message!!.contains("before start"), failure.message!!)
 	}
 
 	@Test
@@ -158,8 +163,8 @@ class TicketWorkflowTest : PostgresTest() {
 				description = null,
 				status = TicketStatus.TODO,
 				priority = TicketPriority.NONE,
-				startDate = null,
-				dueDate = null,
+				start = null,
+				due = null,
 				projectId = null,
 				assigneeIds = listOf(UUID.randomUUID()),
 				docIds = emptyList(),
@@ -179,8 +184,8 @@ class TicketWorkflowTest : PostgresTest() {
 				description = null,
 				status = TicketStatus.TODO,
 				priority = TicketPriority.NONE,
-				startDate = null,
-				dueDate = null,
+				start = null,
+				due = null,
 				projectId = null,
 				assigneeIds = emptyList(),
 				docIds = emptyList(),
@@ -200,8 +205,8 @@ class TicketWorkflowTest : PostgresTest() {
 		val project = projects.create(
 			name = "Ship it",
 			status = ProjectStatus.IN_PROGRESS,
-			startDate = LocalDate.of(2026, 8, 1),
-			endDate = LocalDate.of(2026, 9, 1),
+			start = KansoInstant(LocalDate.of(2026, 8, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
+			end = KansoInstant(LocalDate.of(2026, 9, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
 			leadUserId = null,
 			teamId = team.id,
 			docIds = emptyList(),
@@ -213,8 +218,8 @@ class TicketWorkflowTest : PostgresTest() {
 			description = null,
 			status = TicketStatus.TODO,
 			priority = TicketPriority.NONE,
-			startDate = null,
-			dueDate = null,
+			start = null,
+			due = null,
 			projectId = project.project.id,
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
@@ -233,8 +238,8 @@ class TicketWorkflowTest : PostgresTest() {
 			description = null,
 			status = TicketStatus.TODO,
 			priority = TicketPriority.NONE,
-			startDate = null,
-			dueDate = null,
+			start = null,
+			due = null,
 			projectId = null,
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
