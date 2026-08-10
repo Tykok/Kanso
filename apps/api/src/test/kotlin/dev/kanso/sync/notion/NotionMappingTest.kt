@@ -105,4 +105,12 @@ class NotionMappingTest {
 		assertTrue(NotionProps.START in schema, "a start date must survive the round trip on its own")
 		assertTrue(NotionProps.DUE in schema, "a due date must survive the round trip on its own")
 	}
+
+	@Test
+	fun `the dependency relation is not in the first pass because it points at its own database`() {
+		assertTrue(
+			NotionProps.BLOCKED_BY !in NotionSchema.tickets(),
+			"a self-referencing relation needs the database to exist, so the bootstrap adds it in pass 2",
+		)
+	}
 }

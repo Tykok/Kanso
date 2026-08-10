@@ -4,6 +4,7 @@ import dev.kanso.domain.NotionDoc
 import dev.kanso.domain.Project
 import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
+import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TeamRepository
@@ -36,6 +37,7 @@ class NotionMapper(
 	private val tickets: TicketRepository,
 	private val users: UserRepository,
 	private val docs: DocRepository,
+	private val dependencies: DependencyRepository,
 ) {
 
 	fun teamProperties(team: Team): Map<String, Any?> {
@@ -60,6 +62,11 @@ class NotionMapper(
 			put(NotionProps.NAME, NotionProps.title(project.name))
 			put(NotionProps.KANSO_ID, NotionProps.richText(project.id.toString()))
 			put(NotionProps.STATUS, NotionProps.select(project.status.label))
+			// Explicit bounds only. `project.start` and `project.end` are null when the
+			// bound is derived from the tickets, and that is deliberate: pushing a
+			// computed bound would have the poller read it back as a posed one, quietly
+			// turning a derivation into a pinned date nobody chose. Same trade as the
+			// two-date deviation — an honest round trip over a prettier mirror.
 			put(NotionProps.START, NotionProps.date(project.start))
 			put(NotionProps.END, NotionProps.date(project.end))
 			put(NotionProps.LEAD, NotionProps.people(listOfNotNull(leadPersonId)))
@@ -88,6 +95,10 @@ class NotionMapper(
 			put(NotionProps.TEAM, NotionProps.relation(teamRelation(ticket.teamId)))
 			put(NotionProps.PROJECT, NotionProps.relation(projectRelation(ticket.projectId)))
 			put(NotionProps.DOCS, NotionProps.relation(docRelation(tickets.docIds(ticket.id))))
+			// Kanso-authoritative, like every other relation: Notion's self-referencing
+			// relation accepts a cycle without complaint, so these arrows are written
+			// and never read back.
+			put(NotionProps.BLOCKED_BY, NotionProps.relation(predecessorRelation(ticket.id)))
 		}
 	}
 
@@ -104,6 +115,14 @@ class NotionMapper(
 	private fun projectRelation(projectId: UUID?): List<String> = projectId?.let {
 		listOf(requirePage("project", it, projects.findById(it)?.mirror?.notionPageId))
 	} ?: emptyList()
+
+	/**
+	 * A predecessor still waiting for its own page defers this job rather than
+	 * shortening the array: the dependency graph is acyclic — Postgres refuses a loop
+	 * — so the predecessor's push always lands first in the end.
+	 */
+	private fun predecessorRelation(ticketId: UUID): List<String> =
+		dependencies.predecessorPageIds(ticketId).map { (id, pageId) -> requirePage("ticket", id, pageId) }
 
 	private fun docRelation(docIds: List<UUID>): List<String> =
 		docs.findAllById(docIds).map { requirePage("doc", it.id, it.mirrorPageId) }

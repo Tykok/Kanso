@@ -150,18 +150,56 @@ deployment the compose file ships, best-effort behind replicas.
 neither a password nor a provider cannot be signed into, and nothing inside the app
 can undo that afterwards.
 
+### Scheduling
+
+A dependency is one finish-to-start arrow: the successor cannot begin before its
+predecessor ends. Moving a date settles the **weakly connected component** around the
+change, not the direct successors alone — a diamond has a ticket whose two
+predecessors are both in the blast radius, and settling it against one of them would
+leave the other violated.
+
+Three rules decide what moves, and each is a product decision rather than an
+optimisation:
+
+1. **Slack is respected.** A successor that still starts after its predecessor ends
+   does not move, and the descent stops there. Without this every micro-adjustment
+   would creep the whole graph forward and no ticket would ever have slack, which
+   would make the critical path meaningless.
+2. **Nothing is ever pulled backwards.** Freeing slack does not drag work into the
+   past — nobody expects it and nobody could undo it.
+3. **A done ticket never moves.** Its edge is reported violated instead: a plan that
+   claims to hold when it does not is the worst outcome available.
+
+A moved ticket keeps its duration and only the bounds it already had, so a milestone
+— one bound on purpose, typically a due date with no start — does not sprout the
+other and become a dated span nobody asked for.
+
+The critical path is computed **per weakly connected component**, never per project
+and never over the visible scope: a chain can span three projects, and anchoring on
+what happens to be on screen would repaint identical data whenever the filter
+changes.
+
+A date edited in Notion goes through the same engine. The inbound poller writes the
+scalar and then cascades, so a date typed into the mirror cannot break the plan in
+silence.
+
 ### Persistence
 
 Exposed for CRUD, with Flyway owning the schema — no DDL generation, so the
 migrations are the single definition of the database.
 
-Four statements are raw SQL through Spring's `JdbcClient`, because the Exposed DSL
+Six statements are raw SQL through Spring's `JdbcClient`, because the Exposed DSL
 cannot express them and each is load-bearing:
 
 1. `WITH RECURSIVE` for the team subtree.
 2. `UPDATE … FROM (… FOR UPDATE SKIP LOCKED)` to claim jobs.
 3. `ON CONFLICT … WHERE status = 'pending'` to coalesce onto a partial index.
 4. `SELECT pg_notify(…)`.
+5. `WITH RECURSIVE … UNION` for a dependency component. The walk ignores the
+   direction of the arrows, so it revisits every node from both ends — `UNION ALL`
+   would not terminate.
+6. `WITH RECURSIVE` accumulating a `uuid[]` for the path a refused dependency would
+   close. "Cycle detected" on its own is not something anyone can act on.
 
 They run on the connection Spring already holds, inside the same transaction as the
 Exposed statements around them.

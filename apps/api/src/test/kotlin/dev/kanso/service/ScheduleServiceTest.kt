@@ -26,6 +26,7 @@ class ScheduleServiceTest : PostgresTest() {
 
 	@Autowired lateinit var teams: TeamService
 	@Autowired lateinit var tickets: TicketService
+	@Autowired lateinit var schedule: ScheduleService
 	@Autowired lateinit var repo: TicketRepository
 	@Autowired lateinit var deps: DependencyRepository
 	@Autowired lateinit var jobs: SyncJobRepository
@@ -115,5 +116,22 @@ class ScheduleServiceTest : PostgresTest() {
 		val moved = repo.findById(milestone)!!
 		assertEquals(day(14).at, moved.due!!.at, "the milestone follows its predecessor")
 		assertNull(moved.start, "and does not sprout a start it never had")
+	}
+
+	@Test
+	fun `a date arriving from Notion goes through the cascade like any other write`() {
+		val a = ticket("A", 1, 10)
+		val b = ticket("B", 10, 15)
+		deps.insert(a, b)
+
+		// What the poller does: write the scalar, then let the engine settle the graph.
+		repo.reschedule(a, day(1).at, day(12).at)
+		schedule.cascadeFrom(a)
+
+		assertEquals(
+			day(12).at,
+			repo.findById(b)!!.start!!.at,
+			"a date edited in Notion must not bypass the engine and break the plan in silence",
+		)
 	}
 }

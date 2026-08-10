@@ -13,6 +13,7 @@ import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
+import dev.kanso.service.ScheduleService
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.SyncOperation
 import dev.kanso.sync.notion.NotionClient
@@ -50,6 +51,7 @@ class NotionPoller(
 	private val projects: ProjectRepository,
 	private val tickets: TicketRepository,
 	private val jobs: SyncJobRepository,
+	private val schedule: ScheduleService,
 	private val events: EventPublisher,
 	private val tx: TransactionTemplate,
 ) {
@@ -134,6 +136,9 @@ class NotionPoller(
 		val status = select(props, NotionProps.STATUS)?.let { TicketStatus.fromLabel(it) ?: unknown("status", it) }
 		val priority = select(props, NotionProps.PRIORITY)?.let { TicketPriority.fromLabel(it) ?: unknown("priority", it) }
 
+		val start = instant(props, NotionProps.START) ?: ticket.start
+		val due = instant(props, NotionProps.DUE) ?: ticket.due
+
 		tickets.update(
 			id = ticket.id,
 			teamId = ticket.teamId,
@@ -141,8 +146,8 @@ class NotionPoller(
 			description = text(props, NotionProps.DESCRIPTION) ?: ticket.description,
 			status = status ?: ticket.status,
 			priority = priority ?: ticket.priority,
-			start = instant(props, NotionProps.START) ?: ticket.start,
-			due = instant(props, NotionProps.DUE) ?: ticket.due,
+			start = start,
+			due = due,
 			// Carried through untouched: the mirror does not decide when a ticket was
 			// completed, and an inbound edit must not restamp a completion.
 			completedAt = ticket.completedAt,
@@ -150,6 +155,13 @@ class NotionPoller(
 			archived = page.archived,
 		)
 		tickets.recordNotionEdit(ticket.id, page.lastEditedTime)
+
+		// A date edited in Notion is a date change like any other. Writing it straight
+		// to the row would let it bypass the engine, and the plan would break with
+		// nobody able to say why. The anti-echo guards above stop the pushes this
+		// queues from coming back round.
+		if (start != ticket.start || due != ticket.due) schedule.cascadeFrom(ticket.id)
+
 		events.publish(
 			KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, ticket.teamId, ticket.projectId, origin = "notion")
 		)

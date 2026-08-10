@@ -28,6 +28,15 @@ object NotionProps {
 	const val TEAM = "Team"
 	const val PROJECT = "Project"
 	const val DOCS = "Docs"
+
+	/**
+	 * The dependency arrows, mirrored as a self-referencing relation on Tickets.
+	 *
+	 * Only the one direction exists as a property. The relation is created
+	 * `single_property`, like the teams' parent relation, so Notion writes no synced
+	 * reverse — a `Blocks` constant would name a property that is not there.
+	 */
+	const val BLOCKED_BY = "Blocked by"
 	const val MEMBERS = "Members"
 	const val LEAD = "Lead"
 	const val ASSIGNEES = "Assignees"

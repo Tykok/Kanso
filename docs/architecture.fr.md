@@ -140,18 +140,56 @@ Sans provider configuré, l'application retombe sur un mode dev où l'identité 
 d'un en-tête `X-Kanso-User` et où rien n'est vérifié. Elle journalise un
 avertissement bien visible. Ne jamais exposer une instance tournant dans ce mode.
 
+### Planification
+
+Une dépendance est une flèche fin-à-début : le successeur ne peut pas commencer avant
+la fin de son prédécesseur. Déplacer une date règle la **composante faiblement
+connexe** autour du changement, et pas seulement les successeurs directs — un losange
+comporte un ticket dont les deux prédécesseurs sont dans le rayon d'impact, et le
+régler contre l'un des deux laisserait l'autre violé.
+
+Trois règles décident de ce qui bouge, et chacune est une décision produit plutôt
+qu'une optimisation :
+
+1. **La marge est respectée.** Un successeur qui commence encore après la fin de son
+   prédécesseur ne bouge pas, et la descente s'arrête là. Sans cela, chaque
+   micro-ajustement ferait avancer tout le graphe et aucun ticket n'aurait jamais de
+   marge, ce qui rendrait le chemin critique dénué de sens.
+2. **Rien n'est jamais tiré en arrière.** Libérer de la marge ne ramène pas le
+   travail dans le passé — personne ne s'y attend et personne ne pourrait l'annuler.
+3. **Un ticket terminé ne bouge jamais.** Son arête est signalée violée à la place :
+   un plan qui prétend tenir alors qu'il ne tient pas est le pire résultat possible.
+
+Un ticket déplacé garde sa durée et seulement les bornes qu'il avait déjà : un jalon
+— une seule borne, volontairement, typiquement une échéance sans début — ne se voit
+donc pas pousser l'autre et devenir une période datée que personne n'a demandée.
+
+Le chemin critique est calculé **par composante faiblement connexe**, jamais par
+projet et jamais sur le périmètre visible : une chaîne peut traverser trois projets,
+et s'ancrer sur ce qui se trouve à l'écran repeindrait des données identiques dès que
+le filtre change.
+
+Une date modifiée dans Notion passe par le même moteur. Le poller entrant écrit le
+scalaire puis lance la cascade, donc une date saisie dans le miroir ne peut pas casser
+le plan en silence.
+
 ### Persistance
 
 Exposed pour le CRUD, avec Flyway propriétaire du schéma — pas de génération de DDL,
 donc les migrations sont la définition unique de la base.
 
-Quatre requêtes sont du SQL brut via le `JdbcClient` de Spring, parce que le DSL
+Six requêtes sont du SQL brut via le `JdbcClient` de Spring, parce que le DSL
 Exposed ne peut pas les exprimer et que chacune est porteuse :
 
 1. `WITH RECURSIVE` pour le sous-arbre d'équipes.
 2. `UPDATE … FROM (… FOR UPDATE SKIP LOCKED)` pour prendre des jobs.
 3. `ON CONFLICT … WHERE status = 'pending'` pour fusionner sur un index partiel.
 4. `SELECT pg_notify(…)`.
+5. `WITH RECURSIVE … UNION` pour la composante d'un graphe de dépendances. Le parcours
+   ignore le sens des flèches, donc il revisite chaque nœud par les deux bouts —
+   `UNION ALL` ne terminerait pas.
+6. `WITH RECURSIVE` accumulant un `uuid[]` pour le chemin qu'une dépendance refusée
+   refermerait. « Cycle détecté » tout seul n'est pas actionnable.
 
 Elles tournent sur la connexion que Spring détient déjà, dans la même transaction que
 les requêtes Exposed qui les entourent.

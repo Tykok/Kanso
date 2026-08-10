@@ -99,7 +99,14 @@ class NotionBootstrap(
 		)
 		applyRelations(
 			ticketsRef,
-			mapOf(NotionProps.TEAM to teamsRef, NotionProps.PROJECT to projectsRef, NotionProps.DOCS to docsRef),
+			mapOf(
+				NotionProps.TEAM to teamsRef,
+				NotionProps.PROJECT to projectsRef,
+				NotionProps.DOCS to docsRef,
+				// The dependency arrows: self-referencing, the same shape the teams'
+				// parent relation uses, pointed back at the Tickets database itself.
+				NotionProps.BLOCKED_BY to ticketsRef,
+			),
 		)
 
 		// Everything that already exists in Postgres now has somewhere to go.

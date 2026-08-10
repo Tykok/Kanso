@@ -1,6 +1,7 @@
 package dev.kanso.repo
 
 import dev.kanso.db.TicketDependencies
+import dev.kanso.db.Tickets
 import dev.kanso.schedule.Edge
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -41,6 +42,23 @@ class DependencyRepository(private val jdbc: JdbcClient) {
 				(TicketDependencies.successorId inList ticketIds)
 		}.map { Edge(it[TicketDependencies.predecessorId], it[TicketDependencies.successorId]) }
 	}
+
+	/**
+	 * The predecessors of [ticketId] with their mirror pages, keyed by ticket id, and
+	 * null where that predecessor has not reached Notion yet.
+	 *
+	 * The nulls are handed to the caller rather than filtered out here. Notion replaces
+	 * a relation array wholesale, so writing only the arrows that happen to have pages
+	 * would drop the rest permanently — nothing re-pushes a successor once its
+	 * predecessor lands. The mapper turns a null into a deferral instead, exactly as
+	 * the project and doc relations already do.
+	 */
+	fun predecessorPageIds(ticketId: UUID): Map<UUID, String?> =
+		TicketDependencies
+			.join(Tickets, JoinType.INNER, TicketDependencies.predecessorId, Tickets.id)
+			.select(Tickets.id, Tickets.notionPageId)
+			.where { TicketDependencies.successorId eq ticketId }
+			.associate { it[Tickets.id] to it[Tickets.notionPageId] }
 
 	/**
 	 * The weakly connected components containing [ticketIds] — the walk ignores the
