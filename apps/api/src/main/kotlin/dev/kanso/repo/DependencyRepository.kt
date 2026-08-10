@@ -89,14 +89,6 @@ class DependencyRepository(private val jdbc: JdbcClient) {
 	}
 
 	/**
-	 * True when `[predecessorId] -> [successorId]` would close a loop, i.e. when
-	 * [predecessorId] is already reachable by following arrows forward from
-	 * [successorId].
-	 */
-	fun wouldCreateCycle(predecessorId: UUID, successorId: UUID): Boolean =
-		predecessorId == successorId || pathBetween(successorId, predecessorId) != null
-
-	/**
 	 * The first path found from [fromId] to [toId], both ends included, or null when
 	 * there is none. Used to name the chain in the 409 a refused dependency produces:
 	 * "cycle detected" on its own is not something anyone can act on.

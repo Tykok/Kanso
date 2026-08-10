@@ -19,6 +19,8 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -72,8 +74,10 @@ class DependencyTest : PostgresTest() {
 		deps.insert(a, b)
 		deps.insert(b, c)
 
-		assertTrue(deps.wouldCreateCycle(c, a), "C -> A closes A -> B -> C")
-		assertFalse(deps.wouldCreateCycle(a, c), "A -> C is a shortcut, not a cycle")
+		// Asked the way `link` asks it: is the would-be predecessor already reachable
+		// forward from the would-be successor?
+		assertNotNull(deps.pathBetween(a, c), "C -> A would close A -> B -> C")
+		assertNull(deps.pathBetween(c, a), "A -> C is a shortcut, not a cycle")
 	}
 
 	@Test
