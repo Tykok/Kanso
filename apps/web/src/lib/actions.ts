@@ -1,8 +1,8 @@
 import type { Dialog, Overlay, Scope, View } from "@/store/ui";
-import type { KansoInstant, Project, Team, Ticket, TicketPriority, TicketStatus } from "./api";
+import type { Project, Team, Ticket, TicketPriority, TicketStatus } from "./api";
 import { creationSeed } from "./creation-seed";
 import type { PatchInput } from "./queries";
-import { addDays, dayKey, ZOOMS, type Zoom } from "./timeline-geometry";
+import { dayKey, laterBy, today, ZOOMS, type Zoom } from "./timeline-geometry";
 
 export type ActionGroup = "ticket" | "team" | "project" | "view" | "app";
 
@@ -108,18 +108,6 @@ const scopedProject = (ctx: ActionContext): Project | undefined => {
 };
 
 /**
- * A bound [days] later, in the shape it arrived in. `addDays` answers in floating
- * days, which is what the grid is made of, but applied to a bound that names an hour
- * it would quietly turn a deadline of 17:30 into a whole day. The moved day is taken
- * from the geometry — one implementation of "a day later" — and the original
- * time-of-day text is put back verbatim, so no zone is consulted either way.
- */
-const laterBy = (instant: KansoInstant, days: number): KansoInstant =>
-  instant.hasTime
-    ? { at: `${dayKey(addDays(instant, days))}${instant.at.slice(10)}`, hasTime: true }
-    : addDays(instant, days);
-
-/**
  * Slides the whole bar. A ticket carrying one bound sends only that bound: giving a
  * milestone a start it never had would undo the shape the API was deliberately given.
  */
@@ -144,18 +132,6 @@ const resizeBy = (days: number) =>
   });
 
 const isScheduled = (ticket: Ticket) => ticket.start !== undefined || ticket.due !== undefined;
-
-/**
- * Today as the reader's own civil day, assembled from the local clock rather than
- * sliced off `toISOString()` — that is UTC's today, and west of Greenwich it names
- * tomorrow for most of the evening.
- */
-const today = (): KansoInstant => {
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return { at: `${day}T00:00:00Z`, hasTime: false };
-};
 
 /** Steps along [ZOOMS] and stops at the ends: a zoom that wraps is a lost place. */
 const zoomBy = (delta: number) => (ctx: ActionContext) => {

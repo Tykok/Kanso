@@ -175,6 +175,20 @@
   background: var(--border);
 }
 
+/*
+ * Today. Two pixels and the accent colour, so it reads as the one line on the chart
+ * that is not a calendar division — and drawn in the rules layer, which paints under
+ * every bar: a bar crossing today must not be cut in half by it.
+ */
+.tl-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
 /* --- the rows -------------------------------------------------------------- */
 
 .tl-row {
@@ -227,6 +241,9 @@
   position: absolute;
   top: 4px;
   bottom: 4px;
+  /* Over the arrow layer (0), under the sticky name column (2) and the axis (3). See
+     the note on `.tl-arrows`: a bar has to win the pointer against a line crossing it. */
+  z-index: 1;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -313,6 +330,72 @@
   border-right-style: dashed;
 }
 
+/* --- moving a bar ---------------------------------------------------------- */
+
+/*
+ * Only a bar the pointer can move says so. A project's does not: its bounds are either
+ * deduced from the tickets inside — a consequence, not a decision — or explicit and
+ * writable only through a PUT that replaces the whole project.
+ *
+ * `touch-action: none` is what makes a drag possible with a finger at all: without it
+ * the browser claims the gesture as a scroll and cancels the pointer a few pixels in.
+ */
+.tl-bar[data-draggable] {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.tl-bar[data-draggable]:active {
+  cursor: grabbing;
+}
+
+/*
+ * The cursor, drawn where the keyboard acts. Every bar action reads the selection, so
+ * without this the chart answers `h`, `l`, `H` and `L` on a ticket the reader cannot
+ * see they have chosen.
+ *
+ * An outline rather than a border or a background: the three bar states already own
+ * both of those, and a ring outside the box reads the same on the pale bar, the red one
+ * and the hatched one.
+ */
+.tl-bar[data-selected] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/*
+ * The two grips. Six pixels at each end, and only on a bar with two real bounds — a
+ * milestone stands on one date at both edges, so a handle there would move the bound
+ * the other handle moves.
+ *
+ * Hidden until the bar is hovered or selected, but still there: a permanent grip at
+ * both ends of every bar turns a schedule into a row of brackets. `currentColor` so the
+ * grip is dark on a pale bar and pale on a red one, without naming either.
+ */
+.tl-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  opacity: 0;
+  background: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.tl-handle[data-edge="start"] {
+  left: 0;
+}
+
+.tl-handle[data-edge="end"] {
+  right: 0;
+}
+
+.tl-bar:hover .tl-handle,
+.tl-bar[data-selected] .tl-handle {
+  opacity: 1;
+}
+
 /* --- the arrows ------------------------------------------------------------ */
 
 /*
@@ -335,8 +418,17 @@
   height: calc(100% - var(--tl-axis));
   left: var(--tl-names);
   width: var(--tl-chart);
-  /* Over the bars, under the sticky name column (2) and the axis (3). */
-  z-index: 1;
+  /*
+   * Under the bars (1), over the rules. It was over the bars until a bar could be
+   * dragged, and then a routed arrow's vertical leg — a 2px column crossing every row
+   * between its two ends — answered the pointer instead of the bar it was lying on.
+   * The press did nothing at all, silently, on the one gesture this screen is for.
+   *
+   * Passing behind a bar costs the line a few pixels of visibility and buys one rule
+   * that holds for both objects: what you can see, you can hit. An arrow hidden under a
+   * bar is not clickable, which is exactly right — there is nothing there to click.
+   */
+  z-index: 0;
   /* A stub leaves the bar on purpose, and at the edge of the chart it leaves the layer
      with it; clipping it would delete the only mark saying the chain continues. */
   overflow: visible;

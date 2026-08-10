@@ -5,8 +5,10 @@ import {
   boundLabel,
   dayKey,
   instantAtX,
+  laterBy,
   PX_PER_DAY,
   snapDays,
+  today,
   widthOf,
   xOf,
 } from "./timeline-geometry";
@@ -85,6 +87,35 @@ describe("dragging", () => {
     // off `at` and re-adding it would convert, which is the one thing this module
     // refuses to do.
     expect(addDays(timed("2026-08-30T23:00:00Z"), 3)).toEqual(floating("2026-09-02"));
+  });
+
+  test("laterBy moves a floating bound exactly as addDays does", () => {
+    expect(laterBy(floating("2026-08-30"), 3)).toEqual(floating("2026-09-02"));
+  });
+
+  test("laterBy keeps the hour a timed bound arrived with", () => {
+    // The other half of the rule above: a bar is dragged by columns, but a deadline at
+    // 17:30 must not become a whole day because somebody moved it a week out.
+    expect(laterBy(timed("2026-08-30T17:30:00Z"), 3)).toEqual(timed("2026-09-02T17:30:00Z"));
+  });
+
+  test("laterBy moves a timed bound backwards across a month boundary too", () => {
+    expect(laterBy(timed("2026-09-02T17:30:00Z"), -3)).toEqual(timed("2026-08-30T17:30:00Z"));
+  });
+});
+
+describe("today", () => {
+  test("is the reader's own civil day, not UTC's", () => {
+    // Checked against a formatter rather than against the same arithmetic: `sv-SE`
+    // spells a local date as `YYYY-MM-DD`, so the two implementations can only agree
+    // by both meaning the local day. `toISOString().slice(0, 10)` — the trap — names
+    // tomorrow west of Greenwich all evening, and would fail this in that zone.
+    expect(dayKey(today())).toBe(new Date().toLocaleDateString("sv-SE"));
+  });
+
+  test("names a day rather than a moment", () => {
+    expect(today().hasTime).toBe(false);
+    expect(today().at).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/);
   });
 });
 

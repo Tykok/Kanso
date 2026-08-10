@@ -1,8 +1,17 @@
 "use client";
 
-import { TimelineBar } from "./bar";
+import { TimelineBar, type BarEdit } from "./bar";
 import type { Row } from "./view";
 import type { Zoom } from "@/lib/timeline-geometry";
+
+/** What a row needs from the view to make the bar in it answer the pointer. */
+export type RowControl = {
+  /** The cursor, from the store. A project row is never it: projects are not tickets. */
+  selectedId?: string;
+  onSelect: (ticketId: string) => void;
+  onDragStart: () => void;
+  onDragEnd: (ticketId: string, edit?: BarEdit) => void;
+};
 
 /**
  * One lane of the chart, name cell included — the name is pinned to the left with
@@ -19,11 +28,13 @@ export function TimelineRow({
   origin,
   zoom,
   timezone,
+  control,
 }: {
   row: Row;
   origin: string;
   zoom: Zoom;
   timezone: string;
+  control: RowControl;
 }) {
   const name = row.kind === "project" ? row.project.name : row.ticket.identifier;
 
@@ -35,12 +46,12 @@ export function TimelineRow({
       >
         {name}
       </div>
-      <div className="tl-lane">{bar(row, origin, zoom, timezone)}</div>
+      <div className="tl-lane">{bar(row, origin, zoom, timezone, control)}</div>
     </div>
   );
 }
 
-function bar(row: Row, origin: string, zoom: Zoom, timezone: string) {
+function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: RowControl) {
   if (row.kind === "project") {
     const { project } = row;
     // Either bound alone is enough to draw: `widthOf` floors at one column, so a project
@@ -60,6 +71,22 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string) {
             ? "end"
             : undefined;
 
+    /*
+     * No `drag`, so a project bar answers the pointer with nothing at all — not moved,
+     * not resized, not selected. Two separate reasons, and either alone is enough:
+     *
+     * - A derived bound is a consequence. It is the earliest start and the latest end of
+     *   the tickets inside, so dragging it would be editing the answer rather than the
+     *   work, and the next refetch would put it straight back.
+     * - An explicit bound is editable, but not from here. The only write is
+     *   `PUT /api/projects/{id}`, which replaces the row wholesale, and `TimelineProject`
+     *   carries a name and two bounds — a PUT built from it would silently clear the
+     *   project's status, lead and team.
+     *
+     * `data-derived` still marks *which* edge was deduced, per edge, so the dashed side
+     * says which of the two somebody chose. That is the honest half of the distinction
+     * this response can support today.
+     */
     return (
       <TimelineBar
         name={`${project.name}: project`}
@@ -81,6 +108,8 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string) {
   const end = ticket.due ?? ticket.start;
   if (!start || !end) return null;
 
+  const bounds = { start: ticket.start !== undefined, end: ticket.due !== undefined };
+
   return (
     <TimelineBar
       name={`${ticket.identifier}: ${ticket.title}`}
@@ -95,6 +124,16 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string) {
       zoom={zoom}
       timezone={timezone}
       done={ticket.status === "done"}
+      selected={ticket.id === control.selectedId}
+      onSelect={() => control.onSelect(ticket.id)}
+      drag={{
+        // A one-bound ticket has nothing to resize: both of its drawn edges stand on the
+        // same date, so a handle would move the bound the other handle also moves.
+        handles: { start: bounds.start && bounds.end, end: bounds.start && bounds.end },
+        bounds,
+        onStart: control.onDragStart,
+        onEnd: (edit) => control.onDragEnd(ticket.id, edit),
+      }}
     />
   );
 }

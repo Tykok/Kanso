@@ -1,6 +1,7 @@
 "use client";
 
-import { axisTicks, type Zoom } from "@/lib/timeline-geometry";
+import { axisTicks, dayKey, daysBetween, today, xOf, type Zoom } from "@/lib/timeline-geometry";
+import { TODAY_MARKER_ID } from "@/lib/use-action-ctx";
 
 /**
  * Room a `dd/mm` label needs, in pixels, before it runs into the next one. Measured
@@ -27,6 +28,21 @@ export function TimelineGrid({
   zoom: Zoom;
 }) {
   const ticks = axisTicks(origin, dayCount, zoom);
+
+  /*
+   * Today, and whether it is on the chart at all.
+   *
+   * `today()` is the reader's local civil day, not `toISOString().slice(0, 10)` — that
+   * is UTC's today, and west of Greenwich it would draw the rule one column right for
+   * the whole evening, on a chart whose entire premise is that a day is a day.
+   *
+   * A window that does not contain today draws no rule: the marker names a column, and
+   * there is no column to name. `t` then scrolls nowhere, which is the truth — the
+   * alternative is a rule pinned to an edge, standing on a day that is not under it.
+   */
+  const now = today();
+  const offset = daysBetween(origin, dayKey(now));
+  const onChart = offset >= 0 && offset < dayCount;
 
   /*
    * The geometry offers a tick per column; the axis prints as many of them as fit. Day
@@ -65,6 +81,21 @@ export function TimelineGrid({
         {ticks.map((tick) => (
           <span className="tl-rule" key={tick.day} style={{ left: tick.x }} />
         ))}
+        {/*
+         * In the rules layer rather than in a layer of its own: it is the same kind of
+         * mark, measured from the same origin, and it has to pass *under* the bars —
+         * positioned elements paint in document order, and the rules come before the
+         * rows. The id is how `t` reaches it; `use-action-ctx` scrolls to that element
+         * rather than keeping a "recentre" flag in the store for the chart to watch and
+         * then clear.
+         */}
+        {onChart && (
+          <span
+            className="tl-today"
+            id={TODAY_MARKER_ID}
+            style={{ left: xOf(now, origin, zoom) }}
+          />
+        )}
       </div>
     </>
   );

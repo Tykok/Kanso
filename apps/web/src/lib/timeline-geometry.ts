@@ -44,6 +44,32 @@ export function addDays(instant: KansoInstant, days: number): KansoInstant {
   return floatingDay(shifted.toISOString().slice(0, 10));
 }
 
+/**
+ * A bound [days] later, in the shape it arrived in. `addDays` answers in floating days,
+ * which is what the grid is made of, but applied to a bound that names an hour it would
+ * quietly turn a deadline of 17:30 into a whole day. The moved day is taken from
+ * `addDays` — one implementation of "a day later" — and the original time-of-day text is
+ * put back verbatim, so no zone is consulted on either branch.
+ */
+export function laterBy(instant: KansoInstant, days: number): KansoInstant {
+  return instant.hasTime
+    ? { at: `${dayValue(addDays(instant, days))}${instant.at.slice(10)}`, hasTime: true }
+    : addDays(instant, days);
+}
+
+/**
+ * Today, as the reader's own civil day.
+ *
+ * Assembled from the local clock rather than sliced off `toISOString()` — that is UTC's
+ * today, and west of Greenwich it names tomorrow for most of the evening. Floating,
+ * because "today" is a day and not a moment.
+ */
+export function today(): KansoInstant {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return floatingDay(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+}
+
 export function xOf(instant: KansoInstant, origin: string, zoom: Zoom): number {
   return daysBetween(origin, dayValue(instant)) * PX_PER_DAY[zoom];
 }

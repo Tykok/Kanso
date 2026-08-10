@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { TimelineArrows } from "./arrows";
+import type { BarEdit } from "./bar";
 import { TimelineGrid } from "./grid";
 import { TimelineRow } from "./row";
 import { TimelineTray } from "./tray";
-import type { TimelineProject, TimelineTicket } from "@/lib/api";
-import { useTimeline } from "@/lib/queries";
-import { addDays, dayKey, daysBetween, PX_PER_DAY } from "@/lib/timeline-geometry";
+import type { TimelineProject, TimelineTicket, TimelineView as TimelineData } from "@/lib/api";
+import { usePatchTicket, useTimeline } from "@/lib/queries";
+import { addDays, dayKey, daysBetween, PX_PER_DAY, today } from "@/lib/timeline-geometry";
 import { useUi } from "@/store/ui";
 
 /**
@@ -27,9 +28,41 @@ const PADDING_DAYS = 7;
 
 const floating = (day: string) => ({ at: `${day}T00:00:00Z`, hasTime: false });
 
+/**
+ * The response the chart is drawn from while a bar is being moved, and the bounds that
+ * bar is being drawn with.
+ *
+ * A refetch that lands mid-drag repositions what is under the cursor: the tickets query
+ * polls, a realtime event invalidates the whole timeline on any ticket edit anywhere,
+ * and either one arriving between two pointermoves would move the bar the hand is
+ * holding. So the response is copied when the drag begins and the copy is what renders
+ * until the drag's own answer comes back.
+ *
+ * The hold outlives the pointer on purpose. Releasing at pointerup would put the bar
+ * back where it started for the length of one round trip — the patch is optimistic on
+ * the *tickets* cache, and the chart reads the timeline one, which has no optimistic
+ * copy to show. So the drop's own bounds are written into the held snapshot and kept
+ * there until data newer than the snapshot arrives. If the patch was refused, the
+ * refetch answers with the old dates and the bar visibly snaps back, which is the
+ * signal that it did not land.
+ */
+type Hold = {
+  data: TimelineData;
+  /** `dataUpdatedAt` when the hold began: anything newer than this replaces it. */
+  since: number;
+  /** Still under the pointer. */
+  live: boolean;
+  edit?: { ticketId: string } & BarEdit;
+};
+
 export function TimelineView() {
   const zoom = useUi((state) => state.zoom);
+  const selectedId = useUi((state) => state.selectedId);
+  const select = useUi((state) => state.select);
   const timeline = useTimeline(true);
+  const { mutate: patchTicket } = usePatchTicket();
+
+  const [held, setHeld] = useState<Hold | null>(null);
 
   /**
    * The reader's zone, resolved once. Only a bound that names a moment is converted
@@ -38,8 +71,72 @@ export function TimelineView() {
    */
   const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
+  const { data: fetched, dataUpdatedAt, errorUpdatedAt } = timeline;
+
+  const beginDrag = useCallback(() => {
+    if (!fetched) return;
+    setHeld({ data: fetched, since: dataUpdatedAt, live: true });
+  }, [fetched, dataUpdatedAt]);
+
+  const endDrag = useCallback(
+    (ticketId: string, edit?: BarEdit) => {
+      // Nothing moved a whole column, so there is nothing to post and nothing to hold.
+      if (!edit) {
+        setHeld(null);
+        return;
+      }
+      // Re-stamped, not kept from pointerdown: a refetch that landed *during* the drag
+      // has already advanced `dataUpdatedAt`, and a hold still measuring from the start
+      // of the gesture would count that one and expire the instant the pointer came up
+      // — putting the bar back where it was for the length of the round trip.
+      setHeld((current) =>
+        current
+          ? { ...current, live: false, since: dataUpdatedAt, edit: { ticketId, ...edit } }
+          : current,
+      );
+      patchTicket({ id: ticketId, ...edit });
+    },
+    [patchTicket, dataUpdatedAt],
+  );
+
+  /*
+   * A hold ends at the next answer, whichever it is: `onSettled` invalidates the
+   * timeline whether the patch succeeded or was refused, and a refetch that itself fails
+   * still stamps `errorUpdatedAt` — so a hold cannot outlive the round trip that ends
+   * it.
+   *
+   * Read here rather than cleared from an effect. Expiry is a fact about two numbers
+   * already in hand, so deriving it needs no second render, and an effect that called
+   * `setHeld(null)` would schedule one on every refetch for the length of a session.
+   * The expired snapshot stays in state, unread, until the next drag replaces it.
+   */
+  const hold =
+    held && !held.live && (dataUpdatedAt > held.since || errorUpdatedAt > held.since)
+      ? null
+      : held;
+
+  /** What is drawn: the live response, or the held one with the drop written into it. */
+  const view = useMemo(() => {
+    if (!hold) return fetched;
+    const { data, edit } = hold;
+    if (!edit) return data;
+    return {
+      ...data,
+      tickets: data.tickets.map((ticket) =>
+        ticket.id === edit.ticketId
+          ? {
+              ...ticket,
+              // Spread each bound only if the drag sent it: a milestone resized by its
+              // one bound must not acquire the other here either.
+              ...(edit.start ? { start: edit.start } : {}),
+              ...(edit.due ? { due: edit.due } : {}),
+            }
+          : ticket,
+      ),
+    };
+  }, [hold, fetched]);
+
   const bounds = useMemo(() => {
-    const view = timeline.data;
     // Project bounds count too: an explicit deadline outside every ticket's range is
     // exactly the bar that must not be drawn off the end of the grid.
     const days = [
@@ -47,15 +144,16 @@ export function TimelineView() {
       ...(view?.projects ?? []).flatMap((project) => [dayKey(project.start), dayKey(project.end)]),
     ].filter((day) => day !== "");
 
-    // An empty timeline still needs an axis, so fall back on a window around today.
-    const today = new Date().toISOString().slice(0, 10);
-    const first = days.length ? days.reduce((a, b) => (a < b ? a : b)) : today;
-    const last = days.length ? days.reduce((a, b) => (a > b ? a : b)) : today;
+    // An empty timeline still needs an axis, so fall back on a window around today —
+    // the reader's own civil day, the same one the marker stands on.
+    const now = dayKey(today());
+    const first = days.length ? days.reduce((a, b) => (a < b ? a : b)) : now;
+    const last = days.length ? days.reduce((a, b) => (a > b ? a : b)) : now;
     const origin = dayKey(addDays(floating(first), -PADDING_DAYS));
     const end = dayKey(addDays(floating(last), PADDING_DAYS));
     // Inclusive of both ends: `dayCount` counts columns, and the last day is one.
     return { origin, dayCount: Math.max(daysBetween(origin, end) + 1, 1) };
-  }, [timeline.data]);
+  }, [view]);
 
   /**
    * Rows in reading order: each project once, its tickets under it, and the
@@ -63,7 +161,6 @@ export function TimelineView() {
    * still gets its row — its bar may come from an explicit bound.
    */
   const rows = useMemo<Row[]>(() => {
-    const view = timeline.data;
     if (!view) return [];
 
     const byProject = new Map<string | undefined, TimelineTicket[]>();
@@ -86,9 +183,19 @@ export function TimelineView() {
       .map((ticket): Row => ({ kind: "ticket", ticket }));
 
     return [...grouped, ...orphans];
-  }, [timeline.data]);
+  }, [view]);
 
-  if (timeline.error) return <div className="empty error">{(timeline.error as Error).message}</div>;
+  const control = useMemo(
+    () => ({ selectedId, onSelect: select, onDragStart: beginDrag, onDragEnd: endDrag }),
+    [selectedId, select, beginDrag, endDrag],
+  );
+
+  // `&& !view`: once there is something to draw, a background refetch that fails must
+  // not replace the chart with a sentence — least of all mid-drag, which would unmount
+  // the bar the hand is holding.
+  if (timeline.error && !view) {
+    return <div className="empty error">{(timeline.error as Error).message}</div>;
+  }
   if (timeline.isPending) return <div className="empty">Loading…</div>;
 
   // The chart's own width, in pixels, handed to the stylesheet: the axis, the rules
@@ -102,7 +209,7 @@ export function TimelineView() {
     // meant to sit in. Both are children of `.main`, which is the column that gives the
     // chart the height left over.
     <>
-      <TimelineTray items={timeline.data?.unscheduled ?? []} />
+      <TimelineTray items={view?.unscheduled ?? []} />
 
       {/*
        * An empty chart is still a chart with a tray above it — and that is the ordinary
@@ -124,12 +231,13 @@ export function TimelineView() {
                 origin={bounds.origin}
                 zoom={zoom}
                 timezone={timezone}
+                control={control}
               />
             ))}
             {/* Last, so the arrows are painted over the bars they join. */}
             <TimelineArrows
               rows={rows}
-              deps={timeline.data?.dependencies ?? []}
+              deps={view?.dependencies ?? []}
               origin={bounds.origin}
               zoom={zoom}
             />

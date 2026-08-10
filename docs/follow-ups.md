@@ -178,7 +178,34 @@ to `PatchInput`, closing that hole on the keyboard path. The detail panel takes 
 kind of bag as `Record<string, unknown>` on a different path, and closing it needs
 `projectId` added to `PatchInput` — a wider change than exporting the type.
 
-**Two spellings of "today".** `actions.ts` builds it from the reader's local civil day,
-because `toISOString().slice(0, 10)` is UTC's today and names tomorrow west of Greenwich
-all evening. `view.tsx`'s axis fallback still uses the UTC form. Harmless where it sits —
-it only decides which empty window to draw — but the two should agree.
+**Two spellings of "today" — closed.** `actions.ts` and `view.tsx` now both call
+`today()` in `timeline-geometry.ts`, which is also what the chart's today rule stands on.
+`laterBy` moved there with it: both are day arithmetic, and the geometry module is the
+only web module the suite can reach, so the "a day is never converted" rule that each of
+them turns on is now covered by a test rather than by a comment.
+
+**Arrows pass behind the bars, not over them.** Task 4 painted the dependency layer last
+so an arrow would be drawn over the bars it joins. Once a bar could be dragged, a routed
+arrow's vertical leg — a 2px column crossing every row between its two ends — answered
+the pointer instead of the bar underneath it, and the press did nothing at all. The layer
+moved under the bars (`z-index: 0` against the bar's `1`), which costs an arrow a few
+pixels of visibility where a bar lies on it and buys one rule holding for both: what you
+can see, you can hit. If a dense chart ever makes a chain hard to follow, the fix that
+keeps both is two SVG layers — a transparent hit layer under the bars and a
+`pointer-events: none` paint layer over them — not putting the paint layer back on top.
+
+**A project bar cannot be dragged, and one of its bounds could be.** `TimelineBound`
+carries `derived`, per edge, so a project with a posted start and a deduced end has one
+edge somebody chose. Neither is editable from the chart: the only write is
+`PUT /api/projects/{id}`, which replaces the row wholesale, and `TimelineProject` carries
+a name and two bounds — a PUT built from it would silently clear the project's status,
+lead and team. Resizing an explicit project bound needs either a PATCH on projects or the
+timeline response carrying enough to rebuild the whole body.
+
+**Clicking a bar can lose the selection it just made.** `page.tsx` keeps `selectedId`
+inside `visible`, which is the *tickets* query filtered by the search box. The chart draws
+the *timeline* query. The two agree on the ordinary screen, but with a filter typed,
+clicking a bar the filter excludes selects it and the effect immediately moves the cursor
+back to `visible[0]`. The same mismatch already means `h`/`l`/`H`/`L` do nothing on such a
+bar, since every action reads `ctx.selected` — so the honest fix is one list feeding both,
+not a special case for the click.
