@@ -191,5 +191,48 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
   );
   expect(lengthened.due.at.slice(0, 10)).toBe("2026-09-05");
 
+  // --- erase the arrow, without a mouse ---------------------------------------
+  //
+  // `d` draws one and, until now, only a pointer could erase one: click the line or tab
+  // onto it, then Backspace. `D` is the inverse of `d` through the same palette, which is
+  // what makes the gesture reachable from the keyboard at all.
+  const arrow = page.getByRole("button", {
+    name: `${groundwork.identifier} → ${follows.identifier}`,
+  });
+
+  // Clicking the bar puts the cursor on its ticket, which is what `D` acts on.
+  await second.click();
+  await page.keyboard.press("Shift+D");
+
+  // Named after the predecessor, so a graph with several offers a choice between names
+  // rather than between identical rows.
+  const option = page.getByRole("button", {
+    name: `Stop waiting for ${groundwork.identifier}: ${groundwork.title}`,
+  });
+  await expect(option).toBeVisible();
+
+  const [erased] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${follows.id}/dependencies/${groundwork.id}`) &&
+        response.request().method() === "DELETE",
+    ),
+    page.keyboard.press("Enter"),
+  ]);
+  expect(erased.ok(), "the dependency was not erased").toBeTruthy();
+
+  await expect(arrow).toHaveCount(0);
+
+  /*
+   * Nothing moves back. Freeing slack does not pull work earlier — the successor keeps the
+   * dates the cascade gave it — and with no edge left neither end has slack to report, so
+   * the red goes away while the bars stay where they are.
+   */
+  await expect(second).toHaveAttribute("data-state", "normal");
+  await expect(first).toHaveAttribute("data-state", "normal");
+  await expect
+    .poll(async () => (await second.boundingBox())!.x)
+    .toBe(before!.x + PX_PER_DAY_AT_DAY_ZOOM);
+
   await api.dispose();
 });
