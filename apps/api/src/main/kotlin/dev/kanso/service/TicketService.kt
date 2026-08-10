@@ -18,6 +18,7 @@ import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /** A ticket with its team key (for `KAN-142`) and its relations already loaded. */
@@ -201,15 +202,26 @@ class TicketService(
 			tickets.moveToTeam(id, patch.teamId, teams.nextTicketNumber(patch.teamId))
 		}
 
+		// Written here rather than in a trigger: the rule belongs next to the status
+		// logic that owns it, and a trigger would be the only part of the transition
+		// invisible from this file.
+		val status = patch.status ?: current.status
+		val completedAt = when {
+			status == TicketStatus.DONE && current.status != TicketStatus.DONE -> OffsetDateTime.now()
+			status != TicketStatus.DONE -> null
+			else -> current.completedAt
+		}
+
 		val updated = tickets.update(
 			id = id,
 			teamId = teamId,
 			title = patch.title ?: current.title,
 			description = if ("description" in patch.unset) null else patch.description ?: current.description,
-			status = patch.status ?: current.status,
+			status = status,
 			priority = patch.priority ?: current.priority,
 			start = start,
 			due = due,
+			completedAt = completedAt,
 			projectId = projectId,
 			archived = patch.archived ?: current.archived,
 		) ?: throw NotFoundException("No ticket $id")

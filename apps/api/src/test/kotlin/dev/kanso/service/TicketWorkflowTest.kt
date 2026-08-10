@@ -19,6 +19,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -254,6 +255,37 @@ class TicketWorkflowTest : PostgresTest() {
 			queued.operation,
 			"Notion archives rather than deletes, so archiving is its own operation",
 		)
+	}
+
+	@Test
+	fun `completedAt is stamped on the way into done and cleared on the way out`() {
+		val team = newTeam()
+		val created = tickets.create(
+			teamId = team.id,
+			title = "Finish me",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = null,
+			due = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+		assertNull(created.ticket.completedAt, "a new ticket has not been completed")
+
+		val done = tickets.patch(created.ticket.id, TicketPatch(status = TicketStatus.DONE))
+		assertNotNull(done.ticket.completedAt, "entering done records when it happened")
+
+		val renamed = tickets.patch(created.ticket.id, TicketPatch(title = "Still done"))
+		assertEquals(
+			done.ticket.completedAt,
+			renamed.ticket.completedAt,
+			"an unrelated edit must not move the completion date — that is why updatedAt cannot serve",
+		)
+
+		val reopened = tickets.patch(created.ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		assertNull(reopened.ticket.completedAt, "leaving done clears it")
 	}
 
 	@Test

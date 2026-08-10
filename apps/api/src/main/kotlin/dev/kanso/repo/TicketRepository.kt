@@ -101,6 +101,7 @@ class TicketRepository {
 		priority: TicketPriority,
 		start: KansoInstant?,
 		due: KansoInstant?,
+		completedAt: OffsetDateTime?,
 		projectId: UUID?,
 		archived: Boolean,
 	): Ticket? {
@@ -114,6 +115,7 @@ class TicketRepository {
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at
 			it[Tickets.dueHasTime] = due?.hasTime ?: false
+			it[Tickets.completedAt] = completedAt
 			it[Tickets.projectId] = projectId
 			it[Tickets.archived] = archived
 		}

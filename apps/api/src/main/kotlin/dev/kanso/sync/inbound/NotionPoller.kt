@@ -143,6 +143,9 @@ class NotionPoller(
 			priority = priority ?: ticket.priority,
 			start = instant(props, NotionProps.START) ?: ticket.start,
 			due = instant(props, NotionProps.DUE) ?: ticket.due,
+			// Carried through untouched: the mirror does not decide when a ticket was
+			// completed, and an inbound edit must not restamp a completion.
+			completedAt = ticket.completedAt,
 			projectId = ticket.projectId,
 			archived = page.archived,
 		)
