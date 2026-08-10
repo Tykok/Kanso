@@ -168,6 +168,18 @@ object TicketAssignees : Table("ticket_assignees") {
 	override val primaryKey = PrimaryKey(ticketId, userId)
 }
 
+/**
+ * Finish-to-start dependencies. No lag column and no type column: the edge either
+ * exists or it does not, and the acyclicity of the graph is guarded on insert
+ * rather than by a constraint the database cannot express.
+ */
+object TicketDependencies : Table("ticket_dependencies") {
+	val predecessorId = javaUUID("predecessor_id")
+	val successorId = javaUUID("successor_id")
+	val createdAt = timestampWithTimeZone("created_at")
+	override val primaryKey = PrimaryKey(predecessorId, successorId)
+}
+
 object NotionDocs : Table("notion_docs") {
 	val id = javaUUID("id")
 
