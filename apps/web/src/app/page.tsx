@@ -473,8 +473,10 @@ export default function InboxPage() {
                 </span>
               </>
             )}
+            {/* The only key in this strip whose spelling depends on the reader —
+                every other one is bare — which is why `Action.hint` exists. */}
             <span>
-              <kbd>⌘K</kbd> commands
+              <kbd>{isMac() ? "⌘K" : "Ctrl+K"}</kbd> commands
             </span>
             <span>
               <kbd>,</kbd> settings
