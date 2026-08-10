@@ -133,3 +133,11 @@ reads the date in the session's timezone — a server in Paris would have stored
 existing day as 22:00 the day before. No test covers it: Testcontainers starts empty,
 so there is no legacy row to convert. Any future backfill of a date column has the same
 trap.
+
+**Clearing a due date only takes effect on refetch.** `PatchInput` in
+`apps/web/src/lib/queries.ts` never listed the date field, and ticket patches reach it
+through `ActionContext.patchTicket`'s `Record<string, unknown>`, so the field is
+unchecked end to end. The optimistic `setQueryData` spread applies `due` but not
+`unset: ["due"]`, so the cleared date reappears until the server answers. This predates
+the timeline work — it behaved identically when the field was `dueDate` — and it will
+be more visible once bars can be dragged.
