@@ -17,6 +17,7 @@ import dev.kanso.domain.User
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ProjectDetail
 import dev.kanso.service.TicketDetail
+import dev.kanso.service.TimelineView
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.OffsetDateTime
@@ -299,6 +300,80 @@ data class TicketResponse(
 				updatedAt = t.updatedAt,
 			)
 		}
+	}
+}
+
+// --- timeline ----------------------------------------------------------------
+
+/** A bound plus where it came from: without [derived], nothing says what may be edited. */
+data class TimelineBoundDto(val at: OffsetDateTime, val hasTime: Boolean, val derived: Boolean)
+
+data class TimelineProjectResponse(
+	val id: UUID,
+	val name: String,
+	val start: TimelineBoundDto?,
+	val end: TimelineBoundDto?,
+)
+
+data class TimelineTicketResponse(
+	val id: UUID,
+	val identifier: String,
+	val title: String,
+	val projectId: UUID?,
+	val status: String,
+	val start: InstantDto?,
+	val due: InstantDto?,
+	val slackMinutes: Long?,
+	val critical: Boolean,
+	val late: Boolean,
+)
+
+data class TimelineDependencyResponse(
+	val predecessorId: UUID,
+	val successorId: UUID,
+	val violated: Boolean,
+	val outOfScope: Boolean,
+)
+
+data class TimelineUnscheduledResponse(val id: UUID, val identifier: String, val title: String)
+
+data class TimelineResponse(
+	val projects: List<TimelineProjectResponse>,
+	val tickets: List<TimelineTicketResponse>,
+	val dependencies: List<TimelineDependencyResponse>,
+	val unscheduled: List<TimelineUnscheduledResponse>,
+) {
+	companion object {
+		fun of(view: TimelineView) = TimelineResponse(
+			projects = view.projects.map { project ->
+				TimelineProjectResponse(
+					id = project.id,
+					name = project.name,
+					start = project.start?.let { TimelineBoundDto(it.at, it.hasTime, project.startDerived) },
+					end = project.end?.let { TimelineBoundDto(it.at, it.hasTime, project.endDerived) },
+				)
+			},
+			tickets = view.tickets.map {
+				TimelineTicketResponse(
+					id = it.id,
+					identifier = it.identifier,
+					title = it.title,
+					projectId = it.projectId,
+					status = it.status.wire,
+					start = InstantDto.of(it.start),
+					due = InstantDto.of(it.due),
+					slackMinutes = it.slackMinutes,
+					critical = it.critical,
+					late = it.late,
+				)
+			},
+			dependencies = view.dependencies.map {
+				TimelineDependencyResponse(it.predecessorId, it.successorId, it.violated, it.outOfScope)
+			},
+			unscheduled = view.unscheduled.map {
+				TimelineUnscheduledResponse(it.id, it.identifier, it.title)
+			},
+		)
 	}
 }
 
