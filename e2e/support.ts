@@ -117,11 +117,42 @@ export async function seedProject(
   return (await response.json()) as SeededProject;
 }
 
+/**
+ * A `YYYY-MM-DD` day as the API stores one: an instant that carries no time.
+ *
+ * `hasTime: false` is the whole point — a bound with a time is a moment and is
+ * converted into the reader's zone, and a plan made of moments moves a column sideways
+ * for anyone west of UTC on dates nobody touched.
+ */
+export const floatingDay = (day: string) => ({ at: `${day}T00:00:00Z`, hasTime: false });
+
 export async function seedTicket(
   api: APIRequestContext,
-  body: { teamId: string; title: string; projectId?: string },
+  body: {
+    teamId: string;
+    title: string;
+    projectId?: string;
+    /**
+     * `YYYY-MM-DD`, both optional and both floating.
+     *
+     * Seeded rather than typed in, unlike everything the timeline scenario then does
+     * with the mouse. The interface has no way to give a ticket a *start*: the detail
+     * panel offers a due date and nothing else, and the only other path is the timeline
+     * itself — the very thing under test. Building the stage through the screen would
+     * mean proving the drop gesture works by using the drop gesture.
+     */
+    start?: string;
+    due?: string;
+  },
 ): Promise<SeededTicket> {
-  const response = await api.post("/api/tickets", { data: body });
+  const { start, due, ...rest } = body;
+  const response = await api.post("/api/tickets", {
+    data: {
+      ...rest,
+      ...(start ? { start: floatingDay(start) } : {}),
+      ...(due ? { due: floatingDay(due) } : {}),
+    },
+  });
   expect(response.ok(), `Could not create the ticket ${body.title}`).toBeTruthy();
   return (await response.json()) as SeededTicket;
 }

@@ -84,7 +84,7 @@ scratch:
 docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wait
 ```
 
-## The eleven scenarios
+## The twelve scenarios
 
 | File                     | What it holds                                                                |
 | ------------------------ | ---------------------------------------------------------------------------- |
@@ -98,11 +98,40 @@ docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wai
 | `mouse.spec.ts`          | 9. The New menu creates into the scope you are standing in.                   |
 |                          | 10. The brand menu: identity, the hinted entries, the version, sign-out.      |
 |                          | 11. A ticket row worked entirely by mouse: pills, rename, archive, delete.    |
+| `12-timeline.spec.ts`    | 12. An arrow drawn by hand, then a resize the scheduling engine cascades.     |
 
 Scenario 5 is the point of the whole thing. The action registry rewrites the keyboard
 path; this test is what says whether behaviour moved with it. When an assertion is in
 doubt, the reference is what the key did before the switch, not what one would like it
 to do.
+
+Scenario 12 is the only one that reaches the scheduling engine. Everything the timeline
+was built against before it was a stub — geometry under Vitest, components under a
+harness answering with fixtures — so this is where a gesture in the browser is shown to
+reach Kotlin and come back as pixels. It reads its answers twice, off the chart and out
+of the API, because a bar that moved and a bar that merely repainted look the same.
+
+Two of its handles carry no accessible name and are therefore pressed by coordinate: the
+resize grip, the last six pixels inside a bar's right edge, and the link handle, which
+begins one pixel past it. Neither does anything when pressed — only when dragged — and
+`bar.tsx` explains why naming them would promise an activation that does not exist.
+
+## Queries
+
+New files query by role and accessible name. `follow-ups.md` holds it against the older
+scenarios that they reach for private CSS classes — `.row`, `.status`, `.shortcuts` —
+which couples the suite to the stylesheet and breaks on refactors that changed nothing a
+person can see. Timeline bars are `role="button"` named `${identifier}: ${title}`, tray
+chips are named the same way, and a dependency arrow is a focusable path whose `<title>`
+reads `${predecessor} → ${successor}`.
+
+## Dates in the fixtures
+
+`seedTicket` takes `start` and `due` as `YYYY-MM-DD` strings and posts them as floating
+instants — `hasTime: false`, the shape a Gantt column is. They are seeded over HTTP
+rather than typed in because no screen in the application gives a ticket a *start*: the
+detail panel offers a due date and nothing else, and the only other path is the timeline
+itself, which is the thing under test.
 
 ## Stamping a version
 
