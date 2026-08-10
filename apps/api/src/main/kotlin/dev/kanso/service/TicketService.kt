@@ -61,6 +61,7 @@ class TicketService(
 	private val docs: DocRepository,
 	private val syncJobs: SyncJobRepository,
 	private val events: EventPublisher,
+	private val schedule: ScheduleService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -235,6 +236,14 @@ class TicketService(
 			if (updated.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
 		)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, updated.teamId, updated.projectId))
+
+		// The cascade runs inside this transaction, so the event published just above —
+		// which `EventPublisher` defers to `afterCommit` — already announces it. One
+		// event for the whole cascade, not one per moved ticket: `pg_notify` caps
+		// payloads at 8000 bytes and two hundred UUIDs alone come to 7200, and receivers
+		// refetch rather than read ids off the event, which is the doctrine every other
+		// event here already follows.
+		schedule.cascadeFrom(id)
 		return decorate(listOf(updated)).single()
 	}
 

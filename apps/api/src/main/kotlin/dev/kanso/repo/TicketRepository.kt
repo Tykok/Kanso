@@ -130,6 +130,22 @@ class TicketRepository {
 		return if (changed == 0) null else findById(id)
 	}
 
+	/**
+	 * Writes only the two bounds. The cascade moves dates and nothing else, so a full
+	 * row update here would make it capable of clobbering a concurrent edit to a field
+	 * it has no business touching.
+	 *
+	 * The granularity flags are left as they are: shifting a day-granularity ticket
+	 * keeps it a day, and a chain of floating dates does not sprout times because
+	 * something upstream slipped.
+	 */
+	fun reschedule(id: UUID, start: OffsetDateTime, end: OffsetDateTime) {
+		Tickets.update({ Tickets.id eq id }) {
+			it[startAt] = start
+			it[dueAt] = end
+		}
+	}
+
 	fun delete(id: UUID): Boolean = Tickets.deleteWhere { Tickets.id eq id } > 0
 
 	// --- bulk reads ----------------------------------------------------------
