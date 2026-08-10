@@ -3,6 +3,7 @@ import {
   ACTIONS,
   actionById,
   availableActions,
+  hintOf,
   indexActions,
   predecessorsOf,
   resolveShortcut,
@@ -641,10 +642,47 @@ describe("running an action", () => {
   });
 });
 
+describe("hintOf", () => {
+  it("prints the palette's key as the one the reader actually has", () => {
+    const palette = actionById("app.palette");
+    expect(hintOf(palette, true)).toBe("⌘K");
+    expect(hintOf(palette, false)).toBe("Ctrl+K");
+  });
+
+  it("keeps that hint out of the dispatch table", () => {
+    // The whole point of a second field: ⌘K is intercepted ahead of the registry, and
+    // `k` there would collide with `ticket.moveUp`.
+    expect(actionById("app.palette").shortcut).toBeUndefined();
+    expect(resolveShortcut("K", "list")).toBeUndefined();
+    expect(resolveShortcut("k", "list")?.id).toBe("ticket.moveUp");
+  });
+
+  it("falls back to the first spelling of a shortcut, printed for a human", () => {
+    expect(hintOf(actionById("ticket.moveDown"), true)).toBe("j");
+    expect(hintOf(actionById("app.help"), true)).toBe("?");
+
+    const arrowOnly: Action = {
+      id: "test.arrow",
+      label: "Arrow",
+      shortcut: "ArrowDown",
+      group: "view",
+      when: () => true,
+      run: () => {},
+    };
+    expect(hintOf(arrowOnly, true)).toBe("↓");
+  });
+
+  it("prints nothing for an action the keyboard cannot reach", () => {
+    expect(hintOf(actionById("project.create"), true)).toBeUndefined();
+  });
+});
+
 describe("shortcutRows", () => {
-  it("is derived from the actions carrying a shortcut, not written by hand", () => {
-    const bound = ACTIONS.filter((action) => action.shortcut !== undefined);
-    const rows = shortcutRows();
+  it("is derived from the actions the keyboard can reach, not written by hand", () => {
+    const bound = ACTIONS.filter(
+      (action) => action.shortcut !== undefined || action.hint !== undefined,
+    );
+    const rows = shortcutRows(true);
 
     expect(rows).toHaveLength(bound.length);
     for (const action of bound) {
@@ -652,18 +690,27 @@ describe("shortcutRows", () => {
     }
   });
 
+  it("carries the palette's row, which the overlay used to draw by hand", () => {
+    expect(shortcutRows(true).find((row) => row.label === "Command palette")).toEqual({
+      mode: undefined,
+      keys: "⌘K",
+      label: "Command palette",
+    });
+    expect(shortcutRows(false).find((row) => row.label === "Command palette")?.keys).toBe("Ctrl+K");
+  });
+
   it("prints the arrow keys as arrows rather than as DOM key names", () => {
-    const rows = shortcutRows();
+    const rows = shortcutRows(true);
     expect(rows.find((row) => row.label === "Move down")?.keys).toBe("j / ↓");
     expect(rows.find((row) => row.label === "Move up")?.keys).toBe("k / ↑");
   });
 
   it("carries no row for an action the keyboard cannot reach", () => {
-    expect(shortcutRows().some((row) => row.label === "New project")).toBe(false);
+    expect(shortcutRows(true).some((row) => row.label === "New project")).toBe(false);
   });
 
   it("names the mode of every row, so the help overlay can group them", () => {
-    const rows = shortcutRows();
+    const rows = shortcutRows(true);
     // Undefined, not "list": the row belongs to both views and the overlay says so.
     expect(rows.find((row) => row.label === "Move down")?.mode).toBeUndefined();
     expect(rows.find((row) => row.label === "Move bar earlier")?.mode).toBe("timeline");

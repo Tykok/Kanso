@@ -1,4 +1,5 @@
-import { actionById, type ActionContext } from "@/lib/actions";
+import { actionById, hintOf, type ActionContext } from "@/lib/actions";
+import { isMac } from "@/lib/platform";
 import type { MenuItem } from "./menu";
 
 /**
@@ -23,10 +24,9 @@ export function menuItems(ctx: ActionContext, ids: string[]): MenuItem[] {
     .map((action) => ({
       id: action.id,
       label: action.label,
-      // The first spelling only: `ticket.moveDown` owns both `j` and `ArrowDown`, and
-      // a menu entry showing "j ArrowDown" teaches nothing. Same choice the command
-      // palette makes in `page.tsx`.
-      hint: action.shortcut?.split(" ")[0],
+      // One rule for every surface that prints a key, including the actions whose key is
+      // not one the registry dispatches — see `hintOf`.
+      hint: hintOf(action, isMac()),
       danger: DESTRUCTIVE.has(action.id),
       onSelect: () => action.run(ctx),
     }));

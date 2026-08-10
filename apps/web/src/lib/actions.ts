@@ -81,6 +81,15 @@ export type Action = {
    */
   shortcut?: string;
   /**
+   * What a menu prints when the key this action answers is not a key `resolveShortcut`
+   * can dispatch on. `hint` is never dispatched; `shortcut` is only printed when there is
+   * no `hint`, so the two cannot disagree about which one does what.
+   *
+   * `Mod+` is canonical and expanded at display time: the registry is a module, and which
+   * modifier the reader's keyboard carries is a runtime fact about the reader.
+   */
+  hint?: string;
+  /**
    * The view this action belongs to. Absent means both — most of the registry, since
    * a status change means the same thing wherever the ticket is drawn.
    */
@@ -611,6 +620,10 @@ export const ACTIONS: readonly Action[] = [
   {
     id: "app.palette",
     label: "Command palette",
+    // No `shortcut`: ⌘K is intercepted in `page.tsx` ahead of the registry, and `k` here
+    // would collide with `ticket.moveUp`. `hint` is display only, which is what lets the
+    // menus print a key the registry does not dispatch.
+    hint: "Mod+K",
     group: "app",
     when: () => true,
     run: (ctx) => ctx.open("palette"),
@@ -703,25 +716,42 @@ const KEY_LABELS: Record<string, string> = {
 };
 
 /**
+ * The key to print for [action], or nothing when the keyboard cannot reach it.
+ *
+ * One function for the three surfaces that used to spell this out themselves — the row
+ * menus, the command palette and the help overlay — so a display rule cannot hold in one
+ * and not the others. [isMac] is passed rather than read here: this module is imported by
+ * the test suite under `environment: "node"`, where there is no `navigator` to ask.
+ */
+export function hintOf(action: Action, isMac: boolean): string | undefined {
+  if (action.hint !== undefined) return action.hint.replace("Mod+", isMac ? "⌘" : "Ctrl+");
+  // The first spelling only: `ticket.moveDown` owns both `j` and `ArrowDown`, and a menu
+  // entry reading "j ArrowDown" teaches nothing.
+  const first = action.shortcut?.split(" ")[0];
+  return first === undefined ? undefined : (KEY_LABELS[first] ?? first);
+}
+
+/**
  * Rows for the help overlay, generated from the shortcuts.
  *
  * Each row carries its mode — undefined for the keys both views answer — because a
  * flat list would offer `h` `l` `H` `L` to someone in the list, where they do nothing
  * at all.
+ *
+ * An action carrying only a `hint` gets a row too: that is what replaced the hardcoded
+ * `⌘K` pair the overlay used to draw beneath the generated list.
  */
-export function shortcutRows(): { mode: View | undefined; keys: string; label: string }[] {
-  return ACTIONS.flatMap((action) =>
-    action.shortcut === undefined
-      ? []
-      : [
-          {
-            mode: action.mode,
-            keys: action.shortcut
-              .split(" ")
-              .map((key) => KEY_LABELS[key] ?? key)
-              .join(" / "),
-            label: action.label,
-          },
-        ],
-  );
+export function shortcutRows(
+  isMac: boolean,
+): { mode: View | undefined; keys: string; label: string }[] {
+  return ACTIONS.flatMap((action) => {
+    const keys =
+      action.hint !== undefined
+        ? hintOf(action, isMac)
+        : action.shortcut
+            ?.split(" ")
+            .map((key) => KEY_LABELS[key] ?? key)
+            .join(" / ");
+    return keys === undefined ? [] : [{ mode: action.mode, keys, label: action.label }];
+  });
 }

@@ -12,6 +12,7 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from "@/lib/api";
+import { isMac } from "@/lib/platform";
 import type { View } from "@/store/ui";
 import { statusLabel } from "./pills";
 
@@ -240,7 +241,7 @@ const SHORTCUT_SECTIONS: { mode: View | undefined; title: string }[] = [
 ];
 
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
-  const rows = shortcutRows();
+  const rows = shortcutRows(isMac());
 
   return (
     <Backdrop onClose={onClose}>
@@ -290,22 +291,15 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
                   </div>
                 ))}
                 {/*
-                  The two keys the registry cannot own: the palette is a modified key,
-                  resolved before the registry is consulted, and Escape is not an action
-                  but the way out of whatever is on top of the list. Both belong under
-                  "Anywhere", which is exactly what they are.
+                  The one key the registry cannot own as a shortcut: Escape is not an
+                  action but the way out of whatever is on top of the list. ⌘K used to be
+                  drawn here beside it and now comes from `app.palette`'s `hint`.
                 */}
                 {section.mode === undefined && (
-                  <>
-                    <div style={{ display: "contents" }}>
-                      <kbd>⌘K / Ctrl+K</kbd>
-                      <span>Command palette</span>
-                    </div>
-                    <div style={{ display: "contents" }}>
-                      <kbd>Esc</kbd>
-                      <span>Close</span>
-                    </div>
-                  </>
+                  <div style={{ display: "contents" }}>
+                    <kbd>Esc</kbd>
+                    <span>Close</span>
+                  </div>
                 )}
               </div>
             </div>

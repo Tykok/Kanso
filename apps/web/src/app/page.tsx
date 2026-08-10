@@ -13,9 +13,10 @@ import { SettingsPanel } from "@/components/settings/panel";
 import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
-import { availableActions, predecessorsOf, resolveShortcut } from "@/lib/actions";
+import { availableActions, hintOf, predecessorsOf, resolveShortcut } from "@/lib/actions";
 import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
+import { isMac } from "@/lib/platform";
 import {
   useAuthMode,
   useLinkDependency,
@@ -313,7 +314,7 @@ export default function InboxPage() {
       ...availableActions(ctx).map((action) => ({
         id: action.id,
         label: action.label,
-        hint: action.shortcut?.split(" ")[0],
+        hint: hintOf(action, isMac()),
         run: () => action.run(ctx),
       })),
       // Teams are rows from the server, so no static registry can enumerate them.
