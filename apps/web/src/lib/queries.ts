@@ -10,6 +10,7 @@ import { useUi, type Scope } from "@/store/ui";
 import {
   api,
   DEFAULT_PREFERENCES,
+  type KansoInstant,
   type Me,
   type Preferences,
   type Project,
@@ -37,6 +38,9 @@ export const keys = {
   tickets: (scope: Scope, includeArchived: boolean) =>
     ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
+  /** No archived flag: the timeline endpoint never returns archived work. */
+  timeline: (scope: Scope) =>
+    ["timeline", scope.kind, scope.kind === "all" ? "" : scope.id] as const,
 };
 
 /**
@@ -157,6 +161,22 @@ export const useTickets = () => {
 };
 
 /**
+ * One query for the whole screen. Bounds, slack, criticality and arrows are computed
+ * together over the same dependency closure on the server, so asking for them
+ * separately would mean walking that closure more than once.
+ *
+ * `enabled` so the list view does not pay for a query nothing renders.
+ */
+export const useTimeline = (enabled: boolean) => {
+  const scope = useUi((state) => state.scope);
+  return useQuery({
+    queryKey: keys.timeline(scope),
+    queryFn: () => api.timeline(scope),
+    enabled,
+  });
+};
+
+/**
  * What a team or a project holds. The disposition modal exists to say what is in
  * there *now*, so a cached count is the one answer it must never be given.
  */
@@ -171,6 +191,16 @@ export const useContents = (kind: "team" | "project", id: string) =>
 export const useSyncStatus = () =>
   useQuery({ queryKey: keys.sync, queryFn: api.syncStatus, refetchInterval: 10_000 });
 
+/**
+ * The fields a patch may carry. `start` and `due` were missing, so a dragged bar's
+ * new dates reached the server through an unchecked `Record<string, unknown>` — and
+ * a cleared one was not applied optimistically at all.
+ *
+ * Neither date is nullable here on purpose: `TicketPatchRequest` reads an explicit
+ * `null` as "leave unchanged", exactly like an absent key. `unset: ["due"]` is the
+ * only thing that clears a bound, so offering `due: null` would type-check a call
+ * that silently does nothing.
+ */
 type PatchInput = {
   id: string;
   status?: TicketStatus;
@@ -178,6 +208,8 @@ type PatchInput = {
   title?: string;
   description?: string;
   archived?: boolean;
+  start?: KansoInstant;
+  due?: KansoInstant;
   unset?: string[];
 };
 
@@ -195,22 +227,31 @@ export function usePatchTicket() {
   return useMutation({
     mutationFn: ({ id, ...body }: PatchInput) => api.patchTicket(id, body),
 
-    onMutate: async ({ id, ...body }) => {
+    // `unset` is destructured out of `body` here and nowhere else: the request needs
+    // it, the cached ticket has no such field, and spreading it would leave a stray
+    // array on the row.
+    onMutate: async ({ id, unset, ...body }) => {
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Ticket[]>(key);
 
       queryClient.setQueryData<Ticket[]>(key, (current) =>
-        (current ?? []).map((ticket) =>
-          ticket.id === id
-            ? {
-                ...ticket,
-                ...body,
-                // The mirror is asynchronous by design: the moment a row changes
-                // locally, Notion is behind. Show that rather than imply it landed.
-                mirror: { ...ticket.mirror, state: ticket.mirror.state === "disabled" ? "disabled" : "pending" },
-              }
-            : ticket,
-        ),
+        (current ?? []).map((ticket) => {
+          if (ticket.id !== id) return ticket;
+          const patched: Ticket = { ...ticket, ...body };
+          // JSON cannot tell an absent key from an explicit null, so the server takes
+          // a list of fields to clear. The optimistic copy has to clear them too, or
+          // the value the person just removed sits there until the refetch lands.
+          for (const field of unset ?? []) {
+            delete (patched as Record<string, unknown>)[field];
+          }
+          // The mirror is asynchronous by design: the moment a row changes locally,
+          // Notion is behind. Show that rather than imply it landed.
+          patched.mirror = {
+            ...ticket.mirror,
+            state: ticket.mirror.state === "disabled" ? "disabled" : "pending",
+          };
+          return patched;
+        }),
       );
       return { previous };
     },
@@ -219,7 +260,52 @@ export function usePatchTicket() {
       if (context?.previous) queryClient.setQueryData(key, context.previous);
     },
 
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: key });
+      // A patch may have cascaded into tickets this mutation never named, and it
+      // changes slack and criticality for others that did not move at all.
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+    },
+  });
+}
+
+/**
+ * Drawing an arrow. The response carries the tickets the new constraint moved, but the
+ * timeline is refetched rather than patched from it: the same edit also changes slack
+ * and criticality for tickets that did not move at all.
+ */
+export function useLinkDependency() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      successorId,
+      predecessorId,
+    }: {
+      successorId: string;
+      predecessorId: string;
+    }) => api.linkDependency(successorId, predecessorId),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
+/** Erasing one. Nothing moves back: freeing slack does not pull work earlier. */
+export function useUnlinkDependency() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      successorId,
+      predecessorId,
+    }: {
+      successorId: string;
+      predecessorId: string;
+    }) => api.unlinkDependency(successorId, predecessorId),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
   });
 }
 
@@ -283,8 +369,14 @@ export function useUnarchive() {
 export function applyEvent(queryClient: QueryClient, entity: string) {
   if (entity === "tickets") {
     queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    // A cascade moves tickets other than the edited one, and the event names only
+    // the entity — so the whole view is refetched rather than patched.
+    queryClient.invalidateQueries({ queryKey: ["timeline"] });
   } else if (entity === "projects") {
     queryClient.invalidateQueries({ queryKey: ["projects"] });
+    // A project's derived bounds change when its tickets do, its explicit ones when
+    // it is edited, and its explicit end is a deadline the critical path reads.
+    queryClient.invalidateQueries({ queryKey: ["timeline"] });
   } else if (entity === "teams") {
     queryClient.invalidateQueries({ queryKey: ["teams"] });
   }

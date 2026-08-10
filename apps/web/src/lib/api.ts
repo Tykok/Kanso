@@ -96,6 +96,52 @@ export type ProjectBody = {
   teamId?: string;
 };
 
+// --- timeline ----------------------------------------------------------------
+
+/** A project bound, plus whether anyone posted it — a derived one is not editable. */
+export type TimelineBound = KansoInstant & { derived: boolean };
+
+export type TimelineProject = {
+  id: string;
+  name: string;
+  start?: TimelineBound;
+  end?: TimelineBound;
+};
+
+export type TimelineTicket = {
+  id: string;
+  identifier: string;
+  title: string;
+  projectId?: string;
+  status: TicketStatus;
+  start?: KansoInstant;
+  due?: KansoInstant;
+  /** Absent for a ticket with no dependencies: it has no slack to report. */
+  slackMinutes?: number;
+  critical: boolean;
+  late: boolean;
+};
+
+export type TimelineDependency = {
+  predecessorId: string;
+  successorId: string;
+  violated: boolean;
+  /** The other end is outside this response, so the arrow is drawn as a stub. */
+  outOfScope: boolean;
+};
+
+export type TimelineUnscheduled = { id: string; identifier: string; title: string };
+
+export type TimelineView = {
+  projects: TimelineProject[];
+  tickets: TimelineTicket[];
+  dependencies: TimelineDependency[];
+  unscheduled: TimelineUnscheduled[];
+};
+
+/** What a dependency write returns: the tickets its cascade moved. */
+export type CascadeResult = { movedTicketIds: string[] };
+
 /** What happens to what a team or a project holds when the container goes away. */
 export type DispositionChoice = "take" | "keep";
 
@@ -460,6 +506,32 @@ export const api = {
   ) => request<Ticket>(`/api/tickets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   deleteTicket: (id: string) => request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
+
+  // --- timeline ------------------------------------------------------------
+
+  /**
+   * One GET for the whole screen. Neither filter is a page: bounds, slack and the
+   * arrows are computed together, so they have to arrive together.
+   */
+  timeline: (scope: Scope) =>
+    request<TimelineView>(
+      `/api/timeline${query({
+        teamId: scope.kind === "team" ? scope.id : undefined,
+        projectId: scope.kind === "project" ? scope.id : undefined,
+      })}`,
+    ),
+
+  /** `{id}` is the successor; the body names what it now waits on. */
+  linkDependency: (successorId: string, predecessorId: string) =>
+    request<CascadeResult>(`/api/tickets/${successorId}/dependencies`, {
+      method: "POST",
+      body: JSON.stringify({ predecessorId }),
+    }),
+
+  unlinkDependency: (successorId: string, predecessorId: string) =>
+    request<void>(`/api/tickets/${successorId}/dependencies/${predecessorId}`, {
+      method: "DELETE",
+    }),
 
   users: () => request<User[]>("/api/users"),
   syncStatus: () => request<SyncStatus>("/api/admin/sync"),
