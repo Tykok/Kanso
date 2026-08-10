@@ -4,12 +4,13 @@ import {
   actionById,
   availableActions,
   indexActions,
+  predecessorsOf,
   resolveShortcut,
   shortcutRows,
   type Action,
   type ActionContext,
 } from "./actions";
-import type { Project, Team, Ticket } from "./api";
+import type { Project, Team, Ticket, TimelineDependency } from "./api";
 
 const core: Team = {
   id: "team-core",
@@ -58,6 +59,23 @@ const scheduled: Ticket = {
   due: { at: "2026-08-06T00:00:00Z", hasTime: false },
 };
 
+/** A second bar, so a predecessor can be one the chart draws rather than a tray chip. */
+const earlier: Ticket = {
+  ...ticket,
+  id: "ticket-3",
+  identifier: "KAN-3",
+  title: "Migrate the schema",
+  start: { at: "2026-08-01T00:00:00Z", hasTime: false },
+  due: { at: "2026-08-02T00:00:00Z", hasTime: false },
+};
+
+const dependency = (predecessorId: string, successorId: string): TimelineDependency => ({
+  predecessorId,
+  successorId,
+  violated: false,
+  outOfScope: false,
+});
+
 function context(overrides: Partial<ActionContext> = {}): ActionContext {
   return {
     scope: { kind: "all" },
@@ -81,6 +99,8 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     deleteTicket: vi.fn(),
     recentre: vi.fn(),
     startLink: vi.fn(),
+    dependencies: [],
+    startUnlink: vi.fn(),
     logout: vi.fn(),
     ...overrides,
   };
@@ -133,6 +153,7 @@ const REQUIRED_IDS = [
   "timeline.zoomIn",
   "timeline.today",
   "timeline.link",
+  "timeline.unlink",
 ];
 
 describe("the registry", () => {
@@ -396,6 +417,80 @@ describe("the timeline actions", () => {
     expect(ids(ctx)).toContain("timeline.today");
     actionById("timeline.today").run(ctx);
     expect(ctx.recentre).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("predecessorsOf", () => {
+  it("names a predecessor drawn as a bar and one waiting in the tray", () => {
+    // `ticket` has no dates, so it is a tray chip; `earlier` is a bar. Both are rows of
+    // the tickets query, which is the only thing the rule asks.
+    const ctx = timeline({
+      tickets: [ticket, scheduled, earlier],
+      dependencies: [dependency(earlier.id, scheduled.id), dependency(ticket.id, scheduled.id)],
+    });
+    expect(predecessorsOf(ctx, scheduled.id).map((row) => row.id)).toEqual([earlier.id, ticket.id]);
+  });
+
+  it("drops an edge whose other end is outside this scope", () => {
+    // The server's own word for "absent from this response". Being out of scope, it is
+    // absent from the tickets query too, so there is no name to print.
+    const ctx = timeline({
+      dependencies: [
+        { predecessorId: "ticket-elsewhere", successorId: scheduled.id, violated: false, outOfScope: true },
+      ],
+    });
+    expect(predecessorsOf(ctx, scheduled.id)).toEqual([]);
+  });
+
+  it("ignores the edges of another successor", () => {
+    const ctx = timeline({ dependencies: [dependency(scheduled.id, ticket.id)] });
+    expect(predecessorsOf(ctx, scheduled.id)).toEqual([]);
+  });
+});
+
+describe("timeline.unlink", () => {
+  it("is offered only when the selected ticket waits on something nameable", () => {
+    expect(ids(timeline())).not.toContain("timeline.unlink");
+
+    const waiting = timeline({ dependencies: [dependency(ticket.id, scheduled.id)] });
+    expect(ids(waiting)).toContain("timeline.unlink");
+
+    const unnameable = timeline({
+      dependencies: [
+        { predecessorId: "ticket-elsewhere", successorId: scheduled.id, violated: false, outOfScope: true },
+      ],
+    });
+    expect(ids(unnameable)).not.toContain("timeline.unlink");
+  });
+
+  it("is withheld from the list, where there is no arrow to erase", () => {
+    const inList = context({
+      selected: scheduled,
+      tickets: [ticket, scheduled],
+      dependencies: [dependency(ticket.id, scheduled.id)],
+    });
+    expect(ids(inList)).not.toContain("timeline.unlink");
+  });
+
+  it("is withheld while the timeline query has not answered", () => {
+    // The first action in the registry whose availability depends on a fetch: with no
+    // edges loaded, nothing knows whether there is anything to erase.
+    expect(ids(timeline({ dependencies: [] }))).not.toContain("timeline.unlink");
+  });
+
+  it("asks the palette which arrow to erase, rather than erasing one on its own", () => {
+    const ctx = timeline({ dependencies: [dependency(ticket.id, scheduled.id)] });
+    actionById("timeline.unlink").run(ctx);
+    expect(ctx.startUnlink).toHaveBeenCalledWith(scheduled.id);
+    expect(ctx.patchTicket).not.toHaveBeenCalled();
+  });
+
+  it("answers Shift+D on the chart and nothing in the list", () => {
+    // `event.key` for Shift+d is "D" — the same convention `H` and `L` follow, so the
+    // registry still carries no modifier state.
+    expect(resolveShortcut("D", "timeline")?.id).toBe("timeline.unlink");
+    expect(resolveShortcut("D", "list")).toBeUndefined();
+    expect(resolveShortcut("d", "timeline")?.id).toBe("timeline.link");
   });
 });
 

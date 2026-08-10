@@ -1,5 +1,12 @@
 import type { Dialog, Overlay, Scope, View } from "@/store/ui";
-import type { Project, Team, Ticket, TicketPriority, TicketStatus } from "./api";
+import type {
+  Project,
+  Team,
+  Ticket,
+  TicketPriority,
+  TicketStatus,
+  TimelineDependency,
+} from "./api";
 import { creationSeed } from "./creation-seed";
 import type { PatchInput } from "./queries";
 import { dayKey, laterBy, today, ZOOMS, type Zoom } from "./timeline-geometry";
@@ -16,6 +23,16 @@ export type ActionContext = {
   /** Which drawing of the same rows is on screen — the list, or the chart. */
   view: View;
   zoom: Zoom;
+  /**
+   * The arrows the chart is drawing, and an empty list anywhere it is not.
+   *
+   * Filled from the timeline query — the same cache entry the chart reads, so this costs
+   * no second request — and empty while that query is in flight. `timeline.unlink` is
+   * therefore the first action whose availability depends on a fetch: with no edges
+   * loaded, nothing knows whether there is anything to erase, and saying so is more
+   * honest than offering a picker that would open empty.
+   */
+  dependencies: TimelineDependency[];
 
   open: (overlay: Overlay) => void;
   close: () => void;
@@ -42,6 +59,12 @@ export type ActionContext = {
    * modal gesture in the interface, a whole mental model bought for one arrow.
    */
   startLink: (successorId: string) => void;
+  /**
+   * Asks which predecessor of [successorId] to erase. Same picker as [startLink], for the
+   * same reason: the palette is the app's only list, and one gesture is not worth a
+   * second way of being in a state.
+   */
+  startUnlink: (successorId: string) => void;
   logout: () => void;
 };
 
@@ -132,6 +155,25 @@ const resizeBy = (days: number) =>
   });
 
 const isScheduled = (ticket: Ticket) => ticket.start !== undefined || ticket.due !== undefined;
+
+/**
+ * The predecessors of [successorId] this screen can name.
+ *
+ * An edge is listed exactly when its other end resolves in `ctx.tickets`, and that one
+ * rule is also the scope rule. A predecessor sitting in the unscheduled tray is a row of
+ * the tickets query — it has no dates, not no row — so it is named and offered. One the
+ * timeline response marked `outOfScope` is outside the current scope, so it is absent
+ * from that query too, resolves to nothing, and drops out. The palette lists names, and
+ * two edges nothing can name would be two identical rows with different consequences.
+ *
+ * Read by `when` and by the picker in `page.tsx`, which is what keeps an inert key from
+ * opening an empty list and a listed row from failing to resolve.
+ */
+export function predecessorsOf(ctx: ActionContext, successorId: string): Ticket[] {
+  return ctx.dependencies
+    .filter((edge) => edge.successorId === successorId)
+    .flatMap((edge) => ctx.tickets.find((row) => row.id === edge.predecessorId) ?? []);
+}
 
 /** Steps along [ZOOMS] and stops at the ends: a zoom that wraps is a lost place. */
 const zoomBy = (delta: number) => (ctx: ActionContext) => {
@@ -548,6 +590,22 @@ export const ACTIONS: readonly Action[] = [
     group: "ticket",
     when: (ctx) => onTimeline(ctx) && hasSelection(ctx) && ctx.tickets.length > 1,
     run: onSelected((ctx, ticket) => ctx.startLink(ticket.id)),
+  },
+  {
+    id: "timeline.unlink",
+    label: "Remove a dependency",
+    // `D`, the `event.key` of Shift+d, so `d` and its inverse are one keystroke apart.
+    shortcut: "D",
+    mode: "timeline",
+    group: "ticket",
+    // It always opens the picker, even with a single predecessor: one key doing two
+    // things depending on the shape of the graph would make the fast path the
+    // destructive one.
+    when: (ctx) =>
+      onTimeline(ctx) &&
+      ctx.selected !== undefined &&
+      predecessorsOf(ctx, ctx.selected.id).length > 0,
+    run: onSelected((ctx, ticket) => ctx.startUnlink(ticket.id)),
   },
 
   {
