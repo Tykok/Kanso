@@ -1028,21 +1028,23 @@ with `import dev.kanso.auth.CurrentUser`.
 
 - [ ] **Step 5: Fix the callers the compiler names**
 
-`NotionPoller` calls `TicketService.patch` for inbound scalar writes and has no acting user. Give it a package-private sibling rather than a nullable actor, so "no actor" is a call site and not a branch inside the rule:
+**Correction to an earlier draft of this plan, verified by the controller before this task was dispatched:** that draft claimed `NotionPoller` calls `TicketService.patch` and therefore needed an unchecked sibling (`patchUnchecked` plus an extracted `applyPatch`). It does not. The poller writes through `TicketRepository.update` directly (`NotionPoller.kt:142`), so it never touches the service and never sees the new parameter. **Do not add `patchUnchecked`, and do not extract `applyPatch`** — both would be dead code, and the inbound path stays unchecked exactly as it already is.
 
-```kotlin
-	/**
-	 * The inbound path, which has no acting user: the poller is the instance, not a
-	 * person. Unchecked on purpose and consistent with the mirror being
-	 * Kanso-authoritative — reaching it at all requires instance-level access.
-	 */
-	@Transactional
-	fun patchUnchecked(id: UUID, patch: TicketPatch): TicketDetail = applyPatch(id, patch)
-```
+`TicketController` is the only production caller of `TicketService.patch`, confirmed by grepping `\.patch(` across `apps/api/src/main/kotlin/`. Step 4 already handles it.
 
-Extract the current body of `patch` into `private fun applyPatch(id, patch)` and have the public `patch` call `access.require(...)` then `applyPatch`. Point `NotionPoller` at `patchUnchecked`.
+So the remaining work here is the test suite. Run the compiler and fix each test that calls the moved signatures. The call sites, counted before dispatch:
 
-Then run the compiler and fix each remaining test that calls the moved signatures — `TicketWorkflowTest`, `TicketProjectCoherenceTest`, `TimelineServiceTest`, `ScheduleServiceTest`, `DependencyTest` — by passing their existing `admin` fixture as the first argument. They all already have one, and an admin passes rule 1, so no test's meaning changes.
+| File | Calls to fix |
+|---|---|
+| `TicketWorkflowTest.kt` | 9 |
+| `TicketProjectCoherenceTest.kt` | 8 |
+| `DependencyTest.kt` | 5 |
+| `ScheduleServiceTest.kt` | 4 |
+| `TimelineServiceTest.kt` | 2 |
+| `TeamArchiveTest.kt` | 1 |
+| `DispositionCountsTest.kt` | 1 |
+
+Pass each file's existing `admin` fixture as the first argument. They all already have one, and an admin passes rule 1, so **no existing test changes meaning** — if fixing a call site seems to require more than threading an actor through, stop and report it rather than adapting the test.
 
 - [ ] **Step 6: Run the whole API suite**
 
@@ -1756,6 +1758,6 @@ git commit -m "docs: membership became a permission, and two costs worth knowing
 
 **Three gaps found and closed while reviewing:**
 
-1. Task 5 originally left `NotionPoller` broken, since it calls `TicketService.patch` with no actor. Step 5 now specifies `patchUnchecked` and the `applyPatch` extraction.
+1. ~~Task 5 originally left `NotionPoller` broken, since it calls `TicketService.patch` with no actor.~~ **Wrong, and corrected before Task 5 was dispatched:** the poller writes through `TicketRepository.update` (`NotionPoller.kt:142`) and never calls the service at all. The `patchUnchecked` / `applyPatch` extraction this review invented would have been dead code. `TicketController` is the only production caller of `TicketService.patch`. Step 5 now says so and confines itself to the test suite. The lesson is that this self-review asserted a call graph it had not grepped.
 2. Task 3 originally told the implementer to copy two maps out of `pills.tsx`, which is the duplication that makes the list and the chart drift. Ruled by the human partner: extract to `lib/status.ts`.
 3. Tasks 8 and 9 originally split `canPlan` across two commits, the first hardcoding it to `true`. Ruled by the human partner: merged into one task.

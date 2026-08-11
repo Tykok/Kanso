@@ -224,7 +224,7 @@ handler already serves would be a second spelling of one answer.
 | `ScheduleService.link` | the **successor** |
 | `ScheduleService.unlink` | the **successor** |
 | `ScheduleService.cascadeFrom` | nothing — see above |
-| `NotionPoller` inbound writes | nothing — no actor |
+| `NotionPoller` inbound writes | nothing — no actor, and nothing to change: it writes through `TicketRepository.update`, never through the service |
 
 **The two-sided check on `patch` is not optional.** `TicketPatch` carries `teamId`, so
 a single-sided check lets anyone move a foreign ticket into a team of their own and
