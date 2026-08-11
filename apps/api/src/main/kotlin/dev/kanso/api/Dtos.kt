@@ -341,6 +341,7 @@ data class TimelineDependencyResponse(
 	val predecessorId: UUID,
 	val successorId: UUID,
 	val violated: Boolean,
+	val overlap: Boolean,
 	val outOfScope: Boolean,
 )
 
@@ -377,7 +378,13 @@ data class TimelineResponse(
 				)
 			},
 			dependencies = view.dependencies.map {
-				TimelineDependencyResponse(it.predecessorId, it.successorId, it.violated, it.outOfScope)
+				TimelineDependencyResponse(
+					it.predecessorId,
+					it.successorId,
+					it.violated,
+					it.overlap,
+					it.outOfScope,
+				)
 			},
 			unscheduled = view.unscheduled.map {
 				TimelineUnscheduledResponse(it.id, it.identifier, it.title)

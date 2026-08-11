@@ -40,7 +40,15 @@ data class TimelineTicket(
 data class TimelineEdge(
 	val predecessorId: UUID,
 	val successorId: UUID,
+	/**
+	 * The cascade cannot repair this edge, which happens exactly when the successor is
+	 * done. Distinct from [overlap] on purpose: "it is finished, too late" and "move the
+	 * successor and it is fixed" are different sentences, and one red state would print
+	 * only the first.
+	 */
 	val violated: Boolean,
+	/** Broken now, and repairable: the successor starts before the predecessor ends and is not done. */
+	val overlap: Boolean,
 	/** True when the other end is absent from this response — the view draws a stub. */
 	val outOfScope: Boolean,
 )
@@ -97,7 +105,7 @@ class TimelineService(
 
 		val byId = graphTickets.associateBy { it.id }
 		val slack = CriticalPath.slack(graphTickets.map(::toNode), edges, deadlines)
-		val violated = violatedEdges(byId, edges)
+		val broken = brokenEdges(byId, edges)
 
 		// One query for every team on screen rather than one per row — the scope crosses
 		// teams whenever the filter is a parent team.
@@ -124,10 +132,12 @@ class TimelineService(
 			dependencies = edges
 				.filter { it.predecessorId in scopeIds || it.successorId in scopeIds }
 				.map {
+					val unrepairable = broken[it]
 					TimelineEdge(
 						predecessorId = it.predecessorId,
 						successorId = it.successorId,
-						violated = it in violated,
+						violated = unrepairable == true,
+						overlap = unrepairable == false,
 						outOfScope = it.predecessorId !in scopeIds || it.successorId !in scopeIds,
 					)
 				},
@@ -137,17 +147,25 @@ class TimelineService(
 	}
 
 	/**
-	 * An edge is violated when its predecessor ends after its successor starts and the
-	 * cascade could not repair it — which happens exactly when the successor is done.
+	 * Which edges are broken, and which kind of broken.
+	 *
+	 * This deliberately reports more than [dev.kanso.schedule.Cascade] does, and the
+	 * divergence must survive review. The two answer different questions: the cascade
+	 * reports what *this request* could not repair, and skips any node none of whose
+	 * predecessors moved — so dragging a successor backwards under its own predecessor
+	 * never examines that edge at all. This reports what is broken *now*, including
+	 * breakage that predates every request.
 	 */
-	private fun violatedEdges(byId: Map<UUID, Ticket>, edges: List<Edge>): Set<Edge> =
-		edges.filterTo(mutableSetOf()) { edge ->
+	private fun brokenEdges(byId: Map<UUID, Ticket>, edges: List<Edge>): Map<Edge, Boolean> =
+		edges.mapNotNull { edge ->
 			val predecessorEnd = byId[edge.predecessorId]?.let { it.due?.at ?: it.start?.at }
 			val successor = byId[edge.successorId]
 			val successorStart = successor?.let { it.start?.at ?: it.due?.at }
-			predecessorEnd != null && successorStart != null &&
-				successor.status == TicketStatus.DONE && successorStart.isBefore(predecessorEnd)
-		}
+			if (predecessorEnd == null || successorStart == null) return@mapNotNull null
+			if (!successorStart.isBefore(predecessorEnd)) return@mapNotNull null
+			// The value is "is this one the cascade cannot repair".
+			edge to (successor.status == TicketStatus.DONE)
+		}.toMap()
 
 	/**
 	 * Bounds resolve per bound independently: an explicit date, else the tickets'

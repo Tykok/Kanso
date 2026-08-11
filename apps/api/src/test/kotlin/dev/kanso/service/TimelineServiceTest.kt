@@ -161,4 +161,33 @@ class TimelineServiceTest : PostgresTest() {
 			"the other end is not in the response, so the view draws a stub",
 		)
 	}
+
+	@Test
+	fun `a successor that starts before its predecessor ends is an overlap, not a violation`() {
+		val first = ticket("First", null, 1, 10)
+		val second = ticket("Second", null, 20, 25)
+		deps.insert(first, second)
+		// Dragged backwards, under its own predecessor. `Cascade` never examines this
+		// edge: its descent only considers a node one of whose predecessors moved.
+		tickets.patch(second, TicketPatch(start = day(5), due = day(9)))
+
+		val edge = timeline.load(teamId = team.id, projectId = null)
+			.dependencies.single { it.predecessorId == first && it.successorId == second }
+
+		assertEquals(true, edge.overlap, "the constraint is broken right now")
+		assertEquals(false, edge.violated, "but the successor is not done, so the cascade could still repair it")
+	}
+
+	@Test
+	fun `a done successor is violated and not merely overlapping`() {
+		val first = ticket("Predecessor", null, 10, 20)
+		val second = ticket("Finished early", null, 1, 5, status = TicketStatus.DONE)
+		deps.insert(first, second)
+
+		val edge = timeline.load(teamId = team.id, projectId = null)
+			.dependencies.single { it.predecessorId == first && it.successorId == second }
+
+		assertEquals(true, edge.violated)
+		assertEquals(false, edge.overlap, "the two are exclusive: one names what can be repaired, the other what cannot")
+	}
 }
