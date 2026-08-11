@@ -32,6 +32,7 @@
 | `apps/api/src/main/kotlin/dev/kanso/service/TicketAccess.kt` | The single authorization rule, plus its batched form for the timeline |
 | `apps/api/src/test/kotlin/dev/kanso/service/TicketAccessTest.kt` | The rule's five cases |
 | `apps/api/src/test/kotlin/dev/kanso/service/TicketAuthorizationTest.kt` | 403s from the mutating services, and the escape hatch that is closed |
+| `apps/web/src/lib/status.ts` | The status vocabulary — labels and colour tokens — for every view that draws one |
 | `apps/web/src/components/dialogs/members-section.tsx` | Team membership editing, owner/admin only |
 | `apps/web/src/lib/actions.test.ts` additions | (existing file) read-only predicates |
 | `e2e/13-scoped-timeline.spec.ts` | Scenario 13: two teams, one chart |
@@ -429,6 +430,8 @@ git commit -m "feat(web): a broken dependency says so, in amber and in words"
 ### Task 3: The status pill
 
 **Files:**
+- Create: `apps/web/src/lib/status.ts`
+- Modify: `apps/web/src/components/pills.tsx:23-37` (the two maps move out)
 - Modify: `apps/web/src/components/timeline/bar.tsx:84-124`, `:311-341`
 - Modify: `apps/web/src/components/timeline/row.tsx` (the ticket branch of `bar()`)
 - Modify: `apps/web/src/app/timeline.css`
@@ -437,6 +440,48 @@ git commit -m "feat(web): a broken dependency says so, in amber and in words"
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
 - Produces: a ticket bar's accessible name becomes `` `${identifier}: ${title} — ${statusLabel}` ``. Every later task and every end-to-end scenario that queries a bar by role and name must use this shape.
+
+- [ ] **Step 0: Give the status vocabulary one home**
+
+**Ruling from the human partner, overriding an earlier draft of this plan that said to
+copy these two maps into `bar.tsx`:** copying is how the list and the chart drift, not
+how they are kept in step. Extract instead.
+
+Create `apps/web/src/lib/status.ts` holding exactly what `pills.tsx:23-37` holds today,
+moved rather than retyped:
+
+```ts
+import type { TicketStatus } from "./api";
+
+/**
+ * How a status is written and coloured, wherever it is drawn.
+ *
+ * A module rather than an export from `pills.tsx`: the chart would otherwise import
+ * from a component of the list view, which is a dependency in the wrong direction for
+ * two screens that are siblings.
+ */
+export const STATUS_LABELS: Record<TicketStatus, string> = {
+  backlog: "Backlog",
+  todo: "Todo",
+  in_progress: "In progress",
+  in_review: "In review",
+  done: "Done",
+  canceled: "Canceled",
+};
+
+export const STATUS_COLORS: Record<TicketStatus, string> = {
+  backlog: "var(--status-backlog)",
+  todo: "var(--status-todo)",
+  in_progress: "var(--status-progress)",
+  in_review: "var(--status-review)",
+  done: "var(--status-done)",
+  canceled: "var(--status-canceled)",
+};
+```
+
+Delete both consts from `pills.tsx` and import them from `@/lib/status` there. The list
+view must render identically afterwards — nothing about it changes but where two objects
+live.
 
 - [ ] **Step 1: Add the prop and the element**
 
@@ -450,27 +495,8 @@ git commit -m "feat(web): a broken dependency says so, in amber and in words"
   status?: TicketStatus;
 ```
 
-with `import type { KansoInstant, TicketStatus } from "@/lib/api";` at the top, and two module-level maps copied from `pills.tsx` so the chart and the list cannot drift:
-
-```tsx
-const STATUS_LABELS: Record<TicketStatus, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  in_progress: "In progress",
-  in_review: "In review",
-  done: "Done",
-  canceled: "Canceled",
-};
-
-const STATUS_COLORS: Record<TicketStatus, string> = {
-  backlog: "var(--status-backlog)",
-  todo: "var(--status-todo)",
-  in_progress: "var(--status-progress)",
-  in_review: "var(--status-review)",
-  done: "var(--status-done)",
-  canceled: "var(--status-canceled)",
-};
-```
+with `import type { KansoInstant, TicketStatus } from "@/lib/api";` and
+`import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";` at the top.
 
 The accessible name gains the status, and the pill is rendered as a **sibling** before the bar — the same montage as `.tl-link`, and for the same reason: `.tl-bar` has `overflow: hidden`, so a child straddling the edge would be cut in half.
 
@@ -543,7 +569,8 @@ Expected: PASS. If a bar cannot be found, the name suffix is the first thing to 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/web/src/components/timeline/bar.tsx apps/web/src/components/timeline/row.tsx \
+git add apps/web/src/lib/status.ts apps/web/src/components/pills.tsx \
+        apps/web/src/components/timeline/bar.tsx apps/web/src/components/timeline/row.tsx \
         apps/web/src/app/timeline.css e2e/12-timeline.spec.ts e2e/mouse.spec.ts
 git commit -m "feat(web): a bar says what state its work is in
 
@@ -1355,135 +1382,26 @@ use. Most outOfScope stubs disappear with them."
 
 ---
 
-### Task 8: Read-only rendering — context rows and bars that are not yours
+### Task 8: Read-only — the global chart, the context rows, and the bars that are not yours
+
+**Ruling from the human partner, merging what earlier drafts of this plan split into
+Tasks 8 and 9:** the split introduced `RowControl.canPlan` in one task with a hardcoded
+`true` and computed it in the next, leaving an intermediate commit whose flag makes a
+branch dead. One task, no intermediate state.
 
 **Files:**
 - Modify: `apps/web/src/lib/api.ts` (`TimelineTicket`, `TimelineView`)
-- Modify: `apps/web/src/components/timeline/row.tsx`, `view.tsx`
-- Modify: `apps/web/src/app/timeline.css`
-
-**Interfaces:**
-- Consumes: `teamKey`, `context`, `editable`, `truncated` from Task 7.
-- Produces: `TimelineRow` renders a bar with `drag`/`link` only when `ticket.editable && !ticket.context && canPlan`. Task 9 supplies `canPlan`.
-
-- [ ] **Step 1: Extend the client types**
-
-```ts
-export type TimelineTicket = {
-  …
-  /** Whose ticket this is, printed before the identifier on a context row. */
-  teamKey: string;
-  /** Drawn for reading: outside the scope, not selectable, never draggable. */
-  context: boolean;
-  /** The server's answer to "may this viewer move it". Never re-derived here. */
-  editable: boolean;
-};
-
-export type TimelineView = {
-  …
-  /** The scope hit `SCOPE_LIMIT`, so bars are missing and the chart has to say so. */
-  truncated: boolean;
-};
-```
-
-- [ ] **Step 2: Make the row obey**
-
-In `row.tsx`'s ticket branch, replace the unconditional `drag` and `link` props:
-
-```tsx
-  // Three reasons a bar cannot be moved, and any one of them is enough: the whole
-  // chart is read-only, the row is context, or the ticket belongs to a team the
-  // viewer is not in. All three end in the same place — no `drag` prop — which is
-  // what a project bar has always done.
-  const movable = control.canPlan && !ticket.context && ticket.editable;
-```
-
-then `drag={movable ? { … } : undefined}` and `link={movable ? { … } : undefined}`.
-
-Selection follows the same rule for context only:
-
-```tsx
-      selected={!ticket.context && ticket.id === control.selectedId}
-      onSelect={ticket.context ? undefined : () => control.onSelect(ticket.id)}
-```
-
-A context row is **not** selectable because `page.tsx` builds its cursor list from the scoped tickets query, where a context ticket does not exist: selecting one would set `selectedId` and the cursor-keeping effect would bounce straight back to `visible[0]`. A ticket that is in scope but not editable stays selectable — it is in that list, and the keys that act on it are inert for their own reasons.
-
-The name cell prefixes the owning team on a context row:
-
-```tsx
-  const name =
-    row.kind === "project"
-      ? row.project.name
-      : row.ticket.context
-        ? `${row.ticket.teamKey} · ${row.ticket.identifier}`
-        : row.ticket.identifier;
-```
-
-and the row element carries `data-context={row.kind === "ticket" && row.ticket.context ? "" : undefined}`.
-
-- [ ] **Step 3: Group the context rows and draw the banner**
-
-In `view.tsx`, the `rows` memo puts context tickets under their project as it already does, and any context ticket with no project row goes into the existing orphan tail. Add the banner above the canvas:
-
-```tsx
-      {view?.truncated && (
-        <div className="tl-truncated" role="status">
-          This view hit its limit — some bars are not drawn. Narrow the scope to see them all.
-        </div>
-      )}
-```
-
-A Gantt missing bars without saying so is a plan that lies, which is worse than a message.
-
-- [ ] **Step 4: Style them**
-
-```css
-/* Muted and unmistakably not yours, without becoming unreadable: a context row is
-   there to be understood, not merely noticed. */
-.tl-row[data-context] .tl-name {
-  color: var(--text-faint);
-  font-style: italic;
-}
-
-.tl-row[data-context] .tl-bar {
-  opacity: 0.55;
-}
-
-.tl-truncated {
-  padding: 4px 8px;
-  font-size: 11px;
-  color: var(--warn, #d08a1e);
-}
-```
-
-- [ ] **Step 5: Typecheck and run the web suite**
-
-Run: `cd apps/web && npm run typecheck && npm test`
-Expected: PASS. `control.canPlan` does not exist yet — add it to `RowControl` as `canPlan: boolean` in this task and pass `true` from `view.tsx` for now; Task 9 computes it.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/web/src/lib/api.ts apps/web/src/components/timeline apps/web/src/app/timeline.css
-git commit -m "feat(web): a bar that is not yours is drawn and not moved"
-```
-
----
-
-### Task 9: Read-only at scope `all`, mouse and keyboard
-
-**Files:**
 - Modify: `apps/web/src/lib/actions.ts`
-- Modify: `apps/web/src/components/timeline/view.tsx`, `tray.tsx`
+- Modify: `apps/web/src/components/timeline/row.tsx`, `view.tsx`, `tray.tsx`
 - Modify: `apps/web/src/app/page.tsx` (the topbar strip)
+- Modify: `apps/web/src/app/timeline.css`
 - Test: `apps/web/src/lib/actions.test.ts`
 
 **Interfaces:**
-- Consumes: `ActionContext.scope` (already present).
-- Produces: `canPlan(ctx: ActionContext): boolean`, exported from `actions.ts` — `ctx.scope.kind !== "all"`. `view.tsx` reads the same predicate from the store.
+- Consumes: `teamKey`, `context`, `editable`, `truncated` from Task 7; `ActionContext.scope` (already present).
+- Produces: `canPlan(ctx: ActionContext): boolean` exported from `actions.ts` — `ctx.scope.kind !== "all"`; `RowControl.canPlan: boolean`; `TimelineRow` renders a bar with `drag`/`link` only when `control.canPlan && !ticket.context && ticket.editable`.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing keyboard tests**
 
 Append to `apps/web/src/lib/actions.test.ts`, following the context-builder the file already uses:
 
@@ -1530,7 +1448,7 @@ Read the existing tests in that file first and reuse its own context helper and 
 Run: `cd apps/web && npm test`
 Expected: FAIL — the actions are live in scope `all`.
 
-- [ ] **Step 3: Add the guard**
+- [ ] **Step 3: Add the keyboard guard**
 
 In `actions.ts`, beside `onTimeline`:
 
@@ -1548,7 +1466,63 @@ export const canPlan = (ctx: ActionContext) => ctx.scope.kind !== "all";
 
 Add `canPlan(ctx) &&` to the `when` of each of the eight writing chart actions. Leave `timeline.zoomOut`, `timeline.zoomIn` and `timeline.today` alone.
 
-- [ ] **Step 4: Do the same for the pointer**
+- [ ] **Step 4: Extend the client types**
+
+```ts
+export type TimelineTicket = {
+  …
+  /** Whose ticket this is, printed before the identifier on a context row. */
+  teamKey: string;
+  /** Drawn for reading: outside the scope, not selectable, never draggable. */
+  context: boolean;
+  /** The server's answer to "may this viewer move it". Never re-derived here. */
+  editable: boolean;
+};
+
+export type TimelineView = {
+  …
+  /** The scope hit `SCOPE_LIMIT`, so bars are missing and the chart has to say so. */
+  truncated: boolean;
+};
+```
+
+- [ ] **Step 5: Make the row obey**
+
+`RowControl` in `row.tsx` gains `canPlan: boolean`. In its ticket branch, replace the unconditional `drag` and `link` props:
+
+```tsx
+  // Three reasons a bar cannot be moved, and any one of them is enough: the whole
+  // chart is read-only, the row is context, or the ticket belongs to a team the
+  // viewer is not in. All three end in the same place — no `drag` prop — which is
+  // what a project bar has always done.
+  const movable = control.canPlan && !ticket.context && ticket.editable;
+```
+
+then `drag={movable ? { … } : undefined}` and `link={movable ? { … } : undefined}`.
+
+Selection follows the same rule for context only:
+
+```tsx
+      selected={!ticket.context && ticket.id === control.selectedId}
+      onSelect={ticket.context ? undefined : () => control.onSelect(ticket.id)}
+```
+
+A context row is **not** selectable because `page.tsx` builds its cursor list from the scoped tickets query, where a context ticket does not exist: selecting one would set `selectedId` and the cursor-keeping effect would bounce straight back to `visible[0]`. A ticket that is in scope but not editable stays selectable — it is in that list, and the keys that act on it are inert for their own reasons.
+
+The name cell prefixes the owning team on a context row:
+
+```tsx
+  const name =
+    row.kind === "project"
+      ? row.project.name
+      : row.ticket.context
+        ? `${row.ticket.teamKey} · ${row.ticket.identifier}`
+        : row.ticket.identifier;
+```
+
+and the row element carries `data-context={row.kind === "ticket" && row.ticket.context ? "" : undefined}`.
+
+- [ ] **Step 6: Wire the pointer, the tray, and the two strips**
 
 In `view.tsx`:
 
@@ -1557,7 +1531,7 @@ In `view.tsx`:
   const canPlan = scope.kind !== "all";
 ```
 
-Pass `canPlan` into the `control` memo (Task 8 already reads it) and into `trayControl`, whose `onDrop` returns early when it is false. Render the strip in `page.tsx`, under the topbar and above the chart:
+Pass `canPlan` into the `control` memo (Step 5 reads it) and into `trayControl`, whose `onDrop` returns early when it is false. Render the read-only strip in `page.tsx`, under the topbar and above the chart:
 
 ```tsx
         {view === "timeline" && scope.kind === "all" && (
@@ -1569,24 +1543,59 @@ Pass `canPlan` into the `control` memo (Task 8 already reads it) and into `trayC
 
 A feature indistinguishable from a bug is a bug.
 
-- [ ] **Step 5: Run everything on the web side**
+The `rows` memo puts context tickets under their project as it already does, and any context ticket with no project row goes into the existing orphan tail. Add the truncation banner above the canvas:
+
+```tsx
+      {view?.truncated && (
+        <div className="tl-truncated" role="status">
+          This view hit its limit — some bars are not drawn. Narrow the scope to see them all.
+        </div>
+      )}
+```
+
+A Gantt missing bars without saying so is a plan that lies, which is worse than a message.
+
+- [ ] **Step 7: Style them**
+
+```css
+/* Muted and unmistakably not yours, without becoming unreadable: a context row is
+   there to be understood, not merely noticed. */
+.tl-row[data-context] .tl-name {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.tl-row[data-context] .tl-bar {
+  opacity: 0.55;
+}
+
+.tl-truncated {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--warn, #d08a1e);
+}
+```
+
+- [ ] **Step 8: Run everything on the web side**
 
 Run: `cd apps/web && npm run typecheck && npm test && npm run lint`
-Expected: PASS.
+Expected: PASS, including the three new keyboard tests from Step 1.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add apps/web/src/lib/actions.ts apps/web/src/lib/actions.test.ts \
-        apps/web/src/components/timeline apps/web/src/app/page.tsx
-git commit -m "feat(web): the global timeline is read-only, keyboard included
+git add apps/web/src/lib/api.ts apps/web/src/lib/actions.ts apps/web/src/lib/actions.test.ts \
+        apps/web/src/components/timeline apps/web/src/app/page.tsx apps/web/src/app/timeline.css
+git commit -m "feat(web): a bar you may not move has nothing to grab
 
-Zoom and today stay live: they move the viewport, not the plan."
+Three reasons end in the same place — the chart is global, the row is context,
+or the ticket is another team's — and the keyboard obeys all three. Zoom and
+today stay live: they move the viewport, not the plan."
 ```
 
 ---
 
-### Task 10: Scenario 13 — two teams, one chart
+### Task 9: Scenario 13 — two teams, one chart
 
 **Files:**
 - Create: `e2e/13-scoped-timeline.spec.ts`
@@ -1705,7 +1714,7 @@ git commit -m "test(e2e): a team reads the room, cannot move it, and is told whe
 
 ---
 
-### Task 11: Write down what this cost
+### Task 10: Write down what this cost
 
 **Files:**
 - Modify: `docs/follow-ups.md`
@@ -1739,10 +1748,14 @@ git commit -m "docs: membership became a permission, and two costs worth knowing
 
 ## Self-Review
 
-**Spec coverage.** Every section maps to a task: the authorization rule → 4; the call sites and the two-sided `patch` → 5; the members surface → 6; scope resolution, response shape and the cap → 7; the three read-only levels → 8 and 9; the overlap warning → 1 and 2; the status pill → 3; the tests section → distributed across 1–10; the mirror section needs no work, as the spec states. The spec's shipping order maps to the Stage 1 / Stage 2 split.
+**Spec coverage.** Every section maps to a task: the authorization rule → 4; the call sites and the two-sided `patch` → 5; the members surface → 6; scope resolution, response shape and the cap → 7; the three read-only levels → 8; the overlap warning → 1 and 2; the status pill → 3; the tests section → distributed across 1–9; the mirror section needs no work, as the spec states. The spec's shipping order maps to the Stage 1 / Stage 2 split.
 
-**Placeholders.** None. Three places name a file to read before writing (`pills.tsx` for the colour maps, `people-section.tsx` for the member row markup, `actions.test.ts` for its own context helper) rather than inventing an interface that may not match — that is a pointer to existing code, not a deferred decision.
+**Placeholders.** None. Two places name a file to read before writing (`people-section.tsx` for the member row markup, `actions.test.ts` for its own context helper) rather than inventing an interface that may not match — that is a pointer to existing code, not a deferred decision.
 
-**Type consistency.** `TimelineEdge.overlap` (Task 1) is read as `TimelineDependency.overlap` (Task 2) and asserted in Task 10. `TicketAccess.editableTeams` (Task 4) is consumed in Task 7. `TimelineTicket.editable`/`context`/`teamKey` (Task 7) are consumed in Task 8. `RowControl.canPlan` is introduced in Task 8 with a hardcoded `true` and computed in Task 9 — the one deliberate two-step, called out in Task 8 Step 5 so a reviewer does not read it as an omission. The bar's accessible name changes once, in Task 3, and every later locator uses the new shape.
+**Type consistency.** `TimelineEdge.overlap` (Task 1) is read as `TimelineDependency.overlap` (Task 2) and asserted in Task 9. `STATUS_LABELS`/`STATUS_COLORS` move to `lib/status.ts` in Task 3 and are imported by both `pills.tsx` and `bar.tsx`. `TicketAccess.editableTeams` (Task 4) is consumed in Task 7. `TimelineTicket.editable`/`context`/`teamKey` (Task 7) are consumed in Task 8. `canPlan` is defined and consumed inside Task 8. The bar's accessible name changes once, in Task 3, and every later locator uses the new shape.
 
-**One gap found and closed while reviewing:** Task 5 originally left `NotionPoller` broken, since it calls `TicketService.patch` with no actor. Step 5 now specifies `patchUnchecked` and the `applyPatch` extraction.
+**Three gaps found and closed while reviewing:**
+
+1. Task 5 originally left `NotionPoller` broken, since it calls `TicketService.patch` with no actor. Step 5 now specifies `patchUnchecked` and the `applyPatch` extraction.
+2. Task 3 originally told the implementer to copy two maps out of `pills.tsx`, which is the duplication that makes the list and the chart drift. Ruled by the human partner: extract to `lib/status.ts`.
+3. Tasks 8 and 9 originally split `canPlan` across two commits, the first hardcoding it to `true`. Ruled by the human partner: merged into one task.
