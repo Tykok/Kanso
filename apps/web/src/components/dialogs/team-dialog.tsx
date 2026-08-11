@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type Team } from "@/lib/api";
-import { keys } from "@/lib/queries";
+import { keys, useMe } from "@/lib/queries";
 import { DialogFrame, Field } from "./field";
+import { MembersSection } from "./members-section";
 
 type TeamErrors = { key?: string; parent?: string; general?: string };
 
@@ -99,9 +100,11 @@ function TeamForm({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const me = useMe();
   const [name, setName] = useState(team?.name ?? "");
   const [key, setKey] = useState(team?.key ?? "");
   const [parent, setParent] = useState(defaultParentId);
+  const [memberError, setMemberError] = useState<string | null>(null);
 
   /**
    * The row menu that opens this dialog says "New team" now, not "New sub-team" — the
@@ -155,7 +158,7 @@ function TeamForm({
       onSubmit={submit}
       submitLabel={team ? "Save" : "Create"}
       pending={save.isPending}
-      error={errors.general}
+      error={errors.general ?? memberError}
     >
       <Field label="Name">
         <input
@@ -194,6 +197,16 @@ function TeamForm({
           ))}
         </select>
       </Field>
+
+      {team ? (
+        me.data?.user.instanceRole !== "member" && (
+          <MembersSection teamId={team.id} onError={setMemberError} />
+        )
+      ) : (
+        // No id to post a membership against yet, so the section itself would have
+        // nothing to talk to — say why it is missing rather than leave a gap.
+        <p className="dialog-field-hint">Members can be added once the team exists.</p>
+      )}
     </DialogFrame>
   );
 }

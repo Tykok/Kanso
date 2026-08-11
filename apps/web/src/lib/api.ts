@@ -74,6 +74,11 @@ export type Team = {
   mirror: Mirror;
 };
 
+/** Wire values from `dev.kanso.domain.MemberRole`; nothing here names "lead". */
+export type MemberRole = "member" | "admin";
+
+export type TeamMemberRow = { user: User; role: MemberRole };
+
 export type Project = {
   id: string;
   name: string;
@@ -433,6 +438,17 @@ export const api = {
 
   deleteTeam: (id: string, plan: DispositionPlan) =>
     request<void>(`/api/teams/${id}`, { method: "DELETE", body: JSON.stringify(plan) }),
+
+  teamMembers: (teamId: string) => request<TeamMemberRow[]>(`/api/teams/${teamId}/members`),
+
+  addTeamMember: (teamId: string, userId: string, role: MemberRole) =>
+    request<TeamMemberRow[]>(`/api/teams/${teamId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId, role }),
+    }),
+
+  removeTeamMember: (teamId: string, userId: string) =>
+    request<void>(`/api/teams/${teamId}/members/${userId}`, { method: "DELETE" }),
 
   // --- projects ------------------------------------------------------------
 

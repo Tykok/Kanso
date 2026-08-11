@@ -12,6 +12,7 @@ import {
   DEFAULT_PREFERENCES,
   type KansoInstant,
   type Me,
+  type MemberRole,
   type Preferences,
   type Project,
   type Team,
@@ -38,6 +39,7 @@ export const keys = {
   tickets: (scope: Scope, includeArchived: boolean) =>
     ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
+  teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
   timeline: (scope: Scope) =>
     ["timeline", scope.kind, scope.kind === "all" ? "" : scope.id] as const,
@@ -190,6 +192,32 @@ export const useContents = (kind: "team" | "project", id: string) =>
 
 export const useSyncStatus = () =>
   useQuery({ queryKey: keys.sync, queryFn: api.syncStatus, refetchInterval: 10_000 });
+
+export const useTeamMembers = (teamId: string) =>
+  useQuery({ queryKey: keys.teamMembers(teamId), queryFn: () => api.teamMembers(teamId) });
+
+export const useAddTeamMember = (teamId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: MemberRole }) =>
+      api.addTeamMember(teamId, userId, role),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.teamMembers(teamId) }),
+  });
+};
+
+export const useRemoveTeamMember = (teamId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.removeTeamMember(teamId, userId),
+    // The timeline's `editable` is the server's answer to this same membership, so a
+    // removal that did not invalidate it would leave handles on bars the viewer can no
+    // longer move.
+    onSettled: () => {
+      client.invalidateQueries({ queryKey: keys.teamMembers(teamId) });
+      client.invalidateQueries({ queryKey: ["timeline"] });
+    },
+  });
+};
 
 /**
  * The fields a patch may carry. `start` and `due` were missing, so a dragged bar's
