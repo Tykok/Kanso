@@ -706,3 +706,22 @@
   stroke: var(--accent);
   stroke-width: 2.5;
 }
+
+/*
+ * Straddling the bar's left edge, half in and half out, and a sibling of it for the
+ * same reason `.tl-link` is one: the bar clips its children. Straddling rather than
+ * sitting beside, because a pill fully outside would eat the gutter and collide with
+ * the neighbouring bar at month zoom, where a column is three pixels.
+ */
+.tl-status {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  margin-left: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--bg);
+  z-index: 2;
+  pointer-events: none;
+}

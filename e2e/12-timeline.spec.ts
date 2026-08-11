@@ -27,6 +27,9 @@ const RESIZE_GRIP_INSET = 3;
  */
 const LINK_HANDLE_OFFSET = 5;
 
+/** So an identifier can be dropped into a `RegExp` without its characters read as one. */
+const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Scenario 12. The scheduling engine and the chart, in the same sentence.
  *
@@ -68,11 +71,12 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
   await page.getByRole("button", { name: team.name, exact: true }).click();
   await page.getByRole("button", { name: "Timeline", exact: true }).click();
 
-  // Bars are named `${identifier}: ${title}` and reached by role — no class selector
-  // anywhere in this file, which is the debt `follow-ups.md` records against the rest of
-  // the suite.
-  const first = page.getByRole("button", { name: `${groundwork.identifier}: ${groundwork.title}` });
-  const second = page.getByRole("button", { name: `${follows.identifier}: ${follows.title}` });
+  // Bars are named `${identifier}: ${title} — ${statusLabel}` and reached by role — no
+  // class selector anywhere in this file, which is the debt `follow-ups.md` records
+  // against the rest of the suite. Matched by prefix: this scenario never changes either
+  // ticket's status, so pinning the suffix would only make the lookup fragile.
+  const first = page.getByRole("button", { name: new RegExp(`^${escapeRe(groundwork.identifier)}: `) });
+  const second = page.getByRole("button", { name: new RegExp(`^${escapeRe(follows.identifier)}: `) });
   await expect(first).toBeVisible();
   await expect(second).toBeVisible();
 

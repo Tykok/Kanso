@@ -1,5 +1,6 @@
 import type { Mirror, TicketPriority, TicketStatus } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
+import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { Menu } from "./menu";
 import { menuItems } from "./menu-items";
 
@@ -19,24 +20,6 @@ const PRIORITY_ACTIONS = [
   "ticket.priority.high",
   "ticket.priority.urgent",
 ];
-
-const STATUS_LABELS: Record<TicketStatus, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  in_progress: "In progress",
-  in_review: "In review",
-  done: "Done",
-  canceled: "Canceled",
-};
-
-const STATUS_COLORS: Record<TicketStatus, string> = {
-  backlog: "var(--status-backlog)",
-  todo: "var(--status-todo)",
-  in_progress: "var(--status-progress)",
-  in_review: "var(--status-review)",
-  done: "var(--status-done)",
-  canceled: "var(--status-canceled)",
-};
 
 /**
  * With a `ctx`, the pill is the control: clicking what you are already reading is one

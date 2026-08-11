@@ -161,6 +161,7 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
       zoom={zoom}
       timezone={timezone}
       done={ticket.status === "done"}
+      status={ticket.status}
       selected={ticket.id === control.selectedId}
       onSelect={() => control.onSelect(ticket.id)}
       drag={{

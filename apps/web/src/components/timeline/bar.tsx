@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
-import type { KansoInstant } from "@/lib/api";
+import type { KansoInstant, TicketStatus } from "@/lib/api";
+import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import {
   boundLabel,
   dayKey,
@@ -107,6 +108,11 @@ type BarProps = {
   timezone: string;
   done?: boolean;
   /**
+   * The pill's colour and the word appended to the accessible name. Absent on a project
+   * bar, which has a status of its own that means something else.
+   */
+  status?: TicketStatus;
+  /**
    * Which of the bar's edges was deduced from the tickets inside rather than posted by
    * anyone. Named per edge rather than as a flag because a bound that was deduced must
    * not be dragged: moving it would be editing a consequence, and a project whose start
@@ -168,6 +174,7 @@ export function TimelineBar({
   zoom,
   timezone,
   done,
+  status,
   derived,
   selected,
   onSelect,
@@ -178,6 +185,7 @@ export function TimelineBar({
   const to = boundLabel(end, timezone);
   const left = xOf(start, origin, zoom);
   const width = widthOf(start, end, zoom);
+  const accessibleName = status ? `${name} — ${STATUS_LABELS[status]}` : name;
 
   /**
    * The link handle is a sibling of the bar rather than a child of it, so it can sit
@@ -310,10 +318,19 @@ export function TimelineBar({
 
   return (
     <>
+      {status && (
+        <span
+          className="tl-status"
+          aria-hidden="true"
+          data-status={status}
+          style={{ left, background: STATUS_COLORS[status] }}
+        />
+      )}
+
       <div
         className="tl-bar"
         role="button"
-        aria-label={name}
+        aria-label={accessibleName}
         data-ticket-id={ticketId}
         // Not `aria-pressed`: a bar is not a toggle. `aria-current` is what says "this
         // one of the set is the one being worked on", which is exactly what the cursor is.
@@ -327,7 +344,7 @@ export function TimelineBar({
         data-selected={selected ? "" : undefined}
         data-draggable={drag ? "" : undefined}
         style={{ left, width }}
-        title={`${name}\n${from} → ${to}${derived ? "\nDeduced from the tickets inside" : ""}`}
+        title={`${accessibleName}\n${from} → ${to}${derived ? "\nDeduced from the tickets inside" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={(event) => finish(event, true)}
