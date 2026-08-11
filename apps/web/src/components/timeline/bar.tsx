@@ -200,6 +200,14 @@ export function TimelineBar({
   const handle = useRef<HTMLSpanElement>(null);
 
   /**
+   * The status pill is a sibling for the same reason the link handle is one — see
+   * above — and pays the same cost: the drag writes straight to the bar's element, so a
+   * sibling is not carried along by the bar's own transform. It rides the *left* edge,
+   * which is the bar's own edge, not the handle's.
+   */
+  const statusDot = useRef<HTMLSpanElement>(null);
+
+  /**
    * The gesture lives in a ref, and the offset is written straight onto the element.
    *
    * A pointermove is a state update sixty times a second, and this one would re-render
@@ -222,6 +230,11 @@ export function TimelineBar({
     if (handle.current) {
       handle.current.style.transform = moved.edge === "start" ? "" : `translateX(${offset}px)`;
     }
+    // The pill rides the bar's *left* edge — the same one the bar's own transform
+    // above moves — so it takes the identical expression rather than the handle's.
+    if (statusDot.current) {
+      statusDot.current.style.transform = moved.edge === "end" ? "" : `translateX(${offset}px)`;
+    }
   };
 
   /**
@@ -236,6 +249,7 @@ export function TimelineBar({
     element.style.transform = "";
     element.style.width = `${width}px`;
     if (handle.current) handle.current.style.transform = "";
+    if (statusDot.current) statusDot.current.style.transform = "";
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -320,6 +334,7 @@ export function TimelineBar({
     <>
       {status && (
         <span
+          ref={statusDot}
           className="tl-status"
           aria-hidden="true"
           data-status={status}
