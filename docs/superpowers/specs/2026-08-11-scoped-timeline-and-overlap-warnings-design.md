@@ -119,8 +119,14 @@ grip — so the 403 is a backstop, never the way a person finds out.
 
 ### Read-only means the keyboard too
 
-In scope `all`, the chart is not editable. `h`, `l`, `H`, `L`, `d`, `D` and the tray's
-drop all test the scope in their `when` predicate and stay inert.
+In scope `all`, the chart is not editable. The eight chart actions that write —
+`timeline.shiftEarlier`, `shiftLater`, `shrinkEnd`, `growEnd`, `schedule`,
+`unschedule`, `link`, `unlink` (`h`, `l`, `H`, `L`, `p`, `u`, `d`, `D`) — test the
+scope in their `when` predicate and stay inert, as does the tray's drop.
+
+`timeline.zoomOut`, `zoomIn` and `today` (`[`, `]`, `t`) stay live. They move the
+viewport, not the plan, and a read-only chart you cannot navigate would be a worse
+answer than no chart.
 
 A view that refuses the mouse and accepts the keyboard is not read-only; it is a trap
 with a discoverability problem. And the topbar says why — *Read-only — open a team or
@@ -393,9 +399,10 @@ context ticket from a shared project appears with `editable = false`. A ticket i
 dependency closure appears and its edge is no longer `outOfScope`. `truncated` is set
 at the cap.
 
-**Vitest.** The `when` predicates in `actions.ts` return false for the six chart
-actions in scope `all`, and true in team scope. This is where "read-only from the
-keyboard" is proved; nothing else can prove it.
+**Vitest.** The `when` predicates in `actions.ts` return false for the eight writing
+chart actions in scope `all` and true in team scope, and stay true for the three
+viewport ones in both. This is where "read-only from the keyboard" is proved; nothing
+else can prove it.
 
 **Playwright.** One two-user scenario, which `KANSO_AUTH_MODE=dev` makes reachable
 from a single browser via the `X-Kanso-User` header. A member of team A opens team A,
