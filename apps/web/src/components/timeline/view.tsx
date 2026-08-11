@@ -232,6 +232,12 @@ export function TimelineView({
     return [...grouped, ...orphans];
   }, [view]);
 
+  /** A ticket's identifier by id, for the sentence the ⚠ prints. */
+  const nameOf = useMemo(() => {
+    const byId = new Map((view?.tickets ?? []).map((ticket) => [ticket.id, ticket.identifier]));
+    return (id: string) => byId.get(id);
+  }, [view]);
+
   /**
    * The day under a point on the page, or nothing if that point is not over the grid.
    *
@@ -404,6 +410,8 @@ export function TimelineView({
             <TimelineRow
               key={rowKey(row)}
               row={row}
+              deps={view?.dependencies ?? []}
+              nameOf={nameOf}
               origin={bounds.origin}
               zoom={zoom}
               timezone={timezone}

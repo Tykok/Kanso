@@ -36,6 +36,9 @@
   --status-done: #43a047;
   --status-canceled: #b0b0ba;
 
+  /* Amber: a dependency that is broken but still repairable, unlike --urgent's red. */
+  --warn: #d08a1e;
+
   --urgent: #d64545;
   --high: #d2760d;
   --medium: #5b8ad6;

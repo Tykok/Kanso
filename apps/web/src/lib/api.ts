@@ -125,7 +125,10 @@ export type TimelineTicket = {
 export type TimelineDependency = {
   predecessorId: string;
   successorId: string;
+  /** The cascade cannot repair this: the successor is done and starts too early. */
   violated: boolean;
+  /** Broken now and repairable by moving the successor. Exclusive with `violated`. */
+  overlap: boolean;
   /** The other end is outside this response, so the arrow is drawn as a stub. */
   outOfScope: boolean;
 };

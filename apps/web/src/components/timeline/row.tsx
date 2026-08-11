@@ -2,6 +2,7 @@
 
 import { TimelineBar, type BarEdit } from "./bar";
 import type { Row } from "./view";
+import type { TimelineDependency } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
 
 /** What a row needs from the view to make the bar in it answer the pointer. */
@@ -19,6 +20,26 @@ export type RowControl = {
 };
 
 /**
+ * What the ⚠ on a successor's row says, or nothing when its dependencies all hold.
+ *
+ * Derived from the edges the response already carries rather than from a field of its
+ * own: this is a projection of data in hand, not a second copy of a rule.
+ */
+export function overlapNotice(
+  deps: TimelineDependency[],
+  ticketId: string,
+  nameOf: (id: string) => string | undefined,
+): string | undefined {
+  const broken = deps.filter(
+    (dep) => dep.successorId === ticketId && (dep.overlap || dep.violated),
+  );
+  if (broken.length === 0) return undefined;
+  if (broken.length > 1) return `${broken.length} dependencies not respected`;
+  const name = nameOf(broken[0].predecessorId);
+  return name ? `starts before ${name} ends` : "starts before a dependency ends";
+}
+
+/**
  * One lane of the chart, name cell included — the name is pinned to the left with
  * `position: sticky`, which only works from inside the full-width row: a sticky element
  * can move within its containing block and nowhere else, and a column of its own would
@@ -30,18 +51,23 @@ export type RowControl = {
  */
 export function TimelineRow({
   row,
+  deps,
+  nameOf,
   origin,
   zoom,
   timezone,
   control,
 }: {
   row: Row;
+  deps: TimelineDependency[];
+  nameOf: (id: string) => string | undefined;
   origin: string;
   zoom: Zoom;
   timezone: string;
   control: RowControl;
 }) {
   const name = row.kind === "project" ? row.project.name : row.ticket.identifier;
+  const notice = row.kind === "ticket" ? overlapNotice(deps, row.ticket.id, nameOf) : undefined;
 
   return (
     <div className="tl-row" data-kind={row.kind}>
@@ -49,6 +75,11 @@ export function TimelineRow({
         className="tl-name"
         title={row.kind === "project" ? row.project.name : row.ticket.title}
       >
+        {notice && (
+          <span className="tl-warn" role="img" aria-label={notice} title={notice}>
+            ⚠
+          </span>
+        )}
         {name}
       </div>
       <div className="tl-lane">{bar(row, origin, zoom, timezone, control)}</div>

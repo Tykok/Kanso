@@ -645,6 +645,26 @@
   fill: var(--urgent);
 }
 
+/*
+ * Amber against the violated red, and a distinct arrowhead: an overlap is a thing
+ * somebody can still fix by moving a bar, and printing it in the same red as the case
+ * nobody can fix would lose the only distinction that tells a reader what to do.
+ */
+.tl-arrow[data-overlap] {
+  stroke: var(--warn, #d08a1e);
+}
+
+.tl-arrowhead[data-overlap] {
+  fill: var(--warn, #d08a1e);
+}
+
+/* Shape as well as colour, like data-state's hatch: the glyph survives greyscale. */
+.tl-warn {
+  margin-right: 4px;
+  color: var(--warn, #d08a1e);
+  font-size: 11px;
+}
+
 .tl-arrowhead[data-drawing] {
   fill: var(--accent);
 }

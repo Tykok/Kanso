@@ -29,6 +29,8 @@ type Arrow = {
   key: string;
   d: string;
   violated: boolean;
+  /** Broken and still repairable — the amber case, distinct from `violated`. */
+  overlap: boolean;
   /** One end of this edge has no bar on the chart, so only a stump is drawn. */
   stub: boolean;
   title: string;
@@ -121,10 +123,16 @@ function build(
     const from = anchors.get(dep.predecessorId);
     const to = anchors.get(dep.successorId);
     const key = `${dep.predecessorId}->${dep.successorId}`;
-    // Said in full rather than as one word: "violated" names the state, and the sentence
-    // is what tells the reader which of the two ends the schedule contradicts.
+    // Said in full rather than as one word: naming the state is what tells the reader
+    // which of the two ends the schedule contradicts. Violated and overlap get different
+    // sentences because they are different news — one the cascade gave up on, the other
+    // still fixable by moving a bar — and "broken" alone would erase that distinction.
     const overrun = (predecessor: string, successor: string) =>
-      dep.violated ? ` · violated: ${predecessor} ends after ${successor} started` : "";
+      dep.violated
+        ? ` · violated: ${predecessor} ends after ${successor} started`
+        : dep.overlap
+          ? ` · ${successor} starts before ${predecessor} ends`
+          : "";
 
     if (from && to) {
       const head = { x: from.right, y: centre(from.lane) };
@@ -134,6 +142,7 @@ function build(
         key,
         d: route(head, tail, detour),
         violated: dep.violated,
+        overlap: dep.overlap,
         stub: false,
         title: `${from.identifier} → ${to.identifier}${overrun(from.identifier, to.identifier)}`,
         dep,
@@ -157,6 +166,7 @@ function build(
         key,
         d: `M ${from.right} ${y} H ${from.right + STUB}`,
         violated: dep.violated,
+        overlap: dep.overlap,
         stub: true,
         title: `A ticket ${elsewhere(dep)} depends on ${from.identifier}${overrun(from.identifier, "it")}`,
         dep,
@@ -172,6 +182,7 @@ function build(
         key,
         d: `M ${to.left - STUB} ${y} H ${to.left}`,
         violated: dep.violated,
+        overlap: dep.overlap,
         stub: true,
         title: `${to.identifier} depends on a ticket ${elsewhere(dep)}${overrun("it", to.identifier)}`,
         dep,
@@ -371,6 +382,18 @@ export function TimelineArrows({
         >
           <path className="tl-arrowhead" data-violated="" d="M 0 0 L 6 3 L 0 6 z" />
         </marker>
+        <marker
+          id="tl-arrowhead-overlap"
+          viewBox="0 0 6 6"
+          refX="5"
+          refY="3"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto"
+          markerUnits="userSpaceOnUse"
+        >
+          <path className="tl-arrowhead" data-overlap="" d="M 0 0 L 6 3 L 0 6 z" />
+        </marker>
         {/* The head of the line being drawn, which is neither of the other two: it says
             where the pointer is, not what the schedule says. */}
         <marker
@@ -393,9 +416,16 @@ export function TimelineArrows({
           className="tl-arrow"
           d={arrow.d}
           data-violated={arrow.violated ? "" : undefined}
+          data-overlap={arrow.overlap ? "" : undefined}
           data-stub={arrow.stub ? "" : undefined}
           data-selected={arrow.key === selectedKey ? "" : undefined}
-          markerEnd={`url(#${arrow.violated ? "tl-arrowhead-violated" : "tl-arrowhead"})`}
+          markerEnd={`url(#${
+            arrow.violated
+              ? "tl-arrowhead-violated"
+              : arrow.overlap
+                ? "tl-arrowhead-overlap"
+                : "tl-arrowhead"
+          })`}
           /*
            * A line is not a button, but erasing one has to be reachable, and `<title>`
            * is what names an SVG element to a screen reader. Focusable as well as

@@ -74,6 +74,7 @@ const dependency = (predecessorId: string, successorId: string): TimelineDepende
   predecessorId,
   successorId,
   violated: false,
+  overlap: false,
   outOfScope: false,
 });
 
@@ -437,7 +438,13 @@ describe("predecessorsOf", () => {
     // absent from the tickets query too, so there is no name to print.
     const ctx = timeline({
       dependencies: [
-        { predecessorId: "ticket-elsewhere", successorId: scheduled.id, violated: false, outOfScope: true },
+        {
+          predecessorId: "ticket-elsewhere",
+          successorId: scheduled.id,
+          violated: false,
+          overlap: false,
+          outOfScope: true,
+        },
       ],
     });
     expect(predecessorsOf(ctx, scheduled.id)).toEqual([]);
@@ -458,7 +465,13 @@ describe("timeline.unlink", () => {
 
     const unnameable = timeline({
       dependencies: [
-        { predecessorId: "ticket-elsewhere", successorId: scheduled.id, violated: false, outOfScope: true },
+        {
+          predecessorId: "ticket-elsewhere",
+          successorId: scheduled.id,
+          violated: false,
+          overlap: false,
+          outOfScope: true,
+        },
       ],
     });
     expect(ids(unnameable)).not.toContain("timeline.unlink");
