@@ -103,7 +103,7 @@ class DispositionCountsTest : PostgresTest() {
 	fun `an archived ticket still has to be disposed of, so it still counts`() {
 		val team = teams.create(admin, "Core", key(), null)
 		val ticket = newTicket(team.id)
-		tickets.patch(ticket.ticket.id, TicketPatch(archived = true))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(archived = true))
 
 		assertEquals(1, teams.contents(team.id).direct.tickets)
 	}

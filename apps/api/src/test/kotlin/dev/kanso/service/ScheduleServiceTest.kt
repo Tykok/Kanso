@@ -70,7 +70,7 @@ class ScheduleServiceTest : PostgresTest() {
 		val b = ticket("B", 10, 15)
 		deps.insert(a, b)
 
-		tickets.patch(a, TicketPatch(due = day(12)))
+		tickets.patch(admin, a, TicketPatch(due = day(12)))
 
 		val moved = repo.findById(b)!!
 		assertEquals(day(12).at, moved.start!!.at, "B now starts when A ends")
@@ -85,7 +85,7 @@ class ScheduleServiceTest : PostgresTest() {
 		deps.insert(a, b)
 		jobs.claimBatch(100, "drain")
 
-		tickets.patch(a, TicketPatch(due = day(12)))
+		tickets.patch(admin, a, TicketPatch(due = day(12)))
 
 		val queued = jobs.claimBatch(100, "test").map { it.entityId }.toSet()
 		assertEquals(setOf(a, b), queued, "the moved successor needs its own push; nothing else does")
@@ -98,7 +98,7 @@ class ScheduleServiceTest : PostgresTest() {
 		val b = ticket("B", 20, 25)
 		deps.insert(a, b)
 
-		tickets.patch(a, TicketPatch(due = day(12)))
+		tickets.patch(admin, a, TicketPatch(due = day(12)))
 
 		val untouched = repo.findById(b)!!
 		assertEquals(day(20).at, untouched.start!!.at, "eight days of slack absorbed two days of delay")
@@ -111,7 +111,7 @@ class ScheduleServiceTest : PostgresTest() {
 		val milestone = ticket("Deadline", null, 12)
 		deps.insert(a, milestone)
 
-		tickets.patch(a, TicketPatch(due = day(14)))
+		tickets.patch(admin, a, TicketPatch(due = day(14)))
 
 		val moved = repo.findById(milestone)!!
 		assertEquals(day(14).at, moved.due!!.at, "the milestone follows its predecessor")

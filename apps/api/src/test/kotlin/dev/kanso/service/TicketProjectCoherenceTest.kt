@@ -83,7 +83,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val coreProject = newProject(core.id)
 		val ticket = newTicket(core.id, coreProject.id)
 
-		val moved = tickets.patch(ticket.ticket.id, TicketPatch(teamId = growth.id))
+		val moved = tickets.patch(admin, ticket.ticket.id, TicketPatch(teamId = growth.id))
 
 		assertEquals(growth.id, moved.ticket.teamId)
 		assertNull(moved.ticket.projectId, "no view of Growth would ever have shown that project")
@@ -96,7 +96,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val transverse = newProject(null)
 		val ticket = newTicket(core.id, transverse.id)
 
-		val moved = tickets.patch(ticket.ticket.id, TicketPatch(teamId = growth.id))
+		val moved = tickets.patch(admin, ticket.ticket.id, TicketPatch(teamId = growth.id))
 
 		assertEquals(transverse.id, moved.ticket.projectId, "a transverse project belongs to no team to leave")
 	}
@@ -107,7 +107,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val coreProject = newProject(core.id)
 		val ticket = newTicket(core.id, coreProject.id)
 
-		val renamed = tickets.patch(ticket.ticket.id, TicketPatch(title = "Still grouped"))
+		val renamed = tickets.patch(admin, ticket.ticket.id, TicketPatch(title = "Still grouped"))
 
 		assertEquals(core.id, renamed.ticket.teamId)
 		assertEquals(
@@ -126,7 +126,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val ticket = newTicket(core.id, coreProject.id)
 
 		val failure = assertFailsWith<BadRequestException> {
-			tickets.patch(ticket.ticket.id, TicketPatch(projectId = growthProject.id))
+			tickets.patch(admin, ticket.ticket.id, TicketPatch(projectId = growthProject.id))
 		}
 		assertTrue(failure.message!!.contains(growth.id.toString()), failure.message!!)
 		assertTrue(failure.message!!.contains(core.id.toString()), failure.message!!)
@@ -144,6 +144,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val ticket = newTicket(core.id, null)
 
 		val moved = tickets.patch(
+			admin,
 			ticket.ticket.id,
 			TicketPatch(teamId = growth.id, projectId = growthProject.id),
 		)
@@ -158,7 +159,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val coreProject = newProject(core.id)
 		val ticket = newTicket(core.id, null)
 
-		val patched = tickets.patch(ticket.ticket.id, TicketPatch(projectId = coreProject.id))
+		val patched = tickets.patch(admin, ticket.ticket.id, TicketPatch(projectId = coreProject.id))
 
 		assertEquals(core.id, patched.ticket.teamId)
 		assertEquals(coreProject.id, patched.ticket.projectId)
@@ -229,7 +230,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val ticket = newTicket(core.id, null)
 		assertEquals("${core.key}-1", ticket.identifier)
 
-		val moved = tickets.patch(ticket.ticket.id, TicketPatch(teamId = growth.id))
+		val moved = tickets.patch(admin, ticket.ticket.id, TicketPatch(teamId = growth.id))
 
 		assertEquals("${growth.key}-2", moved.identifier, "renumbered from the destination's counter")
 		assertEquals("${growth.key}-1", tickets.get(squatter.ticket.id).identifier, "and nothing else moved")
@@ -243,7 +244,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		val coreProject = newProject(core.id)
 		val ticket = newTicket(core.id, coreProject.id)
 
-		val patched = tickets.patch(ticket.ticket.id, TicketPatch(unset = setOf("projectId")))
+		val patched = tickets.patch(admin, ticket.ticket.id, TicketPatch(unset = setOf("projectId")))
 
 		assertEquals(core.id, patched.ticket.teamId)
 		assertNull(patched.ticket.projectId)

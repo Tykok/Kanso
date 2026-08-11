@@ -117,7 +117,7 @@ class TimelineServiceTest : PostgresTest() {
 			docIds = emptyList(),
 		).project
 		val id = ticket("Undated but finished", project.id, null, null)
-		tickets.patch(id, TicketPatch(status = TicketStatus.DONE))
+		tickets.patch(admin, id, TicketPatch(status = TicketStatus.DONE))
 
 		val row = timeline.load(teamId = team.id, projectId = null).projects.single { it.id == project.id }
 
@@ -169,7 +169,7 @@ class TimelineServiceTest : PostgresTest() {
 		deps.insert(first, second)
 		// Dragged backwards, under its own predecessor. `Cascade` never examines this
 		// edge: its descent only considers a node one of whose predecessors moved.
-		tickets.patch(second, TicketPatch(start = day(5), due = day(9)))
+		tickets.patch(admin, second, TicketPatch(start = day(5), due = day(9)))
 
 		val edge = timeline.load(teamId = team.id, projectId = null)
 			.dependencies.single { it.predecessorId == first && it.successorId == second }

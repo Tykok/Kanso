@@ -1,5 +1,6 @@
 package dev.kanso.api
 
+import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.service.ScheduleService
@@ -15,6 +16,7 @@ import java.util.UUID
 class TicketController(
 	private val tickets: TicketService,
 	private val schedule: ScheduleService,
+	private val currentUser: CurrentUser,
 ) {
 
 	@GetMapping
@@ -81,12 +83,12 @@ class TicketController(
 				unset = it.unset,
 			)
 		}
-		return TicketResponse.of(tickets.patch(id, patch))
+		return TicketResponse.of(tickets.patch(currentUser.require(), id, patch))
 	}
 
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	fun delete(@PathVariable id: UUID) = tickets.delete(id)
+	fun delete(@PathVariable id: UUID) = tickets.delete(currentUser.require(), id)
 
 	@PutMapping("/{id}/assignees")
 	fun setAssignees(@PathVariable id: UUID, @RequestBody userIds: List<UUID>): TicketResponse =
@@ -105,11 +107,11 @@ class TicketController(
 	fun addDependency(
 		@PathVariable id: UUID,
 		@RequestBody request: DependencyRequest,
-	): CascadeResponse = CascadeResponse(schedule.link(request.predecessorId, id))
+	): CascadeResponse = CascadeResponse(schedule.link(currentUser.require(), request.predecessorId, id))
 
 	@DeleteMapping("/{id}/dependencies/{predecessorId}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	fun removeDependency(@PathVariable id: UUID, @PathVariable predecessorId: UUID) {
-		schedule.unlink(predecessorId, id)
+		schedule.unlink(currentUser.require(), predecessorId, id)
 	}
 }

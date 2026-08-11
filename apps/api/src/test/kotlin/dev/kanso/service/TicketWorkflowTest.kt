@@ -96,9 +96,9 @@ class TicketWorkflowTest : PostgresTest() {
 		)
 
 		// Three rapid keystrokes, as a status change would produce.
-		tickets.patch(ticket.ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
-		tickets.patch(ticket.ticket.id, TicketPatch(priority = TicketPriority.HIGH))
-		tickets.patch(ticket.ticket.id, TicketPatch(title = "Renamed"))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(priority = TicketPriority.HIGH))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(title = "Renamed"))
 
 		val queued = jobs.claimBatch(50, "test").filter { it.entityId == ticket.ticket.id }
 		assertEquals(1, queued.size, "the mirror needs one push carrying the final state, not four")
@@ -120,7 +120,7 @@ class TicketWorkflowTest : PostgresTest() {
 			docIds = emptyList(),
 		)
 
-		val afterStatus = tickets.patch(created.ticket.id, TicketPatch(status = TicketStatus.DONE))
+		val afterStatus = tickets.patch(admin, created.ticket.id, TicketPatch(status = TicketStatus.DONE))
 		assertEquals("Keep me", afterStatus.ticket.title)
 		assertEquals("Some context", afterStatus.ticket.description)
 		assertEquals(TicketPriority.HIGH, afterStatus.ticket.priority)
@@ -129,7 +129,7 @@ class TicketWorkflowTest : PostgresTest() {
 			afterStatus.ticket.due,
 		)
 
-		val cleared = tickets.patch(created.ticket.id, TicketPatch(unset = setOf("due")))
+		val cleared = tickets.patch(admin, created.ticket.id, TicketPatch(unset = setOf("due")))
 		assertNull(cleared.ticket.due, "naming a field in unset must actually clear it")
 		assertEquals("Some context", cleared.ticket.description, "unset must not touch anything else")
 	}
@@ -247,7 +247,7 @@ class TicketWorkflowTest : PostgresTest() {
 		)
 		jobs.claimBatch(50, "drain")
 
-		tickets.patch(ticket.ticket.id, TicketPatch(archived = true))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(archived = true))
 
 		val queued = jobs.claimBatch(50, "test").single { it.entityId == ticket.ticket.id }
 		assertEquals(
@@ -274,17 +274,17 @@ class TicketWorkflowTest : PostgresTest() {
 		)
 		assertNull(created.ticket.completedAt, "a new ticket has not been completed")
 
-		val done = tickets.patch(created.ticket.id, TicketPatch(status = TicketStatus.DONE))
+		val done = tickets.patch(admin, created.ticket.id, TicketPatch(status = TicketStatus.DONE))
 		assertNotNull(done.ticket.completedAt, "entering done records when it happened")
 
-		val renamed = tickets.patch(created.ticket.id, TicketPatch(title = "Still done"))
+		val renamed = tickets.patch(admin, created.ticket.id, TicketPatch(title = "Still done"))
 		assertEquals(
 			done.ticket.completedAt,
 			renamed.ticket.completedAt,
 			"an unrelated edit must not move the completion date — that is why updatedAt cannot serve",
 		)
 
-		val reopened = tickets.patch(created.ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		val reopened = tickets.patch(admin, created.ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
 		assertNull(reopened.ticket.completedAt, "leaving done clears it")
 	}
 

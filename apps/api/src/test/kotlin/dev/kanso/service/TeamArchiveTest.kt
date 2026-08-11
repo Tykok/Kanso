@@ -226,7 +226,7 @@ class TeamArchiveTest : PostgresTest() {
 		val mobile = newTeam("Mobile", core.id)
 		val project = newProject(mobile.id)
 		val ticket = newTicketIn(mobile.id, project.id)
-		tickets.patch(ticket.ticket.id, TicketPatch(archived = true))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(archived = true))
 		assertEquals(
 			project.id,
 			tickets.get(ticket.ticket.id).ticket.projectId,

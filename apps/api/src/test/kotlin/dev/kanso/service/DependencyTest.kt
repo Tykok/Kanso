@@ -116,9 +116,9 @@ class DependencyTest : PostgresTest() {
 	fun `linking two tickets refuses a cycle and names the chain`() {
 		val a = ticket("A")
 		val b = ticket("B")
-		schedule.link(a, b)
+		schedule.link(admin, a, b)
 
-		val failure = assertFailsWith<ConflictException> { schedule.link(b, a) }
+		val failure = assertFailsWith<ConflictException> { schedule.link(admin, b, a) }
 		assertTrue(failure.message!!.contains(a.toString()), failure.message!!)
 		assertTrue(failure.message!!.contains(b.toString()), failure.message!!)
 	}
@@ -128,7 +128,7 @@ class DependencyTest : PostgresTest() {
 		val a = ticket("A", start = 1, due = 10)
 		val b = ticket("B", start = 5, due = 8)
 
-		val moved = schedule.link(a, b)
+		val moved = schedule.link(admin, a, b)
 
 		assertEquals(listOf(b), moved, "the new constraint is violated the moment it exists")
 	}
@@ -137,9 +137,9 @@ class DependencyTest : PostgresTest() {
 	fun `unlinking frees slack without dragging anything backwards`() {
 		val a = ticket("A", start = 1, due = 10)
 		val b = ticket("B", start = 10, due = 15)
-		schedule.link(a, b)
+		schedule.link(admin, a, b)
 
-		schedule.unlink(a, b)
+		schedule.unlink(admin, a, b)
 
 		assertEquals(day(10).at, repo.findById(b)!!.start!!.at, "B stays where it is")
 		assertFalse(deps.exists(a, b))

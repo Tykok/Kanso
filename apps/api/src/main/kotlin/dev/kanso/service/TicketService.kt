@@ -4,6 +4,7 @@ import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
@@ -62,6 +63,7 @@ class TicketService(
 	private val syncJobs: SyncJobRepository,
 	private val events: EventPublisher,
 	private val schedule: ScheduleService,
+	private val access: TicketAccess,
 ) {
 
 	@Transactional(readOnly = true)
@@ -154,8 +156,13 @@ class TicketService(
 	 * full row, then queues one mirror push.
 	 */
 	@Transactional
-	fun patch(id: UUID, patch: TicketPatch): TicketDetail {
+	fun patch(actor: User, id: UUID, patch: TicketPatch): TicketDetail {
 		val current = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		access.require(actor, current)
+		// Both ends, not one. `TicketPatch` carries `teamId`, so a single-sided check
+		// lets anyone move a foreign ticket into a team of their own and then edit it
+		// freely — the whole rule defeated in two requests.
+		patch.teamId?.let { access.requireTeam(actor, it) }
 
 		val teamId = patch.teamId ?: current.teamId
 		if (patch.teamId != null && teams.findById(patch.teamId) == null) {
@@ -248,8 +255,9 @@ class TicketService(
 	}
 
 	@Transactional
-	fun delete(id: UUID) {
+	fun delete(actor: User, id: UUID) {
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		access.require(actor, ticket)
 		syncJobs.enqueue(
 			SyncEntityType.TICKET,
 			id,

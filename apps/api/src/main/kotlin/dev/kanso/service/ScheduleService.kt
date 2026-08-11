@@ -2,6 +2,7 @@ package dev.kanso.service
 
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
@@ -32,6 +33,7 @@ class ScheduleService(
 	private val dependencies: DependencyRepository,
 	private val syncJobs: SyncJobRepository,
 	private val events: EventPublisher,
+	private val access: TicketAccess,
 ) {
 
 	/**
@@ -75,11 +77,15 @@ class ScheduleService(
 	 * offending arrow by hand.
 	 */
 	@Transactional
-	fun link(predecessorId: UUID, successorId: UUID): List<UUID> {
+	fun link(actor: User, predecessorId: UUID, successorId: UUID): List<UUID> {
 		val predecessor = tickets.findById(predecessorId)
 			?: throw NotFoundException("No ticket $predecessorId")
 		val successor = tickets.findById(successorId)
 			?: throw NotFoundException("No ticket $successorId")
+		// The successor only. Drawing an arrow *into* my ticket declares that I wait,
+		// which commits nobody else; drawing one *out of* it imposes a constraint on
+		// work that is not mine.
+		access.require(actor, successor)
 		if (predecessorId == successorId) {
 			throw ConflictException("A ticket cannot depend on itself")
 		}
@@ -106,16 +112,16 @@ class ScheduleService(
 	 * doing something nobody asked for.
 	 */
 	@Transactional
-	fun unlink(predecessorId: UUID, successorId: UUID) {
+	fun unlink(actor: User, predecessorId: UUID, successorId: UUID) {
+		val successor = tickets.findById(successorId)
+			?: throw NotFoundException("No ticket $successorId")
+		access.require(actor, successor)
 		if (!dependencies.delete(predecessorId, successorId)) {
 			throw NotFoundException("No dependency $predecessorId -> $successorId")
 		}
-		val successor = tickets.findById(successorId)
 		syncJobs.enqueue(SyncEntityType.TICKET, predecessorId, SyncOperation.UPSERT)
 		syncJobs.enqueue(SyncEntityType.TICKET, successorId, SyncOperation.UPSERT)
-		successor?.let {
-			events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it.id, it.teamId, it.projectId))
-		}
+		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, successor.id, successor.teamId, successor.projectId))
 	}
 
 	private fun toNode(ticket: Ticket) = Node(
