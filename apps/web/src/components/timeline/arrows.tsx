@@ -416,7 +416,11 @@ export function TimelineArrows({
           className="tl-arrow"
           d={arrow.d}
           data-violated={arrow.violated ? "" : undefined}
-          data-overlap={arrow.overlap ? "" : undefined}
+          /* `&& !arrow.violated`: the two flags are exclusive by construction, but the
+           * guard is what keeps the line from ever disagreeing with its own arrowhead
+           * and title if that ever stopped being true — the priority lives here, once,
+           * rather than in which CSS rule happens to come second in the stylesheet. */
+          data-overlap={arrow.overlap && !arrow.violated ? "" : undefined}
           data-stub={arrow.stub ? "" : undefined}
           data-selected={arrow.key === selectedKey ? "" : undefined}
           markerEnd={`url(#${
