@@ -269,8 +269,9 @@ class TicketService(
 	}
 
 	@Transactional
-	fun setAssignees(id: UUID, userIds: List<UUID>): TicketDetail {
+	fun setAssignees(actor: User, id: UUID, userIds: List<UUID>): TicketDetail {
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		access.require(actor, ticket)
 		requireUsers(userIds)
 		tickets.setAssignees(id, userIds)
 		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.UPSERT)
@@ -279,8 +280,9 @@ class TicketService(
 	}
 
 	@Transactional
-	fun setDocs(id: UUID, docIds: List<UUID>): TicketDetail {
+	fun setDocs(actor: User, id: UUID, docIds: List<UUID>): TicketDetail {
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		access.require(actor, ticket)
 		requireDocs(docIds)
 		tickets.setDocs(id, docIds)
 		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.UPSERT)

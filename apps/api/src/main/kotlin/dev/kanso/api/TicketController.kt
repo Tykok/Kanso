@@ -92,11 +92,11 @@ class TicketController(
 
 	@PutMapping("/{id}/assignees")
 	fun setAssignees(@PathVariable id: UUID, @RequestBody userIds: List<UUID>): TicketResponse =
-		TicketResponse.of(tickets.setAssignees(id, userIds))
+		TicketResponse.of(tickets.setAssignees(currentUser.require(), id, userIds))
 
 	@PutMapping("/{id}/docs")
 	fun setDocs(@PathVariable id: UUID, @RequestBody docIds: List<UUID>): TicketResponse =
-		TicketResponse.of(tickets.setDocs(id, docIds))
+		TicketResponse.of(tickets.setDocs(currentUser.require(), id, docIds))
 
 	/**
 	 * `POST /api/tickets/{id}/dependencies` — `{id}` is the successor, the body names

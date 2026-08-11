@@ -118,6 +118,60 @@ class TicketAuthorizationTest : PostgresTest() {
 	}
 
 	@Test
+	fun `a stranger cannot delete a claimed team's ticket`() {
+		val team = teams.create(admin, "Mobile", key(), null)
+		teamRepo.addMember(team.id, admin.id, MemberRole.MEMBER)
+		val ticket = ticketIn(team.id)
+		val stranger = user(InstanceRole.MEMBER)
+
+		val error = assertFailsWith<AccessDeniedException> {
+			tickets.delete(stranger, ticket.id)
+		}
+		assertTrue(error.message!!.contains("Mobile"))
+	}
+
+	@Test
+	fun `a stranger cannot unlink an arrow whose successor is not theirs`() {
+		val team = teams.create(admin, "Mobile", key(), null)
+		teamRepo.addMember(team.id, admin.id, MemberRole.MEMBER)
+		val predecessor = ticketIn(team.id)
+		val successor = ticketIn(team.id)
+		schedule.link(admin, predecessor.id, successor.id)
+		val stranger = user(InstanceRole.MEMBER)
+
+		val error = assertFailsWith<AccessDeniedException> {
+			schedule.unlink(stranger, predecessor.id, successor.id)
+		}
+		assertTrue(error.message!!.contains("Mobile"))
+	}
+
+	@Test
+	fun `a stranger cannot reassign a claimed team's ticket`() {
+		val team = teams.create(admin, "Mobile", key(), null)
+		teamRepo.addMember(team.id, admin.id, MemberRole.MEMBER)
+		val ticket = ticketIn(team.id)
+		val stranger = user(InstanceRole.MEMBER)
+
+		val error = assertFailsWith<AccessDeniedException> {
+			tickets.setAssignees(stranger, ticket.id, emptyList())
+		}
+		assertTrue(error.message!!.contains("Mobile"))
+	}
+
+	@Test
+	fun `a stranger cannot attach docs to a claimed team's ticket`() {
+		val team = teams.create(admin, "Mobile", key(), null)
+		teamRepo.addMember(team.id, admin.id, MemberRole.MEMBER)
+		val ticket = ticketIn(team.id)
+		val stranger = user(InstanceRole.MEMBER)
+
+		val error = assertFailsWith<AccessDeniedException> {
+			tickets.setDocs(stranger, ticket.id, emptyList())
+		}
+		assertTrue(error.message!!.contains("Mobile"))
+	}
+
+	@Test
 	fun `the cascade still pushes tickets in teams the actor is not in`() {
 		val mine = teams.create(admin, "Mine", key(), null)
 		val theirs = teams.create(admin, "Theirs", key(), null)
