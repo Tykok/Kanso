@@ -62,6 +62,20 @@ class TicketRepository {
 			.map { it.toTicket() }
 	}
 
+	/**
+	 * Every unarchived ticket in these projects, whatever team owns it.
+	 *
+	 * [search] cannot express it: its `projectId` filter is one id, and widening that
+	 * parameter would change the meaning of a call every controller already makes.
+	 */
+	fun findByProjectIds(projectIds: Collection<UUID>, limit: Int): List<Ticket> =
+		if (projectIds.isEmpty()) emptyList()
+		else Tickets.selectAll()
+			.where { (Tickets.projectId inList projectIds) and (Tickets.archived eq false) }
+			.orderBy(Tickets.updatedAt to SortOrder.DESC)
+			.limit(limit)
+			.map { it.toTicket() }
+
 	fun insert(
 		id: UUID,
 		number: Int,

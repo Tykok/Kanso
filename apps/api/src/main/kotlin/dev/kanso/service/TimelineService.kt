@@ -3,6 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.User
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TeamRepository
@@ -27,6 +28,8 @@ data class TimelineTicket(
 	val id: UUID,
 	val identifier: String,
 	val title: String,
+	/** Whose work this is — a context row is drawn under its owner's key, not the reader's. */
+	val teamKey: String,
 	val projectId: UUID?,
 	val status: TicketStatus,
 	val start: KansoInstant?,
@@ -35,6 +38,10 @@ data class TimelineTicket(
 	val slackMinutes: Long?,
 	val critical: Boolean,
 	val late: Boolean,
+	/** Outside the filter the reader asked for: drawn because it explains their dates. */
+	val context: Boolean,
+	/** May this reader move it — the same rule the mutations enforce, answered once here. */
+	val editable: Boolean,
 )
 
 data class TimelineEdge(
@@ -49,7 +56,11 @@ data class TimelineEdge(
 	val violated: Boolean,
 	/** Broken now, and repairable: the successor starts before the predecessor ends and is not done. */
 	val overlap: Boolean,
-	/** True when the other end is absent from this response — the view draws a stub. */
+	/**
+	 * True when the other end is absent from this response — the view draws a stub. Rare
+	 * now that the closure comes back as context: what is left is an end that is archived
+	 * or past a cap, which is the only kind still worth a stub.
+	 */
 	val outOfScope: Boolean,
 )
 
@@ -60,12 +71,20 @@ data class TimelineView(
 	val tickets: List<TimelineTicket>,
 	val dependencies: List<TimelineEdge>,
 	val unscheduled: List<TimelineUnscheduled>,
+	/** A cap was hit, so the drawing is incomplete — there is no next page to offer instead. */
+	val truncated: Boolean,
 )
 
 /**
  * One read for the whole screen: derived bounds, slack and criticality are computed
  * together over the same component closure, and splitting them across endpoints would
  * mean walking that closure three times.
+ *
+ * Three sets, and keeping them apart is most of this file: the scope the reader filtered
+ * for, the closure the schedule is computed over, and what is drawn — the scope plus the
+ * context that explains its dates. They were one set before; a chain that leaves the team
+ * is the normal case, and drawing only your own half of it printed dates with their
+ * causes cut off.
  */
 @Service
 class TimelineService(
@@ -73,28 +92,49 @@ class TimelineService(
 	private val projects: ProjectRepository,
 	private val teams: TeamRepository,
 	private val dependencies: DependencyRepository,
+	private val access: TicketAccess,
 ) {
 
 	@Transactional(readOnly = true)
-	fun load(teamId: UUID?, projectId: UUID?): TimelineView {
+	fun load(actor: User, teamId: UUID?, projectId: UUID?): TimelineView {
 		val teamIds = teamId?.let { teams.descendantIds(it) }
-		val inScope = tickets.search(
+		val own = tickets.search(
 			teamIds = teamIds,
 			projectId = projectId,
 			includeArchived = false,
 			limit = SCOPE_LIMIT,
 		)
-		val scopeIds = inScope.map { it.id }.toSet()
+		val ownIds = own.map { it.id }.toSet()
 
 		// The closure, not the scope: anchoring the critical path on what happens to be
 		// visible would repaint identical data when the filter changes.
-		val componentIds = dependencies.componentIds(scopeIds)
+		val componentIds = dependencies.componentIds(ownIds)
 		val graphTickets = tickets.findAllById(componentIds)
 		val edges = dependencies.edgesTouching(componentIds)
+
+		// Who else is working in the projects this scope has work in. The widening the
+		// reader asked for, and the part of the response most able to surprise: a shared
+		// project pulls in another team's whole board.
+		val shared = tickets.findByProjectIds(
+			own.mapNotNull { it.projectId }.toSet(),
+			limit = SCOPE_LIMIT,
+		)
+
+		val context = (shared + graphTickets)
+			.filter { it.id !in ownIds && !it.archived }
+			.distinctBy { it.id }
+		val drawn = own + context
+		val drawnIds = drawn.map { it.id }.toSet()
+		val truncated = own.size >= SCOPE_LIMIT || shared.size >= SCOPE_LIMIT
 
 		// A deadline is the *explicit* end of a ticket's own project — a derived bound is
 		// a consequence of the tickets, so treating it as a constraint on them would make
 		// every chain critical by construction.
+		//
+		// Deliberately still the closure and not [drawn]: a deadline only ever tightens a
+		// late finish, so posting one for a ticket that has no dependencies would be a
+		// constraint nothing reads, and widening it is how a shared project's end would
+		// start binding chains that never entered it.
 		val projectEnds = projects
 			.findAllById(graphTickets.mapNotNull { it.projectId }.toSet())
 			.mapNotNull { project -> project.end?.let { project.id to it.at } }
@@ -103,23 +143,37 @@ class TimelineService(
 			ticket.projectId?.let { projectEnds[it] }?.let { ticket.id to it }
 		}.toMap()
 
-		val byId = graphTickets.associateBy { it.id }
-		val slack = CriticalPath.slack(graphTickets.map(::toNode), edges, deadlines)
+		// The union, both ways round. A ticket can be in the closure without being drawn
+		// (archived, or beyond a cap) and is now also drawn without being in the closure
+		// (a shared project's work with no arrows). Dropping the first kind would delete
+		// the far end of an edge, `CriticalPath` would discard that edge as unusable, and
+		// the chain would measure shorter than it is — exactly the narrowing the closure
+		// exists to prevent. The second kind costs nothing: a node no edge touches never
+		// reaches a component, so it gets no slack rather than a wrong one.
+		val nodes = (graphTickets + drawn).distinctBy { it.id }
+		val byId = nodes.associateBy { it.id }
+		val slack = CriticalPath.slack(nodes.map(::toNode), edges, deadlines)
 		val broken = brokenEdges(byId, edges)
 
 		// One query for every team on screen rather than one per row — the scope crosses
-		// teams whenever the filter is a parent team.
-		val keys = teams.findAllById(inScope.map { it.teamId }.toSet()).associate { it.id to it.key }
+		// teams whenever the filter is a parent team, and a context row prints the key of
+		// whoever owns it rather than the reader's.
+		val keys = teams.findAllById(drawn.map { it.teamId }.toSet()).associate { it.id to it.key }
 		fun identifier(ticket: Ticket) = "${keys[ticket.teamId] ?: "?"}-${ticket.number}"
 
+		// One call for every team drawn: the rule costs a couple of queries per distinct
+		// team, and asking it per ticket would be two thousand ancestor walks.
+		val editableTeams = access.editableTeams(actor, drawn.map { it.teamId }.toSet())
+
 		return TimelineView(
-			projects = projectRows(inScope, projectId, teamIds),
-			tickets = inScope.filter { it.start != null || it.due != null }.map { ticket ->
+			projects = projectRows(own, projectId, teamIds),
+			tickets = drawn.filter { it.start != null || it.due != null }.map { ticket ->
 				val minutes = slack[ticket.id]?.toMinutes()
 				TimelineTicket(
 					id = ticket.id,
 					identifier = identifier(ticket),
 					title = ticket.title,
+					teamKey = keys[ticket.teamId] ?: "?",
 					projectId = ticket.projectId,
 					status = ticket.status,
 					start = ticket.start,
@@ -127,10 +181,14 @@ class TimelineService(
 					slackMinutes = minutes,
 					critical = minutes == 0L,
 					late = minutes != null && minutes < 0L,
+					context = ticket.id !in ownIds,
+					// The server's answer, so the client has no rule to re-derive and
+					// no membership graph to hold.
+					editable = ticket.teamId in editableTeams,
 				)
 			},
 			dependencies = edges
-				.filter { it.predecessorId in scopeIds || it.successorId in scopeIds }
+				.filter { it.predecessorId in drawnIds || it.successorId in drawnIds }
 				.map {
 					val unrepairable = broken[it]
 					TimelineEdge(
@@ -138,11 +196,14 @@ class TimelineService(
 						successorId = it.successorId,
 						violated = unrepairable == true,
 						overlap = unrepairable == false,
-						outOfScope = it.predecessorId !in scopeIds || it.successorId !in scopeIds,
+						outOfScope = it.predecessorId !in drawnIds || it.successorId !in drawnIds,
 					)
 				},
-			unscheduled = inScope.filter { it.start == null && it.due == null }
+			// The scope's own undated work only: the tray is where *your* tickets wait for
+			// a date, and other teams' would make it a list the reader cannot empty.
+			unscheduled = own.filter { it.start == null && it.due == null }
 				.map { TimelineUnscheduled(it.id, identifier(it), it.title) },
+			truncated = truncated,
 		)
 	}
 
@@ -172,9 +233,13 @@ class TimelineService(
 	 * planned dates, else when the done ones were completed, else no bar. The third
 	 * rule is retrospective by construction — a worse answer than a plan, a better one
 	 * than a blank row.
+	 *
+	 * Derived from the scope's own tickets, not from the context rows drawn inside the
+	 * same project: a bound is a statement about a project, and letting another team's
+	 * dates move it would make the bar answer to work the reader cannot touch.
 	 */
 	private fun projectRows(
-		inScope: List<Ticket>,
+		own: List<Ticket>,
 		projectId: UUID?,
 		teamIds: List<UUID>?,
 	): List<TimelineProject> {
@@ -182,7 +247,7 @@ class TimelineService(
 			projectId != null -> projects.findAllById(setOf(projectId))
 			else -> projects.search(teamIds, includeArchived = false)
 		}
-		val byProject = inScope.groupBy { it.projectId }
+		val byProject = own.groupBy { it.projectId }
 
 		return candidates.map { project ->
 			val members = byProject[project.id].orEmpty()

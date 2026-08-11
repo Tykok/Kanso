@@ -328,6 +328,8 @@ data class TimelineTicketResponse(
 	val id: UUID,
 	val identifier: String,
 	val title: String,
+	/** Whose work this is: a context row belongs to another team and says so. */
+	val teamKey: String,
 	val projectId: UUID?,
 	val status: String,
 	val start: InstantDto?,
@@ -335,6 +337,9 @@ data class TimelineTicketResponse(
 	val slackMinutes: Long?,
 	val critical: Boolean,
 	val late: Boolean,
+	val context: Boolean,
+	/** The server's answer, so the client holds no membership graph to re-derive it from. */
+	val editable: Boolean,
 )
 
 data class TimelineDependencyResponse(
@@ -352,6 +357,8 @@ data class TimelineResponse(
 	val tickets: List<TimelineTicketResponse>,
 	val dependencies: List<TimelineDependencyResponse>,
 	val unscheduled: List<TimelineUnscheduledResponse>,
+	/** A cap was hit: the drawing is incomplete, and a Gantt has no next page to offer. */
+	val truncated: Boolean,
 ) {
 	companion object {
 		fun of(view: TimelineView) = TimelineResponse(
@@ -368,6 +375,7 @@ data class TimelineResponse(
 					id = it.id,
 					identifier = it.identifier,
 					title = it.title,
+					teamKey = it.teamKey,
 					projectId = it.projectId,
 					status = it.status.wire,
 					start = InstantDto.of(it.start),
@@ -375,6 +383,8 @@ data class TimelineResponse(
 					slackMinutes = it.slackMinutes,
 					critical = it.critical,
 					late = it.late,
+					context = it.context,
+					editable = it.editable,
 				)
 			},
 			dependencies = view.dependencies.map {
@@ -389,6 +399,7 @@ data class TimelineResponse(
 			unscheduled = view.unscheduled.map {
 				TimelineUnscheduledResponse(it.id, it.identifier, it.title)
 			},
+			truncated = view.truncated,
 		)
 	}
 }

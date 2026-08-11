@@ -4,11 +4,13 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.KansoInstant
+import dev.kanso.domain.MemberRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.DependencyRepository
+import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -30,6 +32,7 @@ class TimelineServiceTest : PostgresTest() {
 	@Autowired lateinit var deps: DependencyRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var teamRepo: TeamRepository
 
 	private val admin: User by lazy {
 		users.createLocalUser(
@@ -37,6 +40,16 @@ class TimelineServiceTest : PostgresTest() {
 			displayName = "Timeline admin",
 			passwordHash = encoder.hash("correct-horse-battery"),
 			role = InstanceRole.ADMIN,
+		)
+	}
+
+	/** An admin is editable everywhere by construction, so `editable` needs a plain member. */
+	private val member: User by lazy {
+		users.createLocalUser(
+			email = "tl-member-${UUID.randomUUID()}@kanso.test",
+			displayName = "Timeline member",
+			passwordHash = encoder.hash("correct-horse-battery"),
+			role = InstanceRole.MEMBER,
 		)
 	}
 
@@ -77,7 +90,7 @@ class TimelineServiceTest : PostgresTest() {
 		ticket("Early", project.id, 3, 6)
 		ticket("Late", project.id, 10, 20)
 
-		val row = timeline.load(teamId = team.id, projectId = null).projects.single { it.id == project.id }
+		val row = timeline.load(admin, teamId = team.id, projectId = null).projects.single { it.id == project.id }
 
 		assertEquals(day(3).at, row.start!!.at)
 		assertEquals(day(20).at, row.end!!.at)
@@ -97,7 +110,7 @@ class TimelineServiceTest : PostgresTest() {
 		).project
 		ticket("Only", project.id, 5, 9)
 
-		val row = timeline.load(teamId = team.id, projectId = null).projects.single { it.id == project.id }
+		val row = timeline.load(admin, teamId = team.id, projectId = null).projects.single { it.id == project.id }
 
 		assertEquals(day(1).at, row.start!!.at)
 		assertEquals(false, row.startDerived)
@@ -119,7 +132,7 @@ class TimelineServiceTest : PostgresTest() {
 		val id = ticket("Undated but finished", project.id, null, null)
 		tickets.patch(admin, id, TicketPatch(status = TicketStatus.DONE))
 
-		val row = timeline.load(teamId = team.id, projectId = null).projects.single { it.id == project.id }
+		val row = timeline.load(admin, teamId = team.id, projectId = null).projects.single { it.id == project.id }
 
 		assertTrue(row.start != null, "a completion date is a worse answer than a plan, and a better one than a blank row")
 	}
@@ -128,7 +141,7 @@ class TimelineServiceTest : PostgresTest() {
 	fun `undated tickets are listed separately rather than dropped`() {
 		val id = ticket("No dates", null, null, null)
 
-		val view = timeline.load(teamId = team.id, projectId = null)
+		val view = timeline.load(admin, teamId = team.id, projectId = null)
 
 		assertTrue(view.unscheduled.any { it.id == id })
 		assertTrue(view.tickets.none { it.id == id })
@@ -152,13 +165,83 @@ class TimelineServiceTest : PostgresTest() {
 		).ticket.id
 		deps.insert(here, elsewhere)
 
-		val view = timeline.load(teamId = team.id, projectId = null)
+		val view = timeline.load(admin, teamId = team.id, projectId = null)
 		val row = view.tickets.single { it.id == here }
 
 		assertEquals(true, row.critical, "the chain ends outside the scope, and that is what anchors it")
-		assertTrue(
+		assertEquals(
+			false,
 			view.dependencies.single().outOfScope,
-			"the other end is not in the response, so the view draws a stub",
+			"the closure is returned as context now rather than discarded, so there is no stub left to draw",
+		)
+	}
+
+	@Test
+	fun `a ticket of another team in a shared project is drawn as context`() {
+		val other = teams.create(admin, "Other", "O${UUID.randomUUID().toString().take(4).uppercase()}", null)
+		// Team-less on purpose: `TicketService` refuses a ticket whose project belongs to
+		// another team, so the transverse project is the only shape a shared one can have.
+		val project = projects.create(
+			name = "Shared",
+			status = ProjectStatus.IN_PROGRESS,
+			start = null,
+			end = null,
+			leadUserId = null,
+			teamId = null,
+			docIds = emptyList(),
+		).project
+		val mine = ticket("Mine", project.id, 1, 5)
+		val theirs = tickets.create(
+			teamId = other.id,
+			title = "Theirs",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = day(2),
+			due = day(6),
+			projectId = project.id,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		).ticket.id
+		teamRepo.addMember(team.id, member.id, MemberRole.MEMBER)
+		teamRepo.addMember(other.id, admin.id, MemberRole.MEMBER)
+
+		val view = timeline.load(member, teamId = team.id, projectId = null)
+
+		val ours = view.tickets.single { it.id == mine }
+		val visitor = view.tickets.single { it.id == theirs }
+		assertEquals(false, ours.context)
+		assertEquals(true, ours.editable)
+		assertEquals(true, visitor.context, "a shared project is who else is working here")
+		assertEquals(false, visitor.editable)
+		assertEquals(other.key, visitor.teamKey)
+	}
+
+	@Test
+	fun `a ticket in the dependency closure is drawn rather than left as a stub`() {
+		val other = teams.create(admin, "Chained", "C${UUID.randomUUID().toString().take(4).uppercase()}", null)
+		val here = ticket("Here", null, 1, 10)
+		val elsewhere = tickets.create(
+			teamId = other.id,
+			title = "Elsewhere",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = day(10),
+			due = day(30),
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		).ticket.id
+		deps.insert(here, elsewhere)
+
+		val view = timeline.load(admin, teamId = team.id, projectId = null)
+
+		assertTrue(view.tickets.any { it.id == elsewhere && it.context })
+		assertEquals(
+			false,
+			view.dependencies.single().outOfScope,
+			"both ends are in the response now, so there is nothing to stub",
 		)
 	}
 
@@ -171,7 +254,7 @@ class TimelineServiceTest : PostgresTest() {
 		// edge: its descent only considers a node one of whose predecessors moved.
 		tickets.patch(admin, second, TicketPatch(start = day(5), due = day(9)))
 
-		val edge = timeline.load(teamId = team.id, projectId = null)
+		val edge = timeline.load(admin, teamId = team.id, projectId = null)
 			.dependencies.single { it.predecessorId == first && it.successorId == second }
 
 		assertEquals(true, edge.overlap, "the constraint is broken right now")
@@ -184,7 +267,7 @@ class TimelineServiceTest : PostgresTest() {
 		val second = ticket("Finished early", null, 1, 5, status = TicketStatus.DONE)
 		deps.insert(first, second)
 
-		val edge = timeline.load(teamId = team.id, projectId = null)
+		val edge = timeline.load(admin, teamId = team.id, projectId = null)
 			.dependencies.single { it.predecessorId == first && it.successorId == second }
 
 		assertEquals(true, edge.violated)
