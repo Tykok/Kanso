@@ -64,6 +64,7 @@ class TimelineServiceTest : PostgresTest() {
 
 	private fun ticket(title: String, projectId: UUID?, start: Int?, due: Int?, status: TicketStatus = TicketStatus.TODO) =
 		tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = title,
 			description = null,
@@ -152,6 +153,7 @@ class TimelineServiceTest : PostgresTest() {
 		val other = teams.create(admin, "Other", "O${UUID.randomUUID().toString().take(4).uppercase()}", null)
 		val here = ticket("Here", null, 1, 10)
 		val elsewhere = tickets.create(
+			actor = admin,
 			teamId = other.id,
 			title = "Elsewhere",
 			description = null,
@@ -192,6 +194,7 @@ class TimelineServiceTest : PostgresTest() {
 		).project
 		val mine = ticket("Mine", project.id, 1, 5)
 		val theirs = tickets.create(
+			actor = admin,
 			teamId = other.id,
 			title = "Theirs",
 			description = null,
@@ -226,6 +229,7 @@ class TimelineServiceTest : PostgresTest() {
 		val other = teams.create(admin, "Undated", "U${UUID.randomUUID().toString().take(4).uppercase()}", null)
 		val here = ticket("Here", null, 1, 10)
 		val elsewhere = tickets.create(
+			actor = admin,
 			teamId = other.id,
 			title = "No dates over there",
 			description = null,
@@ -257,6 +261,7 @@ class TimelineServiceTest : PostgresTest() {
 		val other = teams.create(admin, "Chained", "C${UUID.randomUUID().toString().take(4).uppercase()}", null)
 		val here = ticket("Here", null, 1, 10)
 		val elsewhere = tickets.create(
+			actor = admin,
 			teamId = other.id,
 			title = "Elsewhere",
 			description = null,

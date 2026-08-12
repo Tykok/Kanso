@@ -2,7 +2,10 @@ package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.MemberRole
+import dev.kanso.domain.Team
+import dev.kanso.domain.User
 import dev.kanso.service.TeamService
+import dev.kanso.service.TicketAccess
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
@@ -12,20 +15,35 @@ import java.util.UUID
 @RequestMapping("/api/teams")
 class TeamController(
 	private val teams: TeamService,
+	private val access: TicketAccess,
 	private val currentUser: CurrentUser,
 ) {
 
 	@GetMapping
-	fun list(@RequestParam(defaultValue = "false") includeArchived: Boolean): List<TeamResponse> =
-		teams.list(includeArchived).map(TeamResponse::of)
+	fun list(@RequestParam(defaultValue = "false") includeArchived: Boolean): List<TeamResponse> {
+		val actor = currentUser.require()
+		val found = teams.list(includeArchived)
+		// One editableTeams call for the whole page, not one per row — the same batching
+		// TimelineService does for `TimelineTicketResponse.editable`.
+		val editable = access.editableTeams(actor, found.map { it.id }.toSet())
+		return found.map { TeamResponse.of(it, it.id in editable) }
+	}
 
 	@GetMapping("/{id}")
-	fun get(@PathVariable id: UUID): TeamResponse = TeamResponse.of(teams.get(id))
+	fun get(@PathVariable id: UUID): TeamResponse {
+		val actor = currentUser.require()
+		val team = teams.get(id)
+		return TeamResponse.of(team, editableOf(actor, team))
+	}
 
 	/** The team and every team under it, at any depth. */
 	@GetMapping("/{id}/descendants")
-	fun descendants(@PathVariable id: UUID): List<TeamResponse> =
-		teams.descendants(id).map(TeamResponse::of)
+	fun descendants(@PathVariable id: UUID): List<TeamResponse> {
+		val actor = currentUser.require()
+		val found = teams.descendants(id)
+		val editable = access.editableTeams(actor, found.map { it.id }.toSet())
+		return found.map { TeamResponse.of(it, it.id in editable) }
+	}
 
 	/** What the modal shows before anyone chooses anything. */
 	@GetMapping("/{id}/contents")
@@ -34,32 +52,42 @@ class TeamController(
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	fun create(@Valid @RequestBody request: TeamRequest): TeamResponse = TeamResponse.of(
-		teams.create(currentUser.require(), request.name, request.key?.uppercase(), request.parentTeamId)
-	)
+	fun create(@Valid @RequestBody request: TeamRequest): TeamResponse {
+		val actor = currentUser.require()
+		val team = teams.create(actor, request.name, request.key?.uppercase(), request.parentTeamId)
+		return TeamResponse.of(team, editableOf(actor, team))
+	}
 
 	@PutMapping("/{id}")
 	fun update(@PathVariable id: UUID, @Valid @RequestBody request: TeamRequest): TeamResponse {
 		val actor = currentUser.require()
 		val current = teams.get(id)
-		return TeamResponse.of(
-			teams.update(
-				actor = actor,
-				id = id,
-				name = request.name,
-				key = request.key?.uppercase() ?: current.key,
-				parentTeamId = request.parentTeamId,
-			)
+		val updated = teams.update(
+			actor = actor,
+			id = id,
+			name = request.name,
+			key = request.key?.uppercase() ?: current.key,
+			parentTeamId = request.parentTeamId,
 		)
+		return TeamResponse.of(updated, editableOf(actor, updated))
 	}
 
 	@PutMapping("/{id}/archive")
-	fun archive(@PathVariable id: UUID, @RequestBody request: DispositionPlanRequest): TeamResponse =
-		TeamResponse.of(teams.archive(currentUser.require(), id, request.toPlan()))
+	fun archive(@PathVariable id: UUID, @RequestBody request: DispositionPlanRequest): TeamResponse {
+		val actor = currentUser.require()
+		val archived = teams.archive(actor, id, request.toPlan())
+		return TeamResponse.of(archived, editableOf(actor, archived))
+	}
 
 	@PostMapping("/{id}/unarchive")
-	fun unarchive(@PathVariable id: UUID): TeamResponse =
-		TeamResponse.of(teams.unarchive(currentUser.require(), id))
+	fun unarchive(@PathVariable id: UUID): TeamResponse {
+		val actor = currentUser.require()
+		val unarchived = teams.unarchive(actor, id)
+		return TeamResponse.of(unarchived, editableOf(actor, unarchived))
+	}
+
+	private fun editableOf(actor: User, team: Team): Boolean =
+		access.editableTeams(actor, setOf(team.id)).contains(team.id)
 
 	/**
 	 * The body is optional at this layer so a request without one gets the service's

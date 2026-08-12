@@ -66,6 +66,7 @@ class TeamDeleteTest : PostgresTest() {
 	private fun newTicket(teamId: UUID) = newTicketIn(teamId, null)
 
 	private fun newTicketIn(teamId: UUID, projectId: UUID?) = tickets.create(
+		actor = admin,
 		teamId = teamId,
 		title = "Ticket ${UUID.randomUUID().toString().take(4)}",
 		description = null,

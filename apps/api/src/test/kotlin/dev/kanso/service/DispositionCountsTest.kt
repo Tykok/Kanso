@@ -49,6 +49,7 @@ class DispositionCountsTest : PostgresTest() {
 	)
 
 	private fun newTicket(teamId: UUID, projectId: UUID? = null) = tickets.create(
+		actor = admin,
 		teamId = teamId,
 		title = "Ticket ${UUID.randomUUID().toString().take(4)}",
 		description = null,

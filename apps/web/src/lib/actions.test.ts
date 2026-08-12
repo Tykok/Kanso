@@ -20,6 +20,7 @@ const core: Team = {
   archived: false,
   ticketCount: 1,
   mirror: { state: "synced" },
+  editable: true,
 };
 
 const legacy: Team = { ...core, id: "team-legacy", name: "Legacy", key: "LEG", archived: true };

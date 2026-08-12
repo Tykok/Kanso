@@ -99,6 +99,7 @@ class TicketService(
 
 	@Transactional
 	fun create(
+		actor: User,
 		teamId: UUID,
 		title: String,
 		description: String?,
@@ -110,6 +111,10 @@ class TicketService(
 		assigneeIds: List<UUID>,
 		docIds: List<UUID>,
 	): TicketDetail {
+		// First, because a check placed after `nextTicketNumber` below would already have
+		// burned a number from a team's counter the actor may not touch — the same reason
+		// `patch` checks its destination side before doing anything else.
+		access.requireTeam(actor, teamId)
 		val team = teams.findById(teamId) ?: throw BadRequestException("No team $teamId")
 		validateDates(start, due)
 		// A ticket's project belongs to its team — the same invariant `patch` upholds,

@@ -62,6 +62,7 @@ class TeamArchiveTest : PostgresTest() {
 	private fun newTicket(teamId: UUID, title: String = "Ticket") = newTicketIn(teamId, null, title)
 
 	private fun newTicketIn(teamId: UUID, projectId: UUID?, title: String = "Ticket") = tickets.create(
+		actor = admin,
 		teamId = teamId,
 		title = title,
 		description = null,

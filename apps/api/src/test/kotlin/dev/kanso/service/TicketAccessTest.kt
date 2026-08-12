@@ -42,6 +42,7 @@ class TicketAccessTest : PostgresTest() {
 	private fun key() = "K${UUID.randomUUID().toString().take(4).uppercase()}"
 
 	private fun ticketIn(teamId: UUID) = tickets.create(
+		actor = admin,
 		teamId = teamId,
 		title = "Work",
 		description = null,

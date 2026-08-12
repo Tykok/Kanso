@@ -52,6 +52,7 @@ class ScheduleServiceTest : PostgresTest() {
 	)
 
 	private fun ticket(title: String, start: Int?, due: Int?): UUID = tickets.create(
+		actor = admin,
 		teamId = team.id,
 		title = title,
 		description = null,

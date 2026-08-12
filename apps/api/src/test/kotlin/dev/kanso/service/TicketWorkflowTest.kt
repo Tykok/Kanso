@@ -51,6 +51,7 @@ class TicketWorkflowTest : PostgresTest() {
 		val team = newTeam()
 
 		val first = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "First",
 			description = null,
@@ -63,6 +64,7 @@ class TicketWorkflowTest : PostgresTest() {
 			docIds = emptyList(),
 		)
 		val second = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "Second",
 			description = null,
@@ -83,6 +85,7 @@ class TicketWorkflowTest : PostgresTest() {
 	fun `every write queues exactly one mirror push for the row`() {
 		val team = newTeam()
 		val ticket = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "Queued",
 			description = null,
@@ -108,6 +111,7 @@ class TicketWorkflowTest : PostgresTest() {
 	fun `a patch leaves untouched fields alone and clears only what is named`() {
 		val team = newTeam()
 		val created = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "Keep me",
 			description = "Some context",
@@ -139,6 +143,7 @@ class TicketWorkflowTest : PostgresTest() {
 		val team = newTeam()
 		val failure = assertFailsWith<BadRequestException> {
 			tickets.create(
+				actor = admin,
 				teamId = team.id,
 				title = "Backwards",
 				description = null,
@@ -159,6 +164,7 @@ class TicketWorkflowTest : PostgresTest() {
 		val team = newTeam()
 		assertFailsWith<BadRequestException> {
 			tickets.create(
+				actor = admin,
 				teamId = team.id,
 				title = "Ghost",
 				description = null,
@@ -180,6 +186,7 @@ class TicketWorkflowTest : PostgresTest() {
 
 		for (team in listOf(parent, child)) {
 			tickets.create(
+				actor = admin,
 				teamId = team.id,
 				title = "In ${team.name}",
 				description = null,
@@ -214,6 +221,7 @@ class TicketWorkflowTest : PostgresTest() {
 		)
 
 		val ticket = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "Part of the project",
 			description = null,
@@ -234,6 +242,7 @@ class TicketWorkflowTest : PostgresTest() {
 	fun `archiving a ticket queues an archive rather than an update`() {
 		val team = newTeam()
 		val ticket = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "To archive",
 			description = null,
@@ -261,6 +270,7 @@ class TicketWorkflowTest : PostgresTest() {
 	fun `completedAt is stamped on the way into done and cleared on the way out`() {
 		val team = newTeam()
 		val created = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "Finish me",
 			description = null,
@@ -302,6 +312,7 @@ class TicketWorkflowTest : PostgresTest() {
 		val team = newTeam()
 
 		val created = tickets.create(
+			actor = admin,
 			teamId = team.id,
 			title = "Logged after the fact",
 			description = null,

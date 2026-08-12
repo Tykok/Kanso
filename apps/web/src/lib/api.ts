@@ -72,6 +72,8 @@ export type Team = {
   archived: boolean;
   ticketCount: number;
   mirror: Mirror;
+  /** The server's answer to "may this actor create a ticket here", from `TicketAccess`. */
+  editable: boolean;
 };
 
 /** Wire values from `dev.kanso.domain.MemberRole`; nothing here names "lead". */

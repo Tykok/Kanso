@@ -24,6 +24,19 @@ const PRIORITY_LABELS: Record<TicketPriority, string> = {
 };
 
 /**
+ * Whether the composer may offer [team] in its select. `editable` is the server's
+ * answer from `TicketAccess.editableTeams` on the same rule `TicketService.create`
+ * checks before writing — the client has no membership graph of its own to re-derive
+ * it from, and a second implementation of that rule in the browser is exactly what
+ * this project has spent two increments avoiding. Archived is checked here too rather
+ * than left to the caller: an archived team is never a legal destination regardless of
+ * who is editable there.
+ */
+export function isComposableTeam(team: Pick<Team, "archived" | "editable">): boolean {
+  return !team.archived && team.editable;
+}
+
+/**
  * One title field, Enter creates — the speed that made this worth building. Below it,
  * the target: team, project, priority and assignee, prefilled from the current scope,
  * clickable and reachable with Tab.
@@ -155,7 +168,6 @@ function ComposerForm({
         >
           <option value="">Team…</option>
           {[...teams]
-            .filter((team) => !team.archived)
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((team) => (
               <option key={team.id} value={team.id}>
@@ -246,9 +258,23 @@ export function Composer({ scope, onClose }: { scope: Scope; onClose: () => void
     );
   }
 
+  // Filtered once, here, rather than inside the form: `creationSeed` and the select
+  // must agree on what is offered, and computing it twice is how they would drift.
+  const composable = teams.data.filter(isComposableTeam);
+  if (composable.length === 0) {
+    return (
+      <Backdrop onClose={onClose}>
+        {/* Not an empty select: that reads as a loading bug rather than the honest
+            answer, which is that no team on this instance will currently accept a
+            ticket from this person. */}
+        <div className="empty">No team will accept a ticket from you yet.</div>
+      </Backdrop>
+    );
+  }
+
   return (
     <ComposerForm
-      teams={teams.data}
+      teams={composable}
       projects={projects.data}
       users={users.data ?? []}
       meId={me.data?.user.id}

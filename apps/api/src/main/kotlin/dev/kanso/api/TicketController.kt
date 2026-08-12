@@ -52,6 +52,7 @@ class TicketController(
 	@ResponseStatus(HttpStatus.CREATED)
 	fun create(@Valid @RequestBody request: TicketCreateRequest): TicketResponse = TicketResponse.of(
 		tickets.create(
+			actor = currentUser.require(),
 			teamId = request.teamId,
 			title = request.title,
 			description = request.description,

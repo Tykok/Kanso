@@ -54,6 +54,7 @@ class DependencyTest : PostgresTest() {
 	)
 
 	private fun ticket(title: String, start: Int? = null, due: Int? = null): UUID = tickets.create(
+		actor = admin,
 		teamId = team.id,
 		title = title,
 		description = null,

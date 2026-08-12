@@ -110,9 +110,11 @@ data class TeamResponse(
 	val mirror: MirrorDto,
 	val createdAt: OffsetDateTime,
 	val updatedAt: OffsetDateTime,
+	/** The server's answer, so the composer's team select obeys it rather than re-deriving it. */
+	val editable: Boolean,
 ) {
 	companion object {
-		fun of(team: Team) = TeamResponse(
+		fun of(team: Team, editable: Boolean) = TeamResponse(
 			id = team.id,
 			name = team.name,
 			key = team.key,
@@ -122,6 +124,7 @@ data class TeamResponse(
 			mirror = MirrorDto(team.mirror.notionPageId, team.mirror.syncState.wire, team.mirror.notionSyncedAt),
 			createdAt = team.createdAt,
 			updatedAt = team.updatedAt,
+			editable = editable,
 		)
 	}
 }

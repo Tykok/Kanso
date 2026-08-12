@@ -41,6 +41,7 @@ class TicketAuthorizationTest : PostgresTest() {
 	private fun key() = "K${UUID.randomUUID().toString().take(4).uppercase()}"
 
 	private fun ticketIn(teamId: UUID) = tickets.create(
+		actor = admin,
 		teamId = teamId,
 		title = "Work",
 		description = null,
@@ -59,6 +60,7 @@ class TicketAuthorizationTest : PostgresTest() {
 	)
 
 	private fun dated(teamId: UUID, start: Int, due: Int) = tickets.create(
+		actor = admin,
 		teamId = teamId,
 		title = "Dated",
 		description = null,
@@ -70,6 +72,77 @@ class TicketAuthorizationTest : PostgresTest() {
 		assigneeIds = emptyList(),
 		docIds = emptyList(),
 	).ticket
+
+	@Test
+	fun `a stranger cannot file a ticket on a claimed team's board, and the message names it`() {
+		val team = teams.create(admin, "Mobile", key(), null)
+		teamRepo.addMember(team.id, admin.id, MemberRole.MEMBER)
+		val stranger = user(InstanceRole.MEMBER)
+
+		val error = assertFailsWith<AccessDeniedException> {
+			tickets.create(
+				actor = stranger,
+				teamId = team.id,
+				title = "Filed anyway",
+				description = null,
+				status = TicketStatus.TODO,
+				priority = TicketPriority.NONE,
+				start = null,
+				due = null,
+				projectId = null,
+				assigneeIds = emptyList(),
+				docIds = emptyList(),
+			)
+		}
+		assertTrue(error.message!!.contains("Mobile"))
+	}
+
+	@Test
+	fun `a member of an ancestor may create a ticket in a descendant team`() {
+		val parent = teams.create(admin, "Product", key(), null)
+		val child = teams.create(admin, "Mobile", key(), parent.id)
+		val parentMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(parent.id, parentMember.id, MemberRole.MEMBER)
+
+		val created = tickets.create(
+			actor = parentMember,
+			teamId = child.id,
+			title = "Filed from above",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = null,
+			due = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		assertEquals(child.id, created.ticket.teamId)
+	}
+
+	@Test
+	fun `nobody is refused creating in a team whose whole chain is unclaimed`() {
+		val root = teams.create(admin, "Org", key(), null)
+		val child = teams.create(admin, "Product", key(), root.id)
+		val stranger = user(InstanceRole.MEMBER)
+
+		val created = tickets.create(
+			actor = stranger,
+			teamId = child.id,
+			title = "Unclaimed board, open door",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = null,
+			due = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		)
+
+		assertEquals(child.id, created.ticket.teamId)
+	}
 
 	@Test
 	fun `a stranger cannot patch a claimed team's ticket`() {
