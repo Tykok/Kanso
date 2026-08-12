@@ -253,14 +253,20 @@ export function TimelineBar({
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // The secondary button opens a context menu; taking it as a drag would leave the
-    // bar captured with no pointerup coming.
-    if (!drag || event.button !== 0) return;
+    // The secondary button opens a context menu; it must not move the cursor either,
+    // so this guard stands ahead of selection rather than folded into the one below.
+    if (event.button !== 0) return;
 
-    // Pressing a bar puts the cursor on it, drag or not: everything the keyboard can do
-    // to a bar reads `selected`, so a bar that could be dragged but not selected would
-    // be editable by hand and invisible to `h`, `l`, `H` and `L`.
+    // Pressing a bar puts the cursor on it whether or not this press can become a drag:
+    // an in-scope ticket that is merely not editable — or read from a chart that is
+    // read-only altogether — carries no `drag` prop and still has to answer `h`, `l`,
+    // `H` and `L`, which all read `selected`. A project bar passes no `onSelect` at all,
+    // so the optional call is inert there without a special case.
     onSelect?.();
+
+    // Nothing below this needs doing for a bar that cannot be dragged: no gesture to
+    // arm, no pointer to capture, no default to suppress.
+    if (!drag) return;
 
     const grip = (event.target as HTMLElement).closest<HTMLElement>(".tl-handle");
     const edge = grip?.dataset.edge === "start" || grip?.dataset.edge === "end"
