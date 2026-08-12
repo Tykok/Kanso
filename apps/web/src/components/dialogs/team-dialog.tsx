@@ -2,10 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, type Team } from "@/lib/api";
+import { ApiError, api, type InstanceRole, type Team } from "@/lib/api";
 import { keys, useMe } from "@/lib/queries";
 import { DialogFrame, Field } from "./field";
 import { MembersSection } from "./members-section";
+
+/**
+ * Whether the acting user gets the roster's add/remove controls, not whether they see
+ * the roster at all — every instance role does, per `MembersSection`'s own doctrine.
+ * `role` is `undefined` while `/api/me` is still loading, and that must resolve to
+ * `false`: the mount condition this replaced was `instanceRole !== "member"`, true for
+ * `undefined`, which flashed a plain member the full editing surface for the length of
+ * that request.
+ */
+export function canConfigureMembers(role: InstanceRole | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
 
 type TeamErrors = { key?: string; parent?: string; general?: string };
 
@@ -199,9 +211,13 @@ function TeamForm({
       </Field>
 
       {team ? (
-        me.data?.user.instanceRole !== "member" && (
-          <MembersSection teamId={team.id} onError={setMemberError} />
-        )
+        // Reads are open, only writes are scoped: every instance role sees the roster,
+        // and `canConfigure` decides only whether it gets the add/remove controls.
+        <MembersSection
+          teamId={team.id}
+          onError={setMemberError}
+          canConfigure={canConfigureMembers(me.data?.user.instanceRole)}
+        />
       ) : (
         // No id to post a membership against yet, so the section itself would have
         // nothing to talk to — say why it is missing rather than leave a gap.

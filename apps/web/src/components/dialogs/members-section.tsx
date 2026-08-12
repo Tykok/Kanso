@@ -18,13 +18,23 @@ function message(error: unknown): string {
  * had endpoints since the first CRUD branch but nothing in the app to call them.
  * `onError` reports failures through the dialog's own footer rather than inline,
  * the way `team-dialog.tsx` already routes every other server message here.
+ *
+ * `canConfigure` governs the add and remove controls only, never whether this section
+ * mounts: `GET /teams/{id}/members` answers any authenticated user, per the instance's
+ * read posture (everything readable, only writes are scoped), and the server already
+ * enforces the write side — `POST`/`DELETE` both call `requireConfigurator`. Hiding the
+ * roster from a plain member would buy no privacy the API doesn't already give away,
+ * and would cost them the one thing the timeline now makes them ask: who is in this
+ * team, and therefore who can move this bar.
  */
 export function MembersSection({
   teamId,
   onError,
+  canConfigure,
 }: {
   teamId: string;
   onError: (message: string | null) => void;
+  canConfigure: boolean;
 }) {
   const members = useTeamMembers(teamId);
   const people = usePeople();
@@ -67,14 +77,16 @@ export function MembersSection({
             {row.user.displayName}
             <span className="settings-note"> · {ROLE_LABELS[row.role]}</span>
           </span>
-          <button
-            type="button"
-            className="button"
-            disabled={remove.isPending}
-            onClick={() => handleRemove(row.user.id)}
-          >
-            Remove
-          </button>
+          {canConfigure && (
+            <button
+              type="button"
+              className="button"
+              disabled={remove.isPending}
+              onClick={() => handleRemove(row.user.id)}
+            >
+              Remove
+            </button>
+          )}
         </div>
       ))}
       {members.isError ? (
@@ -90,28 +102,30 @@ export function MembersSection({
         )
       )}
 
-      <div className="settings-row">
-        <select value={userId} onChange={(event) => setUserId(event.target.value)}>
-          <option value="">Add a member…</option>
-          {candidates.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.displayName}
-            </option>
-          ))}
-        </select>
-        <select value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
-          <option value="member">{ROLE_LABELS.member}</option>
-          <option value="admin">{ROLE_LABELS.admin}</option>
-        </select>
-        <button
-          type="button"
-          className="button"
-          disabled={!userId || add.isPending}
-          onClick={submit}
-        >
-          Add
-        </button>
-      </div>
+      {canConfigure && (
+        <div className="settings-row">
+          <select value={userId} onChange={(event) => setUserId(event.target.value)}>
+            <option value="">Add a member…</option>
+            {candidates.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.displayName}
+              </option>
+            ))}
+          </select>
+          <select value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
+            <option value="member">{ROLE_LABELS.member}</option>
+            <option value="admin">{ROLE_LABELS.admin}</option>
+          </select>
+          <button
+            type="button"
+            className="button"
+            disabled={!userId || add.isPending}
+            onClick={submit}
+          >
+            Add
+          </button>
+        </div>
+      )}
     </div>
   );
 }
