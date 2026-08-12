@@ -630,6 +630,13 @@ describe("availableActions", () => {
     );
     expect(member).not.toContain("project.archive");
     expect(member).not.toContain("project.delete");
+
+    // Unarchiving is the same disposition seen from the other side — see
+    // `project.unarchive`'s `when`, which now matches `team.unarchive`'s.
+    const memberOnArchived = ids(
+      context({ canConfigure: false, scope: { kind: "project", id: audit.id } }),
+    );
+    expect(memberOnArchived).not.toContain("project.unarchive");
   });
 
   it("withholds the cursor moves when the list is empty, and offers them when it is not", () => {

@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -58,6 +59,25 @@ class ProjectPermissionTest : PostgresTest() {
 		val project = newProject()
 
 		assertTrue(projects.archive(admin, project.id, DispositionPlan()).project.archived)
+	}
+
+	@Test
+	fun `a member cannot unarchive a project`() {
+		val admin = user(InstanceRole.ADMIN)
+		val member = user(InstanceRole.MEMBER)
+		val project = newProject()
+		projects.archive(admin, project.id, DispositionPlan())
+
+		assertFailsWith<AccessDeniedException> { projects.unarchive(member, project.id) }
+	}
+
+	@Test
+	fun `an admin may unarchive a project`() {
+		val admin = user(InstanceRole.ADMIN)
+		val project = newProject()
+		projects.archive(admin, project.id, DispositionPlan())
+
+		assertFalse(projects.unarchive(admin, project.id).project.archived)
 	}
 
 	@Test

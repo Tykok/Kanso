@@ -144,7 +144,8 @@ class ProjectService(
 
 	/** Only the project comes back: its tickets were disposed of by an explicit choice. */
 	@Transactional
-	fun unarchive(id: UUID): ProjectDetail {
+	fun unarchive(actor: User, id: UUID): ProjectDetail {
+		requireConfigurator(actor)
 		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
 		return setArchived(project, false)
 	}

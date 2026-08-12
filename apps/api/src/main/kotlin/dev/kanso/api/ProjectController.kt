@@ -65,7 +65,8 @@ class ProjectController(
 		ProjectResponse.of(projects.archive(currentUser.require(), id, request.toPlan()))
 
 	@PostMapping("/{id}/unarchive")
-	fun unarchive(@PathVariable id: UUID): ProjectResponse = ProjectResponse.of(projects.unarchive(id))
+	fun unarchive(@PathVariable id: UUID): ProjectResponse =
+		ProjectResponse.of(projects.unarchive(currentUser.require(), id))
 
 	/** Body optional so a missing one yields the service's message, not Spring's. */
 	@DeleteMapping("/{id}")

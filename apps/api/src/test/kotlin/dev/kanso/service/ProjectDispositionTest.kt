@@ -104,7 +104,7 @@ class ProjectDispositionTest : PostgresTest() {
 		val project = newProject(team.id)
 		projects.archive(admin, project.id, DispositionPlan())
 
-		assertFalse(projects.unarchive(project.id).project.archived)
+		assertFalse(projects.unarchive(admin, project.id).project.archived)
 	}
 
 	@Test

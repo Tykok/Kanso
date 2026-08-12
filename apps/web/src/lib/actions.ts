@@ -474,7 +474,7 @@ export const ACTIONS: readonly Action[] = [
     id: "project.unarchive",
     label: "Unarchive project",
     group: "project",
-    when: (ctx) => scopedProject(ctx)?.archived === true,
+    when: (ctx) => ctx.canConfigure && scopedProject(ctx)?.archived === true,
     run: onProject((ctx, id) => ctx.unarchive({ kind: "project", id })),
   },
   {
