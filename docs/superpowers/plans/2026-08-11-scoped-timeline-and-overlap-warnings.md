@@ -1618,12 +1618,18 @@ export async function seedMember(
   teamId: string,
   userId: string,
 ): Promise<void> {
-  const response = await api.post(`${API_URL}/api/teams/${teamId}/members`, {
+  const response = await api.post(`/api/teams/${teamId}/members`, {
     data: { userId, role: "member" },
   });
   if (!response.ok()) throw new Error(`seedMember: ${response.status()} ${await response.text()}`);
 }
 ```
+
+**Three corrections to this task's sketch, verified by the controller before dispatch. The sketch below still contains the originals in places; these override it.**
+
+1. **The shared project must have no team.** `TicketService.create` refuses a ticket whose project belongs to a *different* team (`TicketService.kt:120-125`), and the codebase's rule is "a team-less project is transverse and belongs everywhere". So `seedProject(api, { name, teamId: mine.id })` followed by a ticket in `theirs` carrying that `projectId` is a 400, not a fixture. Seed it as `seedProject(api, { name: unique("Shared") })` — no `teamId`. This is also the only shape that exercises the feature at all.
+2. **`seedTicket` takes plain `YYYY-MM-DD` strings**, not `floatingDay(...)` objects — it wraps them itself. `start: "2026-09-01"`, not `start: floatingDay("2026-09-01")`. Do not import `floatingDay` unless something else needs it.
+3. **`apiAs` returns a context with a base URL already set.** Every existing helper calls `api.post("/api/teams")` with no host. Drop the `${API_URL}` prefix everywhere, including in the two raw `api.post`/`api.patch` calls in the scenario body.
 
 You will need the `MEMBER` user's id. `GET /api/me` as that identity returns it; add a `userIdOf(email)` helper if `support.ts` has none.
 
