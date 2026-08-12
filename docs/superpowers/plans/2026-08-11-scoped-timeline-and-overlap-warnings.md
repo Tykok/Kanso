@@ -1738,7 +1738,7 @@ In `docs/follow-ups.md`, the entry *"The timeline computes violated edges indepe
 
 Add, under a new heading for this branch:
 
-- **The status pill covers its own bar at month zoom.** A column is three pixels, so a one-day ticket's bar is entirely under its 8px pill and its criticality colour disappears. The red outline of `data-state="late"` bleeds past it and saves the worst case; "critical but on time" does not survive. Accepted when the pill was chosen over a shared fill, on the grounds that colour on the bar already means criticality.
+- **The status pill covers its own bar at month zoom.** A column is three pixels, so a one-day ticket's bar sits entirely under its 8px pill and its criticality colour disappears. ~~The red outline of `data-state="late"` bleeds past it and saves the worst case; "critical but on time" does not survive.~~ **That sentence was false and is corrected here at its source.** There is no `outline` on either state: `timeline.css` gives `critical` a flat fill and `late` a hatch, both bordered from the same colour, and the pill's fill is opaque. So the loss is *symmetric* — neither state survives, and the hatch that exists precisely so the distinction holds in greyscale is defeated by an element drawn over it. Accepted when the pill was chosen over a shared fill, on the grounds that colour on the bar already means criticality. The claim reached four documents before anyone opened the stylesheet; see the Self-Review note below.
 - **A context row cannot be opened.** There is no detail panel for a ticket you do not own: the cursor list is the scoped tickets query, and putting a foreign ticket in it would reintroduce the selection bounce closed on the timeline branch. Its name, dates and status are in the tooltip and the accessible name.
 
 - [ ] **Step 2b: Three more, found while building rather than while planning**
@@ -1767,6 +1767,8 @@ git commit -m "docs: membership became a permission, and two costs worth knowing
 **Placeholders.** None. Two places name a file to read before writing (`people-section.tsx` for the member row markup, `actions.test.ts` for its own context helper) rather than inventing an interface that may not match — that is a pointer to existing code, not a deferred decision.
 
 **Type consistency.** `TimelineEdge.overlap` (Task 1) is read as `TimelineDependency.overlap` (Task 2) and asserted in Task 9. `STATUS_LABELS`/`STATUS_COLORS` move to `lib/status.ts` in Task 3 and are imported by both `pills.tsx` and `bar.tsx`. `TicketAccess.editableTeams` (Task 4) is consumed in Task 7. `TimelineTicket.editable`/`context`/`teamKey` (Task 7) are consumed in Task 8. `canPlan` is defined and consumed inside Task 8. The bar's accessible name changes once, in Task 3, and every later locator uses the new shape.
+
+**One gap this self-review did not catch, recorded because the miss is the lesson.** The status-pill entry asserted that `data-state="late"`'s red outline bleeds past the pill and rescues the worst case. No such outline exists. The claim was written into the spec at design time without opening `timeline.css`, copied into this plan, then into a task brief, then into `follow-ups.md`, and was caught only by the review of the last task in the plan. Four documents, three self-reviews, and the check that would have settled it was one `grep outline`. A confident sentence about code is worth exactly the verification behind it.
 
 **Three gaps found and closed while reviewing:**
 
