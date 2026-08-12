@@ -1741,6 +1741,12 @@ Add, under a new heading for this branch:
 - **The status pill covers its own bar at month zoom.** A column is three pixels, so a one-day ticket's bar is entirely under its 8px pill and its criticality colour disappears. The red outline of `data-state="late"` bleeds past it and saves the worst case; "critical but on time" does not survive. Accepted when the pill was chosen over a shared fill, on the grounds that colour on the bar already means criticality.
 - **A context row cannot be opened.** There is no detail panel for a ticket you do not own: the cursor list is the scoped tickets query, and putting a foreign ticket in it would reintroduce the selection bounce closed on the timeline branch. Its name, dates and status are in the tooltip and the accessible name.
 
+- [ ] **Step 2b: Three more, found while building rather than while planning**
+
+- **`e2e/README.md` still never names `KANSO_WEB_ORIGIN`.** It names `WEB_PORT` at line 26 and stops there. This has been an open follow-up for two branches, and scenario 13 makes it dangerous rather than merely annoying: without that variable, CORS makes every visitor render as a member, so a *permissions* scenario goes green for the wrong reason. Fix the README itself — one sentence beside the `WEB_PORT` mention — and close the follow-up entry rather than restating it.
+- **A project holds several teams' tickets only when it has no team of its own.** `TicketService.create` refuses a ticket whose project belongs to a different team, and the rule is already spelled out in that file as "a team-less project is transverse and belongs everywhere." Nothing in `architecture.md` says so, and this branch's shared-project widening rests on it entirely. Write it into the architecture, not only into follow-ups.
+- **`unlink`'s error body changed.** A missing successor used to surface as `No dependency X -> Y`, because the delete failed first; it now surfaces as `No ticket Y`, because the authorization check needs the successor before the delete. Same 404, different sentence. Record it under the branch's follow-ups.
+
 - [ ] **Step 3: Update the architecture notes**
 
 `docs/architecture.md` has an **Auth** section describing `instance_role` against `team_members.role` and saying the latter is "about belonging to a team". That is no longer the whole story — belonging now decides who may move a ticket. Add a short paragraph under Auth stating the three-part rule, the empty-team clause and its migration reason, and the downward-only inheritance. Mirror it in `architecture.fr.md`.
