@@ -285,14 +285,16 @@ only path to the dialog is already gated on the same permission — so nothing l
 read and hide disagree about who a roster belongs to, and the first new surface that lists
 members without routing through that dialog makes the disagreement live.
 
-**SCOPE_LIMIT no longer bounds what the timeline can return.** `TimelineService.load` builds
-`graphTickets` from the dependency closure with no cap, so a response is now
-`own(<=2000) + shared(<=2000) + |closure|` with the last term unbounded — `SCOPE_LIMIT`'s own
-KDoc still promises a bound against a pathological instance, and that promise is now false,
-not merely untested. The same missing cap has a second, quieter edge: once truncation drops
-an own ticket past the limit, that same ticket can come back through `shared` or the closure,
-drawn `context = true, editable = true` — labelled as someone else's work that the reader may
-nonetheless move. Both are consequences of one missing bound, not two separate defects.
+**SCOPE_LIMIT no longer bounds what the timeline can return, and the widening spends its
+own headroom.** `TimelineService.load` builds `graphTickets` from the dependency closure
+with no cap, so a response is now `own(<=2000) + shared(<=2000) + |closure|` with the last
+term unbounded — `SCOPE_LIMIT`'s own KDoc still promises a bound against a pathological
+instance, and that promise is now false, not merely untested. Two distinct costs follow
+from it, not one: `findByProjectIds` has no id exclusion, so every own ticket that has a
+project is refetched into `shared`, spending cap headroom meant for other teams' rows; and
+separately, once truncation drops an own ticket past the cap anyway, that same ticket can
+come back through `shared` or the closure, drawn `context = true, editable = true` —
+labelled as someone else's work that the reader may nonetheless move.
 
 **Row-level violated and overlap arrows share one glyph and one colour.** The arrow itself
 tells red from amber; the ⚠ beside a row does not, for either state. Shipped as the brief
@@ -300,11 +302,14 @@ specified — worth a UX decision later, not a defect here.
 
 ## Not a defect, but load-bearing to know
 
-**The status pill covers its own bar at month zoom.** A column is three pixels, so a
-one-day ticket's bar sits entirely under its 8px pill and the criticality colour the bar
-carries disappears. The red outline of `data-state="late"` bleeds past the pill and saves
-the worst case; "critical but on time" does not survive it. Accepted when the pill was
-chosen over a shared fill, on the grounds that colour on the bar already means criticality.
+**The status pill covers its own bar at month zoom, and the loss is symmetric.** A column
+is three pixels there, so an 8px pill straddling a one-day ticket's left edge covers the
+bar outright, not partially. `critical` is a flat fill and `late` is a hatch over the same
+colour specifically so the two survive greyscale and colour blindness — a distinction the
+pill erases for both alike. Neither state keeps a residual signal; "critical but on time"
+and "late" become the same unreadable pill, not one worse than the other. Accepted when
+the pill was chosen over sharing the bar's own fill, on the grounds that colour on the bar
+already means criticality.
 
 **A context row cannot be opened.** There is no detail panel for a ticket you do not own:
 the cursor list is the scoped tickets query, and putting a foreign ticket into it would
@@ -340,7 +345,9 @@ before assuming either file alone proves the feature.
 - `unlink`'s error body changed. A missing successor used to surface as
   `No dependency X -> Y`, because the delete failed first; it now surfaces as
   `No ticket Y`, because the authorization check needs the successor loaded before the
-  delete runs. Same 404, different sentence.
+  delete runs. Same 404, different sentence, and safe to change: nothing parses either
+  body — no e2e assertion, no client code — so the guarantee worth recording is that
+  there is no consumer to break, not that one was checked and spared.
 - A tray chip builds its accessible name independently of a scheduled bar's — in
   `tray.tsx` rather than `bar.tsx` — so a ticket's chip and its bar now have differently
   shaped names before and after scheduling, with nothing keeping the two constructions in

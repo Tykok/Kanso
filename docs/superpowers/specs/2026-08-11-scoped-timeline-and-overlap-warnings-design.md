@@ -362,9 +362,9 @@ The fill is `var(--status-backlog)` … `var(--status-canceled)`, the tokens `pi
 already uses. One definition, two views.
 
 **The known cost.** At month zoom a column is three pixels, so a one-day ticket's bar
-is entirely covered by its own pill and its criticality colour disappears. The red
-outline of `data-state="late"` bleeds past the pill and saves the worst case; the
-"critical but on time" case does not survive. Accepted, and recorded in
+is entirely covered by its own pill and its criticality colour disappears — the flat
+`critical` fill and the `late` hatch alike, with nothing left to distinguish them. The
+loss is symmetric, not softened for the worse case. Accepted, and recorded in
 `follow-ups.md` rather than discovered later.
 
 **A test consequence.** The pill is `aria-hidden` and the status joins the bar's
