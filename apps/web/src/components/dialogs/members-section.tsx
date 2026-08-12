@@ -77,7 +77,18 @@ export function MembersSection({
           </button>
         </div>
       ))}
-      {members.data?.length === 0 && <span className="settings-note">No members yet.</span>}
+      {members.isError ? (
+        // Not the same sentence as genuine emptiness: "no members" is read as "open to
+        // everyone" now that `TicketAccess` means it, and a failed fetch must never be
+        // mistaken for that answer.
+        <span className="settings-note error">Members could not be loaded — {message(members.error)}</span>
+      ) : (
+        members.data?.length === 0 && (
+          <span className="settings-note">
+            No members yet — anyone in the instance can edit this team&rsquo;s tickets.
+          </span>
+        )
+      )}
 
       <div className="settings-row">
         <select value={userId} onChange={(event) => setUserId(event.target.value)}>
