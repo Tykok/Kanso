@@ -37,6 +37,19 @@ export function isComposableTeam(team: Pick<Team, "archived" | "editable">): boo
 }
 
 /**
+ * Which sentence an empty composable list owes the reader. `composable.length === 0`
+ * is reached three ways and only one of them is about the actor: a fresh instance with
+ * no team yet, and an instance where every team is archived, both surface here as
+ * `teamCount === 0` — `api.teams(false)` already excludes archived rows, so the second
+ * case is indistinguishable from the first by the time this runs. Anything else means
+ * a team exists and simply will not take a ticket from this actor, which is the one
+ * case the old, single sentence was actually about.
+ */
+export function composerEmptyReason(teamCount: number): "no-teams" | "not-editable" {
+  return teamCount === 0 ? "no-teams" : "not-editable";
+}
+
+/**
  * One title field, Enter creates — the speed that made this worth building. Below it,
  * the target: team, project, priority and assignee, prefilled from the current scope,
  * clickable and reachable with Tab.
@@ -262,12 +275,18 @@ export function Composer({ scope, onClose }: { scope: Scope; onClose: () => void
   // must agree on what is offered, and computing it twice is how they would drift.
   const composable = teams.data.filter(isComposableTeam);
   if (composable.length === 0) {
+    // Not an empty select: that reads as a loading bug rather than the honest answer.
+    // And the honest answer is not always about this person — `composerEmptyReason`
+    // is what keeps a fresh instance, or one where every team is archived, from being
+    // told a permissions story that has nothing to do with either.
+    const reason = composerEmptyReason(teams.data.length);
     return (
       <Backdrop onClose={onClose}>
-        {/* Not an empty select: that reads as a loading bug rather than the honest
-            answer, which is that no team on this instance will currently accept a
-            ticket from this person. */}
-        <div className="empty">No team will accept a ticket from you yet.</div>
+        <div className="empty">
+          {reason === "no-teams"
+            ? "There is no team yet to file a ticket into."
+            : "No team will accept a ticket from you yet."}
+        </div>
       </Backdrop>
     );
   }

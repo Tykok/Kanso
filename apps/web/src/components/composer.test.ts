@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isComposableTeam } from "./composer";
+import { composerEmptyReason, isComposableTeam } from "./composer";
 
 describe("isComposableTeam", () => {
   // All four combinations of the two reasons a team can be unofferable. Exactly one
@@ -17,6 +17,24 @@ describe("isComposableTeam", () => {
         isComposableTeam({ archived, editable }),
         `archived=${archived} editable=${editable}`,
       ).toBe(expected);
+    }
+  });
+});
+
+describe("composerEmptyReason", () => {
+  // Zero teams is the fresh-instance case and the every-team-archived case at once —
+  // `api.teams(false)` already excludes archived rows, so both land on the same count.
+  // Anything above zero means a team exists and the actor is the reason none of them
+  // are composable.
+  const CASES: { teamCount: number; expected: "no-teams" | "not-editable" }[] = [
+    { teamCount: 0, expected: "no-teams" },
+    { teamCount: 1, expected: "not-editable" },
+    { teamCount: 5, expected: "not-editable" },
+  ];
+
+  it("separates 'nothing exists' from 'nothing will take yours'", () => {
+    for (const { teamCount, expected } of CASES) {
+      expect(composerEmptyReason(teamCount), `teamCount=${teamCount}`).toBe(expected);
     }
   });
 });
