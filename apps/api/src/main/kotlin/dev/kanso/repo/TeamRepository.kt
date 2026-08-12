@@ -175,6 +175,19 @@ class TeamRepository(private val jdbc: JdbcClient) {
 		TeamMembers.select(TeamMembers.teamId).where { TeamMembers.userId eq userId }
 			.map { it[TeamMembers.teamId] }
 
+	/**
+	 * Exactly the teams in [ids] that hold at least one member row.
+	 *
+	 * `TicketAccess` needs this per chain rather than per team — one query for however
+	 * many ancestors a batch of tickets touches, instead of a `members()` call each.
+	 */
+	fun teamsWithMembers(ids: Collection<UUID>): Set<UUID> =
+		if (ids.isEmpty()) emptySet()
+		else TeamMembers.select(TeamMembers.teamId).where { TeamMembers.teamId inList ids }
+			.withDistinct()
+			.map { it[TeamMembers.teamId] }
+			.toSet()
+
 	// --- mirror bookkeeping --------------------------------------------------
 
 	fun markSynced(id: UUID, notionPageId: String, notionLastEdited: OffsetDateTime?) {

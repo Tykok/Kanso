@@ -141,4 +141,127 @@ class TicketAccessTest : PostgresTest() {
 			"an admin edits both teams whether or not they belong to either",
 		)
 	}
+
+	@Test
+	fun `an empty child under a populated parent is closed to strangers and open to the parent's members`() {
+		val parent = teams.create(admin, "Product", key(), null)
+		val child = teams.create(admin, "Mobile", key(), parent.id)
+		teamRepo.addMember(parent.id, admin.id, MemberRole.MEMBER)
+		val parentMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(parent.id, parentMember.id, MemberRole.MEMBER)
+		val stranger = user(InstanceRole.MEMBER)
+		val ticket = ticketIn(child.id)
+
+		assertTrue(
+			access.mayEdit(parentMember, ticket),
+			"the child is governed from the instant it exists, by whoever governs the parent",
+		)
+		assertFalse(
+			access.mayEdit(stranger, ticket),
+			"a populated ancestor closes the child even though the child itself has no members",
+		)
+	}
+
+	@Test
+	fun `an empty child under an empty parent resolves to a populated grandparent`() {
+		val grandparent = teams.create(admin, "Org", key(), null)
+		val parent = teams.create(admin, "Product", key(), grandparent.id)
+		val child = teams.create(admin, "Mobile", key(), parent.id)
+		val grandparentMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(grandparent.id, grandparentMember.id, MemberRole.MEMBER)
+		val stranger = user(InstanceRole.MEMBER)
+		val ticket = ticketIn(child.id)
+
+		assertTrue(
+			access.mayEdit(grandparentMember, ticket),
+			"the walk climbs past the empty parent to the grandparent that claimed the whole chain",
+		)
+		assertFalse(
+			access.mayEdit(stranger, ticket),
+			"the grandparent's claim closes the chain to everyone else",
+		)
+	}
+
+	@Test
+	fun `a fully empty chain, root included, is open to everyone`() {
+		val root = teams.create(admin, "Org", key(), null)
+		val child = teams.create(admin, "Product", key(), root.id)
+		val grandchild = teams.create(admin, "Mobile", key(), child.id)
+		val stranger = user(InstanceRole.MEMBER)
+
+		assertTrue(
+			access.mayEdit(stranger, ticketIn(grandchild.id)),
+			"nobody in the chain has claimed the work, root included, so it stays open",
+		)
+	}
+
+	@Test
+	fun `a populated team is unaffected, and a member of a descendant is still refused on it`() {
+		val parent = teams.create(admin, "Product", key(), null)
+		val child = teams.create(admin, "Mobile", key(), parent.id)
+		teamRepo.addMember(parent.id, admin.id, MemberRole.MEMBER)
+		val childMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(child.id, childMember.id, MemberRole.MEMBER)
+		val stranger = user(InstanceRole.MEMBER)
+		val ticket = ticketIn(parent.id)
+
+		assertFalse(access.mayEdit(stranger, ticket), "a populated team never opens for lack of ancestors")
+		assertFalse(
+			access.mayEdit(childMember, ticket),
+			"a member of a descendant still cannot reach upwards into the parent",
+		)
+	}
+
+	@Test
+	fun `teamsWithMembers returns exactly the teams holding a row, and nothing for an empty input`() {
+		val claimed = teams.create(admin, "Claimed", key(), null)
+		val unclaimed = teams.create(admin, "Unclaimed", key(), null)
+		teamRepo.addMember(claimed.id, admin.id, MemberRole.MEMBER)
+
+		assertEquals(setOf(claimed.id), teamRepo.teamsWithMembers(setOf(claimed.id, unclaimed.id)))
+		assertEquals(emptySet(), teamRepo.teamsWithMembers(emptySet()))
+	}
+
+	@Test
+	fun `editableTeams agrees with mayEdit across every chain shape`() {
+		val populatedParent = teams.create(admin, "Product", key(), null)
+		val emptyChild = teams.create(admin, "Mobile", key(), populatedParent.id)
+		teamRepo.addMember(populatedParent.id, admin.id, MemberRole.MEMBER)
+
+		val populatedGrandparent = teams.create(admin, "Org", key(), null)
+		val emptyParent = teams.create(admin, "Design", key(), populatedGrandparent.id)
+		val emptyGrandchild = teams.create(admin, "iOS", key(), emptyParent.id)
+		teamRepo.addMember(populatedGrandparent.id, admin.id, MemberRole.MEMBER)
+
+		val emptyRoot = teams.create(admin, "Unclaimed", key(), null)
+		val emptyChain = teams.create(admin, "Nested", key(), emptyRoot.id)
+
+		val populatedRoot = teams.create(admin, "Owning", key(), null)
+		val rootMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(populatedRoot.id, rootMember.id, MemberRole.MEMBER)
+
+		val productMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(populatedParent.id, productMember.id, MemberRole.MEMBER)
+		val orgMember = user(InstanceRole.MEMBER)
+		teamRepo.addMember(populatedGrandparent.id, orgMember.id, MemberRole.MEMBER)
+
+		val allTeamIds = setOf(
+			emptyChild.id,
+			emptyGrandchild.id,
+			emptyChain.id,
+			populatedRoot.id,
+		)
+		val ticketsByTeam = allTeamIds.associateWith { ticketIn(it) }
+
+		for (actor in listOf(admin, productMember, orgMember, rootMember, user(InstanceRole.MEMBER))) {
+			val editable = access.editableTeams(actor, allTeamIds)
+			for (teamId in allTeamIds) {
+				assertEquals(
+					access.mayEdit(actor, ticketsByTeam.getValue(teamId)),
+					teamId in editable,
+					"editableTeams and mayEdit must agree on $teamId for ${actor.displayName}",
+				)
+			}
+		}
+	}
 }
