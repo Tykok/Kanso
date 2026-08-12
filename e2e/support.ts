@@ -40,6 +40,25 @@ export async function apiAs(email: string): Promise<APIRequestContext> {
 }
 
 /**
+ * This person's own id, off `GET /api/me` answered as them.
+ *
+ * A context of its own rather than a parameter borrowed from the caller's: `/api/me`
+ * answers for whoever the header names, so reusing a context bound to a different
+ * identity would report the wrong person's id with no error to say so.
+ */
+export async function userIdOf(email: string): Promise<string> {
+  const api = await apiAs(email);
+  try {
+    const response = await api.get("/api/me");
+    expect(response.ok(), `Could not read /api/me as ${email}`).toBeTruthy();
+    const body = (await response.json()) as { user: { id: string } };
+    return body.user.id;
+  } finally {
+    await api.dispose();
+  }
+}
+
+/**
  * Brings the instance to the minimum state in which the application agrees to show a
  * list: an owner exists, and both test accounts have been through the preferences
  * step. Without the second point, every test would land on `/setup`. Idempotent: the
@@ -106,6 +125,18 @@ export async function seedTeam(
   const response = await api.post("/api/teams", { data: body });
   expect(response.ok(), `Could not create the team ${body.name}`).toBeTruthy();
   return (await response.json()) as SeededTeam;
+}
+
+/** Puts a user in a team. Admin-only on the server, so call it with an ADMIN context. */
+export async function seedMember(
+  api: APIRequestContext,
+  teamId: string,
+  userId: string,
+): Promise<void> {
+  const response = await api.post(`/api/teams/${teamId}/members`, {
+    data: { userId, role: "member" },
+  });
+  if (!response.ok()) throw new Error(`seedMember: ${response.status()} ${await response.text()}`);
 }
 
 export async function seedProject(
