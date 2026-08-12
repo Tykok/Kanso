@@ -73,16 +73,18 @@ test("scenario 13 — a team sees the other team's work, cannot move it, and is 
     due: "2026-09-15",
   });
 
-  await api.post(`/api/tickets/${second.id}/dependencies`, {
+  const linked = await api.post(`/api/tickets/${second.id}/dependencies`, {
     data: { predecessorId: first.id },
   });
+  expect(linked.status(), "the dependency was refused").toBe(201);
   // Backwards, under its own predecessor and not done. The cascade's descent only
   // considers a node one of whose predecessors just moved — dragging the successor
   // itself is never examined — which is why this scenario has to seed the overlap by
   // hand rather than produce it with a gesture the cascade would repair on the spot.
-  await api.patch(`/api/tickets/${second.id}`, {
+  const shifted = await api.patch(`/api/tickets/${second.id}`, {
     data: { start: floatingDay("2026-09-05"), due: floatingDay("2026-09-08") },
   });
+  expect(shifted.ok(), "the backwards shift was refused").toBeTruthy();
 
   await seedMember(api, mine.id, await userIdOf(MEMBER));
   await seedMember(api, theirs.id, await userIdOf(ADMIN));
