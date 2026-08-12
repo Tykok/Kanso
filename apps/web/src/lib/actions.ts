@@ -461,7 +461,7 @@ export const ACTIONS: readonly Action[] = [
     id: "project.archive",
     label: "Archive project",
     group: "project",
-    when: (ctx) => scopedProject(ctx)?.archived === false,
+    when: (ctx) => ctx.canConfigure && scopedProject(ctx)?.archived === false,
     run: onProject((ctx, id) =>
       ctx.openDialog({
         kind: "disposition",
@@ -481,7 +481,7 @@ export const ACTIONS: readonly Action[] = [
     id: "project.delete",
     label: "Delete project",
     group: "project",
-    when: (ctx) => ctx.scope.kind === "project",
+    when: (ctx) => ctx.canConfigure && ctx.scope.kind === "project",
     run: onProject((ctx, id) =>
       ctx.openDialog({
         kind: "disposition",

@@ -621,6 +621,16 @@ describe("availableActions", () => {
     expect(archived).not.toContain("project.archive");
   });
 
+  it("withholds a project's disposition from someone who cannot configure the instance", () => {
+    // Archiving or deleting a project reaches every ticket it holds, the same blast
+    // radius as a team's — a member gets neither, same as `team.archive`/`team.delete`.
+    const member = ids(
+      context({ canConfigure: false, scope: { kind: "project", id: refonte.id } }),
+    );
+    expect(member).not.toContain("project.archive");
+    expect(member).not.toContain("project.delete");
+  });
+
   it("withholds the cursor moves when the list is empty, and offers them when it is not", () => {
     const empty = ids(context({ tickets: [] }));
     expect(empty).not.toContain("ticket.moveDown");
