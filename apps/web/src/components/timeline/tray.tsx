@@ -8,6 +8,13 @@ export type TrayControl = {
   /** The cursor. A chip carries it too: `p` and `d` act on whatever it is on. */
   selectedId?: string;
   onSelect: (ticketId: string) => void;
+  /**
+   * The tray's half of the rule `RowControl.canPlan` names for a bar: false on the
+   * global chart. A bar answers it by carrying no `drag` prop at all, so the gesture
+   * never starts; a chip has no such prop to withhold, so `onPointerMove` reads this
+   * directly to stop the press from ever becoming a drag.
+   */
+  canPlan: boolean;
   /** The pointer is dragging a chip: say where it is, so the column can be painted. */
   onDragMove: (x: number, y: number) => void;
   /** Released after a drag. Schedules if a day is under the pointer, nothing otherwise. */
@@ -59,6 +66,10 @@ export function TimelineTray({
     if (!moved) return;
 
     if (!moved.dragging) {
+      // Nothing here to schedule onto: without this the chip would still lift and the
+      // grid would still paint a landing column, a press that looks like it is about to
+      // schedule something and then silently does not — indistinguishable from a bug.
+      if (!control.canPlan) return;
       // Both axes: a chip is dragged downwards onto the grid at least as often as
       // sideways, and a horizontal-only threshold would never fire on that gesture.
       const travelled = Math.hypot(event.clientX - moved.fromX, event.clientY - moved.fromY);

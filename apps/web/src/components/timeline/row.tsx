@@ -22,6 +22,49 @@ export type RowControl = {
 };
 
 /**
+ * Whether the bar for a ticket carrying [context]/[editable] may be dragged or linked
+ * from, on a chart where [canPlan] says whether planning is possible at all.
+ *
+ * ANDs all three reasons a bar can be un-movable, because any one of them alone is
+ * enough: the whole chart is read-only, the row is drawn for reading only, or the
+ * server itself refused the write. Takes the two fields it needs rather than a whole
+ * `TimelineTicket`, so a test can build its eight cases without the rest of the shape.
+ */
+export function canMoveTicket(ticket: { context: boolean; editable: boolean }, canPlan: boolean) {
+  return canPlan && !ticket.context && ticket.editable;
+}
+
+/**
+ * Whether the cursor may land on a ticket carrying [context] at all — strictly looser
+ * than [canMoveTicket], since context is the only one of the three reasons that also
+ * closes off selection. `page.tsx` builds its cursor list from the scoped *tickets*
+ * query, where a context ticket does not exist: selecting one would set `selectedId`
+ * and the cursor-keeping effect would bounce straight back to `visible[0]`. A ticket
+ * that is merely not editable, or seen from the read-only chart, stays selectable — it
+ * is a member of that list, and the keys that act on it are inert for their own reasons.
+ */
+export function canSelectTicket(ticket: { context: boolean }) {
+  return !ticket.context;
+}
+
+/** Whether [row] is drawn for reading only — always false for a project, which the
+ * scope filter never excludes in the first place. */
+export function isContextRow(row: Row) {
+  return row.kind === "ticket" && row.ticket.context;
+}
+
+/**
+ * The label a row prints: a project by its own name, an ordinary ticket by its
+ * identifier, and a context ticket with the team it belongs to named first — the one
+ * fact on the chart that says whose work this row is drawing.
+ */
+export function rowLabel(row: Row): string {
+  if (row.kind === "project") return row.project.name;
+  const { ticket } = row;
+  return ticket.context ? `${ticket.teamKey} · ${ticket.identifier}` : ticket.identifier;
+}
+
+/**
  * What the ⚠ on a successor's row says, or nothing when its dependencies all hold.
  *
  * Derived from the edges the response already carries rather than from a field of its
@@ -68,19 +111,14 @@ export function TimelineRow({
   timezone: string;
   control: RowControl;
 }) {
-  const name =
-    row.kind === "project"
-      ? row.project.name
-      : row.ticket.context
-        ? `${row.ticket.teamKey} · ${row.ticket.identifier}`
-        : row.ticket.identifier;
+  const name = rowLabel(row);
   const notice = row.kind === "ticket" ? overlapNotice(deps, row.ticket.id, nameOf) : undefined;
 
   return (
     <div
       className="tl-row"
       data-kind={row.kind}
-      data-context={row.kind === "ticket" && row.ticket.context ? "" : undefined}
+      data-context={isContextRow(row) ? "" : undefined}
     >
       <div
         className="tl-name"
@@ -157,11 +195,9 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
 
   const bounds = { start: ticket.start !== undefined, end: ticket.due !== undefined };
 
-  // Three reasons a bar cannot be moved, and any one of them is enough: the whole
-  // chart is read-only, the row is context, or the ticket belongs to a team the
-  // viewer is not in. All three end in the same place — no `drag` prop — which is
-  // what a project bar has always done.
-  const movable = control.canPlan && !ticket.context && ticket.editable;
+  // Three reasons a bar cannot be moved, and any one of them is enough. All three end
+  // in the same place — no `drag` prop — which is what a project bar has always done.
+  const movable = canMoveTicket(ticket, control.canPlan);
 
   return (
     <TimelineBar
@@ -179,13 +215,9 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
       timezone={timezone}
       done={ticket.status === "done"}
       status={ticket.status}
-      // A context row is not selectable: `page.tsx` builds its cursor list from the
-      // scoped *tickets* query, where a context ticket does not exist, so selecting one
-      // would set `selectedId` and the cursor-keeping effect would bounce straight back
-      // to `visible[0]`. A ticket that is merely not editable stays selectable — it is
-      // in that list, and the keys that act on it are inert for their own reasons.
-      selected={!ticket.context && ticket.id === control.selectedId}
-      onSelect={ticket.context ? undefined : () => control.onSelect(ticket.id)}
+      // See `canSelectTicket`: a context row alone is unreachable by the cursor.
+      selected={canSelectTicket(ticket) && ticket.id === control.selectedId}
+      onSelect={canSelectTicket(ticket) ? () => control.onSelect(ticket.id) : undefined}
       drag={
         movable
           ? {

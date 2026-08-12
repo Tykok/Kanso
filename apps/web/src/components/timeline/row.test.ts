@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { TimelineDependency } from "@/lib/api";
-import { overlapNotice } from "./row";
+import type { TimelineDependency, TimelineTicket } from "@/lib/api";
+import { canMoveTicket, canSelectTicket, isContextRow, overlapNotice, rowLabel } from "./row";
+import type { Row } from "./view";
 
 /** A dependency edge, defaulting to the unbroken case so each test overrides only what it tests. */
 const dep = (overrides: Partial<TimelineDependency> = {}): TimelineDependency => ({
@@ -13,6 +14,21 @@ const dep = (overrides: Partial<TimelineDependency> = {}): TimelineDependency =>
 });
 
 const noName = () => undefined;
+
+/** A ticket row's ticket, in scope and editable by default so each case overrides only
+ * the field it is about. */
+const ticket = (overrides: Partial<TimelineTicket> = {}): TimelineTicket => ({
+  id: "ticket-1",
+  identifier: "KAN-1",
+  title: "Fix the OAuth login",
+  status: "todo",
+  critical: false,
+  late: false,
+  teamKey: "KAN",
+  context: false,
+  editable: true,
+  ...overrides,
+});
 
 describe("overlapNotice", () => {
   it("says nothing when the ticket's dependencies all hold", () => {
@@ -54,5 +70,68 @@ describe("overlapNotice", () => {
     ];
     const nameOf = (id: string) => (id === "pred-1" ? "KAN-1" : "KAN-2");
     expect(overlapNotice(deps, "succ-1", nameOf)).toBe("2 dependencies not respected");
+  });
+});
+
+describe("canMoveTicket", () => {
+  // All eight combinations of the three reasons a bar can be un-movable. Exactly one
+  // is `true`: every gate open at once.
+  const CASES: { canPlan: boolean; context: boolean; editable: boolean; expected: boolean }[] = [
+    { canPlan: true, context: false, editable: true, expected: true },
+    { canPlan: true, context: false, editable: false, expected: false },
+    { canPlan: true, context: true, editable: true, expected: false },
+    { canPlan: true, context: true, editable: false, expected: false },
+    { canPlan: false, context: false, editable: true, expected: false },
+    { canPlan: false, context: false, editable: false, expected: false },
+    { canPlan: false, context: true, editable: true, expected: false },
+    { canPlan: false, context: true, editable: false, expected: false },
+  ];
+
+  it("is true only when the chart, the row and the ticket's own team all allow it", () => {
+    for (const { canPlan, context, editable, expected } of CASES) {
+      expect(
+        canMoveTicket({ context, editable }, canPlan),
+        `canPlan=${canPlan} context=${context} editable=${editable}`,
+      ).toBe(expected);
+    }
+  });
+});
+
+describe("canSelectTicket", () => {
+  it("refuses only a context ticket, whatever canPlan or editable say", () => {
+    expect(canSelectTicket({ context: false })).toBe(true);
+    expect(canSelectTicket({ context: true })).toBe(false);
+  });
+});
+
+describe("isContextRow", () => {
+  it("reads the ticket's own flag", () => {
+    expect(isContextRow({ kind: "ticket", ticket: ticket({ context: true }) })).toBe(true);
+    expect(isContextRow({ kind: "ticket", ticket: ticket({ context: false }) })).toBe(false);
+  });
+
+  it("is false for a project row, which the scope filter never excludes", () => {
+    const row: Row = { kind: "project", project: { id: "project-1", name: "Refonte" } };
+    expect(isContextRow(row)).toBe(false);
+  });
+});
+
+describe("rowLabel", () => {
+  it("prints a project by its own name", () => {
+    const row: Row = { kind: "project", project: { id: "project-1", name: "Refonte" } };
+    expect(rowLabel(row)).toBe("Refonte");
+  });
+
+  it("prints an in-scope ticket by its identifier alone", () => {
+    const row: Row = { kind: "ticket", ticket: ticket({ context: false }) };
+    expect(rowLabel(row)).toBe("KAN-1");
+  });
+
+  it("prefixes a context ticket with the team it belongs to", () => {
+    const row: Row = {
+      kind: "ticket",
+      ticket: ticket({ context: true, teamKey: "OPS", identifier: "OPS-9" }),
+    };
+    expect(rowLabel(row)).toBe("OPS · OPS-9");
   });
 });

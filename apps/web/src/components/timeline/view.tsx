@@ -359,7 +359,13 @@ export function TimelineView({
     () => ({
       selectedId,
       onSelect: select,
-      onDragMove: (x: number, y: number) => paintDrop(dayUnder(x, y)),
+      canPlan,
+      // `tray.tsx` already refuses to let a press become a drag once `canPlan` is
+      // false, so this fires day to day only inside a scope. It is still guarded here
+      // too, for the one gesture that can straddle the boundary: a drag begun inside a
+      // scope stays a drag if the scope changes under the pointer, and the band must
+      // stop painting the instant it does.
+      onDragMove: (x: number, y: number) => paintDrop(canPlan ? dayUnder(x, y) : null),
       onDrop: (ticketId: string, x: number, y: number) => {
         const at = dayUnder(x, y);
         paintDrop(null);
