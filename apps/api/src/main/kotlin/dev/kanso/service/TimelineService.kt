@@ -306,9 +306,18 @@ class TimelineService(
 
 	private companion object {
 		/**
-		 * A timeline is drawn, not paged: there is no "next page" gesture on a Gantt. The
-		 * cap exists so a pathological instance returns a large response rather than the
-		 * whole database, and is well above what a team's board holds.
+		 * A timeline is drawn, not paged: there is no "next page" gesture on a Gantt. This
+		 * caps `own` and `shared` — the scope the reader filtered for, and the widening
+		 * into shared projects — each independently, at well above what a team's board
+		 * holds.
+		 *
+		 * It does not cap `graphTickets`, the dependency closure: `truncated` cannot see
+		 * that term at all, so a response is `own(≤SCOPE_LIMIT) + shared(≤SCOPE_LIMIT) +
+		 * |closure|` with the last unbounded. That is accepted rather than fixed. The
+		 * closure is the set `CriticalPath` computes slack over; capping it would drop the
+		 * far end of an arrow out from under a chain still using it, and the ticket that
+		 * lost its stub would report the wrong slack rather than an honestly incomplete
+		 * one. An oversized response is a better failure than a wrong number.
 		 */
 		const val SCOPE_LIMIT = 2000
 	}
