@@ -404,6 +404,17 @@ export default function InboxPage() {
           <NewMenu ctx={ctx} />
         </div>
 
+        {/*
+         * Read-only is a fact about the scope, not the chart's own state, so it is said
+         * once here rather than by every bar refusing the pointer one at a time — a
+         * feature indistinguishable from a bug is a bug.
+         */}
+        {view === "timeline" && scope.kind === "all" && (
+          <div className="topbar-note" role="status">
+            Read-only — open a team or a project to plan.
+          </div>
+        )}
+
         {shownError && (
           <div className="topbar-error error" role="alert">
             <span>{shownError}</span>

@@ -10,6 +10,8 @@ export type RowControl = {
   /** The cursor, from the store. A project row is never it: projects are not tickets. */
   selectedId?: string;
   onSelect: (ticketId: string) => void;
+  /** `ctx.scope.kind !== "all"` — the pointer half of the rule `canPlan` names for the keyboard. */
+  canPlan: boolean;
   onDragStart: () => void;
   onDragEnd: (ticketId: string, edit?: BarEdit) => void;
   /** The link handle was pressed on [predecessorId]: an arrow is being drawn out of it. */
@@ -66,11 +68,20 @@ export function TimelineRow({
   timezone: string;
   control: RowControl;
 }) {
-  const name = row.kind === "project" ? row.project.name : row.ticket.identifier;
+  const name =
+    row.kind === "project"
+      ? row.project.name
+      : row.ticket.context
+        ? `${row.ticket.teamKey} · ${row.ticket.identifier}`
+        : row.ticket.identifier;
   const notice = row.kind === "ticket" ? overlapNotice(deps, row.ticket.id, nameOf) : undefined;
 
   return (
-    <div className="tl-row" data-kind={row.kind}>
+    <div
+      className="tl-row"
+      data-kind={row.kind}
+      data-context={row.kind === "ticket" && row.ticket.context ? "" : undefined}
+    >
       <div
         className="tl-name"
         title={row.kind === "project" ? row.project.name : row.ticket.title}
@@ -146,6 +157,12 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
 
   const bounds = { start: ticket.start !== undefined, end: ticket.due !== undefined };
 
+  // Three reasons a bar cannot be moved, and any one of them is enough: the whole
+  // chart is read-only, the row is context, or the ticket belongs to a team the
+  // viewer is not in. All three end in the same place — no `drag` prop — which is
+  // what a project bar has always done.
+  const movable = control.canPlan && !ticket.context && ticket.editable;
+
   return (
     <TimelineBar
       name={`${ticket.identifier}: ${ticket.title}`}
@@ -162,27 +179,43 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
       timezone={timezone}
       done={ticket.status === "done"}
       status={ticket.status}
-      selected={ticket.id === control.selectedId}
-      onSelect={() => control.onSelect(ticket.id)}
-      drag={{
-        // A one-bound ticket has nothing to resize: both of its drawn edges stand on the
-        // same date, so a handle would move the bound the other handle also moves.
-        handles: { start: bounds.start && bounds.end, end: bounds.start && bounds.end },
-        bounds,
-        onStart: control.onDragStart,
-        onEnd: (edit) => control.onDragEnd(ticket.id, edit),
-      }}
+      // A context row is not selectable: `page.tsx` builds its cursor list from the
+      // scoped *tickets* query, where a context ticket does not exist, so selecting one
+      // would set `selectedId` and the cursor-keeping effect would bounce straight back
+      // to `visible[0]`. A ticket that is merely not editable stays selectable — it is
+      // in that list, and the keys that act on it are inert for their own reasons.
+      selected={!ticket.context && ticket.id === control.selectedId}
+      onSelect={ticket.context ? undefined : () => control.onSelect(ticket.id)}
+      drag={
+        movable
+          ? {
+              // A one-bound ticket has nothing to resize: both of its drawn edges stand
+              // on the same date, so a handle would move the bound the other handle
+              // also moves.
+              handles: { start: bounds.start && bounds.end, end: bounds.start && bounds.end },
+              bounds,
+              onStart: control.onDragStart,
+              onEnd: (edit) => control.onDragEnd(ticket.id, edit),
+            }
+          : undefined
+      }
       /*
        * Every ticket bar can be the *start* of an arrow, scheduled or not — including a
        * milestone and a done one. Whether the other end is a legal successor is the
        * server's answer: a cycle is a 409 naming the chain, and guessing at it here
-       * would be a second copy of a rule the API already holds.
+       * would be a second copy of a rule the API already holds. But a bar that cannot
+       * be moved cannot be linked from either — an arrow is a plan too, and the same
+       * three reasons apply.
        */
-      link={{
-        onStart: () => control.onLinkStart(ticket.id),
-        onEnd: control.onLinkEnd,
-        onCancel: control.onLinkCancel,
-      }}
+      link={
+        movable
+          ? {
+              onStart: () => control.onLinkStart(ticket.id),
+              onEnd: control.onLinkEnd,
+              onCancel: control.onLinkCancel,
+            }
+          : undefined
+      }
     />
   );
 }

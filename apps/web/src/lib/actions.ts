@@ -104,6 +104,16 @@ const hasSelection = (ctx: ActionContext) => ctx.selected !== undefined;
 const onTimeline = (ctx: ActionContext) => ctx.view === "timeline";
 
 /**
+ * Whether this scope is one you plan in.
+ *
+ * The global chart is read-only: it crosses every team, and a drag there is as often a
+ * slip as an intention. Planning happens where a scope has been chosen. This is the
+ * keyboard half of that rule — a view that refuses the mouse and accepts `h` is not
+ * read-only, it is a trap with a discoverability problem.
+ */
+export const canPlan = (ctx: ActionContext) => ctx.scope.kind !== "all";
+
+/**
  * `when` has already answered this, but the compiler cannot know that a predicate
  * run earlier constrains a field read later. Re-checking here is what keeps
  * `selected` narrowed without a non-null assertion.
@@ -514,7 +524,8 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "h",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
+    when: (ctx) =>
+      canPlan(ctx) && onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
     run: shiftBy(-1),
   },
   {
@@ -523,7 +534,8 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "l",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
+    when: (ctx) =>
+      canPlan(ctx) && onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
     run: shiftBy(1),
   },
   {
@@ -532,7 +544,7 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "H",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && ctx.selected?.due !== undefined,
+    when: (ctx) => canPlan(ctx) && onTimeline(ctx) && ctx.selected?.due !== undefined,
     run: resizeBy(-1),
   },
   {
@@ -541,7 +553,7 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "L",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && ctx.selected?.due !== undefined,
+    when: (ctx) => canPlan(ctx) && onTimeline(ctx) && ctx.selected?.due !== undefined,
     run: resizeBy(1),
   },
   {
@@ -550,7 +562,8 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "p",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && !isScheduled(ctx.selected),
+    when: (ctx) =>
+      canPlan(ctx) && onTimeline(ctx) && ctx.selected !== undefined && !isScheduled(ctx.selected),
     // A one-day milestone on today, the same default the tray drop takes: any other
     // length would be a guess presented as a plan.
     run: onSelected((ctx, ticket) => {
@@ -564,7 +577,8 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "u",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
+    when: (ctx) =>
+      canPlan(ctx) && onTimeline(ctx) && ctx.selected !== undefined && isScheduled(ctx.selected),
     // `unset`, not two nulls: an explicit null reads as "leave unchanged" on the wire.
     run: onSelected((ctx, ticket) => ctx.patchTicket({ id: ticket.id, unset: ["start", "due"] })),
   },
@@ -602,7 +616,7 @@ export const ACTIONS: readonly Action[] = [
     shortcut: "d",
     mode: "timeline",
     group: "ticket",
-    when: (ctx) => onTimeline(ctx) && hasSelection(ctx) && ctx.tickets.length > 1,
+    when: (ctx) => canPlan(ctx) && onTimeline(ctx) && hasSelection(ctx) && ctx.tickets.length > 1,
     run: onSelected((ctx, ticket) => ctx.startLink(ticket.id)),
   },
   {
@@ -616,6 +630,7 @@ export const ACTIONS: readonly Action[] = [
     // things depending on the shape of the graph would make the fast path the
     // destructive one.
     when: (ctx) =>
+      canPlan(ctx) &&
       onTimeline(ctx) &&
       ctx.selected !== undefined &&
       predecessorsOf(ctx, ctx.selected.id).length > 0,

@@ -282,6 +282,23 @@
   font-size: 11px;
 }
 
+/* Muted and unmistakably not yours, without becoming unreadable: a context row is
+   there to be understood, not merely noticed. */
+.tl-row[data-context] .tl-name {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.tl-row[data-context] .tl-bar {
+  opacity: 0.55;
+}
+
+.tl-truncated {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--warn, #d08a1e);
+}
+
 .tl-lane {
   position: relative;
   flex: 0 0 var(--tl-chart);

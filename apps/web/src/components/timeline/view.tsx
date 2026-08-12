@@ -85,6 +85,11 @@ export function TimelineView({
   reportError: (message: string | null) => void;
 }) {
   const zoom = useUi((state) => state.zoom);
+  const scope = useUi((state) => state.scope);
+  // The pointer half of `canPlan` in `actions.ts`: the same rule, so the mouse and the
+  // keyboard agree about which chart is read-only without the two importing from
+  // each other.
+  const canPlan = scope.kind !== "all";
   const selectedId = useUi((state) => state.selectedId);
   const select = useUi((state) => state.select);
   const linking = useUi((state) => state.linking);
@@ -329,13 +334,14 @@ export function TimelineView({
     () => ({
       selectedId,
       onSelect: select,
+      canPlan,
       onDragStart: beginDrag,
       onDragEnd: endDrag,
       onLinkStart: startLinking,
       onLinkEnd: endLink,
       onLinkCancel: stopLinking,
     }),
-    [selectedId, select, beginDrag, endDrag, startLinking, endLink, stopLinking],
+    [selectedId, select, canPlan, beginDrag, endDrag, startLinking, endLink, stopLinking],
   );
 
   /**
@@ -357,12 +363,14 @@ export function TimelineView({
       onDrop: (ticketId: string, x: number, y: number) => {
         const at = dayUnder(x, y);
         paintDrop(null);
-        if (!at) return;
+        // The same three-reasons rule the bars answer to: a tray chip is a plan too,
+        // and the global chart is read-only for a chip exactly as it is for a bar.
+        if (!canPlan || !at) return;
         patchTicket({ id: ticketId, start: at.day, due: at.day });
       },
       onDragEnd: () => paintDrop(null),
     }),
-    [selectedId, select, dayUnder, paintDrop, patchTicket],
+    [selectedId, select, canPlan, dayUnder, paintDrop, patchTicket],
   );
 
   // `&& !view`: once there is something to draw, a background refetch that fails must
@@ -385,6 +393,17 @@ export function TimelineView({
     // chart the height left over.
     <>
       <TimelineTray items={view?.unscheduled ?? []} control={trayControl} />
+
+      {/*
+       * A cap was hit server-side: the drawing is missing bars and has no next page to
+       * offer instead of them. Outside the scroller, like the tray above it, so the
+       * warning does not scroll away with the chart it is about.
+       */}
+      {view?.truncated && (
+        <div className="tl-truncated" role="status">
+          This view hit its limit — some bars are not drawn. Narrow the scope to see them all.
+        </div>
+      )}
 
       {/*
        * One scroll container, not two. The names are pinned with `position: sticky` per

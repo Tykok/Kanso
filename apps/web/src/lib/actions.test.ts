@@ -108,9 +108,21 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
   };
 }
 
-/** The same context, already on the timeline with a scheduled ticket under the cursor. */
+/**
+ * The same context, already on the timeline with a scheduled ticket under the cursor.
+ *
+ * Scoped to a team by default, not `context()`'s own "all": the ordinary chart under
+ * test here is one you plan on, and `canPlan` now makes scope `all` the exceptional
+ * case — which is why the tests about it override this back to `all` themselves.
+ */
 const timeline = (overrides: Partial<ActionContext> = {}) =>
-  context({ view: "timeline", tickets: [ticket, scheduled], selected: scheduled, ...overrides });
+  context({
+    view: "timeline",
+    scope: { kind: "team", id: core.id },
+    tickets: [ticket, scheduled],
+    selected: scheduled,
+    ...overrides,
+  });
 
 const ids = (ctx: ActionContext) => availableActions(ctx).map((action) => action.id);
 
@@ -505,6 +517,45 @@ describe("timeline.unlink", () => {
     expect(resolveShortcut("D", "timeline")?.id).toBe("timeline.unlink");
     expect(resolveShortcut("D", "list")).toBeUndefined();
     expect(resolveShortcut("d", "timeline")?.id).toBe("timeline.link");
+  });
+});
+
+const WRITING_CHART_ACTIONS = [
+  "timeline.shiftEarlier",
+  "timeline.shiftLater",
+  "timeline.shrinkEnd",
+  "timeline.growEnd",
+  "timeline.schedule",
+  "timeline.unschedule",
+  "timeline.link",
+  "timeline.unlink",
+];
+
+const VIEWPORT_CHART_ACTIONS = ["timeline.zoomOut", "timeline.zoomIn", "timeline.today"];
+
+describe("the global timeline is read-only", () => {
+  it("refuses every writing chart action in scope all", () => {
+    // A scheduled, linked ticket selected: every one of the eight would be live on its
+    // own terms, so a `false` here can only be `canPlan` speaking.
+    const ctx = timeline({
+      scope: { kind: "all" },
+      dependencies: [dependency(ticket.id, scheduled.id)],
+    });
+    for (const id of WRITING_CHART_ACTIONS) {
+      expect(actionById(id).when(ctx), `${id} must be inert on the global chart`).toBe(false);
+    }
+  });
+
+  it("keeps the viewport actions live, because navigating is not planning", () => {
+    const ctx = timeline({ scope: { kind: "all" } });
+    for (const id of VIEWPORT_CHART_ACTIONS) {
+      expect(actionById(id).when(ctx), `${id} moves the viewport, not the plan`).toBe(true);
+    }
+  });
+
+  it("allows the writing actions again inside a team", () => {
+    const ctx = timeline({ scope: { kind: "team", id: core.id } });
+    expect(actionById("timeline.shiftLater").when(ctx)).toBe(true);
   });
 });
 

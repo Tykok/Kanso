@@ -125,6 +125,12 @@ export type TimelineTicket = {
   slackMinutes?: number;
   critical: boolean;
   late: boolean;
+  /** Whose ticket this is, printed before the identifier on a context row. */
+  teamKey: string;
+  /** Drawn for reading: outside the scope, not selectable, never draggable. */
+  context: boolean;
+  /** The server's answer to "may this viewer move it". Never re-derived here. */
+  editable: boolean;
 };
 
 export type TimelineDependency = {
@@ -145,6 +151,8 @@ export type TimelineView = {
   tickets: TimelineTicket[];
   dependencies: TimelineDependency[];
   unscheduled: TimelineUnscheduled[];
+  /** The scope hit `SCOPE_LIMIT`, so bars are missing and the chart has to say so. */
+  truncated: boolean;
 };
 
 /** What a dependency write returns: the tickets its cascade moved. */
