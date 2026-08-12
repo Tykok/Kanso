@@ -7,6 +7,7 @@ import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
+import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
@@ -19,6 +20,7 @@ import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -133,7 +135,8 @@ class ProjectService(
 	}
 
 	@Transactional
-	fun archive(id: UUID, plan: DispositionPlan): ProjectDetail {
+	fun archive(actor: User, id: UUID, plan: DispositionPlan): ProjectDetail {
+		requireConfigurator(actor)
 		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
 		disperseTickets(id, plan, destructive = false)
 		return setArchived(project, true)
@@ -152,7 +155,8 @@ class ProjectService(
 	 * destructive side pays for that.
 	 */
 	@Transactional
-	fun delete(id: UUID, plan: DispositionPlan) {
+	fun delete(actor: User, id: UUID, plan: DispositionPlan) {
+		requireConfigurator(actor)
 		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
 
 		val declared = plan.counts
@@ -225,6 +229,18 @@ class ProjectService(
 		)
 		events.publish(KansoEvent.project(ChangeKind.UPDATED, project.id, project.teamId))
 		return ProjectDetail(updated, projects.docIds(project.id))
+	}
+
+	/**
+	 * Archiving or deleting a project reaches every ticket it holds, across whichever
+	 * teams those tickets belong to — the same blast radius as `TeamService.archive`
+	 * and `TeamService.delete`, and the same rule applies: disposition is instance
+	 * configuration, not daily work, regardless of which container is being disposed of.
+	 */
+	private fun requireConfigurator(actor: User) {
+		if (!actor.instanceRole.canConfigureInstance) {
+			throw AccessDeniedException("Only the owner or an admin can archive or delete a project")
+		}
 	}
 
 	private fun validateDates(start: KansoInstant?, end: KansoInstant?) {

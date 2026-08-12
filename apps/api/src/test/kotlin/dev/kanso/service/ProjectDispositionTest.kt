@@ -75,7 +75,7 @@ class ProjectDispositionTest : PostgresTest() {
 		val project = newProject(team.id)
 		val ticket = newTicket(team.id, project.id)
 
-		projects.archive(project.id, DispositionPlan(tickets = DispositionChoice.KEEP))
+		projects.archive(admin, project.id, DispositionPlan(tickets = DispositionChoice.KEEP))
 
 		assertTrue(projects.get(project.id).project.archived)
 		val after = tickets.get(ticket.ticket.id)
@@ -90,7 +90,7 @@ class ProjectDispositionTest : PostgresTest() {
 		val project = newProject(team.id)
 		val ticket = newTicket(team.id, project.id)
 
-		projects.archive(project.id, DispositionPlan(tickets = DispositionChoice.TAKE))
+		projects.archive(admin, project.id, DispositionPlan(tickets = DispositionChoice.TAKE))
 
 		val after = tickets.get(ticket.ticket.id)
 		assertTrue(after.ticket.archived)
@@ -101,7 +101,7 @@ class ProjectDispositionTest : PostgresTest() {
 	fun `unarchiving brings the project back`() {
 		val team = newTeam()
 		val project = newProject(team.id)
-		projects.archive(project.id, DispositionPlan())
+		projects.archive(admin, project.id, DispositionPlan())
 
 		assertFalse(projects.unarchive(project.id).project.archived)
 	}
@@ -114,7 +114,7 @@ class ProjectDispositionTest : PostgresTest() {
 
 		jobs.claimBatch(200, "drain")
 
-		projects.delete(project.id, DispositionPlan(counts = projects.contents(project.id).direct))
+		projects.delete(admin, project.id, DispositionPlan(counts = projects.contents(project.id).direct))
 
 		assertFailsWith<NotFoundException> { projects.get(project.id) }
 		assertNull(tickets.get(ticket.ticket.id).ticket.projectId)
@@ -141,6 +141,7 @@ class ProjectDispositionTest : PostgresTest() {
 		jobs.claimBatch(200, "drain")
 
 		projects.delete(
+			admin,
 			project.id,
 			DispositionPlan(tickets = DispositionChoice.TAKE, counts = projects.contents(project.id).direct),
 		)
@@ -160,18 +161,18 @@ class ProjectDispositionTest : PostgresTest() {
 		newTicket(team.id, project.id)
 
 		val failure = assertFailsWith<CountsChangedException> {
-			projects.delete(project.id, DispositionPlan(counts = stale))
+			projects.delete(admin, project.id, DispositionPlan(counts = stale))
 		}
 		assertEquals(DispositionCounts(subTeams = 0, projects = 0, tickets = 2), failure.counts)
 
-		projects.archive(project.id, DispositionPlan(counts = stale))
+		projects.archive(admin, project.id, DispositionPlan(counts = stale))
 		assertTrue(projects.get(project.id).project.archived)
 	}
 
 	@Test
 	fun `deleting without the counts the modal showed is refused`() {
 		val project = newProject(newTeam().id)
-		val failure = assertFailsWith<BadRequestException> { projects.delete(project.id, DispositionPlan()) }
+		val failure = assertFailsWith<BadRequestException> { projects.delete(admin, project.id, DispositionPlan()) }
 		assertTrue(failure.message!!.contains("counts"), failure.message!!)
 	}
 }

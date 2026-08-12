@@ -1,5 +1,6 @@
 package dev.kanso.api
 
+import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.service.ProjectService
 import jakarta.validation.Valid
@@ -9,7 +10,10 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/projects")
-class ProjectController(private val projects: ProjectService) {
+class ProjectController(
+	private val projects: ProjectService,
+	private val currentUser: CurrentUser,
+) {
 
 	@GetMapping
 	fun list(
@@ -58,7 +62,7 @@ class ProjectController(private val projects: ProjectService) {
 
 	@PutMapping("/{id}/archive")
 	fun archive(@PathVariable id: UUID, @RequestBody request: DispositionPlanRequest): ProjectResponse =
-		ProjectResponse.of(projects.archive(id, request.toPlan()))
+		ProjectResponse.of(projects.archive(currentUser.require(), id, request.toPlan()))
 
 	@PostMapping("/{id}/unarchive")
 	fun unarchive(@PathVariable id: UUID): ProjectResponse = ProjectResponse.of(projects.unarchive(id))
@@ -67,5 +71,5 @@ class ProjectController(private val projects: ProjectService) {
 	@DeleteMapping("/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	fun delete(@PathVariable id: UUID, @RequestBody(required = false) request: DispositionPlanRequest?) =
-		projects.delete(id, (request ?: DispositionPlanRequest()).toPlan())
+		projects.delete(currentUser.require(), id, (request ?: DispositionPlanRequest()).toPlan())
 }
