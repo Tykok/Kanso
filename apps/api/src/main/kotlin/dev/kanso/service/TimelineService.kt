@@ -124,8 +124,18 @@ class TimelineService(
 			.filter { it.id !in ownIds && !it.archived }
 			.distinctBy { it.id }
 		val drawn = own + context
-		val drawnIds = drawn.map { it.id }.toSet()
 		val truncated = own.size >= SCOPE_LIMIT || shared.size >= SCOPE_LIMIT
+
+		// A bar needs a date, and this is the same predicate `Node.scheduled` uses — one
+		// spelling of "drawable", so the arrows and the scheduler cannot disagree.
+		val bars = drawn.filter { it.start != null || it.due != null }
+
+		// What the client can actually resolve, which is not the same as [drawn]: every
+		// `own` ticket is somewhere in the response — dated ones as bars, undated ones in
+		// the tray — but an undated *context* ticket is in neither list. Computing
+		// `outOfScope` over `drawn` would clear the flag on an edge whose far end has no
+		// row anywhere, which is the one case the flag exists to announce.
+		val presentIds = ownIds + bars.map { it.id }
 
 		// A deadline is the *explicit* end of a ticket's own project — a derived bound is
 		// a consequence of the tickets, so treating it as a constraint on them would make
@@ -166,8 +176,8 @@ class TimelineService(
 		val editableTeams = access.editableTeams(actor, drawn.map { it.teamId }.toSet())
 
 		return TimelineView(
-			projects = projectRows(own, projectId, teamIds),
-			tickets = drawn.filter { it.start != null || it.due != null }.map { ticket ->
+			projects = projectRows(own, drawn, projectId, teamIds),
+			tickets = bars.map { ticket ->
 				val minutes = slack[ticket.id]?.toMinutes()
 				TimelineTicket(
 					id = ticket.id,
@@ -188,7 +198,7 @@ class TimelineService(
 				)
 			},
 			dependencies = edges
-				.filter { it.predecessorId in drawnIds || it.successorId in drawnIds }
+				.filter { it.predecessorId in presentIds || it.successorId in presentIds }
 				.map {
 					val unrepairable = broken[it]
 					TimelineEdge(
@@ -196,7 +206,7 @@ class TimelineService(
 						successorId = it.successorId,
 						violated = unrepairable == true,
 						overlap = unrepairable == false,
-						outOfScope = it.predecessorId !in drawnIds || it.successorId !in drawnIds,
+						outOfScope = it.predecessorId !in presentIds || it.successorId !in presentIds,
 					)
 				},
 			// The scope's own undated work only: the tray is where *your* tickets wait for
@@ -237,16 +247,31 @@ class TimelineService(
 	 * Derived from the scope's own tickets, not from the context rows drawn inside the
 	 * same project: a bound is a statement about a project, and letting another team's
 	 * dates move it would make the bar answer to work the reader cannot touch.
+	 *
+	 * Which is not the same question as *which* projects get a row. Every project a drawn
+	 * row points at gets one, because a team filter alone cannot find the projects that
+	 * matter most here: `search` matches `team_id IN (…)`, and a transverse project has a
+	 * null team, which SQL's `IN` never matches. A transverse project is also the only
+	 * legal shape of a shared one — `TicketService` refuses a ticket whose project belongs
+	 * to another team — so without this union the headline case of the widening returns
+	 * rows whose project has no name and no bar anywhere in the response.
 	 */
 	private fun projectRows(
 		own: List<Ticket>,
+		drawn: List<Ticket>,
 		projectId: UUID?,
 		teamIds: List<UUID>?,
 	): List<TimelineProject> {
-		val candidates = when {
+		val filtered = when {
 			projectId != null -> projects.findAllById(setOf(projectId))
 			else -> projects.search(teamIds, includeArchived = false)
 		}
+		// Archived ones stay out: they are absent from the filtered set by the same rule,
+		// and a row's project going to the archive is not a reason to redraw it here.
+		val referenced = projects
+			.findAllById(drawn.mapNotNull { it.projectId }.toSet())
+			.filter { !it.archived }
+		val candidates = (filtered + referenced).distinctBy { it.id }
 		val byProject = own.groupBy { it.projectId }
 
 		return candidates.map { project ->

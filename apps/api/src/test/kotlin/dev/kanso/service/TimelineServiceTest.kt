@@ -215,6 +215,41 @@ class TimelineServiceTest : PostgresTest() {
 		assertEquals(true, visitor.context, "a shared project is who else is working here")
 		assertEquals(false, visitor.editable)
 		assertEquals(other.key, visitor.teamKey)
+		assertTrue(
+			view.projects.any { it.id == project.id },
+			"a transverse project has no team, so the team filter cannot find it — and it is the only legal shape of a shared one",
+		)
+	}
+
+	@Test
+	fun `an edge to an undated ticket of another team is still a stub`() {
+		val other = teams.create(admin, "Undated", "U${UUID.randomUUID().toString().take(4).uppercase()}", null)
+		val here = ticket("Here", null, 1, 10)
+		val elsewhere = tickets.create(
+			teamId = other.id,
+			title = "No dates over there",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = null,
+			due = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		).ticket.id
+		deps.insert(here, elsewhere)
+
+		val view = timeline.load(admin, teamId = team.id, projectId = null)
+
+		// It has no bar to draw and it is not the reader's to schedule, so it lands in
+		// neither list — which is exactly what `outOfScope` has to keep announcing.
+		assertTrue(view.tickets.none { it.id == elsewhere })
+		assertTrue(view.unscheduled.none { it.id == elsewhere })
+		assertEquals(
+			true,
+			view.dependencies.single().outOfScope,
+			"the far end has no row anywhere in the response, so the view still draws a stub",
+		)
 	}
 
 	@Test
