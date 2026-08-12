@@ -126,4 +126,19 @@ class TicketAccessTest : PostgresTest() {
 
 		assertEquals(setOf(mine.id), access.editableTeams(member, setOf(mine.id, theirs.id)))
 	}
+
+	@Test
+	fun `editableTeams short-circuits to everything for an admin`() {
+		val first = teams.create(admin, "First", key(), null)
+		val second = teams.create(admin, "Second", key(), null)
+		val someone = user(InstanceRole.MEMBER)
+		teamRepo.addMember(first.id, someone.id, MemberRole.MEMBER)
+		teamRepo.addMember(second.id, someone.id, MemberRole.MEMBER)
+
+		assertEquals(
+			setOf(first.id, second.id),
+			access.editableTeams(admin, setOf(first.id, second.id)),
+			"an admin edits both teams whether or not they belong to either",
+		)
+	}
 }
