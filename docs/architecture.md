@@ -138,6 +138,22 @@ about belonging to a team. The owner is whoever completed the setup and is not
 assignable from the role list: handing ownership away from a dropdown is how an
 instance ends up with nobody able to configure it.
 
+**Team membership now decides who may move a ticket, not only who belongs where.**
+`TicketAccess.claimedBy` is a three-part rule, tried in order: direct membership in the
+ticket's team; failing that, an **empty team is an open team** — a team with no rows at
+all in `team_members` lets any member edit its tickets; failing that, membership in an
+**ancestor** team. An instance admin or owner bypasses the whole rule, per the roles above.
+
+The empty-team clause is the migration guarantee, not a convenience: every instance
+running before this branch has an empty `team_members`, and no migration backfills it.
+Without the clause, deploying this feature would lock every existing board's tickets
+behind a 403 with no cure short of a SQL prompt.
+
+Ancestry runs **downward only**: a member of a parent team may move work in any of its
+sub-teams, never the reverse. The other direction would turn joining the smallest team
+in an instance into a route to editing the largest — the direction is a security
+property, not an implementation detail.
+
 **Changing a password ends the other sessions.** Spring Security's `SessionRegistry`
 was tried first and is not enough: `expireNow()` only sets a flag that
 `ConcurrentSessionFilter` turns into a rejection, and that filter is only in the
@@ -149,6 +165,21 @@ deployment the compose file ships, best-effort behind replicas.
 **Unlinking a provider is refused when it would leave no way in.** An account with
 neither a password nor a provider cannot be signed into, and nothing inside the app
 can undo that afterwards.
+
+### Team-owned projects
+
+A ticket's project must belong to the ticket's own team — checked identically in `create`
+and `patch` — with one exception: a project that itself belongs to no team is
+**transverse and belongs everywhere**. That is the only shape in which a project ever
+holds tickets from more than one team; a project that has picked a team can never again
+appear on a second one's board. The rule lives in `TicketService`, not a database
+constraint, because a constraint would also forbid the team-less projects the sidebar
+already shows in their own section — the transverse case is deliberate, not a gap the
+schema should close.
+
+The timeline's scope widening — drawing in everyone else with work in a shared project —
+depends on this entirely: a team-owned project never has a second team's tickets to pull
+in, so the widening is live only for a transverse project and inert everywhere else.
 
 ### Scheduling
 

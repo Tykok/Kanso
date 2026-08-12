@@ -41,8 +41,12 @@ with no DOM, and the behaviour is a cache lifetime rather than a rendered result
 - `team-dialog.tsx` sends `Parent team X does not exist` (400) and `A team cannot be
   its own parent` (409) to the dialog footer rather than under the Parent field.
 - `e2e/README.md` does not mention that a non-default `WEB_PORT` also needs
-  `KANSO_WEB_ORIGIN`. Without it, CORS silently makes every page render as if the
-  visitor were a member — which cost one full debugging run to diagnose.
+  `KANSO_WEB_ORIGIN` — closed. Without it, CORS silently made every page render as if the
+  visitor were a member, which cost one full debugging run to diagnose here and stayed
+  merely annoying for two branches. The scoped-timeline branch makes it dangerous instead:
+  scenario 13 is a *permissions* test, and a permissions test that goes green because
+  every visitor is rendered as a member is not slow to fail, it cannot fail. The README
+  now names the variable next to `WEB_PORT`.
 - `TeamService.archive` does not check the team is already archived, so re-archiving
   re-runs the whole dispersal.
 - `TeamService.requireTicketDestination` does not check the destination team is
@@ -145,12 +149,20 @@ a byte-identical duplicate and was not shipped. A client that ever wants to anim
 moved bars rather than refetch them needs `KansoEvent` to carry ids, which is a change
 to `Events.kt`, not to the scheduler.
 
-**The timeline computes violated edges independently of the cascade.**
-`TimelineService.violatedEdges` re-derives them from stored dates; `Cascade` returns its
-own `violated` set and nothing persists it. The two agree today because both encode the
-same rule — an edge is violated exactly when a `done` successor starts before its
-predecessor ends — but they are two implementations of one fact. If violations ever
-become a stored column, the timeline should read it rather than recompute.
+**The timeline computes violated edges independently of the cascade — closed, and no
+longer true by design, not by drift.** `TimelineService.brokenEdges` walks every edge in
+the current dependency closure on every load and asks the stored dates one question: does
+the successor start before the predecessor ends. `Cascade.violated` answers for one descent
+from one moved ticket, and reports only the edges *that walk* touched and could not repair
+because the successor was done. These were never going to stay one rule: the cascade's
+answer is scoped to a request — "what moving this ticket just failed to fix" — while the
+timeline's is scoped to nothing but the data on the way in — "what is broken as of this
+read," which includes an edge no cascade has touched all session, one broken by a date
+edited through Notion, or one that was already broken before this branch existed. A
+timeline that deferred to the cascade's set would go blank the moment nobody had recently
+dragged a bar. If violations are ever persisted as a column, it is the timeline's
+whole-closure answer that belongs there — the cascade's is narrower by construction and
+would under-report from the day it was written.
 
 **Which column a *timed* bound occupies is unspecified.** `xOf` places a bar by
 `dayValue`, which slices the UTC day, so a due at `2026-08-12T23:00Z` sits in the 12th's
@@ -242,3 +254,105 @@ resize grips beside it: pressing it does nothing, only dragging it does, and `d`
 draws an arrow from the keyboard. The consequence is that an end-to-end test cannot reach
 it by role — the plan's sketch for scenario 12 expected a `button` named "depends on …" —
 and has to press the bar's right edge by coordinate instead.
+
+---
+
+# Carried out of the scoped-timeline-and-overlap-warnings branch
+
+Membership became a permission and the timeline widened to draw who else is in the room
+(commits `4364466`..`HEAD`). Same rule as above: each was found by the whole-branch
+review, judged not to block the merge, and the reasoning is written down so it is not
+rediscovered.
+
+## Worth a decision
+
+**The shared-project widening is real for a transverse project only.** `TicketService.create`
+refuses a ticket whose project belongs to a different team; the codebase's own words, now
+also in `architecture.md`, are "a team-less project is transverse and belongs everywhere."
+So a project holds several teams' tickets exactly when it has no team of its own — which
+means the timeline's widening to "everyone with work in a shared project" does what its name
+says only for a project nobody has assigned to a team, and is inert for every project that
+has one. The choice was partly justified by `ProjectService.update`'s 409 as proof that
+projects are already multi-team; that is only true of team-less ones. The dependency-closure
+path still widens the scope for every project regardless. Worth deciding whether the
+shared-project widening should be retired to the closure-only case it already subsumes for
+team-owned projects, since today it reads as a general rule and is not one.
+
+**A team roster is readable by anyone and shown to almost none of them.**
+`GET /api/teams/{id}/members` answers for any authenticated user; the dialog that displays
+that same list is mounted only behind `canConfigure`. Unreachable through today's UI — the
+only path to the dialog is already gated on the same permission — so nothing leaks yet, but
+read and hide disagree about who a roster belongs to, and the first new surface that lists
+members without routing through that dialog makes the disagreement live.
+
+**SCOPE_LIMIT no longer bounds what the timeline can return.** `TimelineService.load` builds
+`graphTickets` from the dependency closure with no cap, so a response is now
+`own(<=2000) + shared(<=2000) + |closure|` with the last term unbounded — `SCOPE_LIMIT`'s own
+KDoc still promises a bound against a pathological instance, and that promise is now false,
+not merely untested. The same missing cap has a second, quieter edge: once truncation drops
+an own ticket past the limit, that same ticket can come back through `shared` or the closure,
+drawn `context = true, editable = true` — labelled as someone else's work that the reader may
+nonetheless move. Both are consequences of one missing bound, not two separate defects.
+
+**Row-level violated and overlap arrows share one glyph and one colour.** The arrow itself
+tells red from amber; the ⚠ beside a row does not, for either state. Shipped as the brief
+specified — worth a UX decision later, not a defect here.
+
+## Not a defect, but load-bearing to know
+
+**The status pill covers its own bar at month zoom.** A column is three pixels, so a
+one-day ticket's bar sits entirely under its 8px pill and the criticality colour the bar
+carries disappears. The red outline of `data-state="late"` bleeds past the pill and saves
+the worst case; "critical but on time" does not survive it. Accepted when the pill was
+chosen over a shared fill, on the grounds that colour on the bar already means criticality.
+
+**A context row cannot be opened.** There is no detail panel for a ticket you do not own:
+the cursor list is the scoped tickets query, and putting a foreign ticket into it would
+reintroduce the selection bounce closed on the timeline branch. Its name, dates and status
+are in the tooltip and the accessible name, and that is the whole of what it gets.
+
+**Creating a ticket is ungated by design, and that is a real door, not an oversight.**
+Every mutation on an *existing* ticket runs through `TicketAccess`; `create` does not, so a
+member of any team may drop a ticket onto any other team's board. Not a takeover path — the
+very next patch on that ticket, by anyone, is refused unless it satisfies the three-part
+rule — but a board's ticket count is not protected by team membership, only its content is.
+
+## Test shape, not test count
+
+**Nothing unit-tests the accessible name a bar builds.** It is the only handle the
+Playwright suite has on a bar, and its construction at `bar.tsx:188` carries no coverage of
+its own: `vitest` runs in `environment: "node"`, so exercising it means extracting a pure
+`accessibleBarName(name, status)` first. Cheap, and not done.
+
+**A project-scoped view can now return rows for other projects, and nothing asserts it
+either way.** `projectRows`' union of dependency-closure projects onto a project-scoped view
+is unconditional, so `projectId != null` no longer guarantees exactly one project row the
+way it always used to. Consistent with the new KDoc's stated intent, but untested in either
+direction — a regression back to "exactly one" would pass silently.
+
+**`12-timeline.spec.ts` and scenario 13 divide the same feature's coverage.** Scenario 13
+asserts only non-movable bars; the counter-proof that a movable bar still renders its
+handles lives in `12-timeline.spec.ts`. Fine as a division of labour, and worth knowing
+before assuming either file alone proves the feature.
+
+## Small and mechanical
+
+- `unlink`'s error body changed. A missing successor used to surface as
+  `No dependency X -> Y`, because the delete failed first; it now surfaces as
+  `No ticket Y`, because the authorization check needs the successor loaded before the
+  delete runs. Same 404, different sentence.
+- A tray chip builds its accessible name independently of a scheduled bar's — in
+  `tray.tsx` rather than `bar.tsx` — so a ticket's chip and its bar now have differently
+  shaped names before and after scheduling, with nothing keeping the two constructions in
+  step.
+- `message()` in `members-section.tsx` duplicates the identical helper in
+  `people-section.tsx` byte for byte. Two occurrences; worth a shared helper at three.
+- A failed roster or people fetch renders identically to "this team has no members" —
+  `members.data ?? []`. Inherited from `people-section.tsx`, which does the same, so a
+  convention gap rather than a regression.
+- `canPlan` exists twice — `actions.ts` over an `ActionContext`, `view.tsx` over a
+  `Scope` — in the one task of this branch that otherwise goes out of its way to avoid a
+  second implementation of a rule.
+- `TimelineService.load` is now ~110 lines with six named collections before the return.
+  The decomposition is obvious — a private `resolveDrawn(...)` returning a small holder —
+  and the next widening will not fit without it.

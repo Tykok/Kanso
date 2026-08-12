@@ -140,6 +140,42 @@ Sans provider configuré, l'application retombe sur un mode dev où l'identité 
 d'un en-tête `X-Kanso-User` et où rien n'est vérifié. Elle journalise un
 avertissement bien visible. Ne jamais exposer une instance tournant dans ce mode.
 
+**L'appartenance à une équipe décide désormais qui peut déplacer un ticket, pas
+seulement qui appartient à quoi.** `TicketAccess.claimedBy` est une règle en trois
+volets, essayés dans l'ordre : l'appartenance directe à l'équipe du ticket ; à défaut,
+**une équipe vide est une équipe ouverte** — une équipe sans aucune ligne dans
+`team_members` laisse n'importe quel membre éditer ses tickets ; à défaut, l'appartenance
+à une équipe **ancêtre**. Un `admin` ou le `owner` de l'instance — les deux rôles
+habilités à configurer l'instance — court-circuite toute la règle.
+
+La clause de l'équipe vide est la garantie de migration, pas une facilité : toute
+instance tournant avant cette branche a un `team_members` vide, et aucune migration ne
+le remplit. Sans cette clause, déployer cette fonctionnalité verrouillerait les tickets
+de chaque board existant derrière un 403 dont le seul remède serait une invite SQL.
+
+La filiation ne joue **que vers le bas** : un membre d'une équipe parente peut déplacer
+le travail de n'importe laquelle de ses sous-équipes, jamais l'inverse. L'autre sens
+ferait de l'adhésion à la plus petite équipe de l'instance une voie d'accès à la plus
+grande — le sens de la filiation est une propriété de sécurité, pas un détail
+d'implémentation.
+
+### Projets propriété d'une équipe
+
+Le projet d'un ticket doit appartenir à l'équipe du ticket — vérifié à l'identique dans
+`create` et dans `patch` — à une exception près : un projet qui n'appartient lui-même à
+aucune équipe est **transverse et appartient à tout le monde**. C'est la seule
+configuration où un projet porte les tickets de plus d'une équipe : un projet qui a
+choisi une équipe ne peut plus jamais apparaître sur le board d'une seconde. La règle
+vit dans `TicketService`, pas dans une contrainte de base de données, parce qu'une
+contrainte interdirait aussi les projets sans équipe que la barre latérale affiche déjà
+dans leur propre section — le cas transverse est voulu, ce n'est pas un trou que le
+schéma devrait combler.
+
+L'élargissement de périmètre de la timeline — faire apparaître tous les autres qui
+travaillent sur un projet partagé — repose entièrement là-dessus : un projet propriété
+d'une équipe n'a jamais les tickets d'une seconde équipe à faire apparaître, donc
+l'élargissement n'est réel que pour un projet transverse et inerte partout ailleurs.
+
 ### Planification
 
 Une dépendance est une flèche fin-à-début : le successeur ne peut pas commencer avant

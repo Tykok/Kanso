@@ -24,9 +24,11 @@ addresses are overridable with `KANSO_WEB_URL` and `KANSO_API_URL`.
 If this checkout is a worktree sharing the machine with another Kanso checkout, also
 set a distinct `COMPOSE_PROJECT_NAME` (and, if the default ports are already taken,
 `POSTGRES_PORT` / `API_PORT` / `WEB_PORT`) so this stack gets its own containers and
-volumes rather than reusing another checkout's. See the root `docker-compose.yml`:
-its named volumes carry no fixed name, so they are namespaced by the compose project
-automatically.
+volumes rather than reusing another checkout's. If you change `WEB_PORT`, also set
+`KANSO_WEB_ORIGIN` to match — without it CORS silently makes every visitor render as a
+member, which turns scenario 13's permissions test into one that cannot fail. See the
+root `docker-compose.yml`: its named volumes carry no fixed name, so they are
+namespaced by the compose project automatically.
 
 ## Installing and running
 
