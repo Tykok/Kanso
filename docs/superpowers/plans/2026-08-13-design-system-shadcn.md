@@ -504,6 +504,118 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
+### Task 2b: Put Kanso's element reset in a cascade layer
+
+Found by Task 3, and inserted here because it is shared infrastructure that every remaining task depends on.
+
+Tailwind v4 puts its utilities in `@layer utilities`. Kanso's stylesheet is **unlayered**, and in the CSS cascade an unlayered normal declaration beats a layered one *regardless of specificity*. So `globals.css`'s `button { background: none; border: none }` silently defeats `.bg-primary` on every shadcn `Button`, and the `input, textarea, select` rule does the same to `Input`. It is invisible until something puts a utility on a bare `<button>` or `<input>`, which the styleguide page is the first thing to do.
+
+Confirmed in Chromium, not deduced:
+
+```
+unlayered reset vs layered utility  ->  rgba(0, 0, 0, 0)   (the reset wins)
+layered reset  vs layered utility   ->  rgb(0, 128, 0)     (the utility wins)
+```
+
+**Files:**
+- Modify: `apps/web/src/app/globals.css` — layer declaration at the top, and `@layer kanso-reset { … }` around the element-level reset only
+- Test: `e2e/` (the existing suite proves no regression), plus Task 3's styleguide test becomes able to pass
+
+**Interfaces:**
+- Consumes: the `@import` lines from Task 2.
+- Produces: the layer order `theme, base, components, kanso-reset, utilities`. Every later task can put a Tailwind utility on a bare element and have it win.
+
+- [ ] **Step 1: Declare the layer order**
+
+The order is the whole design and it is not `legacy` first. Kanso's reset must stay **after** `base`, where Tailwind's preflight lives, so it keeps beating preflight exactly as it does today — but **before** `utilities`, so utilities beat it. Putting it before `base` would hand `button { background: none }` to preflight and change the look of every button in the app.
+
+At the very top of `apps/web/src/app/globals.css`, above the existing `@import` lines:
+
+```css
+/*
+ * Kanso's element reset sits in a layer of its own, between Tailwind's base and its
+ * utilities, and the position is load-bearing in both directions.
+ *
+ * After `base`: preflight also resets `button` and `input`, and Kanso's reset has to
+ * keep winning that, which is what it did when it was the only stylesheet.
+ *
+ * Before `utilities`: an unlayered declaration beats a layered one whatever its
+ * specificity, so while this block was unlayered, `button { background: none }` was
+ * silently defeating `.bg-primary` on every shadcn Button. A layer is the only way to
+ * let a utility class reach a bare element.
+ *
+ * Everything else in this file — the ~1100 lines of class rules — stays unlayered on
+ * purpose: those surfaces have not migrated, and they should keep beating any utility
+ * until they do, one at a time.
+ */
+@layer theme, base, components, kanso-reset, utilities;
+```
+
+A `@layer` statement is allowed before `@import`; nothing else is. Tailwind's own import re-declares a subset of these names, which does not reorder them — the first declaration fixes the order.
+
+- [ ] **Step 2: Wrap the element reset, and only the element reset**
+
+In `globals.css`, wrap the block that starts at `* { box-sizing: border-box; }` and ends with the closing brace of the `kbd` rule — that is `*`, `html, body`, `body`, `button`, `input, textarea, select`, the `:focus` trio, and `kbd`. It ends immediately before the `/* --- shell --- */` banner.
+
+```css
+@layer kanso-reset {
+  * {
+    box-sizing: border-box;
+  }
+
+  /* … html, body, body, button, input/textarea/select, the :focus trio, kbd … */
+}
+```
+
+Do not wrap anything below that banner, and do not reformat the rules inside — indent them into the block and change nothing else. The three page sheets (`timeline.css`, `settings.css`, `setup.css`) need no change: they contain no bare-element selectors, so nothing in them can collide with a utility this way.
+
+- [ ] **Step 3: Prove the layer does what it claims**
+
+```bash
+cd apps/web && pnpm build
+```
+
+Then, with the stack rebuilt (`KANSO_AUTH_MODE=dev docker compose up -d --build web`), confirm both directions on the running app at <http://localhost:3000>:
+
+```js
+// devtools. A legacy button must still be transparent-backgrounded and borderless,
+// because kanso-reset still beats preflight.
+const legacy = document.querySelector(".nav-toggle");
+getComputedStyle(legacy).borderTopWidth;   // expect "0px"
+```
+
+The other direction has no legacy-free element to test on until Task 3's page exists, which is why Task 3's test is what closes this out.
+
+- [ ] **Step 4: The whole suite, which is the real gate**
+
+```bash
+cd apps/web && pnpm typecheck && pnpm build && pnpm test
+cd .. && KANSO_AUTH_MODE=dev docker compose up -d --build --wait web && pnpm test:e2e
+```
+
+Expected: e2e 13/13 and vitest green, unchanged. This task can only regress things, never fix a visible one, so any deviation is the finding.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src/app/globals.css
+git commit -m "fix(web): Kanso's element reset moves into a cascade layer
+
+An unlayered declaration beats a layered one whatever its specificity, so
+button { background: none } was silently defeating .bg-primary on every shadcn
+Button, and the input rule was doing the same to Input. Invisible until something
+put a utility on a bare element.
+
+The layer sits between base and utilities, and both sides matter: after base so it
+keeps beating Tailwind's preflight as it always did, before utilities so a utility
+can finally reach a bare element. The class rules below stay unlayered — those
+surfaces have not migrated and should keep winning until they do.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 3: The six components and the `/design-system` page
 
 Built now rather than at the end, so it grows with the migration and gives every later task somewhere to check a component in isolation.
