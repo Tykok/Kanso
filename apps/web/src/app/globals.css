@@ -1,3 +1,6 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
 /*
  * One stylesheet, no framework. The interface is a dense list plus a couple of
  * overlays; a utility framework would add a build step and a vocabulary without

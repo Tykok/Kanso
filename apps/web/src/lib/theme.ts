@@ -4,6 +4,7 @@ import {
   DEFAULT_PREFERENCES,
   THEMES,
   type Preferences,
+  type Theme,
 } from "./api";
 
 /**
@@ -20,6 +21,17 @@ export function applyPreferences(preferences: Preferences) {
   root.dataset.accent = preferences.accent;
   root.dataset.density = preferences.density;
   root.dataset.syncBadges = preferences.showSyncBadges ? "on" : "off";
+  // The legacy palette resolves light-dark() off `color-scheme`, which data-theme
+  // narrows; the shadcn tokens select on .dark. Two mechanisms, one source, set
+  // together here so they cannot drift while the interface migrates between them.
+  root.classList.toggle("dark", prefersDark(preferences.theme));
+}
+
+/** `system` is not a palette but a deferral, so it has to be resolved before use. */
+export function prefersDark(theme: Theme): boolean {
+  if (theme === "dark") return true;
+  if (theme === "light") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 /**
@@ -77,8 +89,10 @@ function bool(candidate: unknown, fallback: boolean): boolean {
  */
 export const PREFERENCE_BOOTSTRAP_SCRIPT = `(function(){try{
 var p=JSON.parse(localStorage.getItem(${JSON.stringify(PREFERENCES_STORAGE_KEY)})||"{}"),d=document.documentElement;
-d.dataset.theme=p.theme||${JSON.stringify(DEFAULT_PREFERENCES.theme)};
+var t=p.theme||${JSON.stringify(DEFAULT_PREFERENCES.theme)};
+d.dataset.theme=t;
 d.dataset.accent=p.accent||${JSON.stringify(DEFAULT_PREFERENCES.accent)};
 d.dataset.density=p.density||${JSON.stringify(DEFAULT_PREFERENCES.density)};
 d.dataset.syncBadges=p.showSyncBadges===false?"off":"on";
+d.classList.toggle("dark",t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches));
 }catch(e){}})()`;
