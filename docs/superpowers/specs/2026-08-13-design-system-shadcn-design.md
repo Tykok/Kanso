@@ -56,7 +56,7 @@ Three legacy names collide with shadcn's and are namespaced to `--k-*` first: `-
 (43 uses), `--radius` (20 uses), and `--accent` (28 uses). The last one is the dangerous
 one — shadcn's `--accent` is a pale hover background, while Kanso's *is* the brand colour,
 so leaving it alone would turn every accented element grey. The rename touches 102 usages
-and 21 declarations across the four sheets and no `.tsx` at all, which makes it a provable
+and 17 declarations across the four sheets and no `.tsx` at all, which makes it a provable
 no-op and a commit of its own.
 
 The new layer then lives in `src/styles/tokens.css`, imported by `globals.css`, so the

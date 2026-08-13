@@ -71,6 +71,8 @@ This task is a pure rename with no visual effect, which is exactly what makes it
 - Consumes: nothing.
 - Produces: the token names `--k-accent`, `--k-accent-soft`, `--k-accent-contrast`, `--k-border`, `--k-radius`. Every later task refers to legacy colour by these names, and to new colour by shadcn's unprefixed names.
 
+Sizing, for checking the rename landed whole: **102 usages** (globals 48, timeline 26, setup 21, settings 7) and **17 declarations** — `--k-accent` and `--k-accent-soft` seven times each, once in `:root` and once per `[data-accent]` block, plus one each of `--k-accent-contrast`, `--k-border` and `--k-radius`.
+
 - [ ] **Step 1: Confirm the rename set is confined to CSS**
 
 Run from `apps/web`:
