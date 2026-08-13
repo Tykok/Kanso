@@ -574,8 +574,15 @@ test("scenario 15 — the design system page renders its tokens and components",
   await expect(page.getByRole("heading", { name: "Design system", level: 1 })).toBeVisible();
 
   // Every button variant is drawn, including the two badge variants Kanso adds.
+  //
+  // "warning" is scoped to the badge on purpose: this page prints each token's name as
+  // its own swatch label, so the bare string appears twice — once as a surface label,
+  // once as a badge — and an unscoped getByText would trip Playwright's strict mode.
+  // `data-slot` is shadcn's own hook, present on every generated component.
   await expect(page.getByRole("button", { name: "default", exact: true })).toBeVisible();
-  await expect(page.getByText("warning", { exact: true })).toBeVisible();
+  await expect(
+    page.locator('[data-slot="badge"]').getByText("warning", { exact: true }),
+  ).toBeVisible();
 
   // The tokens resolved. Deliberately not asserted on the token's literal text:
   // Lightning CSS downlevels oklch() to lab() when no browserslist is configured, so
