@@ -200,9 +200,17 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await expect(trigger).toHaveAccessibleName(/^Kanso\b/);
   await page.getByText("Kanso", { exact: true }).click();
 
-  const popover = page.locator(".brand .menu-popover");
   const menu = page.getByRole("menu", { name: /account and settings/i });
   await expect(menu).toBeVisible();
+  // `.brand .menu-popover` used to locate the popover and matches nothing since the
+  // menu moved to Radix — not a rename, a move: the popover is portalled to
+  // `document.body`, so it is no longer a descendant of `.brand`, and it no longer
+  // carries `.menu-popover` either, because that class positioned it absolutely against
+  // a wrapper that has stopped existing (menu.tsx says so at length). The entries'
+  // `role="menu"` is still uniquely named, so the popover is reached through it, as its
+  // parent — which is what keeps the two assertions below saying what they said before:
+  // the header and the footer are inside the popover and outside the menu role.
+  const popover = menu.locator("xpath=..");
 
   // Who you are, in the header — and the header is a SIBLING of `role="menu"`, not
   // a child of it. A `menu` may only own menuitem/menuitemradio/menuitemcheckbox/
@@ -326,7 +334,12 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   // rendered it at 0×0, and `> 0` would be satisfied by a 1×1 hit box nobody can
   // hit — the same failure one pixel further along. The claim is "the pill IS the
   // trigger", so the assertion is that the two boxes are the same box.
-  const statusPill = rowB.locator(".status-menu");
+  // `.status-menu` is gone: it existed only to be the containing block of the invisible
+  // button laid over the pill, and with Radix's `asChild` the pill is the button. The
+  // two locators below therefore resolve to the same element, which is the claim this
+  // block was written to check — the assertions are kept because they are also what
+  // would catch a pill that stopped being sized like a pill.
+  const statusPill = rowB.locator(".status");
   const statusTrigger = rowB.getByRole("button", { name: /^Status: / });
   const pillBox = await statusPill.boundingBox();
   const statusBox = await statusTrigger.boundingBox();

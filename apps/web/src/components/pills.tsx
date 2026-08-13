@@ -43,14 +43,20 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
   }
 
   return (
-    <span className="status status-menu" data-status={status} style={{ color: STATUS_COLORS[status] }}>
-      <Menu
-        label={`Status: ${STATUS_LABELS[status]}`}
-        trigger={null}
-        items={menuItems(ctx, STATUS_ACTIONS)}
-      />
-      {body}
-    </span>
+    <Menu
+      label={`Status: ${STATUS_LABELS[status]}`}
+      // The pill IS the trigger, rather than a box with an invisible button laid over
+      // it: one element, so there is nothing left to keep aligned. A `<button>` and not
+      // the `<span>` above, because Radix hands the child the trigger's props and only
+      // a button is focusable and fires on Enter and Space.
+      asChild
+      trigger={
+        <button type="button" className="status" data-status={status} style={{ color: STATUS_COLORS[status] }}>
+          {body}
+        </button>
+      }
+      items={menuItems(ctx, STATUS_ACTIONS)}
+    />
   );
 }
 
@@ -76,14 +82,18 @@ export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?
   }
 
   return (
-    <span className="priority priority-menu" style={{ color }} title={label}>
-      <Menu
-        label={`Priority: ${label}`}
-        trigger={null}
-        items={menuItems(ctx, PRIORITY_ACTIONS)}
-      />
-      <span aria-hidden="true">{glyph}</span>
-    </span>
+    <Menu
+      label={`Priority: ${label}`}
+      asChild
+      trigger={
+        <button type="button" className="priority" style={{ color }} title={label}>
+          {/* Hidden from the accessibility tree: the name comes from the `aria-label`
+              Radix merges into this button, and `▄` read aloud is noise. */}
+          <span aria-hidden="true">{glyph}</span>
+        </button>
+      }
+      items={menuItems(ctx, PRIORITY_ACTIONS)}
+    />
   );
 }
 

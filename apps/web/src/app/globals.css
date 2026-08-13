@@ -262,12 +262,6 @@
   color: var(--text-faint);
 }
 
-.brand .menu-popover {
-  right: auto;
-  left: 0;
-  min-width: 196px;
-}
-
 .nav-label {
   font-size: 11px;
   font-weight: 600;
@@ -618,44 +612,16 @@
   border-color: color-mix(in srgb, var(--status-done) 40%, transparent);
 }
 
-/* The pill IS the trigger: an empty button covers it and carries the accessible name
-   (`trigger={null}`), while the glyph and label underneath stay purely visual.
-   `.menu`'s own box (relative, flex-shrink: 0) has no in-flow content once the trigger
-   is pulled out of flow below, so it collapses to 0×0 and "100%" of that is nothing.
-   `display: contents` removes that box altogether: it is neither a containing block
-   nor a flex item, so `inset: 0` resolves against `.status-menu`/`.priority-menu` —
-   the pill itself, sized by the dot and label that stay in flow — and `.status`'s
-   6px flex gap no longer counts an empty box as an item, which used to push the dot
-   of an interactive pill 6px right of a non-interactive one. Scoped to `> .menu` so
-   the row's own `⋯` menu and every other caller keep `.menu` intact. */
-.status-menu,
-.priority-menu {
-  position: relative;
-}
-
-.status-menu > .menu,
-.priority-menu > .menu {
-  display: contents;
-}
-
-.status-menu .menu-trigger,
-.priority-menu .menu-trigger {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 4px;
-}
-
-.status-menu .menu-popover,
-.priority-menu .menu-popover {
-  left: 0;
-  right: auto;
-  min-width: 152px;
-}
+/* Nothing dresses an interactive pill differently from a static one any more: with
+   `asChild`, `.status` and `.priority` are the trigger themselves (pills.tsx), so the
+   35 lines that used to lay an invisible `position: absolute; inset: 0` button over the
+   pill — and take `.menu` out of flow with `display: contents` so its empty box stopped
+   pushing the dot 6px right — have nothing left to compensate for. */
 
 /* Hidden until the row is hovered or the trigger takes focus — a keyboard user must be
-   able to reach it, so `opacity` rather than `display`. */
+   able to reach it, so `opacity` rather than `display`. Only the row's own `⋯` carries
+   `.menu-trigger`; the two pills are always legible, which no longer needs an exception
+   written for them. */
 .row .menu-trigger {
   opacity: 0;
 }
@@ -663,12 +629,6 @@
 .row:hover .menu-trigger,
 .row .menu-trigger:focus-visible,
 .row .menu-trigger[aria-expanded="true"] {
-  opacity: 1;
-}
-
-/* The status and priority pills are always legible: only the row's own ⋯ hides. */
-.row .status-menu .menu-trigger,
-.row .priority-menu .menu-trigger {
   opacity: 1;
 }
 
@@ -870,8 +830,12 @@
 
 /* --- menu ----------------------------------------------------------------- */
 
+/* Radix's root renders no element of its own and portals the popover to the body, so
+   this class no longer wraps anything: it rides on the trigger, which is the whole of
+   the menu that stands in a row. `flex-shrink: 0` used to be the wrapper's, and keeps a
+   `⋯` from being squeezed out of a tight row; the class itself is also what
+   tickets.tsx:86 asks for, to tell a double-click on a menu from one on the row. */
 .menu {
-  position: relative;
   flex-shrink: 0;
 }
 
@@ -892,20 +856,10 @@
   color: var(--text);
 }
 
-.menu-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 30;
-  min-width: 168px;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
-}
+/* `.menu-popover` is gone with the hand-written popover. Radix portals its content to
+   the body and positions it there itself, and the generated component brings the rest
+   of what this class carried — surface, border, radius, shadow — as its own utilities.
+   The header and the footer below still live inside that content, so they stay. */
 
 .menu-header,
 .menu-footer {
