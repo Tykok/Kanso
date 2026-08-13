@@ -27,13 +27,13 @@ const publicSans = Public_Sans({
 
 /*
  * The seal's two kanji aren't in Public Sans, and the container this ships in may
- * have no CJK font installed at all — so the fallback stack in globals.css'
- * @font-face would otherwise be Hiragino Sans or tofu, not a deliberate choice.
- * `--font-noto-sans-jp` names the stack that font-face resolves to; tokens.css
- * reads it as `--font-seal`.
+ * have no CJK font installed at all — so a fallback stack matters here in a way it
+ * doesn't for Latin text. This variable names only the family the @font-face in
+ * globals.css declares; the fallback stack (Hiragino Sans, Yu Gothic) lives in
+ * tokens.css alongside the rest of the type tokens, as `--font-seal`.
  */
 const sealFontStyle = {
-  "--font-noto-sans-jp": '"Noto Sans JP Seal", "Hiragino Sans", "Yu Gothic", sans-serif',
+  "--font-noto-sans-jp": '"Noto Sans JP Seal"',
 } as CSSProperties;
 
 /**
