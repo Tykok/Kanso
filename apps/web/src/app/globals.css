@@ -12,11 +12,13 @@
  *
  * Everything else in this file stays unlayered on purpose: those surfaces have not
  * migrated, and they should keep beating any utility until they do, one at a time.
- * This used to be ~1100 lines; task 5 of the design-system rollout split most of it
- * out into styles/shell.css, styles/list.css and styles/surfaces.css so three later
- * tasks could redraw those surfaces in parallel, leaving under 300 lines here —
- * the alias block below, the shared chrome the settings split would otherwise have
- * orphaned, and what was always `--- misc ---`.
+ * Task 5 of the design-system rollout split the legacy body that used to live here
+ * out into styles/shell.css, styles/list.css and styles/surfaces.css, so three later
+ * tasks could redraw those surfaces in parallel. What stays in this file: the seal's
+ * font and its rule, the focus ring and touch floor, the temporary alias block for
+ * pre-migration names still read by inline styles and by CSS that hasn't migrated,
+ * the shared chrome the settings split would otherwise have orphaned, and what was
+ * always `--- misc ---`.
  */
 @layer theme, base, components, kanso-reset, utilities;
 
