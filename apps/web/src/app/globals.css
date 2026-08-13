@@ -103,6 +103,50 @@
  */
 
 /*
+ * The last of the pre-migration names. Task 5 of the design-system rollout repointed
+ * every rule it could onto tokens.css, but these are still read directly — by
+ * shell.css, list.css, settings.css and timeline.css, and by inline styles in
+ * pills.tsx, brand-logo.tsx, overlays.tsx, login.tsx and arrows.tsx's runtime
+ * `getComputedStyle` — so deleting them outright would have made the shell, the
+ * list, settings and the timeline collapse rather than merely change colour.
+ *
+ * Where tokens.css has an equivalent, it's aliased below so the old name keeps
+ * tracking the real value, density and colour scheme included: a `var()` naming
+ * another custom property re-resolves at the reading element, so `--row-height`
+ * still follows `[data-density="compact"]` through `--row-h` exactly as it did
+ * before. Where tokens.css has no equivalent — the shell/topbar/statusbar's own
+ * spacing — the literal pixel values from the deleted block are restored instead,
+ * compact override included; inventing a token for them was not this task's call.
+ *
+ * This block dies one declaration at a time as tasks 6-8 delete the rules that read
+ * them. Check here for what's left; when it's empty, delete it.
+ */
+:root {
+  --text: var(--foreground);
+  --text-dim: var(--muted-foreground);
+  --text-faint: var(--faint);
+  --mono: var(--font-mono);
+  --row-height: var(--row-h);
+  --high: var(--priority-high);
+  --medium: var(--priority-medium);
+  --low: var(--priority-low);
+
+  --gutter: 16px;
+  --bar-pad: 10px;
+  --bar-pad-sm: 6px;
+  --nav-pad: 5px;
+  --nav-gap: 18px;
+}
+
+[data-density="compact"] {
+  --gutter: 12px;
+  --bar-pad: 6px;
+  --bar-pad-sm: 4px;
+  --nav-pad: 3px;
+  --nav-gap: 12px;
+}
+
+/*
  * Every appearance attribute below is matched without :root on purpose. On <html>
  * it dresses the application; on any other element it dresses that subtree, which
  * is how a swatch or a preview shows a palette or a density the app is not in.

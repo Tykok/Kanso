@@ -15,38 +15,22 @@ function walk(dir: string): string[] {
 const NOT_OURS = new Set([
   "--radix-popper-available-height",
   "--radix-popper-anchor-width",
-  // Task 5 of the design-system rollout repointed every CSS rule in globals.css and
-  // its split files (shell.css, list.css, surfaces.css, settings.css) — plus
-  // timeline.css and setup.css — from Kanso's pre-migration prefixed palette names
-  // onto their tokens.css equivalents, and deleted the block that defined the old
-  // names. What's left below is not a renaming gap: these have no tokens.css equivalent at all
-  // (--gutter/--bar-pad*/--nav-pad/--nav-gap, the shell/topbar/statusbar's own
-  // spacing) or are read from inline styles in components that haven't moved to CSS
-  // classes yet (pills.tsx, brand-logo.tsx, overlays.tsx, login.tsx) or, for
-  // --row-height, from a runtime `getComputedStyle` read in
-  // components/timeline/arrows.tsx. They die with the surface that reads them, in
-  // tasks 6-8, rather than moving here.
-  "--bar-pad",
-  "--bar-pad-sm",
-  "--gutter",
-  "--high",
-  "--low",
-  "--medium",
-  "--mono",
-  "--nav-gap",
-  "--nav-pad",
-  "--row-height",
-  "--text",
-  "--text-dim",
-  "--text-faint",
 ]);
 
 describe("design tokens", () => {
   const tokens = readFileSync(join(SRC, "styles/tokens.css"), "utf8");
-  const defined = new Set(Array.from(tokens.matchAll(/^\s*(--[\w-]+):/gm), (m) => m[1]));
+  // Two sources of truth: tokens.css for the current names, and the alias/literal
+  // block at the top of globals.css for the pre-migration names that surfaces still
+  // read directly (see the comment there) until tasks 6-8 delete those rules.
+  const globals = readFileSync(join(SRC, "app/globals.css"), "utf8");
+  const defined = new Set(
+    Array.from((tokens + globals).matchAll(/^\s*(--[\w-]+):/gm), (m) => m[1]),
+  );
 
   it("defines every token the interface reads", () => {
-    const files = walk(SRC).filter((f) => /\.(tsx?|css)$/.test(f) && !f.endsWith("tokens.css"));
+    const files = walk(SRC).filter(
+      (f) => /\.(tsx?|css)$/.test(f) && !f.endsWith("tokens.css") && !f.endsWith("app/globals.css"),
+    );
     const missing = new Set<string>();
     for (const file of files) {
       const source = readFileSync(file, "utf8");
