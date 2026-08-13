@@ -58,18 +58,35 @@ describe("design tokens", () => {
     expect(Array.from(missing).sort()).toEqual([]);
   });
 
-  it("keeps the five drawn statuses on one lightness plane", () => {
-    // `:root` only: `.dark` restates all five with its own lightnesses, and matching
-    // the whole file would compare across colour schemes rather than within one.
-    const light = tokens.slice(0, tokens.indexOf("\n.dark"));
-    const plane = Array.from(
-      light.matchAll(/--status-(?:backlog|todo|progress|review|done): oklch\(([\d.]+)/g),
-      (m) => Number(m[1]),
-    );
-    expect(plane).toHaveLength(5);
+  it("keeps the five drawn statuses on one lightness plane, per colour scheme", () => {
+    // `.dark` restates all five with its own lightnesses — a second, independent
+    // plane — so each scheme is checked against its own bound rather than pooling
+    // both into one comparison that would mix them.
+    const darkStart = tokens.indexOf("\n.dark {");
+    const darkEnd = tokens.indexOf("/* Six accents", darkStart);
+    const light = tokens.slice(0, darkStart);
+    const dark = tokens.slice(darkStart, darkEnd);
+
+    const planeOf = (scope: string) =>
+      Array.from(
+        scope.matchAll(/--status-(?:backlog|todo|progress|review|done): oklch\(([\d.]+)/g),
+        (m) => Number(m[1]),
+      );
     // Rounded: binary floats put 0.68 - 0.52 a shade over 0.16 (0.16000000000000003),
     // which is not a lightness difference anyone drew.
-    const spread = Math.round((Math.max(...plane) - Math.min(...plane)) * 1000) / 1000;
-    expect(spread).toBeLessThanOrEqual(0.16);
+    const spreadOf = (plane: number[]) =>
+      Math.round((Math.max(...plane) - Math.min(...plane)) * 1000) / 1000;
+
+    const lightPlane = planeOf(light);
+    const darkPlane = planeOf(dark);
+    expect(lightPlane).toHaveLength(5);
+    expect(darkPlane).toHaveLength(5);
+
+    expect(spreadOf(lightPlane)).toBeLessThanOrEqual(0.16);
+    // Dark's own bound is wider than light's: the bundle drew dark's five statuses
+    // across a wider band, measured off the values as given rather than chosen to
+    // make them fit. Widening this further because a new colour trips it is a
+    // question for the design bundle, not a reason to loosen the guard.
+    expect(spreadOf(darkPlane)).toBeLessThanOrEqual(0.2);
   });
 });

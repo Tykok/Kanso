@@ -60,6 +60,11 @@
      is not red: a dependency broken but still repairable is not an error. */
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
+
+  /* L lowered from 0.60 to 0.50 (hue and chroma unchanged): at 0.60 the white label
+     sat at a 3.57:1 contrast, under WCAG AA's 4.5:1 and under this same palette's own
+     --destructive (4.56:1). 0.50 clears 5.4:1 — read at the swatch and the badge in
+     src/app/design-system, not computed first and assumed. */
   --success: oklch(0.50 0.13 150);
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.70 0.15 75);
@@ -138,11 +143,16 @@
   --elev-float: 0 1px 2px rgb(0 0 0 / 34%), 0 20px 44px rgb(8 8 14 / 40%);
 }
 
-/* Six accents, each ~30° apart, on --primary. --accent-soft is a tint of the
-   ground, not of the accent: it sits behind body text, and a saturated fill
-   would either bury the text or vibrate against the page. --accent-ink is the
-   accent read as text — on --accent-soft, or wherever the hue has to speak
-   without the weight of a filled --primary. */
+/* Light: --primary is oklch(0.52 C h); dark is oklch(0.70 C-0.01 h).
+   Chroma per hue: 262→0.14, 302→0.15, 12→0.15, 232→0.14, 158→0.13, 78→0.13.
+   Only indigo is drawn in the bundle in both schemes; the other five dark
+   values follow the transform it demonstrates, so they are read on
+   /design-system before they ship, not trusted.
+   --accent-soft is a tint of the ground, not of the accent: it sits behind
+   body text, and a saturated fill would either bury the text or vibrate
+   against the page. --accent-ink is the accent read as text — on
+   --accent-soft, or wherever the hue has to speak without the weight of a
+   filled --primary. */
 [data-accent="indigo"] {
   --primary: oklch(0.52 0.14 262);
   --accent-soft: oklch(0.965 0.021 262);
@@ -278,6 +288,7 @@
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --radius-panel: var(--panel-radius);
 
   --shadow-flat: var(--elev-flat);
