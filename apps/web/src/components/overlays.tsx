@@ -13,18 +13,46 @@ import {
   type TicketStatus,
 } from "@/lib/api";
 import { isMac } from "@/lib/platform";
+import { STATUS_LABELS } from "@/lib/status";
+import { cn } from "@/lib/utils";
 import type { View } from "@/store/ui";
-import { statusLabel } from "./pills";
+import { Button } from "./ui/button";
+import { Kbd } from "./ui/kbd";
+import { Menu, type MenuItem } from "./menu";
+import { PriorityMark } from "./ui/priority-mark";
+import { StatusDot } from "./ui/status-dot";
 
 /**
  * Exported since the composer moved into a file of its own. `DialogFrame`, for its
  * part, rewrites these four lines: it needs `role="dialog"`, a `tabIndex` and a
  * `keydown` boundary, none of which this wrapper takes.
+ *
+ * `panelClassName` is the one thing that varies between what this wraps: the
+ * composer draws a wide, 640px form; the command palette and the help panel are
+ * happy at the narrower default. A width is not a colour, a radius or a shadow, so
+ * it stays a plain Tailwind class rather than growing its own token.
  */
-export function Backdrop({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+export function Backdrop({
+  onClose,
+  panelClassName,
+  children,
+}: {
+  onClose: () => void;
+  panelClassName?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="backdrop" onClick={onClose}>
-      <div className="panel" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-20 flex items-start justify-center bg-black/34 pt-[12vh]"
+      onClick={onClose}
+    >
+      <div
+        className={cn(
+          "w-[min(560px,92vw)] overflow-hidden rounded-panel bg-popover shadow-float",
+          panelClassName,
+        )}
+        onClick={(event) => event.stopPropagation()}
+      >
         {children}
       </div>
     </div>
@@ -59,9 +87,9 @@ export function CommandPalette({
 
   return (
     <Backdrop onClose={onClose}>
-      <div className="panel-header">
+      <div data-testid="panel-header" className="border-b border-border px-4 py-3">
         <input
-          style={{ flex: 1, border: "none", padding: 0 }}
+          className="w-full border-none bg-transparent p-0 text-15 text-foreground outline-none placeholder:text-faint"
           autoFocus
           placeholder="Type a command…"
           value={query}
@@ -84,27 +112,44 @@ export function CommandPalette({
           }}
         />
       </div>
-      <div className="panel-body" style={{ padding: 0, gap: 0 }}>
+      <div className="flex max-h-[60vh] flex-col overflow-y-auto">
         {matches.length === 0 && <div className="empty">No matching command</div>}
         {matches.map((command, index) => (
           <button
             key={command.id}
-            className="palette-option"
+            className="flex w-full items-center gap-2.5 px-4 py-2 text-left text-13 data-[active=true]:bg-accent"
             data-active={index === active}
             onMouseEnter={() => setActive(index)}
             onClick={command.run}
           >
             <span>{command.label}</span>
-            {command.hint && <span className="hint">{command.hint}</span>}
+            {command.hint && <span className="ml-auto text-11 text-faint">{command.hint}</span>}
           </button>
         ))}
       </div>
-      <div className="palette-footer">
-        <kbd>↑</kbd> <kbd>↓</kbd> move <kbd>↵</kbd> run <kbd>esc</kbd> close
+      <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-11 text-faint">
+        <Kbd>↑</Kbd> <Kbd>↓</Kbd> <span>move</span> <Kbd>↵</Kbd> <span>run</span> <Kbd>esc</Kbd>{" "}
+        <span>close</span>
       </div>
     </Backdrop>
   );
 }
+
+/** One metadata row: an 11px caption at the left, its control at the right —
+ *  the same two-column shape `Field` gives every row of a dialog. */
+function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[88px_1fr] items-center gap-3">
+      <span className="text-11 text-faint">{label}</span>
+      <div className="flex min-w-0 items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+/** The `<select>` still does the choosing — see `menu.tsx`'s own comment on why a
+ *  native control beats a bespoke one here — dressed down to read as plain text
+ *  beside the mark that already carries the colour. */
+const META_SELECT = "min-w-0 border-none bg-transparent p-0 text-13 text-foreground";
 
 export function DetailPanel({
   ticket,
@@ -122,86 +167,106 @@ export function DetailPanel({
   const [description, setDescription] = useState(ticket.description ?? "");
   const initial = useRef(ticket.description ?? "");
 
+  // Archive and delete used to be two standalone buttons at the foot of the panel;
+  // the drawing puts both behind the same `⋯` every row already uses, which is one
+  // fewer control shape for a keyboard user to learn.
+  const actions: MenuItem[] = [
+    {
+      id: "archive",
+      label: ticket.archived ? "Unarchive" : "Archive",
+      onSelect: () => onPatch({ archived: !ticket.archived }),
+    },
+    { id: "delete", label: "Delete", danger: true, onSelect: onDelete },
+  ];
+
   return (
-    <Backdrop onClose={onClose}>
-      <div className="panel-header">
-        <span style={{ fontFamily: "var(--mono)", color: "var(--text-faint)" }}>{ticket.identifier}</span>
-        <strong style={{ flex: 1 }}>{ticket.title}</strong>
-        <button className="button" onClick={onClose}>
-          Close
-        </button>
+    <Backdrop onClose={onClose} panelClassName="w-[640px]">
+      <div data-testid="panel-header" className="flex items-center gap-2 px-5 py-3">
+        <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
+        <span className="flex-1" />
+        <Menu label={`Actions for ${ticket.identifier}`} items={actions} />
+        <Kbd>esc</Kbd>
       </div>
 
-      <div className="panel-body">
-        <label>
-          Status
-          <select
-            value={ticket.status}
-            onChange={(event) => onPatch({ status: event.target.value as TicketStatus })}
-          >
-            {TICKET_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {statusLabel(status)}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto px-5 pb-5">
+        <h2 className="text-21 font-medium tracking-tight text-foreground">{ticket.title}</h2>
 
-        <label>
-          Priority
-          <select
-            value={ticket.priority}
-            onChange={(event) => onPatch({ priority: event.target.value as TicketPriority })}
-          >
-            {TICKET_PRIORITIES.map((priority) => (
-              <option key={priority} value={priority}>
-                {priority}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-col gap-2.5">
+          <MetaRow label="Status">
+            <StatusDot status={ticket.status} />
+            <select
+              className={META_SELECT}
+              value={ticket.status}
+              onChange={(event) => onPatch({ status: event.target.value as TicketStatus })}
+            >
+              {TICKET_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </MetaRow>
 
-        <label>
-          Project
-          <select
-            value={ticket.projectId ?? ""}
-            onChange={(event) =>
-              onPatch(
-                event.target.value
-                  ? { projectId: event.target.value }
-                  : // An absent key means "unchanged", so clearing has to be explicit.
-                    { unset: ["projectId"] },
-              )
-            }
-          >
-            <option value="">— none —</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <MetaRow label="Priority">
+            <PriorityMark priority={ticket.priority} />
+            <select
+              className={META_SELECT}
+              value={ticket.priority}
+              onChange={(event) => onPatch({ priority: event.target.value as TicketPriority })}
+            >
+              {TICKET_PRIORITIES.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </select>
+          </MetaRow>
 
-        <label>
-          Due date
-          <input
-            type="date"
-            value={dayValue(ticket.due)}
-            onChange={(event) =>
-              onPatch(
-                event.target.value
-                  ? { due: fromDayValue(event.target.value) }
-                  : { unset: ["due"] },
-              )
-            }
-          />
-        </label>
+          <MetaRow label="Project">
+            <select
+              className={META_SELECT}
+              value={ticket.projectId ?? ""}
+              onChange={(event) =>
+                onPatch(
+                  event.target.value
+                    ? { projectId: event.target.value }
+                    : // An absent key means "unchanged", so clearing has to be explicit.
+                      { unset: ["projectId"] },
+                )
+              }
+            >
+              <option value="">— none —</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </MetaRow>
 
-        <label>
-          Description
+          <MetaRow label="Due date">
+            <input
+              type="date"
+              className={META_SELECT}
+              value={dayValue(ticket.due)}
+              onChange={(event) =>
+                onPatch(
+                  event.target.value
+                    ? { due: fromDayValue(event.target.value) }
+                    : { unset: ["due"] },
+                )
+              }
+            />
+          </MetaRow>
+        </div>
+
+        <div className="h-px bg-border" />
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-11 text-faint">Description</span>
           <textarea
             rows={6}
+            className="w-full resize-none rounded-md border border-border bg-card p-2.5 text-13 text-foreground"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             onKeyDown={(event) => event.stopPropagation()}
@@ -214,17 +279,9 @@ export function DetailPanel({
           />
         </label>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="button" onClick={() => onPatch({ archived: !ticket.archived })}>
-            {ticket.archived ? "Unarchive" : "Archive"}
-          </button>
-          <button className="button error" onClick={onDelete}>
-            Delete
-          </button>
-          <span style={{ marginLeft: "auto", color: "var(--text-faint)", fontSize: 11 }}>
-            {ticket.mirror.notionPageId ? "Mirrored in Notion" : "Not in Notion yet"}
-          </span>
-        </div>
+        <span className="text-11 text-faint">
+          {ticket.mirror.notionPageId ? "Mirrored in Notion" : "Not in Notion yet"}
+        </span>
       </div>
     </Backdrop>
   );
@@ -245,7 +302,7 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <Backdrop onClose={onClose}>
-      <div className="panel-header">
+      <div data-testid="panel-header" className="flex items-center gap-2.5 px-4 py-3">
         {/*
           A real heading rather than a `<strong>`: this panel is the one thing on
           screen, and it had no element announcing what it is. It is also what the
@@ -253,12 +310,12 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
           the list grew a section per mode, and keying a test on a private class is
           what `follow-ups.md` already holds against that suite.
         */}
-        <h2 style={{ flex: 1, margin: 0, font: "inherit", fontWeight: 600 }}>Keyboard</h2>
-        <button className="button" onClick={onClose}>
+        <h2 className="flex-1 text-15 font-medium text-foreground">Keyboard</h2>
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
-      <div className="panel-body">
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-4 pb-4">
         {/*
           Grouped by mode, because a flat list would offer the chart's `h` `l` `H` `L`
           to somebody in the list, where those keys resolve to nothing at all. A
@@ -269,25 +326,13 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
           if (inSection.length === 0) return null;
 
           return (
-            <div key={section.title}>
-              {/* Inline rather than a new class: it is the same label treatment
-                  `.panel-body label` already gives every field in this panel. */}
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  color: "var(--text-faint)",
-                  marginBottom: 8,
-                }}
-              >
-                {section.title}
-              </div>
-              <div className="shortcuts">
+            <div key={section.title} className="flex flex-col gap-2">
+              <div className="text-11 text-faint">{section.title}</div>
+              <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
                 {inSection.map((row) => (
-                  <div key={`${section.title}:${row.keys}`} style={{ display: "contents" }}>
-                    <kbd>{row.keys}</kbd>
-                    <span>{row.label}</span>
+                  <div key={`${section.title}:${row.keys}`} className="contents">
+                    <Kbd className="justify-self-start">{row.keys}</Kbd>
+                    <span className="text-13 text-muted-foreground">{row.label}</span>
                   </div>
                 ))}
                 {/*
@@ -296,9 +341,9 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
                   drawn here beside it and now comes from `app.palette`'s `hint`.
                 */}
                 {section.mode === undefined && (
-                  <div style={{ display: "contents" }}>
-                    <kbd>Esc</kbd>
-                    <span>Close</span>
+                  <div className="contents">
+                    <Kbd className="justify-self-start">Esc</Kbd>
+                    <span className="text-13 text-muted-foreground">Close</span>
                   </div>
                 )}
               </div>

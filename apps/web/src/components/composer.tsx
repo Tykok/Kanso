@@ -12,8 +12,18 @@ import {
 } from "@/lib/api";
 import { creationSeed } from "@/lib/creation-seed";
 import { keys, useMe } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 import type { Scope } from "@/store/ui";
+import { Button } from "./ui/button";
+import { Kbd } from "./ui/kbd";
 import { Backdrop } from "./overlays";
+
+/** The bordered, 12px chip every context selector draws as — team, project,
+ *  priority, assignee alike. A `<select>` still underneath: swapping it for a
+ *  menu-driven picker would trade a native, fully keyboard-operable control for
+ *  one this task would have to reimplement, for a screen that has not asked for it. */
+const CHIP_SELECT =
+  "min-w-0 flex-1 basis-32 rounded-md border border-border bg-card px-2.5 py-1 text-12 text-muted-foreground";
 
 const PRIORITY_LABELS: Record<TicketPriority, string> = {
   none: "No priority",
@@ -139,26 +149,39 @@ function ComposerForm({
     });
   };
 
-  return (
-    <Backdrop onClose={onClose}>
-      <input
-        className="composer-input"
-        autoFocus
-        placeholder="New ticket…"
-        value={title}
-        disabled={create.isPending}
-        onChange={(event) => setTitle(event.target.value)}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (event.key === "Enter") {
-            event.preventDefault();
-            submit();
-          }
-          if (event.key === "Escape") onClose();
-        }}
-      />
+  const teamName = teams.find((team) => team.id === teamId)?.name;
 
-      <div className="composer-context">
+  return (
+    <Backdrop onClose={onClose} panelClassName="w-[640px]">
+      <div className="flex items-center gap-2.5 px-4 py-2.5 text-11 text-faint">
+        {teamName && (
+          <span className="rounded-sm bg-accent px-1.5 py-0.5 text-11 text-muted-foreground">
+            {teamName}
+          </span>
+        )}
+        <span>New ticket</span>
+      </div>
+
+      <div className="px-4 pt-1 pb-4">
+        <input
+          className="w-full border-none bg-transparent p-0 text-21 font-medium tracking-tight text-foreground outline-none placeholder:text-faint"
+          autoFocus
+          placeholder="New ticket…"
+          value={title}
+          disabled={create.isPending}
+          onChange={(event) => setTitle(event.target.value)}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submit();
+            }
+            if (event.key === "Escape") onClose();
+          }}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 bg-background px-4 py-2.5">
         <select
           ref={teamRef}
           // "Ticket team", not "Team": a `<select>`'s accessible name folds in its
@@ -167,6 +190,7 @@ function ComposerForm({
           // test's locator.
           aria-label="Ticket team"
           aria-invalid={blocked && !teamId ? true : undefined}
+          className={cn(CHIP_SELECT, "aria-invalid:border-destructive")}
           value={teamId}
           disabled={create.isPending}
           onChange={(event) => {
@@ -191,6 +215,7 @@ function ComposerForm({
 
         <select
           aria-label="Project"
+          className={CHIP_SELECT}
           value={projectId}
           disabled={create.isPending}
           onChange={(event) => setProjectId(event.target.value)}
@@ -205,6 +230,7 @@ function ComposerForm({
 
         <select
           aria-label="Priority"
+          className={CHIP_SELECT}
           value={priority}
           disabled={create.isPending}
           onChange={(event) => setPriority(event.target.value as TicketPriority)}
@@ -218,6 +244,7 @@ function ComposerForm({
 
         <select
           aria-label="Assignee"
+          className={CHIP_SELECT}
           value={assigneeId}
           disabled={create.isPending}
           onChange={(event) => setAssigneeId(event.target.value)}
@@ -231,21 +258,25 @@ function ComposerForm({
               </option>
             ))}
         </select>
+
+        <Button type="button" size="sm" disabled={create.isPending} onClick={submit}>
+          Create
+        </Button>
       </div>
 
-      <div className="composer-footer">
-        <kbd>↵</kbd> create <kbd>esc</kbd> cancel
+      <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-11 text-faint">
+        <Kbd>↵</Kbd> <span>create</span> <Kbd>esc</Kbd> <span>cancel</span>
         {blocked && !teamId && (
-          <span className="error" role="alert">
+          <span className="text-urgent" role="alert">
             Pick a team first.
           </span>
         )}
         {create.isError && (
-          <span className="error" role="alert">
+          <span className="text-urgent" role="alert">
             {(create.error as Error).message}
           </span>
         )}
-        {create.isPending && <span style={{ marginLeft: "auto" }}>saving…</span>}
+        {create.isPending && <span className="ml-auto">saving…</span>}
       </div>
     </Backdrop>
   );

@@ -192,8 +192,11 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   const page = await openOnceAs(browser, ADMIN);
 
   // The brand itself is the trigger — there is no ellipsis in the sidebar header,
-  // unlike every row's own `⋯`.
-  const trigger = page.locator(".brand .menu-trigger");
+  // unlike every row's own `⋯`. `.menu-trigger` moved to a `data-testid` with task
+  // 7's restyle: the trigger is dressed entirely in Tailwind utilities now, and
+  // `data-testid="menu-trigger"` is the one thing every non-`asChild` trigger still
+  // carries in common.
+  const trigger = page.locator(".brand").getByTestId("menu-trigger");
   await expect(trigger).not.toContainText("⋯");
   // The accessible name starts with the visible one: a voice-control user saying
   // "click Kanso" has to reach this button (WCAG 2.5.3, Label in Name). This is the
@@ -223,13 +226,15 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   // a child of it. A `menu` may only own menuitem/menuitemradio/menuitemcheckbox/
   // group/separator; assistive technology is free to drop anything else it finds
   // inside one, and what would be dropped here is the only answer the interface
-  // gives to "who am I signed in as".
-  const header = popover.locator(".menu-header");
+  // gives to "who am I signed in as". `.menu-header`/`.menu-footer` moved to
+  // `data-testid` with task 7's restyle — the classes carried no styling of their
+  // own besides a hook for this suite, so a testid is the honest replacement.
+  const header = popover.getByTestId("menu-header");
   await expect(header).toContainText("E2E owner");
   await expect(header).toContainText("owner@kanso.test");
   await expect(header).toContainText("owner");
-  await expect(menu.locator(".menu-header")).toHaveCount(0);
-  await expect(menu.locator(".menu-footer")).toHaveCount(0);
+  await expect(menu.getByTestId("menu-header")).toHaveCount(0);
+  await expect(menu.getByTestId("menu-footer")).toHaveCount(0);
 
   // The exact list: an item leaking in or out fails this rather than a "contains",
   // and so does a hint going missing. `,` and `?` are the keys `resolveShortcut`
@@ -251,7 +256,7 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   await expect(
     header.locator("button, a, input, select, textarea, [tabindex]"),
   ).toHaveCount(0);
-  const footer = popover.locator(".menu-footer");
+  const footer = popover.getByTestId("menu-footer");
   await expect(footer).toBeVisible();
   await expect(
     footer.locator("button, a, input, select, textarea, [tabindex]"),
@@ -409,7 +414,8 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   // ticket underneath — `dblclick` bubbles independently of the click the menu's
   // trigger already stops.
   const rowActionsB = rowB.getByRole("button", { name: `Actions for ${ticketB.identifier}` });
-  const detailFor = (t: string) => page.locator(".panel-header").filter({ hasText: t });
+  // `.panel-header` moved to `data-testid` with task 7's restyle.
+  const detailFor = (t: string) => page.getByTestId("panel-header").filter({ hasText: t });
   await rowB.hover();
   await rowActionsB.dblclick();
   await expect(detailFor(ticketB.title)).toHaveCount(0);

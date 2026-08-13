@@ -61,10 +61,12 @@ test("scenario 5 — the keyboard does exactly what it did before the registry",
   await expect(selected.locator(".status")).toHaveText("Backlog");
 
   // Enter opens the selected ticket — `second`/`beta`, where the moves above left it.
+  // `.panel-header` moved with task 7's restyle: the header is now Tailwind
+  // utilities with no class of its own, so the hook is `data-testid` instead.
   await page.keyboard.press("Enter");
-  await expect(page.locator(".panel-header")).toContainText(beta.identifier);
+  await expect(page.getByTestId("panel-header")).toContainText(beta.identifier);
   await page.keyboard.press("Escape");
-  await expect(page.locator(".panel-header")).toHaveCount(0);
+  await expect(page.getByTestId("panel-header")).toHaveCount(0);
 
   // e renames in place.
   await page.keyboard.press("e");

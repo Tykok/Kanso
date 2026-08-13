@@ -8,6 +8,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
+import { cn } from "@/lib/utils";
 
 export type MenuItem = {
   id: string;
@@ -172,7 +174,21 @@ export function Menu({
         // popover is portalled — so it rides on the trigger, which is now the whole of
         // the menu that stands in the row. tickets.tsx:86 asks `closest(".menu")`
         // whether a double-click belongs to a menu rather than to the row underneath.
-        className={asChild ? "menu" : "menu menu-trigger"}
+        //
+        // `.menu-trigger` is a second bare marker, kept for the same reason: shell.css
+        // and list.css — outside this task's file set — still select it by name for
+        // things this component does not own, the brand and a row's own opacity-on-
+        // hover reveal chief among them (`.row .menu-trigger`, `.brand .menu-trigger`,
+        // `.nav-item .menu-trigger`, `.new-menu .menu-trigger`). Those rules are
+        // unlayered and this trigger's own dressing is Tailwind utilities in a layer,
+        // so the class-selected rules keep winning wherever the two disagree — the
+        // base 20×20 `⋯` look below is only what nothing else overrides.
+        className={cn(
+          "menu shrink-0",
+          !asChild &&
+            "menu-trigger flex size-5 items-center justify-center rounded-sm leading-none text-faint hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
+        )}
+        data-testid={asChild ? undefined : "menu-trigger"}
         aria-label={label}
         // Radix writes its own `aria-controls` — naming the popover — before spreading
         // these props, so this replaces it with the id of the `role="menu"` element the
@@ -312,14 +328,33 @@ export function Menu({
           event.preventDefault();
         }}
       >
-        {header && <div className="menu-header">{header}</div>}
-        <div id={menuId} className="menu-list" role="menu" aria-label={label} ref={claimEntryFocus}>
+        {header && (
+          <div
+            data-testid="menu-header"
+            className="mb-1 flex flex-col gap-0.5 border-b border-border px-2 py-1.5 text-11 text-faint [&>strong]:text-12 [&>strong]:font-medium [&>strong]:text-foreground"
+          >
+            {header}
+          </div>
+        )}
+        <div
+          id={menuId}
+          className="flex flex-col gap-px"
+          role="menu"
+          aria-label={label}
+          ref={claimEntryFocus}
+        >
           {items.map((item) => (
             <DropdownMenuItem
               key={item.id}
-              className="menu-item"
+              className={cn(
+                "flex items-center gap-4 rounded-sm px-2 py-1.5 text-12 whitespace-nowrap text-muted-foreground hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground",
+                // The destructive entry is set apart with a rule of its own, not with an
+                // `<hr>` between two `role="menuitem"` elements — that would break the
+                // relationship a menu is expected to have with its entries.
+                item.danger &&
+                  "mt-1 border-t border-border pt-2 text-urgent hover:text-urgent focus:text-urgent",
+              )}
               data-danger={item.danger ? "true" : undefined}
-              variant={item.danger ? "destructive" : "default"}
               // The portal moves the popover out of the row in the DOM, but React still
               // routes its events through the tree, so the row is upstream of this
               // click and would change the scope under the action about to run.
@@ -338,7 +373,7 @@ export function Menu({
                 item.onSelect();
               }}
             >
-              <span className="menu-label">{item.label}</span>
+              <span>{item.label}</span>
               {item.hint && (
                 <>
                   {/* A real space, not a CSS gap: it is what separates label from hint
@@ -346,13 +381,20 @@ export function Menu({
                       "Rename ticket e". The flex container drops the whitespace-only
                       box, so nothing is drawn for it. */}
                   {" "}
-                  <span className="menu-hint">{item.hint}</span>
+                  <Kbd className="ml-auto shrink-0">{item.hint}</Kbd>
                 </>
               )}
             </DropdownMenuItem>
           ))}
         </div>
-        {footer && <div className="menu-footer">{footer}</div>}
+        {footer && (
+          <div
+            data-testid="menu-footer"
+            className="mt-1 flex flex-col gap-0.5 border-t border-border px-2 py-1.5 font-mono text-11 text-faint"
+          >
+            {footer}
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

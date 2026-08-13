@@ -76,24 +76,26 @@ function ChoiceRow({
   children?: ReactNode;
 }) {
   return (
-    <div className="disposition-row">
-      <div className="disposition-count">
+    <div data-testid="disposition-row" className="grid grid-cols-[116px_1fr] items-start gap-3">
+      <div data-testid="disposition-count" className="text-13 font-medium text-foreground">
         {count} {noun}
       </div>
-      <div className="disposition-cell">
-        <div className="disposition-choices" role="radiogroup" aria-label={noun}>
-          <label className="disposition-choice">
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={noun}>
+          <label className="flex cursor-pointer items-center gap-2 text-13">
             <input
               type="radio"
+              className="size-auto rounded-none border-none bg-transparent p-0"
               name={group}
               checked={value === "keep"}
               onChange={() => onChange("keep")}
             />
             <span>{keepLabel}</span>
           </label>
-          <label className="disposition-choice">
+          <label className="flex cursor-pointer items-center gap-2 text-13">
             <input
               type="radio"
+              className="size-auto rounded-none border-none bg-transparent p-0"
               name={group}
               checked={value === "take"}
               onChange={() => onChange("take")}
@@ -260,14 +262,17 @@ export function DispositionDialog({
       error={footerError}
     >
       {drift && (
-        <div className="disposition-drift" role="alert">
+        <div
+          className="flex flex-col gap-1 rounded-md border border-urgent/45 bg-urgent/10 px-3 py-2.5 text-12"
+          role="alert"
+        >
           The contents changed while this was open, so nothing was deleted. The numbers below are
           the current ones — read them again before confirming.
         </div>
       )}
 
       {empty ? (
-        <p className="disposition-lede">
+        <p className="m-0 text-13 text-muted-foreground">
           This {isTeam ? "team" : "project"} holds nothing.{" "}
           {severity === "delete"
             ? "Deleting it removes it for good."
@@ -275,7 +280,9 @@ export function DispositionDialog({
         </p>
       ) : (
         <>
-          <p className="disposition-lede">This {isTeam ? "team" : "project"} contains:</p>
+          <p className="m-0 text-13 text-muted-foreground">
+            This {isTeam ? "team" : "project"} contains:
+          </p>
 
           {isTeam && counts.subTeams > 0 && (
             <ChoiceRow
@@ -337,12 +344,25 @@ export function DispositionDialog({
           )}
 
           {movingTickets && (
-            <div className="disposition-warning" role="note">
-              <strong>
+            // Amber, not red: this is not an error but a permanent consequence of a
+            // legitimate choice. Red is kept for what failed and for what destroys.
+            <div
+              data-testid="disposition-warning"
+              className="flex flex-col gap-1 rounded-md border border-priority-high/45 bg-priority-high/10 px-3 py-2.5 text-12"
+              role="note"
+            >
+              <strong className="font-medium">
                 ⚠ The {counts.tickets} tickets will be renumbered.
               </strong>
               <span>
-                Every <code>{sourceKey}-…</code> identifier becomes a <code>{destinationKey}-…</code>{" "}
+                Every{" "}
+                <code className="rounded-sm bg-accent px-1 font-mono text-11">
+                  {sourceKey}-…
+                </code>{" "}
+                identifier becomes a{" "}
+                <code className="rounded-sm bg-accent px-1 font-mono text-11">
+                  {destinationKey}-…
+                </code>{" "}
                 one. Existing links stop resolving.
               </span>
             </div>
@@ -366,7 +386,9 @@ export function DispositionDialog({
           />
         </Field>
       ) : (
-        <p className="disposition-note">Reversible from Show archived, at the foot of the sidebar.</p>
+        <p className="m-0 text-12 text-faint">
+          Reversible from Show archived, at the foot of the sidebar.
+        </p>
       )}
     </DialogFrame>
   );

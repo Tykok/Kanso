@@ -221,7 +221,7 @@ function TeamForm({
       ) : (
         // No id to post a membership against yet, so the section itself would have
         // nothing to talk to — say why it is missing rather than leave a gap.
-        <p className="dialog-field-hint">Members can be added once the team exists.</p>
+        <p className="text-11 text-faint">Members can be added once the team exists.</p>
       )}
     </DialogFrame>
   );

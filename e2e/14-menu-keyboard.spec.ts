@@ -173,17 +173,16 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   await statusTrigger.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu", { name: /^Status: / })).toBeVisible();
-  await expect(page.locator(".panel-header")).toHaveCount(0);
+  // `.panel-header` moved to `data-testid` with task 7's restyle.
+  await expect(page.getByTestId("panel-header")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
 
   // Invariant 6 is NOT asserted here, on purpose. Only brand-menu.tsx passes a
   // `header`; a row's ⋯ has none, so there would be nothing on this menu to check.
-  // It is already covered where the header actually exists — mouse.spec.ts:216-217
-  // asserts `.menu-header` and `.menu-footer` are absent from inside the role="menu"
-  // element, which is exactly the invariant. Task 5 must keep that passing, and must
-  // repair the `.brand .menu-popover` locator at mouse.spec.ts:203, which stops
-  // matching once Radix portals the popover out of `.brand`.
+  // It is already covered where the header actually exists — mouse.spec.ts asserts
+  // the `menu-header` and `menu-footer` testids are absent from inside the
+  // role="menu" element, which is exactly the invariant.
 
   await page.close();
 });
