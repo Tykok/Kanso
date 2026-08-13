@@ -1,7 +1,7 @@
 "use client";
 
 import type { KeyboardEvent, ReactNode } from "react";
-import { BrandLogo } from "../brand-logo";
+import { Seal } from "../ui/seal";
 
 export type StepId = "account" | "notion" | "google" | "preferences";
 
@@ -19,7 +19,7 @@ export function SetupPage({ children }: { children: ReactNode }) {
         {/* Smaller than the sign-in screen's: this one sits above a card that already
             has a heading of its own, so it introduces rather than announces. */}
         <div className="brand">
-          <BrandLogo width={140} alt="Kanso 簡素" />
+          <Seal size={140} title="Kanso 簡素" />
         </div>
         {children}
       </div>
