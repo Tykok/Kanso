@@ -20,6 +20,21 @@
 @import "../styles/tokens.css";
 
 /*
+ * The seal draws exactly two kanji, 簡 (U+7C21) and 素 (U+7D20), so the font behind it
+ * is a subset of Noto Sans JP holding only those two glyphs — a few kilobytes rather
+ * than the multi-megabyte file a full CJK font would cost for two characters.
+ * `unicode-range` keeps the browser from ever fetching it on a page that doesn't
+ * render the seal; unlayered so it isn't shadowed by anything in `utilities`.
+ */
+@font-face {
+  font-family: "Noto Sans JP Seal";
+  src: url("/fonts/noto-sans-jp-seal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+7C21, U+7D20;
+}
+
+/*
  * Focus and the touch floor, mandated across every surface regardless of which
  * palette dresses it. Unlayered, like the ~1100 lines below, so it keeps winning
  * over both the shadcn components' own focus rings and the legacy reset's.
