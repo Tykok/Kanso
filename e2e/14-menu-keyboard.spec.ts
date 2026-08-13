@@ -73,15 +73,39 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   await expect(menu).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  // Invariant 2 — Tab out of an open menu lands on what follows the row, not at the
-  // top of the document. Asserted as "not body", because the exact next focusable
-  // is a layout detail this test should not freeze.
+  // Invariant 2 — Tab out of an open menu lands exactly where Tab from the trigger
+  // would have landed with no menu open at all. That is the real invariant
+  // (menu.tsx:136-155's own comment): remove the trigger-refocus-before-Tab trick and
+  // the browser resets `document.activeElement` to `<body>` before resolving Tab's
+  // default action, which then computes "next focusable from the top of the
+  // document" — NOT the same as landing on `<body>` itself. A bare `not.toBe("BODY")`
+  // would very likely still pass in that broken state, since "top of the document"
+  // usually resolves to *some* focusable node, just the wrong one — a fake gate on
+  // exactly the invariant Task 5 is most likely to break. Comparing against a
+  // no-menu baseline catches that: it fails loudly whether the wrong landing is
+  // `<body>` or any other node, and it is structure-agnostic, so it survives Radix
+  // portalling the popover to `document.body`.
+  const focusSignature = () =>
+    page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el || el === document.body) return "BODY";
+      return `${el.tagName}|${el.getAttribute("aria-label") ?? ""}|${(el.textContent ?? "").trim()}`;
+    });
+
+  // Baseline: Tab from the trigger with no menu open at all.
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Tab");
+  const baseline = await focusSignature();
+  // Undo the Tab so the trigger is back in its starting state for a fair comparison.
+  await page.keyboard.press("Shift+Tab");
+  await expect(trigger).toBeFocused();
+
   await trigger.click();
   await expect(page.getByRole("menu")).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("menu")).toHaveCount(0);
-  const tabbed = await page.evaluate(() => document.activeElement?.tagName ?? "NONE");
-  expect(tabbed).not.toBe("BODY");
+  const withMenuOpen = await focusSignature();
+  expect(withMenuOpen).toBe(baseline);
 
   // Invariant 3 — an entry that opens a dialog leaves a focus-return target that
   // still exists once the popover is gone. The ticket row's own "Rename" is NOT the
