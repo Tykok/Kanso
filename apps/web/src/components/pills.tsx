@@ -1,6 +1,9 @@
 import type { Mirror, TicketPriority, TicketStatus } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { cn } from "@/lib/utils";
+import { STATUS_LABELS } from "@/lib/status";
+import { StatusDot } from "./ui/status-dot";
+import { PriorityMark as PriorityGlyph } from "./ui/priority-mark";
 import { Menu } from "./menu";
 import { menuItems } from "./menu-items";
 
@@ -25,18 +28,26 @@ const PRIORITY_ACTIONS = [
  * With a `ctx`, the pill is the control: clicking what you are already reading is one
  * gesture, where a shared row menu would be three. Without one it stays a label — the
  * setup wizard's preview renders rows nobody can act on.
+ *
+ * The drawing itself — the dot, its fill, its colour — belongs to `StatusDot` (Task 4).
+ * This keeps only the label and, with a `ctx`, the menu that turns the pair into a
+ * control.
  */
 export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: ActionContext }) {
   const body = (
     <>
-      <span className="dot" />
-      <span style={{ color: "var(--text-dim)" }}>{STATUS_LABELS[status]}</span>
+      <StatusDot status={status} />
+      <span className="text-muted-foreground">{STATUS_LABELS[status]}</span>
     </>
   );
 
+  // `.status` carries no styling of its own in this app any more, but the setup
+  // wizard's read-only preview (setup/preview.tsx, another task's file) renders this
+  // same component and narrows its width through `.setup-preview .status` — a rule
+  // that has nothing left to reach for once list.css is gone unless the class stays.
   if (!ctx) {
     return (
-      <span className="status" data-status={status} style={{ color: STATUS_COLORS[status] }}>
+      <span data-testid="status-pill" className="status inline-flex items-center gap-[7px] text-12">
         {body}
       </span>
     );
@@ -51,7 +62,11 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
       // a button is focusable and fires on Enter and Space.
       asChild
       trigger={
-        <button type="button" className="status" data-status={status} style={{ color: STATUS_COLORS[status] }}>
+        <button
+          type="button"
+          data-testid="status-pill"
+          className="status inline-flex items-center gap-[7px] text-12"
+        >
           {body}
         </button>
       }
@@ -62,23 +77,21 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
 
 export const statusLabel = (status: TicketStatus) => STATUS_LABELS[status];
 
-const PRIORITY_GLYPHS: Record<TicketPriority, { glyph: string; color: string; label: string }> = {
-  none: { glyph: "·", color: "var(--text-faint)", label: "No priority" },
-  low: { glyph: "▁", color: "var(--low)", label: "Low" },
-  medium: { glyph: "▄", color: "var(--medium)", label: "Medium" },
-  high: { glyph: "█", color: "var(--high)", label: "High" },
-  urgent: { glyph: "!", color: "var(--urgent)", label: "Urgent" },
+const PRIORITY_LABELS: Record<TicketPriority, string> = {
+  none: "No priority",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
 };
 
+/** The interactive twin of `ui/priority-mark.tsx`'s glyph: same drawing, plus a menu
+ *  when there is a `ctx` to run its actions against. */
 export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?: ActionContext }) {
-  const { glyph, color, label } = PRIORITY_GLYPHS[priority];
+  const label = PRIORITY_LABELS[priority];
 
   if (!ctx) {
-    return (
-      <span className="priority" style={{ color }} title={label}>
-        {glyph}
-      </span>
-    );
+    return <PriorityGlyph priority={priority} />;
   }
 
   return (
@@ -86,10 +99,8 @@ export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?
       label={`Priority: ${label}`}
       asChild
       trigger={
-        <button type="button" className="priority" style={{ color }} title={label}>
-          {/* Hidden from the accessibility tree: the name comes from the `aria-label`
-              Radix merges into this button, and `▄` read aloud is noise. */}
-          <span aria-hidden="true">{glyph}</span>
+        <button type="button" title={label} className="w-3.5 shrink-0 text-center">
+          <PriorityGlyph priority={priority} />
         </button>
       }
       items={menuItems(ctx, PRIORITY_ACTIONS)}
@@ -112,8 +123,27 @@ export function SyncBadge({ mirror }: { mirror: Mirror }) {
     disabled: "",
   }[mirror.state];
 
+  // A plain colour, not a chip: the badge used to be a bordered pill, and the
+  // drawing shows none of that weight — just the word, in the colour of the status
+  // it echoes. `--status-progress`, `--status-done` and `--urgent` are already the
+  // right hues (amber, green, red); nothing new needed naming for this.
+  const color = {
+    pending: "text-status-progress",
+    synced: "text-status-done",
+    failed: "text-urgent",
+    disabled: "",
+  }[mirror.state];
+
   return (
-    <span className="sync-badge" data-state={mirror.state} title={title}>
+    <span
+      // `.sync-badge` carries no styling of its own any more — everything visible
+      // comes from the utilities below — but `[data-sync-badges="off"] .sync-badge`
+      // in globals.css still reaches for it by name to hide the badge entirely, so
+      // the class stays as that hook's target.
+      className={cn("sync-badge text-11 tracking-[0.05em] whitespace-nowrap uppercase", color)}
+      data-state={mirror.state}
+      title={title}
+    >
       {mirror.state === "synced" ? "Notion" : mirror.state}
     </span>
   );

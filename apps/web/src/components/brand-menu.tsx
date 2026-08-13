@@ -30,7 +30,7 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
   const items = menuItems(ctx, ["app.settings", "app.help", "app.palette", "app.logout"]);
 
   return (
-    <div className="brand">
+    <div data-testid="brand-menu">
       <Menu
         // The visible mark reads "簡素", so the accessible name has to start with
         // "Kanso" for the ear as much as the eye (WCAG 2.5.3, Label in Name):
@@ -40,7 +40,16 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
         // whatever the button contains.
         label="Kanso — account and settings"
         items={items}
-        trigger={<Seal size={14} />}
+        // `asChild`, rather than the default wrapper: the default trigger carries
+        // `.menu-trigger`, sized elsewhere (surfaces.css) for a 20×20 `⋯` glyph, which
+        // is the wrong shape for a row that fills the sidebar's width. This button is
+        // the trigger itself, so it draws its own shape instead of fighting that base.
+        asChild
+        trigger={
+          <button type="button" data-testid="brand-trigger" className="flex w-full items-center rounded-md p-1.5 hover:bg-accent">
+            <Seal size={14} />
+          </button>
+        }
         header={
           user && (
             <>

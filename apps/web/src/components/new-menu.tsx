@@ -18,8 +18,18 @@ export function NewMenu({ ctx }: { ctx: ActionContext }) {
   const items = menuItems(ctx, ["ticket.create", "project.create", "team.create"]);
 
   return (
-    <div className="new-menu">
-      <Menu label="New" trigger="New" items={items} />
-    </div>
+    <Menu
+      label="New"
+      asChild
+      trigger={
+        <button
+          type="button"
+          className="h-7 rounded-md bg-primary px-3 text-12 font-medium text-primary-foreground"
+        >
+          New
+        </button>
+      }
+      items={items}
+    />
   );
 }

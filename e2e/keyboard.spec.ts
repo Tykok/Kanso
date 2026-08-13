@@ -34,9 +34,9 @@ test("scenario 5 — the keyboard does exactly what it did before the registry",
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: team.name, exact: true }).click();
 
-  const rows = page.locator(".row");
+  const rows = page.getByTestId("ticket-row");
   await expect(rows).toHaveCount(2);
-  const selected = page.locator('.row[data-selected="true"]');
+  const selected = page.locator('[data-testid="ticket-row"][data-selected="true"]');
 
   // j / k and ↓ / ↑ move the cursor. The list orders by most-recently-updated
   // first, so `second` — created after `first` — is the row on top; "down" moves
@@ -54,11 +54,11 @@ test("scenario 5 — the keyboard does exactly what it did before the registry",
 
   // 1..6 walk the status vocabulary in its natural order.
   await page.keyboard.press("2");
-  await expect(selected.locator(".status")).toHaveText("Todo");
+  await expect(selected.getByTestId("status-pill")).toHaveText("Todo");
   await page.keyboard.press("5");
-  await expect(selected.locator(".status")).toHaveText("Done");
+  await expect(selected.getByTestId("status-pill")).toHaveText("Done");
   await page.keyboard.press("1");
-  await expect(selected.locator(".status")).toHaveText("Backlog");
+  await expect(selected.getByTestId("status-pill")).toHaveText("Backlog");
 
   // Enter opens the selected ticket — `second`/`beta`, where the moves above left it.
   await page.keyboard.press("Enter");
@@ -68,7 +68,7 @@ test("scenario 5 — the keyboard does exactly what it did before the registry",
 
   // e renames in place.
   await page.keyboard.press("e");
-  const editor = page.locator(".row-title-input");
+  const editor = page.getByTestId("row-title-input");
   await expect(editor).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(editor).toHaveCount(0);

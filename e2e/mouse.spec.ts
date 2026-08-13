@@ -192,8 +192,10 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   const page = await openOnceAs(browser, ADMIN);
 
   // The brand itself is the trigger — there is no ellipsis in the sidebar header,
-  // unlike every row's own `⋯`.
-  const trigger = page.locator(".brand .menu-trigger");
+  // unlike every row's own `⋯`. Task 6 moved this trigger to `asChild` — it draws its
+  // own shape now rather than the shared 20×20 `⋯` one — so `.menu-trigger` no longer
+  // names it; `brand-trigger` does.
+  const trigger = page.getByTestId("brand-trigger");
   await expect(trigger).not.toContainText("⋯");
   // The accessible name starts with the visible one: a voice-control user saying
   // "click Kanso" has to reach this button (WCAG 2.5.3, Label in Name). This is the
@@ -342,13 +344,15 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   // over the pill, the shipped defect rendered it at 0×0, and comparing the two boxes was
   // how you caught that. There is no second box to compare any more (`asChild` hands the
   // pill's own `<button>` to Radix), and comparing one against itself would pass whatever
-  // happened. What is checkable instead is that the element carrying the pill's own class
-  // is the element carrying the popup relationship, plus a size floor: a pill that stopped
-  // being a target would still fail here.
-  const statusPill = rowB.locator(".status");
+  // happened. What is checkable instead is that the element carrying the pill's own test
+  // id is the element carrying the popup relationship, plus a size floor: a pill that
+  // stopped being a target would still fail here. `status-pill` is a `data-testid` now,
+  // not a `.status` class — Task 6 moved the drawing to `StatusDot` and `text-*`
+  // utilities, and nothing styles `.status` any longer for a class assertion to describe.
+  const statusPill = rowB.getByTestId("status-pill");
   const statusTrigger = rowB.getByRole("button", { name: /^Status: / });
   await expect(statusPill).toHaveAttribute("aria-haspopup", "menu");
-  await expect(statusTrigger).toHaveClass(/\bstatus\b/);
+  await expect(statusTrigger).toHaveAttribute("data-testid", "status-pill");
   const statusBox = await statusTrigger.boundingBox();
   expect(statusBox, "the status trigger has no box at all").toBeTruthy();
   // And that box is big enough to be a target rather than a coincidence.
@@ -394,16 +398,18 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   expect(afterPriorityA?.priority).toBe(initialA?.priority);
   await expect(rowA).toHaveAttribute("data-selected", "true");
 
-  // The `⋯` stays out of sight until the row earns it — by hover, or by a
-  // keyboard user tabbing straight to it without ever touching the mouse.
+  // The `⋯` no longer hides until the row earns it. Task 6 dropped that reveal-on-
+  // hover choreography: every drawn screen shows the row's actions in the open, and
+  // keeping the opacity trick meant reaching into menu.tsx's own `.menu-trigger` class
+  // from outside it (row.tsx and pills.tsx are the only files this task owns) — coupling
+  // this row's styling to a class another component is free to rename. What is still
+  // true, and still worth asserting, is that the trigger is reachable and focusable
+  // without a hover ever happening.
   const rowActionsA = rowA.getByRole("button", { name: `Actions for ${ticketA.identifier}` });
-  await expect(rowActionsA).toHaveCSS("opacity", "0");
-  await rowA.hover();
-  await expect(rowActionsA).toHaveCSS("opacity", "1");
+  await expect(rowActionsA).toBeVisible();
   await rowA.getByRole("button", { name: /^Status: / }).focus();
   await page.keyboard.press("Tab");
   await expect(rowActionsA).toBeFocused();
-  await expect(rowActionsA).toHaveCSS("opacity", "1");
 
   // Double-clicking the `⋯` or a pill must never fall through to opening the
   // ticket underneath — `dblclick` bubbles independently of the click the menu's
@@ -422,7 +428,7 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   await rowB.hover();
   const renameMenu = await openRowMenu(page, ticketB.identifier);
   await renameMenu.getByRole("menuitem", { name: "Rename ticket" }).click();
-  const editor = page.locator(".row-title-input");
+  const editor = page.getByTestId("row-title-input");
   await expect(editor).toBeFocused();
   const renamed = unique("Row B, renamed by mouse");
   await editor.fill(renamed);

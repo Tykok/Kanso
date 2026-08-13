@@ -18,8 +18,6 @@
 
 @import "tailwindcss";
 @import "../styles/tokens.css";
-@import "../styles/shell.css";
-@import "../styles/list.css";
 @import "../styles/surfaces.css";
 
 /*
@@ -105,10 +103,12 @@
 /*
  * The last of the pre-migration names. Task 5 of the design-system rollout repointed
  * every rule it could onto tokens.css, but these are still read directly — by
- * shell.css, list.css, settings.css and timeline.css, and by inline styles in
- * pills.tsx, brand-logo.tsx, overlays.tsx, login.tsx and arrows.tsx's runtime
- * `getComputedStyle` — so deleting them outright would have made the shell, the
- * list, settings and the timeline collapse rather than merely change colour.
+ * settings.css and timeline.css, and by inline styles in brand-logo.tsx, overlays.tsx,
+ * login.tsx and arrows.tsx's runtime `getComputedStyle` — so deleting them outright
+ * would have made settings and the timeline collapse rather than merely change colour.
+ * Task 6 moved the shell, the list and pills.tsx off every name here; `--nav-pad`,
+ * `--nav-gap` and the bare `--bar-pad` (not `--bar-pad-sm`) are what that leaves with no
+ * reader left at all — still not this task's call to delete, per the note above them.
  *
  * Where tokens.css has an equivalent, it's aliased below so the old name keeps
  * tracking the real value, density and colour scheme included: a `var()` naming

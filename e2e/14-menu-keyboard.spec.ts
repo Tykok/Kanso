@@ -39,7 +39,7 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: team.name, exact: true }).click();
 
-  const selected = page.locator('.row[data-selected="true"]');
+  const selected = page.locator('[data-testid="ticket-row"][data-selected="true"]');
   // The list orders most-recently-updated first, so `second` is on top.
   await ticketRow(page, second).click();
   await expect(selected).toContainText(second);
@@ -155,9 +155,9 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   // unrelated fact about tickets.tsx, not something this menu rewrite owns.
   await trigger.click();
   await page.getByRole("menuitem", { name: /Rename/ }).click();
-  await expect(page.locator(".row-title-input")).toBeFocused();
+  await expect(page.getByTestId("row-title-input")).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(page.locator(".row-title-input")).toHaveCount(0);
+  await expect(page.getByTestId("row-title-input")).toHaveCount(0);
   const afterInlineEdit = await page.evaluate(() => document.activeElement?.tagName ?? "NONE");
   expect(afterInlineEdit).toBe("BODY");
 
@@ -213,7 +213,7 @@ test("scenario 14 — a member's team menu shows, holding only the one action op
   await admin.dispose();
 
   const page = await openAs(browser, MEMBER);
-  const row = page.locator(".nav-item").filter({
+  const row = page.getByTestId("nav-item").filter({
     has: page.getByRole("button", { name: team.name, exact: true }),
   });
   await expect(row).toBeVisible();

@@ -192,7 +192,7 @@ export async function seedTicket(
 
 /** The sidebar row carrying this name, container included. */
 export function sidebarRow(page: Page, name: string): Locator {
-  return page.locator(".nav-item").filter({ has: page.getByRole("button", { name, exact: true }) });
+  return page.getByTestId("nav-item").filter({ has: page.getByRole("button", { name, exact: true }) });
 }
 
 /** Opens a row's `⋯` menu and returns the open menu. */
@@ -205,5 +205,5 @@ export async function openRowMenu(page: Page, name: string): Promise<Locator> {
 
 /** The ticket row carrying this title. */
 export function ticketRow(page: Page, title: string): Locator {
-  return page.locator(".row").filter({ hasText: title });
+  return page.getByTestId("ticket-row").filter({ hasText: title });
 }
