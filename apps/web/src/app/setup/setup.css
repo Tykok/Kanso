@@ -31,15 +31,15 @@
 }
 
 .setup-card {
-  background: var(--surface);
-  border: 1px solid var(--k-border);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 9px;
   overflow: hidden;
 }
 
 .setup-head {
   padding: 14px 18px;
-  border-bottom: 1px solid var(--k-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .setup-head h1 {
@@ -51,7 +51,7 @@
 
 .setup-intro {
   margin: 6px 0 0;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
 }
 
 .setup-body {
@@ -63,14 +63,14 @@
 
 .setup-foot {
   padding: 10px 14px;
-  border-top: 1px solid var(--k-border);
+  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .setup-keys {
-  color: var(--text-faint);
+  color: var(--faint);
   font-size: 11px;
 }
 
@@ -92,10 +92,10 @@
 }
 
 .setup-rail-count {
-  font: 11px/1 var(--mono);
+  font: 11px/1 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .setup-rail ol {
@@ -108,21 +108,21 @@
 }
 
 .setup-rail li {
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .setup-rail li:not(:last-child)::after {
   content: "·";
   padding: 0 7px;
-  color: var(--k-border);
+  color: var(--border);
 }
 
 .setup-rail li[data-state="done"] {
-  color: var(--text-dim);
+  color: var(--muted-foreground);
 }
 
 .setup-rail li[data-state="current"] {
-  color: var(--text);
+  color: var(--foreground);
   font-weight: 500;
 }
 
@@ -138,7 +138,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .setup-field input,
@@ -147,13 +147,13 @@
 }
 
 .setup-field input[readonly] {
-  color: var(--text-dim);
-  background: var(--bg);
+  color: var(--muted-foreground);
+  background: var(--background);
 }
 
 .setup-hint {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .setup-error {
@@ -171,10 +171,10 @@
 .setup-callout {
   margin: 0;
   padding: 8px 10px;
-  border: 1px solid var(--k-border);
-  border-left: 2px solid var(--k-accent);
-  border-radius: var(--k-radius);
-  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--primary);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
 }
 
 .setup-actions {
@@ -198,7 +198,7 @@
 .setup-copy input {
   flex: 1;
   min-width: 0;
-  font: 12px/1.4 var(--mono);
+  font: 12px/1.4 var(--font-mono);
 }
 
 .setup-divider {
@@ -208,7 +208,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .setup-divider::before,
@@ -216,7 +216,7 @@
   content: "";
   flex: 1;
   height: 1px;
-  background: var(--k-border);
+  background: var(--border);
 }
 
 .setup-providers {
@@ -232,7 +232,7 @@
 }
 
 .setup-providers .button:not(.button-primary) {
-  color: var(--text);
+  color: var(--foreground);
 }
 
 .setup-summary {
@@ -247,12 +247,12 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .setup-summary dd {
   margin: 0;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
 }
 
 /* --- choices -------------------------------------------------------------- */
@@ -269,9 +269,9 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius);
-  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 
@@ -300,19 +300,19 @@
 
 .setup-choice:hover,
 .setup-accent:hover {
-  background: var(--surface-hover);
+  background: var(--accent);
 }
 
 .setup-choice:has(input:checked),
 .setup-accent:has(input:checked) {
-  border-color: var(--k-accent);
-  background: var(--k-accent-soft);
-  color: var(--text);
+  border-color: var(--primary);
+  background: var(--accent-soft);
+  color: var(--foreground);
 }
 
 .setup-choice:has(input:focus-visible),
 .setup-accent:has(input:focus-visible) {
-  outline: 2px solid var(--k-accent);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
@@ -326,7 +326,7 @@
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  background: var(--k-accent);
+  background: var(--primary);
   flex-shrink: 0;
 }
 
@@ -347,7 +347,7 @@
   width: 14px;
   height: 14px;
   margin: 2px 0 0;
-  accent-color: var(--k-accent);
+  accent-color: var(--primary);
   flex-shrink: 0;
 }
 
@@ -368,10 +368,10 @@
 /* --- preview -------------------------------------------------------------- */
 
 .setup-preview {
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
-  background: var(--bg);
+  background: var(--background);
 }
 
 /* Density comes from the same [data-density] rules the application uses. */
@@ -386,7 +386,7 @@
 }
 
 .setup-preview-side {
-  border-right: 1px solid var(--k-border);
+  border-right: 1px solid var(--border);
   padding: 10px 8px;
   display: flex;
   flex-direction: column;
@@ -400,14 +400,14 @@
 
 .setup-preview-nav {
   padding: 3px 6px;
-  border-radius: var(--k-radius);
+  border-radius: var(--radius);
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
 }
 
 .setup-preview-nav[data-current="true"] {
-  background: var(--k-accent-soft);
-  color: var(--text);
+  background: var(--accent-soft);
+  color: var(--foreground);
   font-weight: 500;
 }
 
@@ -428,7 +428,7 @@
 
 .setup-preview .row[data-selected="true"],
 .setup-preview .row[data-selected="true"]:hover {
-  background: var(--k-accent-soft);
+  background: var(--accent-soft);
 }
 
 .setup-preview-rows .row:last-child {

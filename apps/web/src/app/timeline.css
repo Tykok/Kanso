@@ -23,8 +23,8 @@
  */
 .tl-tray {
   flex: none;
-  border-bottom: 1px solid var(--k-border);
-  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
 }
 
 .tl-tray-toggle {
@@ -35,7 +35,7 @@
   padding: var(--bar-pad-sm) var(--gutter);
   background: none;
   border: 0;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
   font: inherit;
   font-size: 11px;
   text-align: left;
@@ -43,8 +43,8 @@
 }
 
 .tl-tray-toggle:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+  background: var(--accent);
+  color: var(--foreground);
 }
 
 /* One glyph turned, rather than two glyphs swapped: a caret that changes character
@@ -52,7 +52,7 @@
 .tl-tray-caret {
   display: inline-block;
   font-size: 9px;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .tl-tray[data-open] .tl-tray-caret {
@@ -90,20 +90,20 @@
   gap: 6px;
   max-width: 260px;
   padding: 2px 8px;
-  background: var(--surface-hover);
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius);
+  background: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   font: inherit;
   font-size: 11px;
   text-align: left;
-  color: var(--text);
+  color: var(--foreground);
   cursor: grab;
   touch-action: none;
   user-select: none;
 }
 
 .tl-chip:hover {
-  border-color: var(--text-faint);
+  border-color: var(--faint);
 }
 
 .tl-chip:active {
@@ -113,7 +113,7 @@
 /* The same ring the selected bar wears, so the cursor reads the same on both halves of
    the screen — the chip in the tray and the bar on the grid are one ticket. */
 .tl-chip[data-selected] {
-  outline: 2px solid var(--k-accent);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
@@ -125,9 +125,9 @@
 
 .tl-chip-id {
   flex: none;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 .tl-chip-title {
@@ -166,7 +166,7 @@
   align-items: center;
   justify-content: center;
   height: 120px;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
   font-size: 12px;
   /* The days underneath have to stay reachable: this is a caption, not a surface. */
   pointer-events: none;
@@ -180,8 +180,8 @@
   z-index: 3;
   display: flex;
   height: var(--tl-axis);
-  background: var(--bg);
-  border-bottom: 1px solid var(--k-border);
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
 }
 
 /* Where the two sticky edges meet. Pinned on both, or the first name scrolls up into
@@ -191,8 +191,8 @@
   left: 0;
   z-index: 1;
   flex: 0 0 var(--tl-names);
-  background: var(--bg);
-  border-right: 1px solid var(--k-border);
+  background: var(--background);
+  border-right: 1px solid var(--border);
 }
 
 .tl-axis {
@@ -208,7 +208,7 @@
   white-space: nowrap;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 /* One layer of rules for the whole chart, under every bar. */
@@ -226,7 +226,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--k-border);
+  background: var(--border);
 }
 
 /*
@@ -239,7 +239,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--k-accent);
+  background: var(--primary);
   opacity: 0.7;
 }
 
@@ -247,8 +247,8 @@
 
 .tl-row {
   display: flex;
-  height: var(--row-height);
-  border-bottom: 1px solid var(--k-border);
+  height: var(--row-h);
+  border-bottom: 1px solid var(--border);
 }
 
 .tl-name {
@@ -259,18 +259,18 @@
   flex: 0 0 var(--tl-names);
   padding: 0 10px;
   /* Minus the row's border, which `box-sizing: border-box` counts inside the height. */
-  line-height: calc(var(--row-height) - 1px);
-  background: var(--bg);
-  border-right: 1px solid var(--k-border);
+  line-height: calc(var(--row-h) - 1px);
+  background: var(--background);
+  border-right: 1px solid var(--border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
 .tl-row[data-kind="project"] .tl-name {
-  color: var(--text);
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -278,14 +278,14 @@
    tickets belong to which project, and it has to read without comparing names. */
 .tl-row[data-kind="ticket"] .tl-name {
   padding-left: 22px;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
 /* Muted and unmistakably not yours, without becoming unreadable: a context row is
    there to be understood, not merely noticed. */
 .tl-row[data-context] .tl-name {
-  color: var(--text-faint);
+  color: var(--faint);
   font-style: italic;
 }
 
@@ -296,7 +296,7 @@
 .tl-truncated {
   padding: 4px 8px;
   font-size: 11px;
-  color: var(--warn, #d08a1e);
+  color: var(--warning, #d08a1e);
 }
 
 .tl-lane {
@@ -306,7 +306,7 @@
 
 /* --- the bars -------------------------------------------------------------- */
 
-/* Inset rather than sized: the height then follows `--row-height` through both
+/* Inset rather than sized: the height then follows `--row-h` through both
    densities without a second calculation to keep in step with it. */
 .tl-bar {
   position: absolute;
@@ -319,9 +319,9 @@
   align-items: center;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: var(--k-radius);
+  border-radius: var(--radius);
   font-size: 11px;
-  color: var(--text);
+  color: var(--foreground);
 }
 
 /*
@@ -338,8 +338,8 @@
 }
 
 .tl-bar[data-state="normal"] {
-  background: var(--k-accent-soft);
-  border-color: var(--k-accent);
+  background: var(--accent-soft);
+  border-color: var(--primary);
 }
 
 .tl-bar[data-state="critical"] {
@@ -380,9 +380,9 @@
 .tl-bar[data-kind="project"] {
   top: 9px;
   bottom: 9px;
-  background: var(--surface-hover);
-  border-color: var(--text-faint);
-  color: var(--text-dim);
+  background: var(--accent);
+  border-color: var(--faint);
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
@@ -431,7 +431,7 @@
  * and the hatched one.
  */
 .tl-bar[data-selected] {
-  outline: 2px solid var(--k-accent);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
@@ -489,9 +489,9 @@
   /* Vertically centred on the row; horizontally, it begins where the bar ends. */
   margin: -6px 0 0 0;
   z-index: 1;
-  border: 1px solid var(--bg);
+  border: 1px solid var(--background);
   border-radius: 50%;
-  background: var(--k-accent);
+  background: var(--primary);
   opacity: 0;
   cursor: crosshair;
   touch-action: none;
@@ -516,7 +516,7 @@
    captured by the handle for the length of the gesture, so the bar under it is never
    hovered — the attribute is written by the layer drawing the band. */
 .tl-bar[data-link-target] {
-  outline: 2px dashed var(--k-accent);
+  outline: 2px dashed var(--primary);
   outline-offset: 1px;
 }
 
@@ -547,8 +547,8 @@
   top: 0;
   bottom: 0;
   display: none;
-  background: color-mix(in srgb, var(--k-accent) 22%, transparent);
-  border-left: 2px solid var(--k-accent);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  border-left: 2px solid var(--primary);
 }
 
 .tl-drop[data-active] {
@@ -564,9 +564,9 @@
   top: 2px;
   left: 4px;
   padding: 1px 4px;
-  border-radius: var(--k-radius);
-  background: var(--k-accent);
-  color: var(--k-accent-contrast);
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -613,7 +613,7 @@
 
 .tl-arrow {
   fill: none;
-  stroke: var(--text-faint);
+  stroke: var(--faint);
   stroke-width: 1.5;
   /* Only the line itself, not the space around it: a fat invisible hit area would put
      the arrow back in the way of the bar underneath. */
@@ -642,7 +642,7 @@
  * dependency is a line — the way to say "this one" about a line is to draw it louder.
  */
 .tl-arrow[data-selected] {
-  stroke: var(--k-accent);
+  stroke: var(--primary);
   stroke-width: 2.5;
 }
 
@@ -650,12 +650,12 @@
    arrows and without a tab stop erasing one would need a mouse. */
 .tl-arrow:focus-visible {
   outline: none;
-  stroke: var(--k-accent);
+  stroke: var(--primary);
   stroke-width: 2.5;
 }
 
 .tl-arrowhead {
-  fill: var(--text-faint);
+  fill: var(--faint);
 }
 
 .tl-arrowhead[data-violated] {
@@ -668,22 +668,22 @@
  * nobody can fix would lose the only distinction that tells a reader what to do.
  */
 .tl-arrow[data-overlap] {
-  stroke: var(--warn, #d08a1e);
+  stroke: var(--warning, #d08a1e);
 }
 
 .tl-arrowhead[data-overlap] {
-  fill: var(--warn, #d08a1e);
+  fill: var(--warning, #d08a1e);
 }
 
 /* Shape as well as colour, like data-state's hatch: the glyph survives greyscale. */
 .tl-warn {
   margin-right: 4px;
-  color: var(--warn, #d08a1e);
+  color: var(--warning, #d08a1e);
   font-size: 11px;
 }
 
 .tl-arrowhead[data-drawing] {
-  fill: var(--k-accent);
+  fill: var(--primary);
 }
 
 /*
@@ -693,7 +693,7 @@
  */
 .tl-rubber {
   fill: none;
-  stroke: var(--k-accent);
+  stroke: var(--primary);
   stroke-width: 2;
   stroke-dasharray: 4 3;
   pointer-events: none;
@@ -708,7 +708,7 @@
 
 .tl-erase circle {
   fill: var(--urgent);
-  stroke: var(--bg);
+  stroke: var(--background);
   stroke-width: 1.5;
 }
 
@@ -720,7 +720,7 @@
 }
 
 .tl-erase:focus-visible circle {
-  stroke: var(--k-accent);
+  stroke: var(--primary);
   stroke-width: 2.5;
 }
 
@@ -738,7 +738,7 @@
   margin-top: -4px;
   margin-left: -4px;
   border-radius: 50%;
-  border: 1px solid var(--bg);
+  border: 1px solid var(--background);
   z-index: 2;
   pointer-events: none;
 }

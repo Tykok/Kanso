@@ -15,29 +15,30 @@ function walk(dir: string): string[] {
 const NOT_OURS = new Set([
   "--radix-popper-available-height",
   "--radix-popper-anchor-width",
-  // Kanso's pre-migration `--k-*` palette (globals.css) and its neighbours: still
-  // read by the surfaces that have not moved to this token layer yet (settings,
-  // setup, timeline, pills, the sidebar brand, status colour lookups). They die
-  // with the stylesheet that defines them, in tasks 6-8, rather than moving here.
+  // Task 5 of the design-system rollout repointed every CSS rule in globals.css and
+  // its split files (shell.css, list.css, surfaces.css, settings.css) — plus
+  // timeline.css and setup.css — from Kanso's pre-migration prefixed palette names
+  // onto their tokens.css equivalents, and deleted the block that defined the old
+  // names. What's left below is not a renaming gap: these have no tokens.css equivalent at all
+  // (--gutter/--bar-pad*/--nav-pad/--nav-gap, the shell/topbar/statusbar's own
+  // spacing) or are read from inline styles in components that haven't moved to CSS
+  // classes yet (pills.tsx, brand-logo.tsx, overlays.tsx, login.tsx) or, for
+  // --row-height, from a runtime `getComputedStyle` read in
+  // components/timeline/arrows.tsx. They die with the surface that reads them, in
+  // tasks 6-8, rather than moving here.
+  "--bar-pad",
   "--bar-pad-sm",
-  "--bg",
   "--gutter",
   "--high",
-  "--k-accent",
-  "--k-accent-contrast",
-  "--k-accent-soft",
-  "--k-border",
-  "--k-radius",
   "--low",
   "--medium",
   "--mono",
+  "--nav-gap",
+  "--nav-pad",
   "--row-height",
-  "--surface",
-  "--surface-hover",
   "--text",
   "--text-dim",
   "--text-faint",
-  "--warn",
 ]);
 
 describe("design tokens", () => {

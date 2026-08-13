@@ -15,7 +15,7 @@
   align-items: baseline;
   gap: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--k-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .settings-head h1 {
@@ -48,17 +48,17 @@
 .settings-nav button {
   text-align: left;
   padding: 6px 8px;
-  border-radius: var(--k-radius);
-  color: var(--text-dim);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
 }
 
 .settings-nav button:hover {
-  background: var(--surface-hover);
+  background: var(--accent);
 }
 
 .settings-nav button[aria-current="true"] {
-  background: var(--k-accent-soft);
-  color: var(--text);
+  background: var(--accent-soft);
+  color: var(--foreground);
   font-weight: 500;
 }
 
@@ -72,7 +72,7 @@
   margin: 0 0 16px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-faint);
+  color: var(--faint);
 }
 
 /* A field is a label, its control, and whatever the field needs to say about itself. */
@@ -81,7 +81,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 14px 0;
-  border-bottom: 1px solid var(--k-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .settings-field:last-child {
@@ -118,15 +118,15 @@
 .settings-static {
   padding: 6px 8px;
   border: 1px solid transparent;
-  color: var(--text-dim);
+  color: var(--muted-foreground);
 }
 
 .people-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -135,7 +135,7 @@
   align-items: center;
   gap: 12px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--k-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .people-list li:last-child {
@@ -151,7 +151,7 @@
 }
 
 .people-role {
-  color: var(--text-faint);
+  color: var(--faint);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -172,4 +172,139 @@
     flex-direction: row;
     flex-wrap: wrap;
   }
+}
+
+/* Below: the "--- settings ---" block moved verbatim out of globals.css (task 5 of the
+ * design-system rollout). Shared with the `,` command palette, so it stayed there while
+ * this file held only the settings page's own layout; expected to be deleted, one rule
+ * at a time, as this surface migrates. */
+
+/* --- settings ------------------------------------------------------------- */
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 26px;
+}
+
+.settings-row > span:first-child {
+  flex: 1;
+}
+
+.settings-note {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+/* One control for every either/or choice: theme, density and the panel toggles. */
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 4px 10px;
+  color: var(--muted-foreground);
+  border-left: 1px solid var(--border);
+}
+
+.segmented button:first-child {
+  border-left: none;
+}
+
+.segmented button:hover {
+  background: var(--accent);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.swatches {
+  display: flex;
+  gap: 10px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.shortcuts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--bar-pad-sm) var(--gutter);
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.error {
+  color: var(--urgent);
+}
+
+/*
+ * Where an action run from a menu reports its failure: there is no dialog to put
+ * the message under, and no toast system to grow. Its own line rather than a cell
+ * in the top bar, because sharing that row with the title, the filter and the New
+ * button would truncate exactly the sentence that needs reading.
+ */
+.topbar-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--bar-pad-sm) var(--gutter);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.topbar-error span {
+  flex: 1;
+}
+
+.topbar-error button {
+  border: none;
+  background: none;
+  color: inherit;
+  border-radius: var(--radius);
+  padding: 2px 7px;
+  line-height: 1;
+}
+
+.topbar-error button:hover {
+  background: var(--accent);
 }

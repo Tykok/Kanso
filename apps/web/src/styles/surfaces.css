@@ -1,0 +1,418 @@
+/* Overlays, dialogs, menus and the archive/delete disposition panel. Split out of
+ * globals.css so tasks can run in parallel; every rule here is expected to be
+ * deleted, one at a time, as this surface moves to Tailwind utilities. */
+
+/* --- overlays ------------------------------------------------------------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 34%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 20;
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 24%);
+  width: min(560px, 92vw);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.panel-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+
+.panel-body label > input,
+.panel-body label > textarea,
+.panel-body label > select {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.composer-input {
+  width: 100%;
+  font-size: 14px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 0;
+}
+
+.composer-input:focus {
+  outline: none;
+}
+
+/*
+ * The composer's context bar. The four selectors share the width evenly and wrap
+ * rather than squeeze themselves down to an unreadable size.
+ */
+.composer-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.composer-context select {
+  flex: 1;
+  min-width: 108px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.composer-footer .error {
+  margin-left: auto;
+}
+
+.composer-footer,
+.palette-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.palette-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.palette-option[data-active="true"] {
+  background: var(--accent-soft);
+}
+
+.palette-option .hint {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+/* --- dialogs -------------------------------------------------------------- */
+
+/*
+ * Dialogs have a body of their own rather than `.panel-body`. That one uppercases
+ * every `label` it contains, at a specificity (`.panel-body label`) higher than a
+ * bare class: reused here, it would have to be contradicted field by field. A class
+ * of one's own costs eight lines and closes the subject.
+ */
+.dialog-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* The panel takes the focus to receive Escape; it has no need to announce it. */
+.panel[tabindex]:focus {
+  outline: none;
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dialog-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dialog-field-label > span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.dialog-field-hint {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.dialog-field-error {
+  font-size: 11px;
+  color: var(--urgent);
+}
+
+.dialog-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Holds the error's place when there is none, so the two buttons stay pinned to the
+   right edge either way. */
+.dialog-footer-spacer {
+  flex: 1;
+}
+
+.dialog-footer-error {
+  flex: 1;
+  min-width: 0;
+  color: var(--urgent);
+  font-size: 11px;
+}
+
+/* --- menu ----------------------------------------------------------------- */
+
+/* Radix's root renders no element of its own and portals the popover to the body, so
+   this class no longer wraps anything: it rides on the trigger, which is the whole of
+   the menu that stands in a row. `flex-shrink: 0` used to be the wrapper's, and keeps a
+   `⋯` from being squeezed out of a tight row; the class itself is also what
+   tickets.tsx:86 asks for, to tell a double-click on a menu from one on the row. */
+.menu {
+  flex-shrink: 0;
+}
+
+.menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  line-height: 1;
+  color: var(--faint);
+}
+
+.menu-trigger:hover,
+.menu-trigger[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+/* `.menu-popover` is gone with the hand-written popover. Radix portals its content to
+   the body and positions it there itself, and the generated component brings the rest
+   of what this class carried — surface, border, radius, shadow — as its own utilities.
+   Its border *colour* is the one part those utilities do not carry: `border` emits only
+   width and style, so it takes the default set in `tokens.css`. Without that default it
+   fell back to `currentColor` and drew near-black.
+   The header and the footer below still live inside that content, so they stay. */
+
+.menu-header,
+.menu-footer {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--faint);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-header {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.menu-header strong {
+  font-size: 12px;
+  color: var(--foreground);
+}
+
+.menu-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  font-family: var(--font-mono);
+}
+
+/* The entries, and only the entries: `role="menu"` lives here so the header and the
+   footer stay outside it. See `menu.tsx`. */
+.menu-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 4px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  /* Said out loud because the generated component says otherwise: it dresses its items
+     with `text-sm`, and an entry that never declared a size of its own would read at
+     14px in a 13px interface. This rule is unlayered and the utility is not, so writing
+     it once here is enough. */
+  font-size: 13px;
+}
+
+/* The key that runs the same action from anywhere, right-aligned against the entry. */
+.menu-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.menu-item:hover .menu-hint,
+.menu-item:focus .menu-hint {
+  color: var(--muted-foreground);
+}
+
+/* `:focus` rather than `:focus-visible`, which is a change of behaviour and a deliberate
+   one. An entry takes focus as soon as the menu opens, by any means (`menu.tsx` explains
+   why it has to), and a mouse-opened menu therefore has a focused entry that
+   `:focus-visible` does not match — so the highlight would be painted by the generated
+   component's own `focus:bg-accent` instead, in shadcn's grey rather than Kanso's. Since
+   the focus is deliberate, the highlight that follows it should be too. */
+.menu-item:hover,
+.menu-item:focus {
+  background: var(--accent);
+  color: var(--foreground);
+  outline: none;
+}
+
+/*
+ * The destructive entry is set apart here rather than with an element of its own: an
+ * `<hr>` between two `role="menuitem"` would break the relationship a menu is
+ * expected to have with its entries.
+ */
+.menu-item[data-danger="true"] {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--urgent);
+}
+
+/* The New menu borrows Menu's behaviour but not its shape: a labelled button in the
+   top bar, not an ellipsis that hides until hover. */
+.new-menu .menu-trigger {
+  width: auto;
+  height: auto;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* --- disposition ---------------------------------------------------------- */
+
+.disposition-lede {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+
+.disposition-row {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.disposition-count {
+  font-weight: 500;
+}
+
+.disposition-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.disposition-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.disposition-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* The global `input` rules put a background and a border on everything, including a
+   radio button, which wants neither. */
+.disposition-choice input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+/*
+ * Amber, not red: this is not an error but a permanent consequence of a legitimate
+ * choice. Red is kept for what failed and for what destroys.
+ */
+.disposition-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--priority-high) 45%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--priority-high) 10%, transparent);
+  font-size: 12px;
+}
+
+.disposition-warning code {
+  font: 11px/1.5 var(--font-mono);
+}
+
+.disposition-drift {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--urgent) 45%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--urgent) 10%, transparent);
+  font-size: 12px;
+}
+
+.disposition-note {
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
+}
+

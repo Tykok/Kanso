@@ -1,0 +1,298 @@
+/* The shell: sidebar navigation and the app frame around the list. Split out of
+ * globals.css so tasks can run in parallel; every rule here is expected to be
+ * deleted, one at a time, as this surface moves to Tailwind utilities. */
+
+/* --- shell ---------------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  height: 100vh;
+}
+
+.shell[data-sidebar="hidden"] {
+  grid-template-columns: 1fr;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nav-gap);
+  overflow-y: auto;
+}
+
+.brand {
+  position: relative;
+}
+
+/*
+ * The base `.menu-trigger` is sized and colored for a 20×20 `⋯` glyph. Here the
+ * trigger *is* the brand: it fills the header's width and shows nothing but the logo
+ * until hovered or focused, rather than reading as a small icon button.
+ *
+ * `align-items` and `gap` are left as they were for the two text children this used to
+ * hold. With one image they decide nothing, and removing them would only mean putting
+ * them back the day the header gains a second element.
+ */
+.brand .menu-trigger {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  color: inherit;
+}
+
+.brand .menu-trigger:hover,
+.brand .menu-trigger[aria-expanded="true"] {
+  background: var(--accent);
+  color: inherit;
+}
+
+/*
+ * `.brand .menu-trigger strong` and `… span` used to size the "Kanso" and "簡素" the
+ * trigger wrote out. The seal draws both, so the trigger has neither child left and the
+ * two rules had no target — deleted rather than left as decoration.
+ */
+
+.nav-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  padding: 0 6px 6px;
+}
+
+/*
+ * A row is no longer a button but a container: it now carries a menu, and a
+ * `<button>` cannot contain another one. The current state therefore travels through
+ * `data-current` on the container, `aria-current` staying on the button that is
+ * really the click target.
+ */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding-right: 6px;
+  border-radius: var(--radius);
+}
+
+.nav-item:hover {
+  background: var(--accent);
+}
+
+.nav-item[data-current="true"] {
+  background: var(--accent-soft);
+}
+
+.nav-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: var(--nav-pad) 0 var(--nav-pad) 6px;
+  text-align: left;
+  color: var(--muted-foreground);
+}
+
+.nav-item[data-current="true"] .nav-item-main {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.nav-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The bullet tells a project from a team. It is drawn rather than written: a
+ * `content: "•"` would enter the button's accessible name, which would read
+ * "• Refonte". An empty string does not.
+ */
+.nav-item[data-kind="project"] .nav-item-label::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+  vertical-align: middle;
+}
+
+.nav-item[data-archived="true"] .nav-item-main {
+  opacity: 0.55;
+}
+
+/*
+ * The menu only appears on hover, but stays in the tab order and becomes visible
+ * again the moment it takes focus: a control that only exists on hover is a control
+ * the keyboard cannot reach.
+ */
+.nav-item .menu-trigger {
+  opacity: 0;
+}
+
+.nav-item:hover .menu-trigger,
+.nav-item .menu-trigger:focus-visible,
+.nav-item .menu-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.nav-item .count {
+  font: 11px/1 var(--font-mono);
+  color: var(--faint);
+  flex-shrink: 0;
+}
+
+.nav-depth-1 .nav-item-main {
+  padding-left: 18px;
+}
+
+.nav-depth-2 .nav-item-main {
+  padding-left: 30px;
+}
+
+.nav-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 6px;
+}
+
+.nav-section .nav-label {
+  flex: 1;
+  padding: 0;
+}
+
+.nav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  line-height: 1;
+  color: var(--faint);
+}
+
+.nav-add:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.nav-empty {
+  padding: 4px 6px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.nav-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/*
+ * A stateful button rather than a checkbox: `aria-pressed` says the same thing, the
+ * click target is the whole row, and the square is drawn here rather than left to the
+ * native theme, which does not follow `--primary`.
+ */
+.nav-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: var(--nav-pad) 6px;
+  border-radius: var(--radius);
+  text-align: left;
+  color: var(--muted-foreground);
+}
+
+.nav-toggle:hover {
+  background: var(--accent);
+}
+
+.nav-toggle::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.nav-toggle[aria-pressed="true"] {
+  color: var(--foreground);
+}
+
+.nav-toggle[aria-pressed="true"]::before {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.nav-sync {
+  padding: 0 6px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /*
+   * The vertical twin of `min-width: 0`, and load-bearing for the same reason: a grid
+   * item's automatic minimum size is its content, so without this `.main` grows past
+   * `.shell` and the document scrolls instead of `.list`. Its `overflow-y: auto` had
+   * never engaged. Invisible in the list, which has no sticky header — the timeline is
+   * the first screen with one, and it exposed this.
+   */
+  min-height: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--bar-pad) var(--gutter);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar h1 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.filter-input {
+  width: 220px;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+}
