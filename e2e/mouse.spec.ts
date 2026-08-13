@@ -206,11 +206,12 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   // menu moved to Radix — not a rename, a move: the popover is portalled to
   // `document.body`, so it is no longer a descendant of `.brand`, and it no longer
   // carries `.menu-popover` either, because that class positioned it absolutely against
-  // a wrapper that has stopped existing (menu.tsx says so at length). The entries'
-  // `role="menu"` is still uniquely named, so the popover is reached through it, as its
-  // parent — which is what keeps the two assertions below saying what they said before:
-  // the header and the footer are inside the popover and outside the menu role.
-  const popover = menu.locator("xpath=..");
+  // a wrapper that has stopped existing (menu.tsx says so at length). Radix marks its own
+  // popover instead, and only one can be open at a time, so that mark locates it without
+  // assuming anything about where the header sits inside it — which is what keeps the two
+  // assertions below saying what they said before: the header and the footer are inside
+  // the popover and outside the menu role.
+  const popover = page.locator("[data-radix-menu-content]");
 
   // Who you are, in the header — and the header is a SIBLING of `role="menu"`, not
   // a child of it. A `menu` may only own menuitem/menuitemradio/menuitemcheckbox/
@@ -330,25 +331,20 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   await expect(rowA).toHaveAttribute("data-selected", "true");
   await expect(rowB).toHaveAttribute("data-selected", "false");
 
-  // The pill's trigger must cover the pill, not merely exist: the shipped defect
-  // rendered it at 0×0, and `> 0` would be satisfied by a 1×1 hit box nobody can
-  // hit — the same failure one pixel further along. The claim is "the pill IS the
-  // trigger", so the assertion is that the two boxes are the same box.
-  // `.status-menu` is gone: it existed only to be the containing block of the invisible
-  // button laid over the pill, and with Radix's `asChild` the pill is the button. The
-  // two locators below therefore resolve to the same element, which is the claim this
-  // block was written to check — the assertions are kept because they are also what
-  // would catch a pill that stopped being sized like a pill.
+  // The pill IS the trigger — and now it is one element rather than two, so the claim
+  // has changed shape. It used to be checked by measuring: an invisible button was laid
+  // over the pill, the shipped defect rendered it at 0×0, and comparing the two boxes was
+  // how you caught that. There is no second box to compare any more (`asChild` hands the
+  // pill's own `<button>` to Radix), and comparing one against itself would pass whatever
+  // happened. What is checkable instead is that the element carrying the pill's own class
+  // is the element carrying the popup relationship, plus a size floor: a pill that stopped
+  // being a target would still fail here.
   const statusPill = rowB.locator(".status");
   const statusTrigger = rowB.getByRole("button", { name: /^Status: / });
-  const pillBox = await statusPill.boundingBox();
+  await expect(statusPill).toHaveAttribute("aria-haspopup", "menu");
+  await expect(statusTrigger).toHaveClass(/\bstatus\b/);
   const statusBox = await statusTrigger.boundingBox();
-  expect(pillBox, "the status pill has no box at all").toBeTruthy();
   expect(statusBox, "the status trigger has no box at all").toBeTruthy();
-  expect(statusBox?.width).toBeCloseTo(pillBox?.width ?? 0, 0);
-  expect(statusBox?.height).toBeCloseTo(pillBox?.height ?? 0, 0);
-  expect(statusBox?.x).toBeCloseTo(pillBox?.x ?? 0, 0);
-  expect(statusBox?.y).toBeCloseTo(pillBox?.y ?? 0, 0);
   // And that box is big enough to be a target rather than a coincidence.
   expect(statusBox?.width).toBeGreaterThan(40);
   expect(statusBox?.height).toBeGreaterThan(10);

@@ -904,6 +904,11 @@
   text-align: left;
   white-space: nowrap;
   color: var(--text-dim);
+  /* Said out loud because the generated component says otherwise: it dresses its items
+     with `text-sm`, and an entry that never declared a size of its own would read at
+     14px in a 13px interface. This rule is unlayered and the utility is not, so writing
+     it once here is enough. */
+  font-size: 13px;
 }
 
 /* The key that runs the same action from anywhere, right-aligned against the entry. */
@@ -915,12 +920,18 @@
 }
 
 .menu-item:hover .menu-hint,
-.menu-item:focus-visible .menu-hint {
+.menu-item:focus .menu-hint {
   color: var(--text-dim);
 }
 
+/* `:focus` rather than `:focus-visible`, which is a change of behaviour and a deliberate
+   one. An entry takes focus as soon as the menu opens, by any means (`menu.tsx` explains
+   why it has to), and a mouse-opened menu therefore has a focused entry that
+   `:focus-visible` does not match — so the highlight would be painted by the generated
+   component's own `focus:bg-accent` instead, in shadcn's grey rather than Kanso's. Since
+   the focus is deliberate, the highlight that follows it should be too. */
 .menu-item:hover,
-.menu-item:focus-visible {
+.menu-item:focus {
   background: var(--surface-hover);
   color: var(--text);
   outline: none;

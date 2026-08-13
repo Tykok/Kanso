@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 
 import {
   DropdownMenu,
@@ -47,12 +47,13 @@ export type MenuItem = {
  * not matter. `asChild` on the content was the fallback and was not needed.
  * e2e/mouse.spec.ts:216-217 is what proves the header stayed outside the menu role.
  *
- * Six behaviours below are not Radix defaults, are load-bearing, and each has its own
- * comment: keys not reaching page.tsx's window listener, Tab landing where it would have
- * landed with no menu open, the trigger taking focus before an entry's action runs, an
- * entry highlighted the moment the menu opens, arrows walking the list synchronously, and
- * either arrow opening the menu from the trigger. Most are asserted in
- * e2e/14-menu-keyboard.spec.ts; read that file before changing any of them.
+ * Seven behaviours below are not Radix defaults, are load-bearing, and each has its own
+ * comment: no key reaching page.tsx's window listener — from the popover or from the
+ * trigger, where Enter would otherwise both open this menu and open a ticket — Tab
+ * landing where it would have landed with no menu open, the trigger taking focus before
+ * an entry's action runs, an entry highlighted the moment the menu opens, arrows walking
+ * the list synchronously, and either arrow opening the menu from the trigger. Most are
+ * asserted in e2e/14-menu-keyboard.spec.ts; read that file before changing any of them.
  *
  * An empty list renders nothing at all — not a disabled trigger, not an empty popover.
  * Defensive rather than observable: every current caller passes at least one action
@@ -87,6 +88,14 @@ export function Menu({
   // below have to close the popover themselves, at a moment of their choosing.
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  /**
+   * Names the element that actually holds the menu role, for the trigger to point at.
+   * Radix's own `aria-controls` names the popover, which `role="presentation"` below has
+   * just demoted to nothing — leaving `aria-haspopup="menu"` announcing a popup the
+   * trigger has no stated relationship to, which is a step down from the hand-written
+   * file in the very area invariant 6 exists to protect.
+   */
+  const menuId = useId();
   /** Which end of the list the next opening should start from. */
   const openAt = useRef<"first" | "last">("first");
   /**
@@ -119,6 +128,7 @@ export function Menu({
    */
   const claimEntryFocus = useCallback((list: HTMLDivElement | null) => {
     if (!list) return;
+    // A flat query of every entry, for the reason given at the capture handler below.
     const entries = list.querySelectorAll<HTMLElement>('[role="menuitem"]');
     if (!entries.length) return;
     (openAt.current === "last" ? entries[entries.length - 1] : entries[0]).focus();
@@ -149,9 +159,27 @@ export function Menu({
         // whether a double-click belongs to a menu rather than to the row underneath.
         className={asChild ? "menu" : "menu menu-trigger"}
         aria-label={label}
+        // Radix writes its own `aria-controls` — naming the popover — before spreading
+        // these props, so this replaces it with the id of the `role="menu"` element the
+        // entries actually live in. See `menuId` above.
+        aria-controls={open ? menuId : undefined}
         // The row underneath changes the scope when it is clicked.
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            // Radix opens the menu from its own keydown handler and calls
+            // `preventDefault()` there, but never `stopPropagation()` — so the key would
+            // go on to page.tsx's window listener, where Enter is `ticket.open`, and one
+            // press would open this menu *and* the selected ticket's panel behind it.
+            // The hand-written trigger was a plain button that opened on the activation
+            // click, which page.tsx's own `preventDefault()` cancelled; exactly one thing
+            // happened, and stopping the event here is what restores that. Stopping it
+            // *without* preventing the default is the whole point: Radix composes this
+            // handler ahead of its own and only stands down when the default was
+            // prevented, so its toggle still runs.
+            event.stopPropagation();
+            return;
+          }
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           // Both arrows open the menu, at the end they point at, and neither reaches
           // page.tsx's window handler. Radix opens on ArrowDown but lets the key
@@ -169,12 +197,11 @@ export function Menu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        // The arrows wrap: down from the last entry is the first one, up from the first
-        // is the last, as the hand-written menu's modulo did — e2e/mouse.spec.ts:261-266
-        // walks a four-entry menu in a full circle to prove nothing else is a stop along
-        // the way. Set for the keys Radix still owns below (PageUp, PageDown), so that
-        // its navigation and the four keys handled here agree about the ends.
-        loop
+        // No `loop`: it would be dead configuration. Radix consults it only for the
+        // `prev`/`next` intents, which are exactly the two arrows the capture handler
+        // below takes over — PageUp and PageDown map to `first`/`last` and never look at
+        // it. The wrap those arrows need is the modulo down there instead.
+        //
         // No `.menu-popover`: that class positions a popover absolutely against
         // `.menu`, and this content is portalled to the body, where Radix computes and
         // applies its own position. Passing it would fight the library. What the class
@@ -216,7 +243,14 @@ export function Menu({
           // This is the one place where Radix's navigation is taken over rather than
           // used, and it is four keys wide: the collection, the tab-stop bookkeeping and
           // the pointer behaviour are all still Radix's, because focusing an entry is
-          // what its own `onFocus` reacts to.
+          // what its own `onFocus` reacts to. The wrap at either end is the modulo
+          // below — e2e/mouse.spec.ts:261-266 walks a four-entry menu in a full circle.
+          //
+          // A flat query, where Radix's own collection also skips disabled items and
+          // stops at its own content: `MenuItem` here is never disabled and never opens
+          // a submenu, so there is nothing to skip and nothing deeper to descend into.
+          // Should either become possible, this query and the one in `claimEntryFocus`
+          // both have to learn it.
           const entries = Array.from(
             event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'),
           );
@@ -240,6 +274,14 @@ export function Menu({
           // capture phase, which has already run by the time this bubble handler does.
           event.stopPropagation();
         }}
+        // A double-click on the popover — its 4px of padding is the reachable part — is
+        // routed by React up to the row that owns this menu, and `dblclick` is its own
+        // native event, so the entries' click stop never touches it. tickets.tsx:86
+        // guards the row with `closest(".menu")`, which used to match anywhere inside a
+        // popover that was a child of the `.menu` wrapper; portalled, it no longer does,
+        // and that call site is not this task's to edit. Stopping it here is the same
+        // guard from the other side.
+        onDoubleClick={(event) => event.stopPropagation()}
         onCloseAutoFocus={(event) => {
           // Radix hands focus back to the trigger here, which is right for Escape and
           // for an outside click, and is what invariant 7 needs. It is wrong whenever
@@ -253,7 +295,7 @@ export function Menu({
         }}
       >
         {header && <div className="menu-header">{header}</div>}
-        <div className="menu-list" role="menu" aria-label={label} ref={claimEntryFocus}>
+        <div id={menuId} className="menu-list" role="menu" aria-label={label} ref={claimEntryFocus}>
           {items.map((item) => (
             <DropdownMenuItem
               key={item.id}

@@ -161,6 +161,22 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   const afterInlineEdit = await page.evaluate(() => document.activeElement?.tagName ?? "NONE");
   expect(afterInlineEdit).toBe("BODY");
 
+  // One press, one thing. Enter on a trigger opens that trigger's menu and nothing else:
+  // `page.tsx`'s window listener holds Enter as `ticket.open`, and a trigger that lets the
+  // key through would open its menu *and* the selected ticket's panel behind it. Written
+  // when the move to Radix made that reachable — the hand-written trigger opened on the
+  // activation click, which `page.tsx` cancelled with its own `preventDefault()`, so the
+  // menu simply never opened; Radix opens from its own keydown handler, and only the
+  // trigger's `stopPropagation` keeps the count at one. The status pill is the exhibit
+  // because it is the trigger that sits in the row Enter would act on.
+  const statusTrigger = ticketRow(page, second).getByRole("button", { name: /^Status: / });
+  await statusTrigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu", { name: /^Status: / })).toBeVisible();
+  await expect(page.locator(".panel-header")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
   // Invariant 6 is NOT asserted here, on purpose. Only brand-menu.tsx passes a
   // `header`; a row's ⋯ has none, so there would be nothing on this menu to check.
   // It is already covered where the header actually exists — mouse.spec.ts:216-217
