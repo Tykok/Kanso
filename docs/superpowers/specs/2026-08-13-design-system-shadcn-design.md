@@ -154,7 +154,9 @@ pnpm dlx shadcn@latest add button card input dialog dropdown-menu badge
 
 **`shadcn init` is never run**, which is a correction to this spec's first draft rather than a preference. `shadcn@latest` is CLI 4.17, where `init` has become `init|create`: a scaffolder that prompts for one of eight presets even under `-y`, whose `--defaults` resolve to Base UI rather than Radix, and which wants to write `globals.css`. A probe against a throwaway project hung for seven minutes without producing a file.
 
-`add` reads `components.json` and does not care what produced it, and the two files `init` would have written — `components.json` and a four-line `cn()` — are small and fully known. So they are hand-written and the scaffolder is skipped. The component library is declared as `"base": "radix"` in `components.json`, since `add` takes no `--base` flag; `add --dry-run` and `add --view` verify the schema resolves before anything depends on it.
+`add` reads `components.json` and does not care what produced it, and the two files `init` would have written — `components.json` and a four-line `cn()` — are small and fully known. So they are hand-written and the scaffolder is skipped, and `add --dry-run` and `add --view` verify the schema resolves before anything depends on it.
+
+Two corrections this paragraph needed once the work was done. A `"base": "radix"` field was planned and **does not exist** in CLI 4.17's schema — it fails validation, and `style: "new-york"` alone already resolves components to Radix. And hand-authoring `init`'s output accounted for two of its three products: the third is the base rule that colours borders, whose absence left every `border` utility falling back to `currentColor` until it was added to `tokens.css`.
 
 Verified against this version's own documentation rather than from memory
 (`node_modules/next/dist/docs/01-app/01-getting-started/11-css.md`): Tailwind v4 needs no
@@ -166,8 +168,13 @@ from the Next project root first, so `apps/web/postcss.config.mjs` is correctly 
 css at `src/app/globals.css`, aliases `@/components` and `@/lib/utils` — the `@/*` alias
 already exists (`tsconfig.json:38`).
 
-New runtime dependencies: `class-variance-authority`, `clsx`, `tailwind-merge`,
-`@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `tw-animate-css`.
+New runtime dependencies, as shipped: `class-variance-authority`, `clsx`, `tailwind-merge`,
+`lucide-react`, and the **unified `radix-ui` package** — not the per-primitive
+`@radix-ui/react-dialog` and `@radix-ui/react-dropdown-menu` this paragraph first predicted,
+which is what CLI 4.17 generates against. `tw-animate-css` was predicted and **never
+installed**: the generated Dialog and DropdownMenu reference `animate-in`, `zoom-in-95` and
+their kin, which therefore compile to nothing. Confirmed by screenshot that both overlays
+appear and are legible; only the transition is absent. Reversible with one dependency.
 
 **`init` overwrites `globals.css`, and that file is not disposable.** 115 of its lines are
 comments recording decisions that are not re-derivable from the CSS: why
@@ -204,7 +211,7 @@ gradient for `in_progress`, solid for `done` and `canceled`, hollow otherwise
 stays a small local component, retokenised. Same for `PriorityMark`, which is a glyph.
 
 **The `Menu` adapter.** The signature stays — `Menu({ label, items, trigger, header,
-footer })` — and only the internals move to Radix. All six callers are untouched: a row's
+footer })` — and only the internals move to Radix. All seven call sites are untouched: a row's
 `⋯`, the sidebar's rows, `new-menu.tsx`, `brand-menu.tsx`, and the status and priority
 pills. `menu.tsx:79` is preserved regardless — **an empty item list renders nothing** — as
 defensive code worth keeping even though, per invariant 4 below, no live permission
@@ -258,9 +265,14 @@ Radix does not reproduce the current local keyboard for free. Each of these beco
    explaining why: a `menu` may only own `menuitem`, `group` and `separator`, so a header
    placed inside one may be *dropped* by assistive technology — and that header carries the
    identity block. Radix puts `role="menu"` on the content, which puts header and footer
-   back inside it. **To be verified with the component in hand**, not settled from memory:
-   either `DropdownMenuLabel` suffices, or the header moves outside the content, or the
-   regression is accepted knowingly and recorded in `follow-ups.md`.
+   back inside it. **Settled in code, and it went against us**: `DropdownMenuLabel` renders
+   inside the content's `role="menu"`, so it does not save us. The shipped `menu.tsx` takes
+   the first of the three routes — `role="presentation"` on the content, a nested
+   `role="menu"` around the entries carrying the `aria-label`. It cost nothing: both of
+   Radix's collections find their items with `querySelectorAll` on the content, so the extra
+   depth is invisible to them, and the `asChild` fallback was never needed. No regression, so
+   nothing was recorded in `follow-ups.md`. `mouse.spec.ts` is what proves the header stayed
+   outside the menu role.
 7. **Escape must close once.** Radix `Dialog` handles it and so does `page.tsx`. Without
    `onEscapeKeyDown`, both fire.
 8. **Text fields.** `overlays.tsx:69` and `:207` stop propagation so typing does not
@@ -276,7 +288,14 @@ derives from them through `calc()` and `flex: 0 0 var(--tl-chart)` (lines 146-15
 `h-[calc(var(--tl-axis)-1px)]` — strictly worse than the CSS it replaces, for no benefit.
 
 The timeline keeps its own sheet, migrated **only for colour and radius** onto the new
-tokens, geometry intact. Tailwind v4 coexists with hand-written CSS without configuration.
+tokens, geometry intact.
+
+Tailwind v4 coexists with hand-written CSS, but **not without configuration** — this spec's
+first draft claimed otherwise and `globals.css`'s layer statement exists because it is false.
+Two things had to be arranged by hand: Kanso's element reset belongs in a layer between
+Tailwind's `base` and its `utilities`, so it keeps beating preflight while a utility can still
+reach a bare element; and a bare `border` utility needs a default colour, or it falls back to
+`currentColor`. Both are in `tokens.css` and `globals.css` with the reasoning attached.
 
 The honest arithmetic: roughly 1920 of 2664 lines move to utilities; the timeline's 744
 stay as retokenised CSS. This branch does not claim a fully migrated stylesheet.
@@ -306,8 +325,13 @@ replaced the previous keyboard path.
 
 Each step is green before the next begins.
 
-1. Namespace the colliding legacy tokens to `--k-*`, then add Tailwind v4, `shadcn init`
-   and the token layer alongside the existing sheet.
+1. Namespace the colliding legacy tokens to `--k-*`, then add Tailwind v4, a hand-written
+   `components.json` and `cn()` — **not `shadcn init`**, see Installation — and the token
+   layer alongside the existing sheet, including the base rule that colours borders.
+1b. Move Kanso's element reset into `@layer kanso-reset`. Not in this spec's first draft, and
+   found by the styleguide walking into it: an unlayered declaration beats a layered one
+   whatever its specificity, so `button { background: none }` was silently defeating
+   `.bg-primary` on every shadcn `Button`.
 2. Primitives (`Button`, `Input`, `Badge`, `Card`) and the `/design-system` page **from
    this step onward**, so it grows with the branch instead of being written at the end.
 3. Keyboard parity tests for the eight invariants, then the `Menu` adapter on Radix.

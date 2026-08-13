@@ -47,13 +47,28 @@ export type MenuItem = {
  * not matter. `asChild` on the content was the fallback and was not needed.
  * e2e/mouse.spec.ts:216-217 is what proves the header stayed outside the menu role.
  *
- * Seven behaviours below are not Radix defaults, are load-bearing, and each has its own
- * comment: no key reaching page.tsx's window listener — from the popover or from the
- * trigger, where Enter would otherwise both open this menu and open a ticket — Tab
- * landing where it would have landed with no menu open, the trigger taking focus before
- * an entry's action runs, an entry highlighted the moment the menu opens, arrows walking
- * the list synchronously, and either arrow opening the menu from the trigger. Most are
- * asserted in e2e/14-menu-keyboard.spec.ts; read that file before changing any of them.
+ * The behaviours below are not Radix defaults, are load-bearing, and each carries its own
+ * comment. Deliberately not numbered: an earlier version of this paragraph claimed seven
+ * and listed six, which is what a count in a comment does over time.
+ *
+ *   - no key reaching page.tsx's window listener, from the popover
+ *   - the same from the trigger, where Enter would otherwise open this menu *and* a ticket
+ *   - Tab landing where it would have landed with no menu open
+ *   - the trigger taking focus before an entry's action runs
+ *   - an entry highlighted the moment the menu opens, however the menu was opened
+ *   - arrows walking the list synchronously, because Radix's move is deferred
+ *   - either arrow opening the menu from the trigger
+ *   - a double-click inside the popover not reaching the row underneath
+ *   - aria-controls pointing at the entries, not at the popover this file demotes
+ *
+ * Most are asserted in e2e/14-menu-keyboard.spec.ts; read that file before changing any.
+ *
+ * Four of them rest on Radix behaviour its docs do not promise: that composeEventHandlers
+ * stands down on defaultPrevented, that `role` is written before contentProps are spread,
+ * that `aria-controls` is written before triggerProps are spread, and that the item
+ * collections use querySelectorAll on the content so the nested role="menu" costs nothing.
+ * `radix-ui` is on a caret range. Treat a minor bump as a change to this file: re-run
+ * scenario 14 and mouse.spec.ts scenarios 10 and 11 before letting it land.
  *
  * An empty list renders nothing at all — not a disabled trigger, not an empty popover.
  * Defensive rather than observable: every current caller passes at least one action
@@ -214,8 +229,9 @@ export function Menu({
         // of entries below, which is where the docstring above argues it belongs.
         // Radix writes `role="menu"` before spreading these props, so this wins.
         role="presentation"
-        // Two keys, and only two kinds of key, are caught above Radix rather than beside
-        // it. The capture phase is what "above" means here: the popover is the ancestor
+        // Five keys — Tab, and the four that move the highlight — are caught above Radix
+        // rather than beside it. The capture phase is what "above" means here: the popover
+        // is the ancestor
         // of the entry the key was pressed on, so stopping the event on the way down
         // keeps it from Radix's own handlers — the entry's and the popover's alike — and
         // from page.tsx's window listener at the same time. Everything else Radix does

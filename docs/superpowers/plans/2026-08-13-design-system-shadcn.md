@@ -1116,10 +1116,19 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
 });
 
 /**
- * Invariant 4, and the one with teeth: an empty item list renders no trigger at all.
- * A plain member has no action on a team row, so there is no ⋯ to find — not a
- * disabled one, not an empty popover. Callers rely on this instead of each asking
- * about permissions themselves (menu.tsx:79).
+ * ⚠️ DO NOT WRITE THIS TEST. Its premise is false and executing this task proved it.
+ *
+ * `project.create`'s `when` is unconditionally `true` (`actions.ts:446`), and every one of
+ * the seven `<Menu>` call sites carries at least one unconditional or role-blind action —
+ * so no live permission combination produces an empty list, and a member's team row always
+ * has a `⋯`. `permissions.spec.ts:17-32` already records the ruling against this premise.
+ * The shipped `e2e/14-menu-keyboard.spec.ts` asserts the opposite of the block below: the
+ * trigger *shows*, holding exactly the one entry a member is entitled to.
+ *
+ * `menu.tsx`'s empty-list guard is still preserved, as defensive code for a future caller
+ * whose `when` list could filter to nothing — but it is not observable today and must not
+ * be tested as though it were. The block is kept only so this instruction has something to
+ * point at; it is what the task must NOT produce.
  */
 test("scenario 14 — a member sees no trigger where they have no actions", async ({ browser }) => {
   const admin = await apiAs(ADMIN);
@@ -1132,7 +1141,7 @@ test("scenario 14 — a member sees no trigger where they have no actions", asyn
     has: page.getByRole("button", { name: team.name, exact: true }),
   });
   await expect(row).toBeVisible();
-  await expect(row.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: /^Actions for/ })).toHaveCount(0); // ← false
 
   await page.close();
 });
@@ -1328,7 +1337,9 @@ export function Menu({
 }
 ```
 
-Two things this deliberately does *not* do, because Radix already does them and duplicating them causes double handling: the roving `tabIndex`, and the focus-return on close. Radix restores focus to the trigger itself, which is what invariants 2 and 3 needed the manual `triggerRef.current?.focus()` for.
+⚠️ **This paragraph was wrong and executing the task proved it. Do not act on it.** It read: *"Two things this deliberately does not do, because Radix already does them: the roving `tabIndex`, and the focus-return on close. Radix restores focus to the trigger itself, which is what invariants 2 and 3 needed the manual `triggerRef.current?.focus()` for."*
+
+Only the roving `tabIndex` turned out to be Radix's to keep. The focus-return is **not** — the shipped `menu.tsx` keeps `triggerRef`, `focusPlaced`, `closeOntoTrigger` and a conditional `onCloseAutoFocus`, and it takes the four navigation keys over outright, because Radix's `RovingFocusGroupItem` moves focus inside a `setTimeout` that a burst of keypresses outruns (`roving-focus/dist/index.mjs:194`, measured). Following the original paragraph would delete about forty lines of load-bearing code and reintroduce a bug the characterisation test catches. Read the shipped file, not this plan, for what the seam actually is.
 
 **The nested `role="menu"` is the risky part of this file.** Radix manages focus, typeahead and arrow navigation over its items through a collection, and putting a plain `<div>` between the content and the items may or may not disturb that. Task 4's test and `mouse.spec.ts:216-217` between them tell you: the former proves the keyboard still works, the latter proves the header stayed outside the menu role. If the wrapper breaks Radix's navigation, try `asChild` on the content with the wrapper as its child before giving up. If you must abandon the nested shape, take the spec's third route — accept the regression, record it in `docs/follow-ups.md` citing `menu.tsx:30-36`, and relax `mouse.spec.ts:216-217` in this commit rather than leaving a failing test.
 
