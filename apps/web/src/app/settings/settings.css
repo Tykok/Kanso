@@ -15,7 +15,7 @@
   align-items: baseline;
   gap: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .settings-head h1 {
@@ -48,7 +48,7 @@
 .settings-nav button {
   text-align: left;
   padding: 6px 8px;
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   color: var(--text-dim);
 }
 
@@ -57,7 +57,7 @@
 }
 
 .settings-nav button[aria-current="true"] {
-  background: var(--accent-soft);
+  background: var(--k-accent-soft);
   color: var(--text);
   font-weight: 500;
 }
@@ -81,7 +81,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .settings-field:last-child {
@@ -125,8 +125,8 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   overflow: hidden;
 }
 
@@ -135,7 +135,7 @@
   align-items: center;
   gap: 12px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .people-list li:last-child {

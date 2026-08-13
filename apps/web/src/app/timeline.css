@@ -23,7 +23,7 @@
  */
 .tl-tray {
   flex: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
   background: var(--surface);
 }
 
@@ -91,8 +91,8 @@
   max-width: 260px;
   padding: 2px 8px;
   background: var(--surface-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   font: inherit;
   font-size: 11px;
   text-align: left;
@@ -113,7 +113,7 @@
 /* The same ring the selected bar wears, so the cursor reads the same on both halves of
    the screen — the chip in the tray and the bar on the grid are one ticket. */
 .tl-chip[data-selected] {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--k-accent);
   outline-offset: 1px;
 }
 
@@ -181,7 +181,7 @@
   display: flex;
   height: var(--tl-axis);
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
 }
 
 /* Where the two sticky edges meet. Pinned on both, or the first name scrolls up into
@@ -192,7 +192,7 @@
   z-index: 1;
   flex: 0 0 var(--tl-names);
   background: var(--bg);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--k-border);
 }
 
 .tl-axis {
@@ -226,7 +226,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--border);
+  background: var(--k-border);
 }
 
 /*
@@ -239,7 +239,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--accent);
+  background: var(--k-accent);
   opacity: 0.7;
 }
 
@@ -248,7 +248,7 @@
 .tl-row {
   display: flex;
   height: var(--row-height);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .tl-name {
@@ -261,7 +261,7 @@
   /* Minus the row's border, which `box-sizing: border-box` counts inside the height. */
   line-height: calc(var(--row-height) - 1px);
   background: var(--bg);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--k-border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -319,7 +319,7 @@
   align-items: center;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   font-size: 11px;
   color: var(--text);
 }
@@ -338,8 +338,8 @@
 }
 
 .tl-bar[data-state="normal"] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--k-accent-soft);
+  border-color: var(--k-accent);
 }
 
 .tl-bar[data-state="critical"] {
@@ -431,7 +431,7 @@
  * and the hatched one.
  */
 .tl-bar[data-selected] {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--k-accent);
   outline-offset: 1px;
 }
 
@@ -491,7 +491,7 @@
   z-index: 1;
   border: 1px solid var(--bg);
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--k-accent);
   opacity: 0;
   cursor: crosshair;
   touch-action: none;
@@ -516,7 +516,7 @@
    captured by the handle for the length of the gesture, so the bar under it is never
    hovered — the attribute is written by the layer drawing the band. */
 .tl-bar[data-link-target] {
-  outline: 2px dashed var(--accent);
+  outline: 2px dashed var(--k-accent);
   outline-offset: 1px;
 }
 
@@ -547,8 +547,8 @@
   top: 0;
   bottom: 0;
   display: none;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  border-left: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--k-accent) 22%, transparent);
+  border-left: 2px solid var(--k-accent);
 }
 
 .tl-drop[data-active] {
@@ -564,9 +564,9 @@
   top: 2px;
   left: 4px;
   padding: 1px 4px;
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  border-radius: var(--k-radius);
+  background: var(--k-accent);
+  color: var(--k-accent-contrast);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -642,7 +642,7 @@
  * dependency is a line — the way to say "this one" about a line is to draw it louder.
  */
 .tl-arrow[data-selected] {
-  stroke: var(--accent);
+  stroke: var(--k-accent);
   stroke-width: 2.5;
 }
 
@@ -650,7 +650,7 @@
    arrows and without a tab stop erasing one would need a mouse. */
 .tl-arrow:focus-visible {
   outline: none;
-  stroke: var(--accent);
+  stroke: var(--k-accent);
   stroke-width: 2.5;
 }
 
@@ -683,7 +683,7 @@
 }
 
 .tl-arrowhead[data-drawing] {
-  fill: var(--accent);
+  fill: var(--k-accent);
 }
 
 /*
@@ -693,7 +693,7 @@
  */
 .tl-rubber {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--k-accent);
   stroke-width: 2;
   stroke-dasharray: 4 3;
   pointer-events: none;
@@ -720,7 +720,7 @@
 }
 
 .tl-erase:focus-visible circle {
-  stroke: var(--accent);
+  stroke: var(--k-accent);
   stroke-width: 2.5;
 }
 

@@ -19,15 +19,15 @@
   --bg: light-dark(#fbfbfc, #101012);
   --surface: light-dark(#ffffff, #17171a);
   --surface-hover: light-dark(#f4f4f6, #1e1e22);
-  --border: light-dark(#e6e6ea, #26262b);
+  --k-border: light-dark(#e6e6ea, #26262b);
   --text: light-dark(#16161a, #ededf0);
   --text-dim: light-dark(#6c6c78, #9a9aa6);
   --text-faint: light-dark(#9a9aa6, #6c6c78);
 
-  --accent: light-dark(#5b5bd6, #8c8cf0);
-  --accent-soft: light-dark(#eeeefc, #22223a);
-  /* What stays legible on top of --accent: white is only safe on the light half. */
-  --accent-contrast: light-dark(#ffffff, #101012);
+  --k-accent: light-dark(#5b5bd6, #8c8cf0);
+  --k-accent-soft: light-dark(#eeeefc, #22223a);
+  /* What stays legible on top of --k-accent: white is only safe on the light half. */
+  --k-accent-contrast: light-dark(#ffffff, #101012);
 
   --status-backlog: #9a9aa6;
   --status-todo: #6c6c78;
@@ -44,7 +44,7 @@
   --medium: #5b8ad6;
   --low: #9a9aa6;
 
-  --radius: 6px;
+  --k-radius: 6px;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
   --row-height: 38px;
@@ -69,39 +69,39 @@
 }
 
 /*
- * Six hues, each ~30° apart so they are told apart at swatch size. --accent carries
- * white (light) or near-black (dark) text at 4.6:1 or better; --accent-soft sits
+ * Six hues, each ~30° apart so they are told apart at swatch size. --k-accent carries
+ * white (light) or near-black (dark) text at 4.6:1 or better; --k-accent-soft sits
  * behind body text, so it is a tint of the background rather than of the accent —
  * a saturated fill would either bury the text or vibrate against the page.
  */
 [data-accent="indigo"] {
-  --accent: light-dark(#5b5bd6, #8c8cf0);
-  --accent-soft: light-dark(#eeeefc, #22223a);
+  --k-accent: light-dark(#5b5bd6, #8c8cf0);
+  --k-accent-soft: light-dark(#eeeefc, #22223a);
 }
 
 [data-accent="blue"] {
-  --accent: light-dark(#1f6fd0, #5fa8f5);
-  --accent-soft: light-dark(#e7f0fd, #12263b);
+  --k-accent: light-dark(#1f6fd0, #5fa8f5);
+  --k-accent-soft: light-dark(#e7f0fd, #12263b);
 }
 
 [data-accent="green"] {
-  --accent: light-dark(#15803d, #4cbf7a);
-  --accent-soft: light-dark(#e6f4ec, #102d1d);
+  --k-accent: light-dark(#15803d, #4cbf7a);
+  --k-accent-soft: light-dark(#e6f4ec, #102d1d);
 }
 
 [data-accent="amber"] {
-  --accent: light-dark(#a06a06, #e0a63a);
-  --accent-soft: light-dark(#f9f0dc, #2f2410);
+  --k-accent: light-dark(#a06a06, #e0a63a);
+  --k-accent-soft: light-dark(#f9f0dc, #2f2410);
 }
 
 [data-accent="rose"] {
-  --accent: light-dark(#c2285a, #f2718f);
-  --accent-soft: light-dark(#fcebf0, #351a22);
+  --k-accent: light-dark(#c2285a, #f2718f);
+  --k-accent-soft: light-dark(#fcebf0, #351a22);
 }
 
 [data-accent="violet"] {
-  --accent: light-dark(#8330c4, #b98bf5);
-  --accent-soft: light-dark(#f4eafc, #291d3c);
+  --k-accent: light-dark(#8330c4, #b98bf5);
+  --k-accent-soft: light-dark(#f4eafc, #291d3c);
 }
 
 /*
@@ -160,22 +160,22 @@ select {
   font: inherit;
   color: inherit;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   padding: 6px 8px;
 }
 
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--k-accent);
   outline-offset: -1px;
 }
 
 kbd {
   font: 11px/1 var(--mono);
   background: var(--surface-hover);
-  border: 1px solid var(--border);
+  border: 1px solid var(--k-border);
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 3px 5px;
@@ -195,7 +195,7 @@ kbd {
 }
 
 .sidebar {
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--k-border);
   padding: 14px 10px;
   display: flex;
   flex-direction: column;
@@ -219,7 +219,7 @@ kbd {
   align-items: baseline;
   gap: 7px;
   padding: 4px 6px;
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   color: inherit;
 }
 
@@ -266,7 +266,7 @@ kbd {
   gap: 4px;
   width: 100%;
   padding-right: 6px;
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
 }
 
 .nav-item:hover {
@@ -274,7 +274,7 @@ kbd {
 }
 
 .nav-item[data-current="true"] {
-  background: var(--accent-soft);
+  background: var(--k-accent-soft);
 }
 
 .nav-item-main {
@@ -389,13 +389,13 @@ kbd {
   flex-direction: column;
   gap: 8px;
   padding-top: 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
 }
 
 /*
  * A stateful button rather than a checkbox: `aria-pressed` says the same thing, the
  * click target is the whole row, and the square is drawn here rather than left to the
- * native theme, which does not follow `--accent`.
+ * native theme, which does not follow `--k-accent`.
  */
 .nav-toggle {
   display: flex;
@@ -403,7 +403,7 @@ kbd {
   gap: 8px;
   width: 100%;
   padding: var(--nav-pad) 6px;
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   text-align: left;
   color: var(--text-dim);
 }
@@ -417,7 +417,7 @@ kbd {
   width: 12px;
   height: 12px;
   flex-shrink: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--k-border);
   border-radius: 3px;
 }
 
@@ -426,8 +426,8 @@ kbd {
 }
 
 .nav-toggle[aria-pressed="true"]::before {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--k-accent);
+  border-color: var(--k-accent);
 }
 
 .nav-sync {
@@ -455,7 +455,7 @@ kbd {
   align-items: center;
   gap: 10px;
   padding: var(--bar-pad) var(--gutter);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .topbar h1 {
@@ -486,7 +486,7 @@ kbd {
   gap: 10px;
   height: var(--row-height);
   padding: 0 var(--gutter);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
   cursor: pointer;
 }
 
@@ -495,8 +495,8 @@ kbd {
 }
 
 .row[data-selected="true"] {
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--k-accent-soft);
+  box-shadow: inset 2px 0 0 var(--k-accent);
 }
 
 .row[data-archived="true"] .row-title {
@@ -575,7 +575,7 @@ kbd {
   letter-spacing: 0.05em;
   padding: 2px 5px;
   border-radius: 4px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--k-border);
   color: var(--text-faint);
   white-space: nowrap;
 }
@@ -664,7 +664,7 @@ kbd {
 
 .panel {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--k-border);
   border-radius: 9px;
   box-shadow: 0 18px 50px rgb(0 0 0 / 24%);
   width: min(560px, 92vw);
@@ -673,7 +673,7 @@ kbd {
 
 .panel-header {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -728,7 +728,7 @@ kbd {
   flex-wrap: wrap;
   gap: 6px;
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
 }
 
 .composer-context select {
@@ -745,7 +745,7 @@ kbd {
 .composer-footer,
 .palette-footer {
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -763,7 +763,7 @@ kbd {
 }
 
 .palette-option[data-active="true"] {
-  background: var(--accent-soft);
+  background: var(--k-accent-soft);
 }
 
 .palette-option .hint {
@@ -826,7 +826,7 @@ kbd {
 
 .dialog-footer {
   padding: 10px 14px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -879,8 +879,8 @@ kbd {
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
 }
 
@@ -895,7 +895,7 @@ kbd {
 }
 
 .menu-header {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
   margin-bottom: 4px;
 }
 
@@ -905,7 +905,7 @@ kbd {
 }
 
 .menu-footer {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
   margin-top: 4px;
   font-family: var(--mono);
 }
@@ -957,7 +957,7 @@ kbd {
 .menu-item[data-danger="true"] {
   margin-top: 4px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
   color: var(--urgent);
 }
 
@@ -967,8 +967,8 @@ kbd {
   width: auto;
   height: auto;
   padding: 3px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   font-size: 12px;
   color: var(--text-dim);
 }
@@ -1032,7 +1032,7 @@ kbd {
   gap: 4px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--high) 45%, transparent);
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   background: color-mix(in srgb, var(--high) 10%, transparent);
   font-size: 12px;
 }
@@ -1044,7 +1044,7 @@ kbd {
 .disposition-drift {
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--urgent) 45%, transparent);
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   background: color-mix(in srgb, var(--urgent) 10%, transparent);
   font-size: 12px;
 }
@@ -1074,8 +1074,8 @@ kbd {
 }
 
 .button {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   padding: 6px 12px;
   background: var(--surface);
 }
@@ -1085,15 +1085,15 @@ kbd {
 }
 
 .button-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--k-accent);
+  border-color: var(--k-accent);
+  color: var(--k-accent-contrast);
 }
 
 /*
  * The red is written out rather than taken from the theme: `--urgent` is the same
  * value in both schemes, and white on top of it holds contrast on both sides, which
- * `--accent-contrast` would not guarantee here.
+ * `--k-accent-contrast` would not guarantee here.
  */
 .button-danger {
   background: var(--urgent);
@@ -1115,7 +1115,7 @@ kbd {
 }
 
 .button-primary:disabled:hover {
-  background: var(--accent);
+  background: var(--k-accent);
 }
 
 .button-danger:disabled:hover {
@@ -1157,15 +1157,15 @@ kbd {
 /* One control for every either/or choice: theme, density and the panel toggles. */
 .segmented {
   display: flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius);
   overflow: hidden;
 }
 
 .segmented button {
   padding: 4px 10px;
   color: var(--text-dim);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--k-border);
 }
 
 .segmented button:first-child {
@@ -1177,7 +1177,7 @@ kbd {
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--accent-soft);
+  background: var(--k-accent-soft);
   color: var(--text);
   font-weight: 500;
 }
@@ -1191,11 +1191,11 @@ kbd {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--k-accent);
 }
 
 .swatch[aria-pressed="true"] {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--k-accent);
   outline-offset: 3px;
 }
 
@@ -1211,7 +1211,7 @@ kbd {
   align-items: center;
   gap: 12px;
   padding: var(--bar-pad-sm) var(--gutter);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--k-border);
   color: var(--text-faint);
   font-size: 11px;
 }
@@ -1231,7 +1231,7 @@ kbd {
   align-items: center;
   gap: 10px;
   padding: var(--bar-pad-sm) var(--gutter);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--k-border);
   font-size: 12px;
 }
 
@@ -1243,7 +1243,7 @@ kbd {
   border: none;
   background: none;
   color: inherit;
-  border-radius: var(--radius);
+  border-radius: var(--k-radius);
   padding: 2px 7px;
   line-height: 1;
 }
