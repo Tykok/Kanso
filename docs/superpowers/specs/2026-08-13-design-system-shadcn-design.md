@@ -206,10 +206,11 @@ stays a small local component, retokenised. Same for `PriorityMark`, which is a 
 **The `Menu` adapter.** The signature stays — `Menu({ label, items, trigger, header,
 footer })` — and only the internals move to Radix. All six callers are untouched: a row's
 `⋯`, the sidebar's rows, `new-menu.tsx`, `brand-menu.tsx`, and the status and priority
-pills. Critically, `menu.tsx:79` is preserved: **an empty item list renders nothing**,
-which is what makes a plain member see no `⋯` at all on a team row without the caller
-knowing about permissions. It is asserted in e2e. One line in the adapter; forgotten, it is
-a permissions regression disguised as a visual one.
+pills. `menu.tsx:79` is preserved regardless — **an empty item list renders nothing** — as
+defensive code worth keeping even though, per invariant 4 below, no live permission
+combination currently reaches it. One line in the adapter; if a future caller's `when`
+list ever *does* filter down to nothing, forgetting the line turns into a visible `⋯`
+where the permissions model meant none.
 
 The net win: with `DropdownMenuTrigger asChild` the pill genuinely *is* the trigger, and
 the 35 lines of `display: contents` plus `position: absolute; inset: 0` at
@@ -230,7 +231,27 @@ Radix does not reproduce the current local keyboard for free. Each of these beco
 3. **Selecting an entry.** `menu.tsx:174-182` refocuses the trigger *before* running the
    action, so a dialog opened from a menu entry has a focus-return target that still
    exists. On Radix, `onSelect` runs before the close; a known trap, handled explicitly.
-4. **Empty list renders nothing.** See "The `Menu` adapter".
+   Verified in `e2e/14-menu-keyboard.spec.ts` against "Rename team" (opens `TeamDialog`,
+   a `DialogFrame`), not the ticket row's own "Rename": that one opens `tickets.tsx`'s
+   inline `TitleEditor`, which has no focus-restore wiring at all and really does drop
+   focus to `<body>` on close today — a pre-existing, unrelated fact about the ticket row,
+   not a case this invariant covers. Separately, and worth carrying into the Radix
+   adapter: on a cold cache, opening any of the three `DialogFrame` dialogs (Team,
+   Project, Disposition) through a menu goes through their "Loading…" placeholder first,
+   which is *itself* a `DialogFrame` — its unmount races the real dialog's mount and the
+   real dialog ends up capturing the doomed placeholder as its own focus-return target
+   instead of the trigger, dropping focus to `<body>` on close. That is a defect in
+   `dialogs/field.tsx` + the three dialogs' loading branches, not in `menu.tsx`, and this
+   branch does not touch it; the e2e test primes the relevant query cache first so it
+   observes menu.tsx's own behaviour rather than tripping over it.
+4. **Empty list renders nothing.** See "The `Menu` adapter". Not asserted as "no `⋯` on a
+   team row for a member" — `permissions.spec.ts:17-32` already rules against that
+   premise, because `project.create`'s `when` is deliberately ungated on role. Checked
+   across all six `Menu` call sites: every one includes at least one unconditional or
+   role-blind action, so this branch is real but not reachable through any permission
+   combination the live app can put someone in today. `e2e/14-menu-keyboard.spec.ts`
+   asserts the true, load-bearing fact instead — the trigger shows, holding exactly the
+   one entry a member is entitled to.
 5. **Trigger click stops propagation.** `menu.tsx:96-98`, or the row underneath changes
    the scope.
 6. **`role="menu"` belongs on the list, not the popover.** `menu.tsx:161`, with lines 30-36
