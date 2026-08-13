@@ -10,9 +10,13 @@
  * silently defeating `.bg-primary` on every shadcn Button. A layer is the only way to
  * let a utility class reach a bare element.
  *
- * Everything else in this file — the ~1100 lines of class rules — stays unlayered on
- * purpose: those surfaces have not migrated, and they should keep beating any utility
- * until they do, one at a time.
+ * Everything else in this file stays unlayered on purpose: those surfaces have not
+ * migrated, and they should keep beating any utility until they do, one at a time.
+ * This used to be ~1100 lines; task 5 of the design-system rollout split most of it
+ * out into styles/shell.css, styles/list.css and styles/surfaces.css so three later
+ * tasks could redraw those surfaces in parallel, leaving under 300 lines here —
+ * the alias block below, the shared chrome the settings split would otherwise have
+ * orphaned, and what was always `--- misc ---`.
  */
 @layer theme, base, components, kanso-reset, utilities;
 
@@ -39,7 +43,7 @@
 
 /*
  * Focus and the touch floor, mandated across every surface regardless of which
- * palette dresses it. Unlayered, like the ~1100 lines below, so it keeps winning
+ * palette dresses it. Unlayered, like the class rules below, so it keeps winning
  * over both the shadcn components' own focus rings and the legacy reset's.
  */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
@@ -104,22 +108,29 @@
 
 /*
  * The last of the pre-migration names. Task 5 of the design-system rollout repointed
- * every rule it could onto tokens.css, but these are still read directly — by
- * shell.css, list.css, settings.css and timeline.css, and by inline styles in
- * pills.tsx, brand-logo.tsx, overlays.tsx, login.tsx and arrows.tsx's runtime
- * `getComputedStyle` — so deleting them outright would have made the shell, the
- * list, settings and the timeline collapse rather than merely change colour.
+ * every CSS rule it could onto tokens.css — shell.css, list.css, surfaces.css,
+ * settings.css and timeline.css no longer read any name below — but two kinds of
+ * reader are still out there, and deleting the block that fed them would have made
+ * the shell, the list and the timeline collapse rather than merely change colour:
  *
- * Where tokens.css has an equivalent, it's aliased below so the old name keeps
- * tracking the real value, density and colour scheme included: a `var()` naming
- * another custom property re-resolves at the reading element, so `--row-height`
- * still follows `[data-density="compact"]` through `--row-h` exactly as it did
- * before. Where tokens.css has no equivalent — the shell/topbar/statusbar's own
- * spacing — the literal pixel values from the deleted block are restored instead,
- * compact override included; inventing a token for them was not this task's call.
+ *   - Eight names (`--text` through `--low`) are read only from inline styles in
+ *     components that haven't moved to CSS classes yet: pills.tsx, brand-logo.tsx,
+ *     overlays.tsx, login.tsx, page.tsx, and arrows.tsx's runtime `getComputedStyle`
+ *     read of `--row-height`. Each is aliased below onto its tokens.css equivalent,
+ *     so it keeps tracking the real value, density and colour scheme included — a
+ *     `var()` naming another custom property re-resolves at the reading element, so
+ *     `--row-height` still follows `[data-density="compact"]` through `--row-h`
+ *     exactly as it did before.
  *
- * This block dies one declaration at a time as tasks 6-8 delete the rules that read
- * them. Check here for what's left; when it's empty, delete it.
+ *   - Five names (`--gutter` through `--nav-gap`) are still read from CSS — the
+ *     shell/topbar/statusbar's own spacing, in shell.css, list.css, timeline.css and
+ *     the shared-chrome block near the end of this file — and have no tokens.css
+ *     equivalent at all, so their literal pixel values are restored instead, compact
+ *     override included; inventing a token for them was not this task's call.
+ *
+ * This block dies one declaration at a time as tasks 6-8 delete the rules and
+ * components that read it. Check here — and grep the two groups above — for what's
+ * left; when it's empty, delete it.
  */
 :root {
   --text: var(--foreground);
@@ -284,5 +295,148 @@
 
 .button-danger:disabled:hover {
   background: var(--urgent);
+}
+
+/*
+ * Shared chrome the settings split (task 5) would otherwise have orphaned. These
+ * render on every page, not only /settings, which loads settings.css and nothing
+ * else does: `.error`/`.topbar-error` are the app's generic failure strip and
+ * inline error text (page.tsx's top bar, composer.tsx, login.tsx, timeline/view.tsx,
+ * the team member list in dialogs/members-section.tsx); `.segmented` is the Zoom
+ * and View toggles on the main page as well as every control in the `,` quick-
+ * settings panel (components/settings/panel.tsx, mounted from page.tsx); `.settings-
+ * group/-label/-row/-note` and `.swatches`/`.swatch` are that same quick-settings
+ * panel; `.shortcuts` is the `?` keyboard-shortcuts overlay (components/overlays.tsx).
+ * `.statusbar` is the app's own status line and the setup wizard's live preview of
+ * it. None of it is settings-page-only, so none of it belongs in settings.css.
+ *
+ * Stays here, unmoved, until tasks 6-8 rewrite the surfaces that render it.
+ */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 26px;
+}
+
+.settings-row > span:first-child {
+  flex: 1;
+}
+
+.settings-note {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+/* One control for every either/or choice: theme, density and the panel toggles. */
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 4px 10px;
+  color: var(--muted-foreground);
+  border-left: 1px solid var(--border);
+}
+
+.segmented button:first-child {
+  border-left: none;
+}
+
+.segmented button:hover {
+  background: var(--accent);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.swatches {
+  display: flex;
+  gap: 10px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.shortcuts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--bar-pad-sm) var(--gutter);
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.error {
+  color: var(--urgent);
+}
+
+/*
+ * Where an action run from a menu reports its failure: there is no dialog to put
+ * the message under, and no toast system to grow. Its own line rather than a cell
+ * in the top bar, because sharing that row with the title, the filter and the New
+ * button would truncate exactly the sentence that needs reading.
+ */
+.topbar-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--bar-pad-sm) var(--gutter);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.topbar-error span {
+  flex: 1;
+}
+
+.topbar-error button {
+  border: none;
+  background: none;
+  color: inherit;
+  border-radius: var(--radius);
+  padding: 2px 7px;
+  line-height: 1;
+}
+
+.topbar-error button:hover {
+  background: var(--accent);
 }
 
