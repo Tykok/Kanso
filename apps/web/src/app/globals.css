@@ -1,3 +1,21 @@
+/*
+ * Kanso's element reset sits in a layer of its own, between Tailwind's base and its
+ * utilities, and the position is load-bearing in both directions.
+ *
+ * After `base`: preflight also resets `button` and `input`, and Kanso's reset has to
+ * keep winning that, which is what it did when it was the only stylesheet.
+ *
+ * Before `utilities`: an unlayered declaration beats a layered one whatever its
+ * specificity, so while this block was unlayered, `button { background: none }` was
+ * silently defeating `.bg-primary` on every shadcn Button. A layer is the only way to
+ * let a utility class reach a bare element.
+ *
+ * Everything else in this file — the ~1100 lines of class rules — stays unlayered on
+ * purpose: those surfaces have not migrated, and they should keep beating any utility
+ * until they do, one at a time.
+ */
+@layer theme, base, components, kanso-reset, utilities;
+
 @import "tailwindcss";
 @import "../styles/tokens.css";
 
@@ -125,64 +143,66 @@
   display: none;
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer kanso-reset {
+  * {
+    box-sizing: border-box;
+  }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font:
-    13px/1.5 -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Inter,
-    system-ui,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font:
+      13px/1.5 -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Inter,
+      system-ui,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
 
-input,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-  background: var(--surface);
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius);
-  padding: 6px 8px;
-}
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+    background: var(--surface);
+    border: 1px solid var(--k-border);
+    border-radius: var(--k-radius);
+    padding: 6px 8px;
+  }
 
-input:focus,
-textarea:focus,
-select:focus {
-  outline: 2px solid var(--k-accent);
-  outline-offset: -1px;
-}
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: 2px solid var(--k-accent);
+    outline-offset: -1px;
+  }
 
-kbd {
-  font: 11px/1 var(--mono);
-  background: var(--surface-hover);
-  border: 1px solid var(--k-border);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 3px 5px;
-  color: var(--text-dim);
+  kbd {
+    font: 11px/1 var(--mono);
+    background: var(--surface-hover);
+    border: 1px solid var(--k-border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 3px 5px;
+    color: var(--text-dim);
+  }
 }
 
 /* --- shell ---------------------------------------------------------------- */
