@@ -40,9 +40,15 @@ stays hand-written".
 Accent and density become dormant rather than removed — see "Accent and density go
 dormant".
 
-**Icons.** The triggers are text glyphs (`⋯`, `▁▄█`). shadcn assumes `lucide-react`; we
-keep the glyphs. Zero dependency, zero weight, and no fresh accessibility question about
-trigger names. Orthogonal to a design system.
+**Icons, for Kanso's own triggers.** They are text glyphs (`⋯`, `▁▄█`, the status and
+priority pills) and they stay glyphs: zero weight, and no fresh accessibility question
+about what a trigger is called.
+
+`lucide-react` is nevertheless installed, which revises this spec's first draft. shadcn's
+Dialog and DropdownMenu import icons for their own chrome — a close cross, a check mark —
+and stripping those imports would mean repeating the cleanup on every future `add`. So
+lucide dresses the inside of generated components and nothing else. The line is between
+Kanso's vocabulary and the library's internals, not between having icons and not.
 
 ## The token layer
 
@@ -141,10 +147,14 @@ dlx`, never `npx`.
 
 ```
 pnpm add -D tailwindcss @tailwindcss/postcss
-# postcss.config.mjs
-pnpm dlx shadcn@latest init
+pnpm add class-variance-authority clsx tailwind-merge lucide-react
+# postcss.config.mjs, src/lib/utils.ts and components.json, all written by hand
 pnpm dlx shadcn@latest add button card input dialog dropdown-menu badge
 ```
+
+**`shadcn init` is never run**, which is a correction to this spec's first draft rather than a preference. `shadcn@latest` is CLI 4.17, where `init` has become `init|create`: a scaffolder that prompts for one of eight presets even under `-y`, whose `--defaults` resolve to Base UI rather than Radix, and which wants to write `globals.css`. A probe against a throwaway project hung for seven minutes without producing a file.
+
+`add` reads `components.json` and does not care what produced it, and the two files `init` would have written — `components.json` and a four-line `cn()` — are small and fully known. So they are hand-written and the scaffolder is skipped. The component library is declared as `"base": "radix"` in `components.json`, since `add` takes no `--base` flag; `add --dry-run` and `add --view` verify the schema resolves before anything depends on it.
 
 Verified against this version's own documentation rather than from memory
 (`node_modules/next/dist/docs/01-app/01-getting-started/11-css.md`): Tailwind v4 needs no

@@ -17,7 +17,8 @@
 - Tailwind v4 needs **no `tailwind.config.js`**; it is configured in CSS through `@theme`. Verified in `node_modules/next/dist/docs/01-app/01-getting-started/11-css.md`.
 - `apps/web/postcss.config.mjs` is the correct location. `turbopackLocalPostcssConfig` is not needed — Turbopack resolves PostCSS from the Next project root first.
 - **No Kotlin, no Flyway migration, no API contract change** in this plan.
-- **Icons stay text glyphs** (`⋯`, `▁▄█`). Do not install `lucide-react`.
+- **Kanso's own triggers stay text glyphs** (`⋯`, `▁▄█`, the status and priority pills). `lucide-react` is installed and used only for the chrome *inside* generated shadcn components — a Dialog's close cross, a DropdownMenu's check mark. Do not replace Kanso's glyphs with icons, and do not strip icon imports out of generated components.
+- **Never run `shadcn init`.** CLI 4.17's `init` is a scaffolder that prompts for a preset, defaults to Base UI rather than Radix, and wants to overwrite `globals.css`. `components.json` and `src/lib/utils.ts` are hand-written (Task 2, Step 6); components come from `shadcn add`, which reads that file.
 - Accent and density keep working in this plan. They are withdrawn in Plan 2, step 7.
 - Code comments are written in English, and explain *why* rather than *what* — match the density of the surrounding files.
 - Commits follow Conventional Commits with a descriptive lowercase subject: `feat(web):`, `fix(web):`, `test(web):`, `docs:`.
@@ -35,8 +36,8 @@ Tasks 2, 3 and 4 add new things, and their tests are written failing in the usua
 
 **Created:**
 - `apps/web/postcss.config.mjs` — the single Tailwind PostCSS plugin registration.
-- `apps/web/components.json` — shadcn CLI configuration; written by `init`, then corrected.
-- `apps/web/src/lib/utils.ts` — `cn()` only. Written by `init`.
+- `apps/web/components.json` — shadcn CLI configuration, hand-written. `init` is never run; see Task 2, Step 6.
+- `apps/web/src/lib/utils.ts` — `cn()` only, hand-written.
 - `apps/web/src/styles/tokens.css` — the new shadcn token layer. **Its own file**, imported by `globals.css`, so the design tokens someone tunes are not buried in 1269 lines of component rules.
 - `apps/web/src/components/ui/*.tsx` — shadcn components, CLI-generated, not hand-edited.
 - `apps/web/src/app/design-system/page.tsx` — the styleguide route.
@@ -349,21 +350,41 @@ Do **not** let `shadcn init` rewrite this file. If it already has, recover with 
 
 Tailwind's preflight will now reset elements this sheet also styles. That is expected and is why the whole existing suite runs at Step 9: preflight lands *before* these rules in the cascade, so the sheet still wins on everything it declares. The gaps show up where it relied on a browser default.
 
-- [ ] **Step 6: Configure the shadcn CLI**
+- [ ] **Step 6: Configure shadcn by hand — do not run `init`**
+
+`shadcn@latest` is CLI **4.17.0**, and its `init` is no longer an initialiser: it is `init|create`, it scaffolds from `--template` and `--preset`, it prompts for a preset even under `-y` (a probe hung for seven minutes without writing a file), and its `-d/--defaults` resolve to `--preset=base-nova` — Base UI, not Radix. It also wants to write `globals.css`, which holds 1269 hand-written lines.
+
+None of that is needed. `add` reads `components.json`; it does not care whether `init` produced it. The two files `init` would have given us are small and fully known, so we write them ourselves and skip the scaffolder entirely.
 
 ```bash
 cd apps/web
-pnpm dlx shadcn@latest init
+pnpm add class-variance-authority clsx tailwind-merge lucide-react
 ```
 
-Answer for this stack: TypeScript **yes**, base colour **neutral**, CSS variables **yes**, global CSS `src/app/globals.css`, components alias `@/components`, utils alias `@/lib/utils`, RSC **yes**.
+**Runtime dependencies, not dev.** The components import them in shipped code, so `-D` would leave them out of the production install.
 
-Then verify `components.json` reads as below, and check `globals.css` and `tokens.css` for anything `init` overwrote — restore from git if so, keeping only the dependency additions and `src/lib/utils.ts`:
+`lucide-react` is deliberate: shadcn's Dialog and DropdownMenu import icons for their own chrome — a close cross, a check mark. Kanso keeps text glyphs for its *own* triggers (`⋯`, `▁▄█`, the pills); lucide dresses only the inside of the generated components. Removing those imports by hand would mean repeating the cleanup on every future `add`.
+
+Create `apps/web/src/lib/utils.ts`:
+
+```ts
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+/** Joins class names and lets a later Tailwind utility beat an earlier conflicting one,
+ *  which is what makes a `className` prop able to override a component's own defaults. */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+Create `apps/web/components.json`. `add` takes no `--base` flag, so the component library is declared here — `radix` is what the spec's whole keyboard analysis rests on:
 
 ```json
 {
   "$schema": "https://ui.shadcn.com/schema.json",
   "style": "new-york",
+  "base": "radix",
   "rsc": true,
   "tsx": true,
   "tailwind": {
@@ -373,6 +394,7 @@ Then verify `components.json` reads as below, and check `globals.css` and `token
     "cssVariables": true,
     "prefix": ""
   },
+  "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
@@ -382,6 +404,20 @@ Then verify `components.json` reads as below, and check `globals.css` and `token
   }
 }
 ```
+
+- [ ] **Step 6b: Probe the schema before trusting it**
+
+This `components.json` is written against a CLI whose exact schema we have not read, so verify it resolves before Task 3 depends on it. `--dry-run` writes nothing:
+
+```bash
+cd apps/web && pnpm dlx shadcn@latest add button --dry-run
+```
+
+Expected: it resolves `button` and reports the files it *would* write, without a schema or validation error.
+
+If it rejects the file, the error names the offending field. Fix that field and re-run — the likely culprits are `base` (drop it, or use the value the error suggests) and `style` (4.x may have retired `new-york`). Do **not** fall back to running `init` to escape this. Record in your report the final shape that worked, since Task 3 and Task 5 both build on it.
+
+`add --view <component>` prints a component's source without writing it, which is the cheap way to answer "what does the generated file actually export" — useful now, and required by Task 5.
 
 - [ ] **Step 7: Make the theme preference drive `.dark` as well**
 
@@ -488,7 +524,9 @@ cd apps/web
 pnpm dlx shadcn@latest add button card input dialog dropdown-menu badge
 ```
 
-This adds `class-variance-authority`, `clsx`, `tailwind-merge`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, and possibly `tw-animate-css`. If `tw-animate-css` is added, confirm `globals.css` or `tokens.css` imports it; add `@import "tw-animate-css";` next to the Tailwind import if the CLI did not.
+`class-variance-authority`, `clsx`, `tailwind-merge` and `lucide-react` are already installed by Task 2. This step adds the Radix primitives the components wrap — `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, and whatever else the generated files import — and possibly `tw-animate-css`. If `tw-animate-css` appears in `package.json`, confirm `globals.css` or `tokens.css` imports it; add `@import "tw-animate-css";` next to the Tailwind import if the CLI did not.
+
+If `add` writes into `globals.css` — 4.x may try to append token blocks of its own — check with `git diff apps/web/src/app/globals.css` and revert anything beyond the two `@import` lines. The tokens are Task 2's, in `tokens.css`, and a second competing set in `globals.css` would win by source order and silently override them.
 
 - [ ] **Step 2: Read what the CLI actually generated**
 
