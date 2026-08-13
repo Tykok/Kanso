@@ -23,6 +23,7 @@
 - Code comments are written in English, and explain *why* rather than *what* — match the density of the surrounding files.
 - Commits follow Conventional Commits with a descriptive lowercase subject: `feat(web):`, `fix(web):`, `test(web):`, `docs:`.
 - The eight keyboard invariants in the spec's "The eight keyboard invariants" section are requirements of Task 5, not suggestions.
+- **Rebuilding the web image drops `KANSO_AUTH_MODE`.** `docker compose up -d --build web` recreates the `api` container too, and that variable lives in no repo file — only in the shell that first started the stack. Losing it silently makes every visitor render as a member, which turned a clean run into 8/13 during Task 2. Always rebuild as `KANSO_AUTH_MODE=dev docker compose up -d --build web`, and if a permissions scenario fails unexpectedly, suspect this before suspecting your code.
 
 ## Why the tests here are not written failing
 
@@ -576,12 +577,21 @@ test("scenario 15 — the design system page renders its tokens and components",
   await expect(page.getByRole("button", { name: "default", exact: true })).toBeVisible();
   await expect(page.getByText("warning", { exact: true })).toBeVisible();
 
-  // The tokens resolved. An unloaded layer leaves --primary empty, and the computed
-  // background of a bg-primary button falls back to transparent.
+  // The tokens resolved. Deliberately not asserted on the token's literal text:
+  // Lightning CSS downlevels oklch() to lab() when no browserslist is configured, so
+  // the format is not ours to predict. What an unloaded layer actually produces is an
+  // empty variable and a button whose background falls back to transparent, and that
+  // is what these two assertions catch between them.
   const primary = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
   );
-  expect(primary).toMatch(/^oklch\(/);
+  expect(primary).not.toBe("");
+
+  const buttonBackground = await page
+    .getByRole("button", { name: "default", exact: true })
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(buttonBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(buttonBackground).not.toBe("transparent");
 
   // The dialog opens and closes, which is the one interaction on this page.
   await page.getByRole("button", { name: "Open dialog" }).click();
@@ -974,15 +984,13 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   const afterDialog = await page.evaluate(() => document.activeElement?.tagName ?? "NONE");
   expect(afterDialog).not.toBe("BODY");
 
-  // Invariant 6 — the header is reachable. A `menu` may only own menuitem, group and
-  // separator, so an identity block placed inside one may be dropped by assistive
-  // technology; menu.tsx:30-36 keeps it a sibling of the list for that reason. The
-  // assertion is that the popover shows the ticket's identifier while `role="menu"`
-  // does not contain it.
-  await trigger.click();
-  const popover = page.locator(".menu-popover");
-  await expect(popover).toContainText(/[A-Z]+-\d+/);
-  await page.keyboard.press("Escape");
+  // Invariant 6 is NOT asserted here, on purpose. Only brand-menu.tsx passes a
+  // `header`; a row's ⋯ has none, so there would be nothing on this menu to check.
+  // It is already covered where the header actually exists — mouse.spec.ts:216-217
+  // asserts `.menu-header` and `.menu-footer` are absent from inside the role="menu"
+  // element, which is exactly the invariant. Task 5 must keep that passing, and must
+  // repair the `.brand .menu-popover` locator at mouse.spec.ts:203, which stops
+  // matching once Radix portals the popover out of `.brand`.
 
   await page.close();
 });
@@ -1055,29 +1063,27 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `DropdownMenu*` from `@/components/ui/dropdown-menu` (Task 3); the gate from Task 4.
 - Produces: the same `Menu({ label, items, trigger, header, footer })` and `MenuItem` exports the six existing callers already import — `tickets.tsx`, `sidebar.tsx`, `new-menu.tsx`, `brand-menu.tsx`, and `pills.tsx` twice. **No call site changes.**
 
-- [ ] **Step 1: Settle invariant 6 with the component in hand**
+- [ ] **Step 1: Read the generated component, and confirm what is already known about it**
 
-The spec leaves this open on purpose. Find out where Radix puts `role="menu"`:
+This step was written as an open question. It has since been answered by reading the CLI's own output (`pnpm dlx shadcn@latest view dropdown-menu`), so it is now a confirmation rather than an investigation. Read the installed file and check the three facts below still hold — a CLI release could move underneath us:
 
 ```bash
-cd apps/web && grep -n 'role=\|Primitive\|DropdownMenuPrimitive' src/components/ui/dropdown-menu.tsx
+cd apps/web && cat src/components/ui/dropdown-menu.tsx
 ```
 
-Then check the rendered DOM on `/design-system`, where `DropdownDemo` already has a `DropdownMenuLabel` above a separator:
+**Fact 1 — it is genuinely Radix.** The import is `import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"`: the unified package, not the old per-primitive `@radix-ui/react-dropdown-menu`. Every keyboard behaviour the spec reasons about is therefore Radix's. This is what `components.json` gets us without a `base` field, which CLI 4.17's schema does not have.
 
-```js
-// devtools, with the demo menu open
-const m = document.querySelector('[role="menu"]');
-m.textContent.includes("KAN-14");
-```
+**Fact 2 — invariant 6 is settled, and it goes against us.** `DropdownMenuContent` renders `DropdownMenuPrimitive.Content`, which carries `role="menu"`, and `DropdownMenuLabel` renders `DropdownMenuPrimitive.Label` as a **child** of that content. So a label sits *inside* the `menu` role — exactly what `menu.tsx:30-36` avoids, since a `menu` may only own `menuitem`, `group` and `separator`, and assistive technology may drop the identity block the header carries.
 
-Three outcomes, and this step is choosing between them, not guessing:
+Take the first of the spec's three routes: **render `header` and `footer` outside the entries' `role="menu"`.** In practice, since `role="menu"` is fixed on `DropdownMenuContent`, that means putting the header and footer in the content but giving the *entries* their own nested element, mirroring today's structure — or, if Radix's item components refuse to work through a plain wrapper, keeping the header outside `DropdownMenuContent` entirely. Try the nested-list shape first, verify with the assertion Task 4 wrote, and record which shape you ended up with in the comment at the top of `menu.tsx`.
 
-- **`role="menu"` is on the content and the label is inside it.** Then `DropdownMenuLabel` does not save us. Render `header` and `footer` outside `DropdownMenuContent`'s menu role — the practical route is a wrapper inside `DropdownMenuContent` with the entries in a nested `role="menu"` element, mirroring today's structure.
-- **The label already sits outside the `menu` role.** Use `DropdownMenuLabel` and move on.
-- **Neither is achievable without fighting Radix.** Accept the regression, record it in `docs/follow-ups.md` with the reasoning from `menu.tsx:30-36`, and relax the invariant-6 assertion in `14-menu-keyboard.spec.ts` in this task's commit.
+If neither shape holds without fighting Radix, that is the spec's third route: accept the regression, record it in `docs/follow-ups.md` with the reasoning from `menu.tsx:30-36`, and say so in your report. Do not silently drop the header.
 
-Write which outcome you got, and why, in the comment at the top of the new `menu.tsx`.
+**Fact 3 — the content is PORTALLED, and this is the part the plan originally missed.** `DropdownMenuContent` wraps its content in `DropdownMenuPrimitive.Portal`, so the open menu is rendered at `document.body`, **not inside the row that triggered it**. Three consequences, all of which you must handle:
+
+- **`.menu-popover` cannot be reused as-is.** That class is `position: absolute; top: calc(100% + 4px); right: 0` relative to `.menu` (`globals.css:872-885`). Portalled to the body, those offsets are meaningless and fight Radix's own positioning, which it computes and applies itself. See Step 2 for what to pass instead.
+- **Descendant selectors scoping a popover under an ancestor stop matching.** `e2e/support.ts:203` locates `.brand .menu-popover`; once portalled, the popover is not a descendant of `.brand`. Step 5 covers the fix.
+- **Key events cross a portal boundary.** React routes portal events through the React tree, but `page.tsx` listens natively on `window`, and whether a synthetic `stopPropagation` on portalled content still shields it is not something to reason about from first principles. Task 4's test is what answers it. Step 3 lists the remedy if it does not.
 
 - [ ] **Step 2: Rewrite the internals**
 
@@ -1158,30 +1164,43 @@ export function Menu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="menu-popover"
+        // No `.menu-popover`: that class positions a popover absolutely against
+        // `.menu`, and this content is portalled to the body, where Radix computes
+        // and applies its own position. Passing it would fight the library. What the
+        // class also carried — surface, border, radius, shadow — the generated
+        // component already applies with its own utilities.
+        //
+        // `role="presentation"` moves the menu role off the popover and onto the list
+        // of entries below, which is where menu.tsx:30-36 argues it belongs: a `menu`
+        // may only own menuitem, group and separator, so the header would otherwise
+        // sit inside one and risk being dropped by assistive technology.
+        role="presentation"
         // page.tsx listens for keys on window. Radix does not shield it, so without
         // this every arrow inside the menu would also move the list cursor.
         onKeyDown={(event) => event.stopPropagation()}
       >
         {header && <div className="menu-header">{header}</div>}
-        {items.map((item) => (
-          <DropdownMenuItem
-            key={item.id}
-            className="menu-item"
-            data-danger={item.danger ? "true" : undefined}
-            onSelect={() => item.onSelect()}
-          >
-            <span className="menu-label">{item.label}</span>
-            {item.hint && (
-              <>
-                {/* A real space, not a CSS gap: it is what separates label from hint
-                    in the accessible name, so both read as "Rename ticket e". */}
-                {" "}
-                <span className="menu-hint">{item.hint}</span>
-              </>
-            )}
-          </DropdownMenuItem>
-        ))}
+        <div className="menu-list" role="menu" aria-label={label}>
+          {items.map((item) => (
+            <DropdownMenuItem
+              key={item.id}
+              className="menu-item"
+              data-danger={item.danger ? "true" : undefined}
+              variant={item.danger ? "destructive" : "default"}
+              onSelect={() => item.onSelect()}
+            >
+              <span className="menu-label">{item.label}</span>
+              {item.hint && (
+                <>
+                  {/* A real space, not a CSS gap: it is what separates label from hint
+                      in the accessible name, so both read as "Rename ticket e". */}
+                  {" "}
+                  <span className="menu-hint">{item.hint}</span>
+                </>
+              )}
+            </DropdownMenuItem>
+          ))}
+        </div>
         {footer && <div className="menu-footer">{footer}</div>}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1190,6 +1209,8 @@ export function Menu({
 ```
 
 Two things this deliberately does *not* do, because Radix already does them and duplicating them causes double handling: the roving `tabIndex`, and the focus-return on close. Radix restores focus to the trigger itself, which is what invariants 2 and 3 needed the manual `triggerRef.current?.focus()` for.
+
+**The nested `role="menu"` is the risky part of this file.** Radix manages focus, typeahead and arrow navigation over its items through a collection, and putting a plain `<div>` between the content and the items may or may not disturb that. Task 4's test and `mouse.spec.ts:216-217` between them tell you: the former proves the keyboard still works, the latter proves the header stayed outside the menu role. If the wrapper breaks Radix's navigation, try `asChild` on the content with the wrapper as its child before giving up. If you must abandon the nested shape, take the spec's third route — accept the regression, record it in `docs/follow-ups.md` citing `menu.tsx:30-36`, and relax `mouse.spec.ts:216-217` in this commit rather than leaving a failing test.
 
 - [ ] **Step 3: Run the characterisation test**
 
@@ -1268,7 +1289,12 @@ cd .. && docker compose up -d --build --wait web && pnpm test:e2e
 
 Expected: all pass, including scenarios 1-13, which exercise these menus through `openRowMenu` on every path.
 
-`openRowMenu` (`e2e/support.ts:199-204`) asserts `getByRole("menu", { name: "Actions for ${name}" })`. If Radix puts the accessible name somewhere else, that helper needs a one-line change — and that change is a real finding worth its own line in the commit message, not a silent edit.
+Two e2e repairs are expected here, and both are consequences of the portal rather than accidents:
+
+- **`e2e/mouse.spec.ts:203`** locates the brand menu as `.brand .menu-popover` — a descendant selector. Radix portals the content to `document.body`, so it is no longer inside `.brand` and this stops matching. Rescope it to the portalled popover: locate it by its role and name and work down from there, rather than through `.brand`. The assertions that follow at `:212`, `:216-217` and `:239` are invariant 6 and must keep passing unchanged — they are the reason the nested `role="menu"` in Step 2 exists.
+- **`openRowMenu` (`e2e/support.ts:199-204`)** asserts `getByRole("menu", { name: "Actions for ${name}" })`. Step 2 keeps `aria-label` on the nested `role="menu"` precisely so this helper keeps working. If it needs changing anyway, that is a real finding — put it in the commit message rather than editing it silently.
+
+Every scenario from 1 to 15 goes through `openRowMenu`, so a helper that quietly matches the wrong element would turn a broad regression into a green suite.
 
 - [ ] **Step 6: Commit**
 
