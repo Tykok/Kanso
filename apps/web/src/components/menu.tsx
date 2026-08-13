@@ -206,7 +206,9 @@ export function Menu({
         // `.menu`, and this content is portalled to the body, where Radix computes and
         // applies its own position. Passing it would fight the library. What the class
         // also carried — surface, border, radius, shadow — the generated component
-        // already applies with its own utilities.
+        // already applies with its own utilities. All but the border's colour: `border`
+        // emits width and style only, so it relies on the default in `tokens.css`, and
+        // without that default this popover drew a near-black line around itself.
         //
         // `role="presentation"` moves the menu role off the popover and onto the list
         // of entries below, which is where the docstring above argues it belongs.

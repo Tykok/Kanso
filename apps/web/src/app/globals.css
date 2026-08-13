@@ -884,6 +884,9 @@
 /* `.menu-popover` is gone with the hand-written popover. Radix portals its content to
    the body and positions it there itself, and the generated component brings the rest
    of what this class carried — surface, border, radius, shadow — as its own utilities.
+   Its border *colour* is the one part those utilities do not carry: `border` emits only
+   width and style, so it takes the default set in `tokens.css`. Without that default it
+   fell back to `currentColor` and drew near-black.
    The header and the footer below still live inside that content, so they stay. */
 
 .menu-header,

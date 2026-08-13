@@ -135,3 +135,26 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
+
+/*
+ * What a bare `border` utility is coloured with — and the third thing `shadcn init`
+ * writes, which hand-authoring `components.json` and `cn()` accounted for and this did
+ * not. Without it there is no default at all: Tailwind's `.border` emits only width and
+ * style, preflight's `* { border: 0 solid }` resets `border-color` to its initial
+ * `currentColor`, and every generated component that says `border` therefore drew its
+ * border in its own text colour. In light mode that put a near-black 1px line around
+ * every dropdown, card and dialog, where Kanso's own popover used a light grey.
+ *
+ * In `base` on purpose, which is what scopes it. The layer order is `theme, base,
+ * components, kanso-reset, utilities` (see globals.css), so this loses to every
+ * unlayered legacy rule — `border: 1px solid var(--k-border)` and its kin keep winning —
+ * and loses to `utilities`, so `border-destructive` still overrides it. What it reaches
+ * is exactly the set nothing else colours: the generated components.
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+}
