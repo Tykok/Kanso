@@ -511,7 +511,55 @@ The exported names and the `cva` variant keys are the contract Tasks 3 and 5 dep
 
 Match the surrounding entries' exact shape — if the generated file does not use the `[a&]:hover:` prefix, drop it here too.
 
-- [ ] **Step 4: Write the styleguide's interactive demos**
+- [ ] **Step 4: Write the failing test**
+
+Create `e2e/15-design-system.spec.ts`. It asserts the page is reachable and that a token actually resolved — a styleguide rendering with unresolved variables is the failure mode worth catching:
+
+```ts
+import { expect, test } from "@playwright/test";
+
+/**
+ * Scenario 15 — the workbench itself.
+ *
+ * Deliberately thin: this page has no behaviour to test. What it does catch is a
+ * token layer that failed to load, which renders as unstyled markup rather than an
+ * error, and which every later migration task would then be building against.
+ */
+test("scenario 15 — the design system page renders its tokens and components", async ({
+  page,
+}) => {
+  await page.goto("/design-system");
+
+  await expect(page.getByRole("heading", { name: "Design system", level: 1 })).toBeVisible();
+
+  // Every button variant is drawn, including the two badge variants Kanso adds.
+  await expect(page.getByRole("button", { name: "default", exact: true })).toBeVisible();
+  await expect(page.getByText("warning", { exact: true })).toBeVisible();
+
+  // The tokens resolved. An unloaded layer leaves --primary empty, and the computed
+  // background of a bg-primary button falls back to transparent.
+  const primary = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+  );
+  expect(primary).toMatch(/^oklch\(/);
+
+  // The dialog opens and closes, which is the one interaction on this page.
+  await page.getByRole("button", { name: "Open dialog" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+```
+
+- [ ] **Step 5: Run it and watch it fail**
+
+```bash
+pnpm test:e2e e2e/15-design-system.spec.ts
+```
+
+Expected: **FAIL**. The route does not exist yet, so `/design-system` serves Next's 404 and the `level: 1` heading assertion is what reports it. If this passes, something is wrong with the test — check that it is really hitting this route and not a redirect.
+
+- [ ] **Step 6: Write the styleguide's interactive demos**
 
 Dialog and dropdown need state, so they live in a client component while the page itself stays a server component. Create `apps/web/src/app/design-system/sections.tsx`:
 
@@ -581,7 +629,7 @@ export function DropdownDemo() {
 
 If `DropdownMenuItem` has no `variant` prop in the generated file, use `className="text-destructive"` instead.
 
-- [ ] **Step 5: Write the styleguide page**
+- [ ] **Step 7: Write the styleguide page**
 
 Create `apps/web/src/app/design-system/page.tsx`:
 
@@ -731,54 +779,6 @@ export default function DesignSystemPage() {
   );
 }
 ```
-
-- [ ] **Step 6: Write the failing test**
-
-Create `e2e/15-design-system.spec.ts`. It asserts the page is reachable and that a token actually resolved — a styleguide rendering with unresolved variables is the failure mode worth catching:
-
-```ts
-import { expect, test } from "@playwright/test";
-
-/**
- * Scenario 15 — the workbench itself.
- *
- * Deliberately thin: this page has no behaviour to test. What it does catch is a
- * token layer that failed to load, which renders as unstyled markup rather than an
- * error, and which every later migration task would then be building against.
- */
-test("scenario 15 — the design system page renders its tokens and components", async ({
-  page,
-}) => {
-  await page.goto("/design-system");
-
-  await expect(page.getByRole("heading", { name: "Design system", level: 1 })).toBeVisible();
-
-  // Every button variant is drawn, including the two badge variants Kanso adds.
-  await expect(page.getByRole("button", { name: "default", exact: true })).toBeVisible();
-  await expect(page.getByText("warning", { exact: true })).toBeVisible();
-
-  // The tokens resolved. An unloaded layer leaves --primary empty, and the computed
-  // background of a bg-primary button falls back to transparent.
-  const primary = await page.evaluate(() =>
-    getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
-  );
-  expect(primary).toMatch(/^oklch\(/);
-
-  // The dialog opens and closes, which is the one interaction on this page.
-  await page.getByRole("button", { name: "Open dialog" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-});
-```
-
-- [ ] **Step 7: Run it and watch it fail**
-
-```bash
-pnpm test:e2e e2e/15-design-system.spec.ts
-```
-
-Expected: FAIL — the route does not exist yet if Steps 4-5 have not been applied, or the heading is missing. If it passes before the page exists, the test is asserting nothing; fix the test.
 
 - [ ] **Step 8: Rebuild and run it green**
 
