@@ -46,7 +46,21 @@ trigger names. Orthogonal to a design system.
 
 ## The token layer
 
-`globals.css` is rewritten. Its shape:
+The new tokens are **added beside the old ones, not substituted for them.** Replacing
+`globals.css` outright would delete the rules that dress `.shell`, `.row`, `.sidebar` and
+everything else in one commit, leaving the interface broken until the last surface
+migrated — no step green, nothing reviewable. Instead the two token systems share the
+document, and each surface migrates on its own.
+
+Three legacy names collide with shadcn's and are namespaced to `--k-*` first: `--border`
+(43 uses), `--radius` (20 uses), and `--accent` (28 uses). The last one is the dangerous
+one — shadcn's `--accent` is a pale hover background, while Kanso's *is* the brand colour,
+so leaving it alone would turn every accented element grey. The rename touches 102 usages
+and 21 declarations across the four sheets and no `.tsx` at all, which makes it a provable
+no-op and a commit of its own.
+
+The new layer then lives in `src/styles/tokens.css`, imported by `globals.css`, so the
+values people tune are not buried in 1269 lines of component rules. Its shape:
 
 ```css
 @import "tailwindcss";
@@ -83,8 +97,13 @@ still no flash of the wrong theme on first paint — the reason that script exis
 
 Class-based dark mode does cost one thing `light-dark()` gave for free: `color-scheme` no
 longer follows the theme automatically, so native selects, date pickers and scrollbars
-would keep the OS scheme while the page changes. Restored explicitly, one declaration per
-theme.
+would keep the OS scheme while the page changes. It is restored explicitly, one declaration
+per theme — but **not while both systems coexist.** The legacy palette resolves
+`light-dark()` *off* `color-scheme`, which `[data-theme]` narrows (`globals.css:63-69`);
+redeclaring it early would repaint every surface that has not migrated yet. So
+`[data-theme]` stays in charge of `color-scheme` until nothing reads `light-dark()` any
+more, and it moves onto `.dark` in the final cleanup. Both are set together in
+`applyPreferences` from the one preference, so they cannot drift in the meantime.
 
 **`success` and `warning` are additions.** shadcn ships `destructive` only. Kanso already
 distinguishes amber from red on purpose — `globals.css:39` marks `--warn` as "a dependency
@@ -244,11 +263,20 @@ updated in the same commit.
 `timeline-geometry.test.ts` and `errors.test.ts` cover logic, not style, and are expected
 to pass untouched — confirmed by running them, not by assumption.
 
+**The keyboard invariants go in Playwright, not vitest.** `vitest.config.mts` is
+`environment: "node"` by an argued choice, and overturning it would not help: jsdom does
+not implement Tab's native focus-moving default action, which is exactly what invariants 2
+and 3 turn on. A real browser is the only place those can be asserted. They are
+characterisation tests — passing against today's code, then again after the rewrite —
+following `e2e/keyboard.spec.ts:16-22`, which did the same thing when the shortcut registry
+replaced the previous keyboard path.
+
 ## Order of work
 
 Each step is green before the next begins.
 
-1. Commit the current stylesheet, then Tailwind v4 + `shadcn init` + the token layer.
+1. Namespace the colliding legacy tokens to `--k-*`, then add Tailwind v4, `shadcn init`
+   and the token layer alongside the existing sheet.
 2. Primitives (`Button`, `Input`, `Badge`, `Card`) and the `/design-system` page **from
    this step onward**, so it grows with the branch instead of being written at the end.
 3. Keyboard parity tests for the eight invariants, then the `Menu` adapter on Radix.
