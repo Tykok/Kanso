@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "./brand-logo";
 import { menuItems } from "./menu-items";
 import { Menu } from "./menu";
 import type { ActionContext } from "@/lib/actions";
@@ -33,15 +34,19 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
       <Menu
         // The visible label is "Kanso 簡素", so the accessible name has to start with
         // it (WCAG 2.5.3, Label in Name): "Account and settings" alone left a
-        // voice-control user saying "click Kanso" with nothing to click.
+        // voice-control user saying "click Kanso" with nothing to click. Still true now
+        // that the label is drawn rather than typed — 2.5.3 is about the words a sighted
+        // user can see, and an image of text is text they can see. This label is also
+        // why the logo itself takes no alt: it sits inside this button, and an
+        // `aria-label` on a button replaces whatever the button contains.
         label="Kanso — account and settings"
         items={items}
-        trigger={
-          <>
-            <strong>Kanso</strong>
-            <span>簡素</span>
-          </>
-        }
+        // The logo carries the wordmark and the kanji itself, so the text that used to
+        // stand here would now say everything twice. 100px is a floor, not a taste: the
+        // wordmark is about an eighth of the mark's height, so it reads at this size and
+        // turns to a grey smudge much below it — which is why the sidebar's 216px is what
+        // makes putting the full lockup here possible at all.
+        trigger={<BrandLogo width={100} />}
         header={
           user && (
             <>

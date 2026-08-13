@@ -232,8 +232,12 @@
 
 /*
  * The base `.menu-trigger` is sized and colored for a 20×20 `⋯` glyph. Here the
- * trigger *is* the brand: it fills the header's width and reads as plain text
- * until hovered or focused, rather than as a small icon button.
+ * trigger *is* the brand: it fills the header's width and shows nothing but the logo
+ * until hovered or focused, rather than reading as a small icon button.
+ *
+ * `align-items` and `gap` are left as they were for the two text children this used to
+ * hold. With one image they decide nothing, and removing them would only mean putting
+ * them back the day the header gains a second element.
  */
 .brand .menu-trigger {
   width: 100%;
@@ -252,15 +256,36 @@
   color: inherit;
 }
 
-.brand .menu-trigger strong {
-  font-size: 14px;
-  letter-spacing: -0.01em;
+/*
+ * The mark is greyscale art that arrived on an opaque white ground; `kanso-logo.png` is
+ * the same art with luminance keyed to alpha, so it sits on the page instead of carrying
+ * a white tile around with it. That is what makes the dark theme one declaration:
+ * inverting black-on-transparent gives white-on-transparent, `invert()` does not touch
+ * alpha, and the kanji — black at 20% — stay proportionally lighter than the frame.
+ *
+ * No width here. Every caller passes its own, because the wordmark inside the mark is
+ * about an eighth of its height: it reads at 100px and turns to a smudge well above the
+ * 20px a sidebar icon would want, so a default would only invite the wrong one.
+ *
+ * `.dark` rather than `[data-theme="dark"]`: both are set together on <html> from the one
+ * preference (see lib/theme.ts), and the class is the mechanism the new token layer uses,
+ * so new rules follow it. It also covers "system, and the OS says dark" without a second
+ * media query, because the bootstrap script has already resolved that.
+ */
+.brand-logo {
+  display: block;
+  height: auto;
 }
 
-.brand .menu-trigger span {
-  font-size: 11px;
-  color: var(--text-faint);
+.dark .brand-logo {
+  filter: invert(1);
 }
+
+/*
+ * `.brand .menu-trigger strong` and `… span` used to size the "Kanso" and "簡素" the
+ * trigger wrote out. The logo draws both, so the trigger has neither child left and the
+ * two rules had no target — deleted rather than left as decoration.
+ */
 
 .nav-label {
   font-size: 11px;

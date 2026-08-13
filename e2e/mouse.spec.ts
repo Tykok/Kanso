@@ -191,14 +191,20 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
 test("scenario 10 — the brand menu names who you are, and signs you out", async ({ browser }) => {
   const page = await openOnceAs(browser, ADMIN);
 
-  // The brand text itself is the trigger — there is no ellipsis in the sidebar
-  // header, unlike every row's own `⋯`.
+  // The brand itself is the trigger — there is no ellipsis in the sidebar header,
+  // unlike every row's own `⋯`.
   const trigger = page.locator(".brand .menu-trigger");
   await expect(trigger).not.toContainText("⋯");
   // The accessible name starts with the visible one: a voice-control user saying
-  // "click Kanso" has to reach this button (WCAG 2.5.3, Label in Name).
+  // "click Kanso" has to reach this button (WCAG 2.5.3, Label in Name). This is the
+  // assertion that still carries the rule now that the brand is drawn rather than
+  // typed — 2.5.3 is about the words a sighted user sees, and an image of text is
+  // words they see, so the name still has to begin with them.
   await expect(trigger).toHaveAccessibleName(/^Kanso\b/);
-  await page.getByText("Kanso", { exact: true }).click();
+  // Clicked through the trigger rather than through `getByText("Kanso")`, which used to
+  // work and cannot any more: the word is inside the logo now, not a text node. The old
+  // locator was reaching for the thing it wanted through whatever happened to render it.
+  await trigger.click();
 
   const menu = page.getByRole("menu", { name: /account and settings/i });
   await expect(menu).toBeVisible();
@@ -283,7 +289,7 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   // cleared client-side, and the very next request lands as a different,
   // never-onboarded person, who the app sends to first-run setup rather than
   // straight back to the ticket list as "E2E owner".
-  await page.getByText("Kanso", { exact: true }).click();
+  await trigger.click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect
     .poll(async () => {

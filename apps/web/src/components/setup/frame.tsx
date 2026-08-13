@@ -1,6 +1,7 @@
 "use client";
 
 import type { KeyboardEvent, ReactNode } from "react";
+import { BrandLogo } from "../brand-logo";
 
 export type StepId = "account" | "notion" | "google" | "preferences";
 
@@ -15,9 +16,10 @@ export function SetupPage({ children }: { children: ReactNode }) {
   return (
     <div className="setup-page">
       <div className="setup-shell">
+        {/* Smaller than the sign-in screen's: this one sits above a card that already
+            has a heading of its own, so it introduces rather than announces. */}
         <div className="brand">
-          <strong>Kanso</strong>
-          <span>簡素</span>
+          <BrandLogo width={140} alt="Kanso 簡素" />
         </div>
         {children}
       </div>

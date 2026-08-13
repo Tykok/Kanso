@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BrandSplash } from "@/components/brand-logo";
 import { DispositionDialog } from "@/components/dialogs/disposition-dialog";
 import { ProjectDialog } from "@/components/dialogs/project-dialog";
 import { TeamDialog } from "@/components/dialogs/team-dialog";
@@ -330,12 +331,12 @@ export default function InboxPage() {
   }, [ctx, teams.data, setScope, close, picker, visible, link, unlink, reportError, closeOverlay]);
 
   if (me.isLoading || authMode.isLoading || setup.isLoading) {
-    return <div className="centered">Loading…</div>;
+    return <BrandSplash label="Loading…" />;
   }
 
   // Ahead of the sign-in screen: with no owner yet there is nobody to sign in as.
   if (needsSetup) {
-    return <div className="centered">Opening setup…</div>;
+    return <BrandSplash label="Opening setup…" />;
   }
 
   if (me.error instanceof ApiError && me.error.status === 401) {

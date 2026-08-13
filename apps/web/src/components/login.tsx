@@ -1,6 +1,7 @@
 "use client";
 
 import { API_URL, type AuthMode } from "@/lib/api";
+import { BrandLogo } from "./brand-logo";
 
 /**
  * Only providers the server actually has credentials for are offered — a button
@@ -9,10 +10,10 @@ import { API_URL, type AuthMode } from "@/lib/api";
 export function LoginScreen({ mode }: { mode?: AuthMode }) {
   return (
     <div className="centered">
-      <div className="brand" style={{ justifyContent: "center" }}>
-        <strong style={{ fontSize: 20 }}>Kanso</strong>
-        <span>簡素</span>
-      </div>
+      {/* The one screen with nothing else on it, so the mark gets the room it was drawn
+          for. It carries its own alt here, unlike in the sidebar: there is no surrounding
+          button to lend it a name. */}
+      <BrandLogo width={180} alt="Kanso 簡素" />
       <p style={{ color: "var(--text-dim)", maxWidth: 360 }}>
         A keyboard-first tracker. Postgres holds the truth; Notion keeps a readable copy.
       </p>
