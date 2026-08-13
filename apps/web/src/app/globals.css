@@ -20,6 +20,22 @@
 @import "../styles/tokens.css";
 
 /*
+ * Focus and the touch floor, mandated across every surface regardless of which
+ * palette dresses it. Unlayered, like the ~1100 lines below, so it keeps winning
+ * over both the shadcn components' own focus rings and the legacy reset's.
+ */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  :where(button, a, [role="button"], [role="menuitem"], [role="option"]) {
+    min-height: var(--touch-min);
+  }
+}
+
+/*
  * One stylesheet, no framework. The interface is a dense list plus a couple of
  * overlays; a utility framework would add a build step and a vocabulary without
  * removing any of the decisions below.
@@ -185,13 +201,6 @@
     border: 1px solid var(--k-border);
     border-radius: var(--k-radius);
     padding: 6px 8px;
-  }
-
-  input:focus,
-  textarea:focus,
-  select:focus {
-    outline: 2px solid var(--k-accent);
-    outline-offset: -1px;
   }
 
   kbd {

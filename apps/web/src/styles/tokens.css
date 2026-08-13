@@ -12,92 +12,215 @@
 /* Dark mode by class, the shadcn standard. */
 @custom-variant dark (&:is(.dark *));
 
-/*
- * ═══════════════════ ADJUST HERE ═══════════════════
- *
- * --primary is the brand colour: change this one line and every button, focus ring
- * and selected state follows. --radius is the corner of every component; 0.5rem is
- * the moderate Linear-like setting, 0.375rem is tighter, 0.75rem softer.
- *
- * Neutrals are pure greys (chroma 0) on purpose: a tinted grey reads as a colour
- * decision at large areas, and Notion and Linear both keep their surfaces neutral so
- * the one saturated colour in view means something.
- */
 :root {
-  --radius: 0.5rem;
+  /* Ground and ink. Neutrals carry a trace of hue 262 at chroma 0.002–0.012:
+     an order of magnitude below where a tint reads as a colour decision, and
+     what puts the ground under the accent rather than beside it. */
+  --background: oklch(0.988 0.002 262);
+  --foreground: oklch(0.22 0.012 262);
+  --muted-foreground: oklch(0.52 0.011 262);
+  --faint: oklch(0.68 0.010 262);          /* third ink: labels, ids, meta */
 
-  --primary: oklch(0.53 0.16 277);
-  --primary-foreground: oklch(0.985 0 0);
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --secondary: oklch(0.965 0.004 262);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.965 0.004 262);
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* shadcn's --accent is the hover fill, not the brand colour. */
+  --accent: oklch(0.965 0.004 262);
+  --accent-foreground: var(--foreground);
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --border: oklch(0.925 0.005 262);        /* a contour */
+  --input: oklch(0.925 0.005 262);
+  --rule: oklch(0.86 0.006 262);           /* a stated divider */
 
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* Statuses: five drawn hues on one lightness plane, so none outweighs
+     another at a glance. Move all five or none. Canceled sits above the
+     plane on purpose — a canceled ticket should recede. */
+  --status-backlog: oklch(0.68 0.010 262);
+  --status-todo: oklch(0.52 0.011 262);
+  --status-progress: oklch(0.62 0.13 78);
+  --status-review: oklch(0.58 0.12 232);
+  --status-done: oklch(0.56 0.13 158);
+  --status-canceled: oklch(0.75 0.008 262);
 
-  /* shadcn's --accent is a hover background, not a brand colour. Kanso's brand
-     colour is --primary above; the legacy one is --k-accent. */
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Priority. Not statuses: a separate axis, read as a glyph.
+     --urgent is next to --destructive in hue and stays its own token:
+     an urgent ticket is not a failed one. */
+  --urgent: oklch(0.55 0.19 22);
+  --priority-high: oklch(0.58 0.14 52);
+  --priority-medium: oklch(0.58 0.12 232);
+  --priority-low: oklch(0.68 0.010 262);
+  --priority-none: oklch(0.75 0.008 262);
 
+  /* Not in the design system, and load-bearing. globals.css records why amber
+     is not red: a dependency broken but still repairable is not an error. */
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-
-  /* Not shipped by shadcn, and load-bearing here: globals.css:39 records why amber
-     is not red — "a dependency that is broken but still repairable". Dropping the
-     distinction would flatten .disposition-warning into an error it is not. */
-  /* L lowered from 0.60 to 0.50 (hue and chroma unchanged): at 0.60 the white label
-     sat at a 3.57:1 contrast, under WCAG AA's 4.5:1 and under this same palette's own
-     --destructive (4.56:1). 0.50 clears 5.4:1 — read at the swatch and the badge in
-     src/app/design-system, not computed first and assumed. */
   --success: oklch(0.50 0.13 150);
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.70 0.15 75);
   --warning-foreground: oklch(0.205 0 0);
 
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.53 0.16 277 / 45%);
+  /* Density. Compact removes space, never legibility: the body stays 13px. */
+  --radius: 6px;                            /* the row corner */
+  --panel-radius: 10px;
+  --row-h: 36px;
+  --row-pad-x: 12px;
+  --row-gap: 2px;
+  --group-gap: 18px;
+  --touch-min: 44px;
+
+  /* Elevation. Raw tokens are --elev-*: --shadow-* is a Tailwind namespace,
+     and a raw token mapped to a theme key of the same name resolves to itself. */
+  --elev-flat: 0 1px 2px rgb(20 20 30 / 8%);
+  --elev-panel: 0 1px 2px rgb(20 20 30 / 8%), 0 18px 44px rgb(20 20 30 / 10%);
+  --elev-float: 0 1px 2px rgb(20 20 30 / 10%), 0 20px 44px rgb(20 20 30 / 22%);
+
+  --font-sans: var(--font-public-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-seal: var(--font-noto-sans-jp), "Hiragino Sans", "Yu Gothic", sans-serif;
+}
+
+[data-density="compact"] {
+  --row-h: 27px;
+  --row-pad-x: 10px;
+  --row-gap: 1px;
+  --group-gap: 11px;
+  --radius: 5px;
 }
 
 .dark {
-  --primary: oklch(0.68 0.15 277);
-  --primary-foreground: oklch(0.145 0 0);
+  --background: oklch(0.185 0.008 262);
+  --foreground: oklch(0.935 0.006 262);
+  --muted-foreground: oklch(0.715 0.011 262);
+  --faint: oklch(0.565 0.011 262);
 
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.228 0.010 262);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.228 0.010 262);
+  --popover-foreground: var(--foreground);
+  --secondary: oklch(0.272 0.012 262);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.272 0.012 262);
+  --accent: oklch(0.272 0.012 262);
+  --accent-foreground: var(--foreground);
 
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  --border: oklch(0.315 0.012 262);
+  --input: oklch(0.315 0.012 262);
+  --rule: oklch(0.315 0.012 262);
 
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  --status-backlog: oklch(0.565 0.011 262);
+  --status-todo: oklch(0.715 0.011 262);
+  --status-progress: oklch(0.76 0.12 78);
+  --status-review: oklch(0.72 0.11 232);
+  --status-done: oklch(0.70 0.12 158);
+  --status-canceled: oklch(0.50 0.009 262);
 
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --urgent: oklch(0.68 0.17 22);
+  --priority-high: oklch(0.74 0.13 52);
+  --priority-medium: oklch(0.72 0.11 232);
+  --priority-low: oklch(0.565 0.011 262);
+  --priority-none: oklch(0.50 0.009 262);
 
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.145 0 0);
-
   --success: oklch(0.70 0.14 150);
   --success-foreground: oklch(0.145 0 0);
   --warning: oklch(0.78 0.14 75);
   --warning-foreground: oklch(0.145 0 0);
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.68 0.15 277 / 50%);
+  --elev-flat: 0 1px 2px rgb(0 0 0 / 30%);
+  --elev-panel: 0 1px 2px rgb(0 0 0 / 30%), 0 18px 44px rgb(10 10 16 / 30%);
+  --elev-float: 0 1px 2px rgb(0 0 0 / 34%), 0 20px 44px rgb(8 8 14 / 40%);
+}
+
+/* Six accents, each ~30° apart, on --primary. --accent-soft is a tint of the
+   ground, not of the accent: it sits behind body text, and a saturated fill
+   would either bury the text or vibrate against the page. --accent-ink is the
+   accent read as text — on --accent-soft, or wherever the hue has to speak
+   without the weight of a filled --primary. */
+[data-accent="indigo"] {
+  --primary: oklch(0.52 0.14 262);
+  --accent-soft: oklch(0.965 0.021 262);
+  --accent-ink: oklch(0.42 0.13 262);
+}
+.dark [data-accent="indigo"],
+[data-accent="indigo"].dark {
+  --primary: oklch(0.70 0.13 262);
+  --accent-soft: oklch(0.30 0.048 262);
+  --accent-ink: oklch(0.80 0.11 262);
+}
+
+[data-accent="violet"] {
+  --primary: oklch(0.52 0.15 302);
+  --accent-soft: oklch(0.965 0.021 302);
+  --accent-ink: oklch(0.42 0.13 302);
+}
+.dark [data-accent="violet"],
+[data-accent="violet"].dark {
+  --primary: oklch(0.70 0.14 302);
+  --accent-soft: oklch(0.30 0.048 302);
+  --accent-ink: oklch(0.80 0.11 302);
+}
+
+[data-accent="rose"] {
+  --primary: oklch(0.52 0.15 12);
+  --accent-soft: oklch(0.965 0.021 12);
+  --accent-ink: oklch(0.42 0.13 12);
+}
+.dark [data-accent="rose"],
+[data-accent="rose"].dark {
+  --primary: oklch(0.70 0.14 12);
+  --accent-soft: oklch(0.30 0.048 12);
+  --accent-ink: oklch(0.80 0.11 12);
+}
+
+[data-accent="blue"] {
+  --primary: oklch(0.52 0.14 232);
+  --accent-soft: oklch(0.965 0.021 232);
+  --accent-ink: oklch(0.42 0.13 232);
+}
+.dark [data-accent="blue"],
+[data-accent="blue"].dark {
+  --primary: oklch(0.70 0.13 232);
+  --accent-soft: oklch(0.30 0.048 232);
+  --accent-ink: oklch(0.80 0.11 232);
+}
+
+[data-accent="green"] {
+  --primary: oklch(0.52 0.13 158);
+  --accent-soft: oklch(0.965 0.021 158);
+  --accent-ink: oklch(0.42 0.13 158);
+}
+.dark [data-accent="green"],
+[data-accent="green"].dark {
+  --primary: oklch(0.70 0.12 158);
+  --accent-soft: oklch(0.30 0.048 158);
+  --accent-ink: oklch(0.80 0.11 158);
+}
+
+[data-accent="amber"] {
+  --primary: oklch(0.52 0.13 78);
+  --accent-soft: oklch(0.965 0.021 78);
+  --accent-ink: oklch(0.42 0.13 78);
+}
+.dark [data-accent="amber"],
+[data-accent="amber"].dark {
+  --primary: oklch(0.70 0.12 78);
+  --accent-soft: oklch(0.30 0.048 78);
+  --accent-ink: oklch(0.80 0.11 78);
+}
+
+:root {
+  --primary-foreground: #ffffff;
+  --ring: var(--primary);
+}
+.dark {
+  --primary-foreground: oklch(0.185 0.008 262);
 }
 
 /*
@@ -130,10 +253,43 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-faint: var(--faint);
+  --color-rule: var(--rule);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-status-backlog: var(--status-backlog);
+  --color-status-todo: var(--status-todo);
+  --color-status-progress: var(--status-progress);
+  --color-status-review: var(--status-review);
+  --color-status-done: var(--status-done);
+  --color-status-canceled: var(--status-canceled);
+  --color-urgent: var(--urgent);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+  --color-priority-none: var(--priority-none);
+
+  --height-row: var(--row-h);
+  --spacing-row-x: var(--row-pad-x);
+  --spacing-row: var(--row-gap);
+  --spacing-group: var(--group-gap);
+  --spacing-touch: var(--touch-min);
+
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-panel: var(--panel-radius);
+
+  --shadow-flat: var(--elev-flat);
+  --shadow-panel: var(--elev-panel);
+  --shadow-float: var(--elev-float);
+
+  --text-11: 11px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-15: 15px;
+  --text-21: 21px;
+  --text-30: 30px;
 }
 
 /*
