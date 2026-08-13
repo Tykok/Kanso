@@ -11,7 +11,7 @@ import { Seal } from "./ui/seal";
 export function BrandSplash({ label }: { label: string }) {
   return (
     <div className="centered">
-      <Seal size={120} title="Kanso 簡素" />
+      <Seal size={26} title="Kanso 簡素" />
       <span style={{ color: "var(--text-dim)" }}>{label}</span>
     </div>
   );

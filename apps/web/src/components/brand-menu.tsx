@@ -40,7 +40,7 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
         // whatever the button contains.
         label="Kanso — account and settings"
         items={items}
-        trigger={<Seal size={100} />}
+        trigger={<Seal size={14} />}
         header={
           user && (
             <>

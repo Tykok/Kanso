@@ -13,7 +13,7 @@ export function LoginScreen({ mode }: { mode?: AuthMode }) {
       {/* The one screen with nothing else on it, so the mark gets the room it was drawn
           for. It carries its own title here, unlike in the sidebar: there is no
           surrounding button to lend it a name. */}
-      <Seal size={180} title="Kanso 簡素" />
+      <Seal size={26} title="Kanso 簡素" />
       <p style={{ color: "var(--text-dim)", maxWidth: 360 }}>
         A keyboard-first tracker. Postgres holds the truth; Notion keeps a readable copy.
       </p>
