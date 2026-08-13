@@ -1,4 +1,4 @@
-import type { TicketStatus } from "./api";
+import type { TicketPriority, TicketStatus } from "./api";
 
 /**
  * How a status is written and coloured, wherever it is drawn.
@@ -23,4 +23,24 @@ export const STATUS_COLORS: Record<TicketStatus, string> = {
   in_review: "var(--status-review)",
   done: "var(--status-done)",
   canceled: "var(--status-canceled)",
+};
+
+/**
+ * The glyphs a priority already reads as at the keyboard — unchanged, so nothing
+ * has to be relearned. Only their colours move to the token layer below.
+ */
+export const PRIORITY_GLYPHS: Record<TicketPriority, string> = {
+  urgent: "!",
+  high: "█",
+  medium: "▄",
+  low: "▁",
+  none: "·",
+};
+
+export const PRIORITY_COLORS: Record<TicketPriority, string> = {
+  urgent: "var(--urgent)",
+  high: "var(--priority-high)",
+  medium: "var(--priority-medium)",
+  low: "var(--priority-low)",
+  none: "var(--priority-none)",
 };
