@@ -23,6 +23,7 @@
 - Code comments are written in English, and explain *why* rather than *what* — match the density of the surrounding files.
 - Commits follow Conventional Commits with a descriptive lowercase subject: `feat(web):`, `fix(web):`, `test(web):`, `docs:`.
 - The eight keyboard invariants in the spec's "The eight keyboard invariants" section are requirements of Task 5, not suggestions.
+- **Do not add, move or change any `color-scheme` declaration.** The existing one at `globals.css:38` (`:root { color-scheme: light dark }`, narrowed by `[data-theme]` at `:63-69`) is the legacy mechanism and must stay exactly as it is: the whole `light-dark()` palette resolves off it. Declaring `color-scheme` on `.dark` would repaint every unmigrated surface. `[data-theme]` stays in charge for this entire plan; the move onto `.dark` belongs to Plan 2's final cleanup, once nothing reads `light-dark()` any more. (Worded as a prohibition on *existence* in an earlier draft, which wrongly read as a defect in the file it was protecting.)
 - **Rebuilding the web image drops `KANSO_AUTH_MODE`.** `docker compose up -d --build web` recreates the `api` container too, and that variable lives in no repo file — only in the shell that first started the stack. Losing it silently makes every visitor render as a member, which turned a clean run into 8/13 during Task 2. Always rebuild as `KANSO_AUTH_MODE=dev docker compose up -d --build web`, and if a permissions scenario fails unexpectedly, suspect this before suspecting your code.
 
 ## Why the tests here are not written failing
