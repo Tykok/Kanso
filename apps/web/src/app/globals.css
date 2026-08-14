@@ -24,7 +24,6 @@
 
 @import "tailwindcss";
 @import "../styles/tokens.css";
-@import "../styles/surfaces.css";
 
 /*
  * The seal draws exactly two kanji, 簡 (U+7C21) and 素 (U+7D20), so the font behind it

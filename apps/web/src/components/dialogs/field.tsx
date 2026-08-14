@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 /**
  * One dialog field: its label, its control, and a line of hint or error underneath.
@@ -26,17 +27,17 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div className="dialog-field">
-      <label className="dialog-field-label">
-        <span>{label}</span>
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1">
+        <span className="text-11 font-medium tracking-wide text-faint uppercase">{label}</span>
         {children}
       </label>
       {error ? (
-        <span className="dialog-field-error" role="alert">
+        <span className="text-11 text-urgent" role="alert">
           {error}
         </span>
       ) : hint ? (
-        <span className="dialog-field-hint">{hint}</span>
+        <span className="text-11 text-faint">{hint}</span>
       ) : null}
     </div>
   );
@@ -111,10 +112,13 @@ export function DialogFrame({
   }, [opener]);
 
   return (
-    <div className="backdrop" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-20 flex items-start justify-center bg-black/34 pt-[12vh]"
+      onClick={onClose}
+    >
       <div
         ref={panelRef}
-        className="panel"
+        className="w-[min(560px,92vw)] overflow-hidden rounded-panel bg-popover shadow-float outline-none"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -134,30 +138,33 @@ export function DialogFrame({
             if (!pending) onSubmit();
           }}
         >
-          <div className="panel-header">
-            <strong style={{ flex: 1 }}>{title}</strong>
+          <div data-testid="panel-header" className="px-4 py-3">
+            <strong className="text-15 font-medium text-foreground">{title}</strong>
           </div>
 
-          <div className="dialog-body">{children}</div>
+          <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-4 py-3.5">
+            {children}
+          </div>
 
-          <div className="dialog-footer">
+          <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
             {error ? (
-              <span className="dialog-footer-error" role="alert">
+              <span className="min-w-0 flex-1 text-11 text-urgent" role="alert">
                 {error}
               </span>
             ) : (
-              <span className="dialog-footer-spacer" />
+              <span className="flex-1" />
             )}
-            <button type="button" className="button" onClick={onClose} disabled={pending}>
+            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={pending}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className={submitDanger ? "button button-danger" : "button button-primary"}
+              variant={submitDanger ? "destructive" : "default"}
+              size="sm"
               disabled={pending}
             >
               {submitLabel}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

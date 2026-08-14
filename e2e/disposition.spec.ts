@@ -77,7 +77,8 @@ test("scenario 4 — deleting a team keeping everything re-homes and renumbers w
   await dialog.getByLabel("Destination team").selectOption({ label: grandParent.name });
 
   // The warning announces the prefixes, in this severity as in the other.
-  const warning = page.locator(".disposition-warning");
+  // `.disposition-warning` moved to `data-testid` with task 7's restyle.
+  const warning = page.getByTestId("disposition-warning");
   await expect(warning).toContainText(`${parent.key}-`);
   await expect(warning).toContainText(`${grandParent.key}-`);
 

@@ -16,10 +16,14 @@ import {
 
 test.beforeAll(seedInstance);
 
-/** The category's row, addressed through the radiogroup it contains. */
+/**
+ * The category's row, addressed through the radiogroup it contains.
+ * `.disposition-row`/`.disposition-count` moved to `data-testid` with task 7's
+ * restyle, same reasoning as every other private class this suite keyed on.
+ */
 function categoryRow(dialog: Locator, noun: string): Locator {
   return dialog
-    .locator(".disposition-row")
+    .getByTestId("disposition-row")
     .filter({ has: dialog.page().getByRole("radiogroup", { name: noun }) });
 }
 
@@ -70,10 +74,10 @@ test("scenario 6 — archiving a team counts what the plan reaches, and Show arc
 
   // What the default plan reaches: this team alone. Its sub-team and its project are
   // decisions to take; the sub-team's two tickets are not.
-  await expect(categoryRow(dialog, "sub-teams").locator(".disposition-count")).toHaveText(
+  await expect(categoryRow(dialog, "sub-teams").getByTestId("disposition-count")).toHaveText(
     "1 sub-teams",
   );
-  await expect(categoryRow(dialog, "projects").locator(".disposition-count")).toHaveText(
+  await expect(categoryRow(dialog, "projects").getByTestId("disposition-count")).toHaveText(
     "1 projects",
   );
   await expect(dialog.getByRole("radiogroup", { name: "tickets" })).toHaveCount(0);
@@ -86,9 +90,9 @@ test("scenario 6 — archiving a team counts what the plan reaches, and Show arc
     .getByRole("radiogroup", { name: "sub-teams" })
     .getByRole("radio", { name: "Archive with it" })
     .check();
-  await expect(categoryRow(dialog, "tickets").locator(".disposition-count")).toHaveText("2 tickets");
+  await expect(categoryRow(dialog, "tickets").getByTestId("disposition-count")).toHaveText("2 tickets");
   await expect(dialog.getByLabel("Destination team")).toBeVisible();
-  await expect(categoryRow(dialog, "sub-teams").locator(".disposition-count")).toHaveText(
+  await expect(categoryRow(dialog, "sub-teams").getByTestId("disposition-count")).toHaveText(
     "1 sub-teams",
   );
 
@@ -155,7 +159,7 @@ test("scenario 7 — archiving a project asks one question, and a failed unarchi
   // One row, and no destination: a ticket already has a team, so keeping one costs it
   // only its project. That is the whole difference between a project and a team.
   await expect(dialog.getByRole("radiogroup")).toHaveCount(1);
-  await expect(categoryRow(dialog, "tickets").locator(".disposition-count")).toHaveText("1 tickets");
+  await expect(categoryRow(dialog, "tickets").getByTestId("disposition-count")).toHaveText("1 tickets");
   await expect(dialog.getByLabel("Destination team")).toHaveCount(0);
   await expect(dialog.getByLabel(/to confirm$/)).toHaveCount(0);
 
