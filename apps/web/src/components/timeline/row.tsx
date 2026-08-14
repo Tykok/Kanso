@@ -242,6 +242,7 @@ function bar(
       // The same fact the ⚠ badge next to this row's name reports — see the caller
       // in `TimelineRow`, which computes it once via `overlapNotice` for both.
       violated={violated}
+      slackMinutes={ticket.slackMinutes}
       // See `canSelectTicket`: a context row alone is unreachable by the cursor.
       selected={canSelectTicket(ticket) && ticket.id === control.selectedId}
       onSelect={canSelectTicket(ticket) ? () => control.onSelect(ticket.id) : undefined}

@@ -1,8 +1,18 @@
 "use client";
 
-import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import type { KansoInstant, TicketStatus } from "@/lib/api";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { STATUS_COLORS } from "@/lib/status";
+import {
+  barAccessibleName,
+  derivedBorderClass,
+  LATE_STYLE,
+  SLACK_STYLE,
+  slackTitle,
+  slackWidthPx,
+  ticketTint,
+  type BarState,
+} from "./bar-style";
 import {
   boundLabel,
   dayKey,
@@ -15,47 +25,7 @@ import {
   type Zoom,
 } from "@/lib/timeline-geometry";
 
-/**
- * The state a bar is drawn in. `critical` — on the schedule's critical path, no
- * slack left — carries no colour of its own: the drawing shows it exactly like an
- * ordinary bar of the same status, and lets the chain of arrows leaving it say
- * "critical" instead. `late` is the one state this component still colours by
- * itself, because it is worse than "no slack" — it has already run out — and a
- * ticket that overran its own deadline needs to be seen without following a chain
- * of arrows to notice it.
- */
-export type BarState = "normal" | "critical" | "late";
-
-/**
- * Late, composed from `--urgent` rather than written as a second colour — a
- * repeating hatch, not a flat fill, so the state survives a colour-blind reader and
- * a greyscale screenshot alike. Inline style, not a Tailwind arbitrary value: a
- * `repeating-linear-gradient` wrapped in a bracketed class is unreadable, and this
- * is no less a token reference for being spelled in JS.
- */
-const LATE_STRIPE = "color-mix(in srgb, var(--urgent) 70%, black)";
-const LATE_STYLE: CSSProperties = {
-  backgroundImage: `repeating-linear-gradient(45deg, var(--urgent), var(--urgent) 6px, ${LATE_STRIPE} 6px, ${LATE_STRIPE} 12px)`,
-};
-
-/**
- * An ordinary ticket bar's own colour: a pale tint of its status, exactly the hue a
- * dot or a pill draws elsewhere, so nothing about a bar needs a legend of its own —
- * the accent-left stripe from `settings`' preview and the list's selected row is
- * the same device, coloured by status instead of by selection.
- *
- * A ticket with an incoming dependency the schedule no longer respects wears the
- * urgent colour instead, whatever its own status — see `violated` on `BarProps`.
- * That fact outranks "todo" or "in review" as the one worth seeing first, which is
- * why it is read here rather than layered on top as a second, separate mark.
- */
-function ticketTint(status: TicketStatus | undefined, violated: boolean | undefined): CSSProperties {
-  const color = violated ? "var(--urgent)" : status ? STATUS_COLORS[status] : "var(--faint)";
-  return {
-    backgroundColor: `color-mix(in oklch, ${color} 14%, var(--background))`,
-    boxShadow: `inset 2px 0 0 ${color}`,
-  };
-}
+export type { BarState };
 
 /**
  * What a finished gesture asks the API for: only the bounds the ticket already carried,
@@ -154,6 +124,14 @@ type BarProps = {
    */
   violated?: boolean;
   /**
+   * Minutes of slack before this ticket's own schedule forces something else to
+   * move — absent for a ticket with no dependencies, which has none to report.
+   * Drawn as a hatched strip appended after the bar; see `bar-style.ts`. Absent on
+   * a project bar: slack is a fact about one ticket's place in a chain, not about
+   * a band summarising several.
+   */
+  slackMinutes?: number;
+  /**
    * Which of the bar's edges was deduced from the tickets inside rather than posted by
    * anyone. Named per edge rather than as a flag because a bound that was deduced must
    * not be dragged: moving it would be editing a consequence, and a project whose start
@@ -217,6 +195,7 @@ export function TimelineBar({
   done,
   status,
   violated,
+  slackMinutes,
   derived,
   selected,
   onSelect,
@@ -227,17 +206,8 @@ export function TimelineBar({
   const to = boundLabel(end, timezone);
   const left = xOf(start, origin, zoom);
   const width = widthOf(start, end, zoom);
-  const accessibleName = [
-    name,
-    status && STATUS_LABELS[status],
-    // Said once here rather than carried by colour alone: `critical` no longer has
-    // one of its own (see `BarState`), and `late` and `violated` both still do, but
-    // a screen reader gets no colour either way.
-    state === "late" ? "overdue" : state === "critical" ? "critical path" : null,
-    violated && state !== "late" ? "dependency not respected" : null,
-  ]
-    .filter(Boolean)
-    .join(" — ");
+  const accessibleName = barAccessibleName({ name, status, state, violated });
+  const slackPx = kind === "ticket" ? slackWidthPx(slackMinutes, PX_PER_DAY[zoom]) : 0;
 
   /*
    * Kind and state together pick the bar's static classes; its colour is dynamic
@@ -407,23 +377,14 @@ export function TimelineBar({
 
   // The bar's colour: a project keeps its plain `bg-accent` (a Tailwind class, in
   // `look`, since it never varies), a late ticket gets the hatch, and any other
-  // ticket gets its status tint — the one thing here that is not a fixed class,
-  // because the status is one of six and a switch of six bracketed classes would
-  // be harder to read than the function computing the same colour once.
-  const colorStyle: CSSProperties | undefined =
+  // ticket gets its status tint — both defined in `bar-style.ts`, the one thing
+  // here that is not a fixed class, because the status is one of six and a switch
+  // of six bracketed classes would be harder to read than the function computing
+  // the same colour once.
+  const colorStyle =
     kind === "project" ? undefined : state === "late" ? LATE_STYLE : ticketTint(status, violated);
 
-  // Which edges were deduced rather than posted. Two arbitrary properties, not four
-  // stacked data-attribute variants: `border-*-style` has no Tailwind utility of its
-  // own, only `border-style` for all four sides at once.
-  const derivedClass =
-    derived === "both"
-      ? "[border-left-style:dashed] [border-right-style:dashed]"
-      : derived === "start"
-        ? "[border-left-style:dashed]"
-        : derived === "end"
-          ? "[border-right-style:dashed]"
-          : "";
+  const derivedClass = derivedBorderClass(derived);
 
   return (
     <>
@@ -522,6 +483,24 @@ export function TimelineBar({
           }}
           onPointerUp={(event) => link.onEnd(event.clientX, event.clientY)}
           onPointerCancel={() => link.onCancel()}
+        />
+      )}
+
+      {/*
+       * The slack strip: "la marge est dessinée plutôt que sous-entendue" — drawn
+       * rather than left for the reader to infer from two dates. A sibling of the
+       * bar for the same reason the link handle and the status pill are: it stands
+       * outside the bar's own `overflow: hidden`, immediately past its right edge,
+       * and the bar's drag repaints only the bar's own element, so this does not
+       * need to follow it — a bar is dragged by its own dates, not by its slack,
+       * and the next render draws the strip in the moved bar's new place regardless.
+       */}
+      {slackMinutes != null && slackPx > 0 && (
+        <div
+          aria-hidden="true"
+          title={slackTitle(slackMinutes)}
+          className="pointer-events-none absolute top-1 bottom-1 rounded-r-md border-r border-dashed border-rule"
+          style={{ left: left + width, width: slackPx, ...SLACK_STYLE }}
         />
       )}
     </>
