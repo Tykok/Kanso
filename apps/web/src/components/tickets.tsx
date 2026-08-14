@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { dayValue, type Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
-import { Row } from "./ui/row";
+import { Row, rowActionsTriggerClass } from "./ui/row";
+import { GroupLabel } from "./ui/group-label";
 import { PriorityMark, StatusPill, SyncBadge } from "./pills";
 import { Menu } from "./menu";
 import { menuItems } from "./menu-items";
@@ -14,7 +15,7 @@ const COLS = "grid-cols-[70px_20px_108px_1fr_112px_60px_64px_24px]";
 
 function ColumnHeader() {
   return (
-    <div className={`grid ${COLS} items-center gap-3 px-row-x pb-2 text-11 tracking-[0.1em] text-faint uppercase`}>
+    <GroupLabel className={`grid ${COLS} items-center gap-3 pt-0`}>
       <span>ID</span>
       <span />
       <span>Status</span>
@@ -23,7 +24,7 @@ function ColumnHeader() {
       <span>Due</span>
       <span>Sync</span>
       <span />
-    </div>
+    </GroupLabel>
   );
 }
 
@@ -147,6 +148,12 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
 
       <Menu
         label={`Actions for ${ticket.identifier}`}
+        asChild
+        trigger={
+          <button type="button" className={rowActionsTriggerClass}>
+            ⋯
+          </button>
+        }
         items={menuItems(ctx, ["ticket.rename", "ticket.archive", "ticket.delete"])}
       />
     </Row>

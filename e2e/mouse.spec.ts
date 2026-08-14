@@ -398,18 +398,25 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   expect(afterPriorityA?.priority).toBe(initialA?.priority);
   await expect(rowA).toHaveAttribute("data-selected", "true");
 
-  // The `⋯` no longer hides until the row earns it. Task 6 dropped that reveal-on-
-  // hover choreography: every drawn screen shows the row's actions in the open, and
-  // keeping the opacity trick meant reaching into menu.tsx's own `.menu-trigger` class
-  // from outside it (row.tsx and pills.tsx are the only files this task owns) — coupling
-  // this row's styling to a class another component is free to rename. What is still
-  // true, and still worth asserting, is that the trigger is reachable and focusable
-  // without a hover ever happening.
+  // The `⋯` stays out of sight until the row earns it — by hover, or by a
+  // keyboard user tabbing straight to it without ever touching the mouse. This is
+  // shipped, specified behaviour (docs/superpowers/specs/2026-08-09-mouse-parity-
+  // design.md:20 lists it under "What ships"), not a stylistic default the drawings
+  // happened to permit — an earlier draft of this task dropped it on that
+  // misreading and was corrected. It is now `RowReveal` (ui/row.tsx): `group-hover:`
+  // and `group-focus-within:` reading `<Row>`'s own `group` class, not a stylesheet
+  // reaching into `menu.tsx`'s `.menu-trigger` the way the deleted `list.css` did.
+  // `toBeVisible()` alone cannot tell "shown" from "hidden by opacity" — an element
+  // at `opacity: 0` with a non-empty box still passes it — so this checks the CSS
+  // property the behaviour actually turns on.
   const rowActionsA = rowA.getByRole("button", { name: `Actions for ${ticketA.identifier}` });
-  await expect(rowActionsA).toBeVisible();
+  await expect(rowActionsA).toHaveCSS("opacity", "0");
+  await rowA.hover();
+  await expect(rowActionsA).toHaveCSS("opacity", "1");
   await rowA.getByRole("button", { name: /^Status: / }).focus();
   await page.keyboard.press("Tab");
   await expect(rowActionsA).toBeFocused();
+  await expect(rowActionsA).toHaveCSS("opacity", "1");
 
   // Double-clicking the `⋯` or a pill must never fall through to opening the
   // ticket underneath — `dblclick` bubbles independently of the click the menu's
