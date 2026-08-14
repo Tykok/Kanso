@@ -8,8 +8,13 @@ import { widthOf, xOf, type Zoom } from "@/lib/timeline-geometry";
 import { useUi } from "@/store/ui";
 
 /**
- * The dependency layer: one `<svg>` over the whole chart, aligned with `.tl-rules` so an
- * arrow and the rule behind it cannot disagree about where a day is.
+ * The dependency layer: one `<svg>` over the whole chart, positioned off the same
+ * three custom properties the grid's rules read — set once, on the scroll
+ * container in `view.tsx`, and simply cascading down from there:
+ * --tl-names: the name column's width.
+ * --tl-axis: the axis strip's height.
+ * --tl-chart: the day grid's width.
+ * So an arrow and the rule behind it can never disagree about where a day is.
  *
  * Every path is routed — out, across, in — rather than drawn as a straight diagonal. A
  * diagonal across a dense chart crosses rows it has nothing to do with, and the eye
@@ -41,7 +46,7 @@ type Arrow = {
 };
 
 /**
- * The vertical middle of a lane. A row is `--row-height` tall including its bottom
+ * The vertical middle of a lane. A row is `--row-h` tall including its bottom
  * border, and its bar is centred in what is left — both halves of that are the
  * stylesheet's, which is why the height is measured rather than repeated here.
  */
@@ -197,12 +202,16 @@ function build(
 }
 
 /**
- * `--row-height` in pixels, read off the layer itself.
+ * `--row-h` in pixels, read off the layer itself.
  *
  * The SVG's own coordinates are pixels, so the lane a bar sits in has to be turned into
- * one — and the height is 38 or 30 depending on the density the reader chose. Copying
+ * one — and the height is 36 or 27 depending on the density the reader chose. Copying
  * either number into TypeScript would be a second place to change it; the observer is
  * what notices when the setting flips, since a shorter row makes the layer shorter too.
+ *
+ * Reads `--row-h` directly rather than through the `--row-height` alias `globals.css`
+ * still carries for pre-migration readers: this is the one remaining reader task 5
+ * named, and it has migrated.
  */
 function useRowHeight(ref: RefObject<SVGSVGElement | null>): number {
   const [height, setHeight] = useState(0);
@@ -212,7 +221,7 @@ function useRowHeight(ref: RefObject<SVGSVGElement | null>): number {
     if (!layer) return;
 
     const read = () => {
-      const px = Number.parseFloat(getComputedStyle(layer).getPropertyValue("--row-height"));
+      const px = Number.parseFloat(getComputedStyle(layer).getPropertyValue("--row-h"));
       setHeight(Number.isFinite(px) ? px : 0);
     };
 
@@ -351,7 +360,10 @@ export function TimelineArrows({
   }, [selected, onErase, overlay, dialog]);
 
   return (
-    <svg className="tl-arrows" ref={layer}>
+    <svg
+      ref={layer}
+      className="pointer-events-none absolute z-0 overflow-visible left-[var(--tl-names)] top-[var(--tl-axis)] h-[calc(100%_-_var(--tl-axis))] w-[var(--tl-chart)]"
+    >
       <defs>
         {/*
          * `markerUnits="userSpaceOnUse"` so the head keeps its size when a violated edge
@@ -368,7 +380,7 @@ export function TimelineArrows({
           markerUnits="userSpaceOnUse"
           orient="auto"
         >
-          <path className="tl-arrowhead" d="M 0 0 L 6 3 L 0 6 z" />
+          <path className="fill-faint" d="M 0 0 L 6 3 L 0 6 z" />
         </marker>
         <marker
           id="tl-arrowhead-violated"
@@ -380,7 +392,7 @@ export function TimelineArrows({
           markerUnits="userSpaceOnUse"
           orient="auto"
         >
-          <path className="tl-arrowhead" data-violated="" d="M 0 0 L 6 3 L 0 6 z" />
+          <path className="fill-urgent" d="M 0 0 L 6 3 L 0 6 z" />
         </marker>
         <marker
           id="tl-arrowhead-overlap"
@@ -392,7 +404,7 @@ export function TimelineArrows({
           orient="auto"
           markerUnits="userSpaceOnUse"
         >
-          <path className="tl-arrowhead" data-overlap="" d="M 0 0 L 6 3 L 0 6 z" />
+          <path className="fill-warning" d="M 0 0 L 6 3 L 0 6 z" />
         </marker>
         {/* The head of the line being drawn, which is neither of the other two: it says
             where the pointer is, not what the schedule says. */}
@@ -406,45 +418,55 @@ export function TimelineArrows({
           markerUnits="userSpaceOnUse"
           orient="auto"
         >
-          <path className="tl-arrowhead" data-drawing="" d="M 0 0 L 6 3 L 0 6 z" />
+          <path className="fill-primary" d="M 0 0 L 6 3 L 0 6 z" />
         </marker>
       </defs>
 
-      {arrows.map((arrow) => (
-        <path
-          key={arrow.key}
-          className="tl-arrow"
-          d={arrow.d}
-          data-violated={arrow.violated ? "" : undefined}
-          /* `&& !arrow.violated`: the two flags are exclusive by construction, but the
-           * guard is what keeps the line from ever disagreeing with its own arrowhead
-           * and title if that ever stopped being true — the priority lives here, once,
-           * rather than in which CSS rule happens to come second in the stylesheet. */
-          data-overlap={arrow.overlap && !arrow.violated ? "" : undefined}
-          data-stub={arrow.stub ? "" : undefined}
-          data-selected={arrow.key === selectedKey ? "" : undefined}
-          markerEnd={`url(#${
-            arrow.violated
-              ? "tl-arrowhead-violated"
-              : arrow.overlap
-                ? "tl-arrowhead-overlap"
-                : "tl-arrowhead"
-          })`}
-          /*
-           * A line is not a button, but erasing one has to be reachable, and `<title>`
-           * is what names an SVG element to a screen reader. Focusable as well as
-           * clickable: the chart has no key that walks the arrows, so without a tab stop
-           * the only way to select one — and therefore the only way to delete one at all
-           * — would be a mouse.
-           */
-          role="button"
-          tabIndex={0}
-          onClick={() => setSelectedKey(arrow.key)}
-          onFocus={() => setSelectedKey(arrow.key)}
-        >
-          <title>{arrow.title}</title>
-        </path>
-      ))}
+      {arrows.map((arrow) => {
+        // One lookup rather than several attribute-selector rules stacked on the same
+        // path: `data-violated` and `data-selected` can both be true at once, and which
+        // wins would otherwise depend on the order Tailwind happens to emit them in.
+        const selectedHere = arrow.key === selectedKey;
+        const strokeClass = selectedHere
+          ? "stroke-primary [stroke-width:2.5px]"
+          : arrow.violated
+            ? "stroke-urgent [stroke-width:2px]"
+            : arrow.overlap
+              ? "stroke-warning [stroke-width:1.5px]"
+              : "stroke-faint [stroke-width:1.5px]";
+
+        return (
+          <path
+            key={arrow.key}
+            // `tl-arrow` carries no rule of its own — the pointerdown handler above
+            // finds a line to keep selected by `.closest(".tl-arrow, .tl-erase")`.
+            className={`tl-arrow pointer-events-auto fill-none focus-visible:stroke-primary focus-visible:[stroke-width:2.5px] focus-visible:outline-none ${strokeClass}`}
+            d={arrow.d}
+            data-stub={arrow.stub ? "" : undefined}
+            style={arrow.stub ? { strokeDasharray: "3 3" } : undefined}
+            markerEnd={`url(#${
+              arrow.violated
+                ? "tl-arrowhead-violated"
+                : arrow.overlap
+                  ? "tl-arrowhead-overlap"
+                  : "tl-arrowhead"
+            })`}
+            /*
+             * A line is not a button, but erasing one has to be reachable, and `<title>`
+             * is what names an SVG element to a screen reader. Focusable as well as
+             * clickable: the chart has no key that walks the arrows, so without a tab stop
+             * the only way to select one — and therefore the only way to delete one at all
+             * — would be a mouse.
+             */
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedKey(arrow.key)}
+            onFocus={() => setSelectedKey(arrow.key)}
+          >
+            <title>{arrow.title}</title>
+          </path>
+        );
+      })}
 
       {/*
        * The rubber band. Rendered empty and given its `d` by the pointer: there is no
@@ -452,12 +474,18 @@ export function TimelineArrows({
        * frame would be a flicker at the start of every gesture.
        */}
       {linking && (
-        <path ref={rubber} className="tl-rubber" markerEnd="url(#tl-arrowhead-drawing)" />
+        <path
+          ref={rubber}
+          className="fill-none stroke-primary [stroke-dasharray:4_3] [stroke-width:2px] pointer-events-none"
+          markerEnd="url(#tl-arrowhead-drawing)"
+        />
       )}
 
       {selected && (
         <g
-          className="tl-erase"
+          // `tl-erase` is the same kind of bare hook as `tl-arrow`: the pointerdown
+          // handler treats a press on either as "still on a line", not a deselect.
+          className="tl-erase group cursor-pointer pointer-events-auto"
           transform={`translate(${selected.erase.x} ${selected.erase.y})`}
           role="button"
           tabIndex={0}
@@ -467,8 +495,14 @@ export function TimelineArrows({
           }}
         >
           <title>{`Remove this dependency (${selected.title.split(" · ")[0]})`}</title>
-          <circle r="8" />
-          <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" />
+          <circle
+            r="8"
+            className="fill-urgent stroke-background [stroke-width:1.5px] group-focus-visible:stroke-primary group-focus-visible:[stroke-width:2.5px]"
+          />
+          <path
+            d="M -3 -3 L 3 3 M 3 -3 L -3 3"
+            className="fill-none stroke-white [stroke-width:1.6px] [stroke-linecap:round]"
+          />
         </g>
       )}
     </svg>

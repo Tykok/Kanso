@@ -14,11 +14,16 @@ export const STEP_NAMES: Record<StepId, string> = {
 
 export function SetupPage({ children }: { children: ReactNode }) {
   return (
-    <div className="setup-page">
-      <div className="setup-shell">
+    <div className="flex min-h-screen flex-col items-center px-5 py-10">
+      {/*
+       * Auto margins centre the card while it fits and collapse to zero when it does
+       * not. `justify-content: center` cannot do the second half: it pushes the top of
+       * a tall card above the scroll origin, out of reach.
+       */}
+      <div className="my-auto flex w-full max-w-[600px] flex-col gap-4">
         {/* Smaller than the sign-in screen's: this one sits above a card that already
             has a heading of its own, so it introduces rather than announces. */}
-        <div className="brand">
+        <div className="flex items-center gap-2.5">
           <Seal size={18} title="Kanso 簡素" />
         </div>
         {children}
@@ -31,20 +36,31 @@ export function StepRail({ plan, index }: { plan: StepId[]; index: number }) {
   const done = index >= plan.length;
 
   return (
-    <nav className="setup-rail" aria-label="Setup progress">
-      <span className="setup-rail-count">
+    <nav className="mb-2.5 flex flex-col gap-1" aria-label="Setup progress">
+      <span
+        className="text-11 uppercase tracking-wide text-faint"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
         {done ? "All steps done" : `Step ${index + 1} of ${plan.length}`}
       </span>
-      <ol>
-        {plan.map((step, position) => (
-          <li
-            key={step}
-            data-state={done || position < index ? "done" : position === index ? "current" : "todo"}
-            aria-current={position === index ? "step" : undefined}
-          >
-            {STEP_NAMES[step]}
-          </li>
-        ))}
+      <ol className="flex flex-wrap text-12">
+        {plan.map((step, position) => {
+          const color =
+            done || position < index
+              ? "text-muted-foreground"
+              : position === index
+                ? "font-medium text-foreground"
+                : "text-faint";
+          return (
+            <li
+              key={step}
+              aria-current={position === index ? "step" : undefined}
+              className={`${color} after:mx-[7px] after:text-border after:content-['·'] last:after:content-none`}
+            >
+              {STEP_NAMES[step]}
+            </li>
+          );
+        })}
       </ol>
     </nav>
   );
@@ -93,38 +109,38 @@ export function FormCard({
 }: FormCardProps) {
   return (
     <form
-      className="setup-card"
+      className="flex flex-col overflow-hidden rounded-panel border border-border bg-card shadow-panel"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
       }}
       onKeyDown={escapeBlurs}
     >
-      <div className="setup-head">
+      <div className="border-b border-border px-[18px] py-3.5">
         {head}
-        <h1>{title}</h1>
-        {intro && <p className="setup-intro">{intro}</p>}
+        <h1 className="m-0 text-15 font-medium tracking-tight">{title}</h1>
+        {intro && <p className="m-0 mt-1.5 text-13 text-muted-foreground">{intro}</p>}
       </div>
 
-      <div className="setup-body">
+      <div className="flex flex-col gap-4 px-[18px] py-[18px]">
         {children}
         {error && (
-          <p className="setup-error" role="alert">
+          <p className="m-0 text-12 text-urgent" role="alert">
             {error}
           </p>
         )}
       </div>
 
-      <div className="setup-foot">
+      <div className="flex items-center gap-2 border-t border-border px-3.5 py-2.5">
         {onBack && (
           <button type="button" className="button" onClick={onBack}>
             Back
           </button>
         )}
-        <span className="setup-keys">
+        <span className="text-11 text-faint">
           <kbd>↵</kbd> {primaryLabel.toLowerCase()}
         </span>
-        <span className="setup-foot-end">
+        <span className="ml-auto flex items-center gap-2">
           {onSkip && (
             <button type="button" className="button" onClick={onSkip}>
               {skipLabel}
@@ -141,11 +157,11 @@ export function FormCard({
 
 export function MessageCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="setup-card">
-      <div className="setup-head">
-        <h1>{title}</h1>
+    <div className="flex flex-col overflow-hidden rounded-panel border border-border bg-card shadow-panel">
+      <div className="border-b border-border px-[18px] py-3.5">
+        <h1 className="m-0 text-15 font-medium tracking-tight">{title}</h1>
       </div>
-      <div className="setup-body">{children}</div>
+      <div className="flex flex-col gap-4 px-[18px] py-[18px]">{children}</div>
     </div>
   );
 }

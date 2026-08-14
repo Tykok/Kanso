@@ -5,6 +5,7 @@ import { useState } from "react";
 import { API_URL, ApiError, type Me } from "@/lib/api";
 import { api } from "@/lib/api";
 import { keys } from "@/lib/queries";
+import { SettingsFormField, SettingsInline, SettingsNote, SettingsStatic } from "./field";
 
 const MIN_PASSWORD = 12;
 
@@ -14,8 +15,8 @@ function message(error: unknown) {
 
 /** A saved/failed line that says which field it belongs to, next to that field. */
 function Status({ saved, error }: { saved?: boolean; error?: unknown }) {
-  if (error) return <span className="settings-note error">{message(error)}</span>;
-  if (saved) return <span className="settings-note">Saved</span>;
+  if (error) return <SettingsNote error>{message(error)}</SettingsNote>;
+  if (saved) return <SettingsNote>Saved</SettingsNote>;
   return null;
 }
 
@@ -54,14 +55,17 @@ export function AccountSection({ me }: { me: Me }) {
   const canUnlink = Boolean(me.user.linkedProvider) && me.user.hasPassword;
 
   return (
-    <section className="settings-section">
-      <h2>Account</h2>
+    <section className="flex flex-col">
+      <h2 className="mb-6 text-21 font-medium tracking-tight">Account</h2>
 
-      <div className="settings-field">
-        <label htmlFor="display-name">Display name</label>
-        <div className="settings-inline">
+      <SettingsFormField>
+        <label htmlFor="display-name" className="text-13 font-medium">
+          Display name
+        </label>
+        <SettingsInline>
           <input
             id="display-name"
+            className="flex-1 min-w-[180px]"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
           />
@@ -72,23 +76,26 @@ export function AccountSection({ me }: { me: Me }) {
           >
             Save
           </button>
-        </div>
+        </SettingsInline>
         <Status saved={rename.isSuccess} error={rename.error} />
-      </div>
+      </SettingsFormField>
 
-      <div className="settings-field">
-        <label>Email</label>
-        <div className="settings-static">{me.user.email}</div>
-        <span className="settings-note">
+      <SettingsFormField>
+        <span className="text-13 font-medium">Email</span>
+        <SettingsStatic>{me.user.email}</SettingsStatic>
+        <SettingsNote>
           Fixed: it is both your sign-in and how a provider account is matched to this one.
-        </span>
-      </div>
+        </SettingsNote>
+      </SettingsFormField>
 
-      <div className="settings-field">
-        <label htmlFor="notion-id">Notion identity</label>
-        <div className="settings-inline">
+      <SettingsFormField>
+        <label htmlFor="notion-id" className="text-13 font-medium">
+          Notion identity
+        </label>
+        <SettingsInline>
           <input
             id="notion-id"
+            className="flex-1 min-w-[180px]"
             placeholder="Notion user id"
             value={notionId}
             onChange={(event) => setNotionId(event.target.value)}
@@ -100,19 +107,19 @@ export function AccountSection({ me }: { me: Me }) {
           >
             Save
           </button>
-        </div>
-        <span className="settings-note">
+        </SettingsInline>
+        <SettingsNote>
           Lets the mirror put you in Notion&rsquo;s <code>Assignees</code> property. Without it you
           appear only as text, because Notion accepts nobody outside its own workspace there.
-        </span>
+        </SettingsNote>
         <Status saved={notion.isSuccess} error={notion.error} />
-      </div>
+      </SettingsFormField>
 
-      <div className="settings-field">
-        <label>Sign in with Google</label>
+      <SettingsFormField>
+        <span className="text-13 font-medium">Sign in with Google</span>
         {me.user.linkedProvider ? (
-          <div className="settings-inline">
-            <div className="settings-static">Linked to {me.user.linkedProvider}</div>
+          <SettingsInline>
+            <SettingsStatic>Linked to {me.user.linkedProvider}</SettingsStatic>
             <button
               className="button"
               disabled={!canUnlink || unlink.isPending}
@@ -120,31 +127,32 @@ export function AccountSection({ me }: { me: Me }) {
             >
               Unlink
             </button>
-          </div>
+          </SettingsInline>
         ) : (
-          <div className="settings-inline">
-            <div className="settings-static">Not linked</div>
+          <SettingsInline>
+            <SettingsStatic>Not linked</SettingsStatic>
             <a className="button" href={`${API_URL}/oauth2/authorization/google`}>
               Link Google
             </a>
-          </div>
+          </SettingsInline>
         )}
-        <span className="settings-note">
+        <SettingsNote>
           {me.user.linkedProvider && !me.user.hasPassword
             ? "Set a password first — unlinking now would leave you no way to sign in."
             : "Signing in with Google attaches to this account when the address matches."}
-        </span>
+        </SettingsNote>
         <Status error={unlink.error} />
-      </div>
+      </SettingsFormField>
 
-      <div className="settings-field">
-        <label htmlFor="current-password">
+      <SettingsFormField>
+        <label htmlFor="current-password" className="text-13 font-medium">
           {me.user.hasPassword ? "Change password" : "Password"}
         </label>
         {me.user.hasPassword ? (
           <>
             <input
               id="current-password"
+              className="w-full max-w-[380px]"
               type="password"
               autoComplete="current-password"
               placeholder="Current password"
@@ -152,6 +160,7 @@ export function AccountSection({ me }: { me: Me }) {
               onChange={(event) => setCurrent(event.target.value)}
             />
             <input
+              className="w-full max-w-[380px]"
               type="password"
               autoComplete="new-password"
               placeholder={`New password (${MIN_PASSWORD}+ characters)`}
@@ -159,13 +168,14 @@ export function AccountSection({ me }: { me: Me }) {
               onChange={(event) => setNext(event.target.value)}
             />
             <input
+              className="w-full max-w-[380px]"
               type="password"
               autoComplete="new-password"
               placeholder="Repeat the new password"
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
             />
-            <div className="settings-inline">
+            <SettingsInline>
               <button
                 className="button button-primary"
                 disabled={
@@ -178,20 +188,20 @@ export function AccountSection({ me }: { me: Me }) {
               >
                 Change password
               </button>
-              {passwordProblem && <span className="settings-note error">{passwordProblem}</span>}
+              {passwordProblem && <SettingsNote error>{passwordProblem}</SettingsNote>}
               <Status saved={password.isSuccess} error={password.error} />
-            </div>
-            <span className="settings-note">
+            </SettingsInline>
+            <SettingsNote>
               Your other signed-in browsers are signed out. This one stays.
-            </span>
+            </SettingsNote>
           </>
         ) : (
-          <span className="settings-note">
+          <SettingsNote>
             This account signs in through {me.user.linkedProvider ?? "a provider"} and has no
             password.
-          </span>
+          </SettingsNote>
         )}
-      </div>
+      </SettingsFormField>
     </section>
   );
 }

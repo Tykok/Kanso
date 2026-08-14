@@ -102,17 +102,22 @@ export function TimelineTray({
   if (items.length === 0) return null;
 
   return (
-    <div className="tl-tray" data-open={open ? "" : undefined}>
+    <div className="flex-none border-b border-border bg-card">
       <button
         type="button"
-        className="tl-tray-toggle"
         aria-expanded={open}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
+        className="flex w-full items-center gap-1.5 px-4 py-1.5 text-left text-11 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         {/* Decorative: the state is already on the button through `aria-expanded`, and
             a caret read out as "black right-pointing triangle" says it a second time
-            and worse. */}
-        <span className="tl-tray-caret" aria-hidden="true">
+            and worse. One glyph turned, rather than two glyphs swapped: a caret that
+            changes character changes width too, and the label beside it would shift
+            every time the strip opens. */}
+        <span
+          aria-hidden="true"
+          className={`inline-block text-11 text-faint transition-transform ${open ? "rotate-90" : ""}`}
+        >
           ▸
         </span>
         {/* The count belongs in the header rather than beside it: collapsed, this line
@@ -121,9 +126,9 @@ export function TimelineTray({
       </button>
 
       {open && (
-        <ul className="tl-tray-list">
+        <ul className="m-0 flex list-none flex-wrap gap-1 px-4 pb-1.5 [max-height:22vh] overflow-y-auto">
           {items.map((ticket) => (
-            <li key={ticket.id}>
+            <li key={ticket.id} className="flex min-w-0">
               {/*
                * A `<button>` now, where it was an inert `<li>`. The reason the chips were
                * not buttons was that pressing one did nothing, and a board's worth of
@@ -134,11 +139,12 @@ export function TimelineTray({
                * reachable by exactly one kind of person.
                *
                * The accessible name is spelled the way a bar's is, so the same ticket
-               * reads the same in both halves of the screen.
+               * reads the same in both halves of the screen. `touch-action: none` is
+               * what makes the drag possible with a finger at all — without it the
+               * browser claims the gesture as a scroll a few pixels in.
                */}
               <button
                 type="button"
-                className="tl-chip"
                 aria-label={`${ticket.identifier}: ${ticket.title}`}
                 aria-current={ticket.id === control.selectedId ? "true" : undefined}
                 data-selected={ticket.id === control.selectedId ? "" : undefined}
@@ -150,9 +156,15 @@ export function TimelineTray({
                 // The pointer already selected on the way down; this is the keyboard's
                 // way in, and re-selecting the same id changes nothing.
                 onClick={() => control.onSelect(ticket.id)}
+                className="flex max-w-[260px] cursor-grab touch-none select-none items-baseline gap-1.5 rounded-md border border-border bg-accent px-2 py-0.5 text-left text-11 text-foreground hover:border-faint active:cursor-grabbing data-[selected]:outline-2 data-[selected]:outline-primary data-[selected]:outline-offset-1 data-[dragging]:opacity-45"
               >
-                <span className="tl-chip-id">{ticket.identifier}</span>
-                <span className="tl-chip-title">{ticket.title}</span>
+                <span
+                  className="shrink-0 text-11 text-faint"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {ticket.identifier}
+                </span>
+                <span className="truncate">{ticket.title}</span>
               </button>
             </li>
           ))}

@@ -102,7 +102,7 @@ export function AccountStep({ head, onDone }: { head: ReactNode; onDone: () => v
         }}
       />
 
-      <p className="setup-hint">
+      <p className="m-0 text-11 text-faint">
         There is no password reset: the owner regenerates an invitation link instead.
       </p>
     </FormCard>

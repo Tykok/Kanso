@@ -3,6 +3,13 @@
 import { axisTicks, dayKey, daysBetween, today, xOf, type Zoom } from "@/lib/timeline-geometry";
 import { TODAY_MARKER_ID } from "@/lib/use-action-ctx";
 
+// Three custom properties read here, none of them tokens:
+// --tl-names: the name column's width.
+// --tl-axis: the axis strip's height.
+// --tl-chart: the day grid's width.
+// All three are set once, on the scroll container `view.tsx` renders, and simply
+// cascade down to this component.
+
 /**
  * Room a `dd/mm` label needs, in pixels, before it runs into the next one. Measured
  * against the axis font rather than derived: it is the width of the text, and the
@@ -65,21 +72,32 @@ export function TimelineGrid({
     <>
       {/* The whole strip is sticky, so the empty cell over the names column stays put
           in the corner rather than letting the first name scroll up into the axis. */}
-      <div className="tl-axis-row">
-        <div className="tl-corner" />
-        <div className="tl-axis">
+      <div className="sticky top-0 z-[3] flex h-[var(--tl-axis)] border-b border-border bg-background">
+        <div className="sticky left-0 z-[1] shrink-0 basis-[var(--tl-names)] border-r border-border bg-background" />
+        <div className="relative shrink-0 basis-[var(--tl-chart)]">
           {ticks
             .filter((tick) => labelled.has(tick.day))
             .map((tick) => (
-              <span className="tl-tick" key={tick.day} style={{ left: tick.x }}>
+              <span
+                key={tick.day}
+                className="absolute top-0 whitespace-nowrap pl-1 text-11 leading-[25px] text-faint tabular-nums"
+                style={{ left: tick.x, fontFamily: "var(--font-mono)" }}
+              >
                 {tick.label}
               </span>
             ))}
         </div>
       </div>
-      <div className="tl-rules" aria-hidden="true">
+      <div
+        className="absolute bottom-0 left-[var(--tl-names)] top-[var(--tl-axis)] w-[var(--tl-chart)]"
+        aria-hidden="true"
+      >
         {ticks.map((tick) => (
-          <span className="tl-rule" key={tick.day} style={{ left: tick.x }} />
+          <span
+            key={tick.day}
+            className="absolute top-0 bottom-0 w-px bg-border"
+            style={{ left: tick.x }}
+          />
         ))}
         {/*
          * In the rules layer rather than in a layer of its own: it is the same kind of
@@ -91,8 +109,8 @@ export function TimelineGrid({
          */}
         {onChart && (
           <span
-            className="tl-today"
             id={TODAY_MARKER_ID}
+            className="absolute top-0 bottom-0 w-0.5 bg-primary opacity-70"
             style={{ left: xOf(now, origin, zoom) }}
           />
         )}

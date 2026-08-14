@@ -383,20 +383,37 @@ export function TimelineView({
   // not replace the chart with a sentence — least of all mid-drag, which would unmount
   // the bar the hand is holding.
   if (timeline.error && !view) {
-    return <div className="empty error">{(timeline.error as Error).message}</div>;
+    return <div className="px-4 py-12 text-center text-urgent">{(timeline.error as Error).message}</div>;
   }
-  if (timeline.isPending) return <div className="empty">Loading…</div>;
+  if (timeline.isPending) {
+    return <div className="px-4 py-12 text-center text-faint">Loading…</div>;
+  }
 
   // The chart's own width, in pixels, handed to the stylesheet: the axis, the rules
   // layer and every lane are that wide, and the names column is what the rest of the
   // row is. Writing it three times inline would be three places to disagree.
-  const chart = { "--tl-chart": `${bounds.dayCount * PX_PER_DAY[zoom]}px` } as CSSProperties;
+  //
+  // Three custom properties, not tokens — no default lives in tokens.css, because no
+  // surface but this one has a use for them:
+  //   --tl-names: the width of the sticky name column.
+  //   --tl-axis: the height of the axis strip above the grid.
+  //   --tl-chart: the one value that changes every render, from the zoom and the day
+  //   count. Every descendant that positions itself off the chart's geometry — the
+  //   grid's axis and rules, each row's sticky name cell, the drop layer, the arrow
+  //   layer — reads its own copy of all three straight off this element, through
+  //   `var()`, so there is exactly one place to change the width of the name column
+  //   or the height of the axis.
+  const chart = {
+    "--tl-names": "200px",
+    "--tl-axis": "26px",
+    "--tl-chart": `${bounds.dayCount * PX_PER_DAY[zoom]}px`,
+  } as CSSProperties;
 
   return (
-    // The tray is a sibling of the scroller, not something inside it: `.tl` scrolls in
-    // both directions, and a strip placed within it would slide out of the corner it is
-    // meant to sit in. Both are children of `.main`, which is the column that gives the
-    // chart the height left over.
+    // The tray is a sibling of the scroller, not something inside it: the chart
+    // scrolls in both directions, and a strip placed within it would slide out of the
+    // corner it is meant to sit in. Both are children of `.main`, which is the column
+    // that gives the chart the height left over.
     <>
       <TimelineTray items={view?.unscheduled ?? []} control={trayControl} />
 
@@ -406,7 +423,7 @@ export function TimelineView({
        * warning does not scroll away with the chart it is about.
        */}
       {view?.truncated && (
-        <div className="tl-truncated" role="status">
+        <div className="px-2 py-1 text-11 text-warning" role="status">
           This view hit its limit — some bars are not drawn. Narrow the scope to see them all.
         </div>
       )}
@@ -415,9 +432,20 @@ export function TimelineView({
        * One scroll container, not two. The names are pinned with `position: sticky` per
        * row rather than living in a scroller of their own, so the two halves cannot
        * drift apart vertically and no scroll handler has to hold them together.
+       *
+       * `group` carries `data-linking` down to every bar: while a dependency is being
+       * drawn, the whole chart reads as a drop target, not only the lane under the
+       * pointer.
        */}
-      <div className="tl" data-linking={linking ? "" : undefined}>
-        <div className="tl-canvas" style={chart}>
+      <div
+        className="group/chart min-h-0 flex-1 overflow-auto"
+        data-linking={linking ? "" : undefined}
+        style={chart}
+      >
+        <div
+          className="relative min-w-full"
+          style={{ width: "calc(var(--tl-names) + var(--tl-chart))" }}
+        >
           <TimelineGrid origin={bounds.origin} dayCount={bounds.dayCount} zoom={zoom} />
 
           {/*
@@ -428,7 +456,9 @@ export function TimelineView({
            * on the one screen that is all tray.
            */}
           {rows.length === 0 && (
-            <div className="tl-blank">Nothing scheduled here yet — drag a ticket onto a day.</div>
+            <div className="flex h-[120px] items-center justify-center text-12 text-muted-foreground pointer-events-none">
+              Nothing scheduled here yet — drag a ticket onto a day.
+            </div>
           )}
 
           {rows.map((row) => (
@@ -461,9 +491,19 @@ export function TimelineView({
            * measures it, and a layer that only existed during a gesture would have to be
            * measured after the gesture had already started.
            */}
-          <div className="tl-drop-layer" ref={dropLayer} aria-hidden="true">
-            <div className="tl-drop" ref={dropBand}>
-              <span className="tl-drop-day" ref={dropLabel} />
+          <div
+            ref={dropLayer}
+            className="pointer-events-none absolute bottom-0 left-[var(--tl-names)] top-[var(--tl-axis)] w-[var(--tl-chart)]"
+            aria-hidden="true"
+          >
+            <div
+              ref={dropBand}
+              className="absolute top-0 bottom-0 hidden border-l-2 border-primary bg-primary/20 data-[active]:block"
+            >
+              <span
+                ref={dropLabel}
+                className="absolute left-1 top-0.5 whitespace-nowrap rounded-sm bg-primary px-1 text-11 text-primary-foreground tabular-nums"
+              />
             </div>
           </div>
         </div>
