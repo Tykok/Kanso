@@ -70,24 +70,33 @@ export function derivedBorderClass(derived?: "start" | "end" | "both"): string {
 /**
  * Said once here rather than carried by colour alone: `critical` no longer has one
  * of its own (see `BarState`), and `late` and `violated` both still do, but a
- * screen reader gets no colour either way.
+ * screen reader gets no colour either way. `slackMinutes` is the same story: the
+ * strip that draws it (below) is `aria-hidden`, on purpose — a second focusable
+ * node per bar would be worse — so the one clause `slackTitle` already writes for
+ * its `title` is folded in here instead of being left to disappear with the strip.
+ * Absent or non-positive slack adds nothing, not an empty clause: a ticket with no
+ * dependencies has none to report, and a kind that never draws the strip (a
+ * project) should never have its name mention it either.
  */
 export function barAccessibleName({
   name,
   status,
   state,
   violated,
+  slackMinutes,
 }: {
   name: string;
   status?: TicketStatus;
   state: BarState;
   violated?: boolean;
+  slackMinutes?: number;
 }): string {
   return [
     name,
     status && STATUS_LABELS[status],
     state === "late" ? "overdue" : state === "critical" ? "critical path" : null,
     violated && state !== "late" ? "dependency not respected" : null,
+    slackMinutes && slackMinutes > 0 ? slackTitle(slackMinutes) : null,
   ]
     .filter(Boolean)
     .join(" — ");

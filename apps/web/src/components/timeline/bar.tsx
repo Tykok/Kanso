@@ -206,8 +206,11 @@ export function TimelineBar({
   const to = boundLabel(end, timezone);
   const left = xOf(start, origin, zoom);
   const width = widthOf(start, end, zoom);
-  const accessibleName = barAccessibleName({ name, status, state, violated });
-  const slackPx = kind === "ticket" ? slackWidthPx(slackMinutes, PX_PER_DAY[zoom]) : 0;
+  // A project draws no strip and gets no slack mention either — one gate feeds
+  // both the name and the width below.
+  const ticketSlack = kind === "ticket" ? slackMinutes : undefined;
+  const accessibleName = barAccessibleName({ name, status, state, violated, slackMinutes: ticketSlack });
+  const slackPx = slackWidthPx(ticketSlack, PX_PER_DAY[zoom]);
 
   /*
    * Kind and state together pick the bar's static classes; its colour is dynamic
