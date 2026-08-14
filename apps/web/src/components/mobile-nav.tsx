@@ -37,6 +37,7 @@ export function MobileNavDrawer({
       aria-label="Navigation"
     >
       <div
+        data-testid="mobile-nav-scrim"
         className="absolute inset-0"
         style={{ background: "rgb(24 24 32 / 32%)" }}
         onClick={onClose}

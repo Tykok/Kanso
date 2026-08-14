@@ -305,11 +305,18 @@
   /*
    * Without this line `--font-sans` above is just a same-named custom property:
    * Tailwind's theme system only reads keys declared inside `@theme`, so the
-   * `font-sans` utility (and, more load-bearing, Tailwind v4 preflight's own
-   * `--default-font-family` on `html`/`:host`) kept resolving to Tailwind's
-   * built-in fallback instead of Public Sans, no matter what `--font-sans`
-   * said. `inline` for the same reason every other bridge line above is: the
-   * `var()` re-resolves at use, so this doesn't have to duplicate the stack.
+   * `font-sans` utility and Tailwind v4 preflight's own `--default-font-family`
+   * on `html`/`:host` kept resolving to Tailwind's built-in fallback instead of
+   * Public Sans, no matter what `--font-sans` said. Neither of those reaches
+   * rendered app text on its own — `globals.css`'s `body` rule sits below
+   * `html` and already named `var(--font-sans)` directly, which was sufficient
+   * for body text with or without this line, since `--font-sans`'s plain
+   * `:root` declaration above is unlayered and always beats this line's
+   * layered one. This line is what makes the `font-sans` utility (should
+   * anything reach for it) and preflight's own default agree with the rest of
+   * the app instead of quietly disagreeing with it. `inline` for the same
+   * reason every other bridge line above is: the `var()` re-resolves at use,
+   * so this doesn't have to duplicate the stack.
    */
   --font-sans: var(--font-sans);
 }

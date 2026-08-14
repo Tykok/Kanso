@@ -98,9 +98,20 @@ export async function seedInstance(): Promise<void> {
  * be there before the first script runs. `addInitScript` also replays on every
  * navigation, which a one-off `evaluate` would not. `baseURL` is repeated here: a
  * context created by hand does not inherit the configuration's `use` options.
+ *
+ * `viewport` is optional and defaults to Playwright's own — every scenario before
+ * the mobile drawer wanted the desktop shell, and this keeps them asking for
+ * nothing extra. A scenario that needs the under-720px layout passes its own.
  */
-export async function openAs(browser: Browser, email: string): Promise<Page> {
-  const context = await browser.newContext({ baseURL: WEB_URL });
+export async function openAs(
+  browser: Browser,
+  email: string,
+  options?: { viewport?: { width: number; height: number } },
+): Promise<Page> {
+  const context = await browser.newContext({
+    baseURL: WEB_URL,
+    ...(options?.viewport ? { viewport: options.viewport } : {}),
+  });
   await context.addInitScript((who: string) => {
     window.localStorage.setItem("kanso.devUser", who);
   }, email);

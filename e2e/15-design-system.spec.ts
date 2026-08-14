@@ -3,9 +3,13 @@ import { expect, test } from "@playwright/test";
 /**
  * Scenario 15 — the workbench itself.
  *
- * Deliberately thin: this page has no behaviour to test. What it does catch is a
- * token layer that failed to load, which renders as unstyled markup rather than an
- * error, and which every later migration task would then be building against.
+ * Deliberately thin: this page has almost no behaviour to test. What it mostly
+ * catches is a token layer that failed to load, which renders as unstyled markup
+ * rather than an error, and which every later migration task would then be
+ * building against. The one thing added since — the Contrast section's Light/Dark
+ * toggle — gets its own real assertion below: not that the toggle exists, but that
+ * flipping it changes what a status hue actually computes to, which is the only
+ * way to tell "reads live tokens" apart from "restates a hex pair by hand".
  */
 test("scenario 15 — the design system page renders its tokens and components", async ({
   page,
@@ -41,9 +45,40 @@ test("scenario 15 — the design system page renders its tokens and components",
   expect(buttonBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(buttonBackground).not.toBe("transparent");
 
-  // The dialog opens and closes, which is the one interaction on this page.
+  // The dialog opens and closes.
   await page.getByRole("button", { name: "Open dialog" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // The Contrast section's Light/Dark toggle. "Backlog" is the status hue's own
+  // label (`ContrastMatrix`, `sections.tsx`) and appears nowhere else on this page,
+  // so it needs no further scoping. The claim worth making isn't that the toggle
+  // exists — it's that pressing it changes what the label's colour actually
+  // computes to, which a hardcoded pair of hex values would not do: this is what
+  // tells "reads the live token" apart from "restates it".
+  const scheme = page.getByRole("group", { name: "Preview scheme" });
+  const backlogLabel = page.getByText("Backlog", { exact: true });
+  const lightColor = await backlogLabel.evaluate((el) => getComputedStyle(el).color);
+
+  await scheme.getByRole("button", { name: "Dark", exact: true }).click();
+  // The toggle drives the real `document.documentElement` class the app's own
+  // theme switch uses (`lib/theme.ts`), not a scoped class of its own — this is
+  // what lets a nested "light" reading be trusted at all (see `ContrastMatrix`'s
+  // own comment on why a static two-column version would have lied).
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+    .toBe(true);
+  const darkColor = await backlogLabel.evaluate((el) => getComputedStyle(el).color);
+  expect(darkColor).not.toBe(lightColor);
+
+  // And back, restoring the tab's real theme to what it was before this test
+  // touched it — the component's own unmount cleanup does this when the page
+  // navigates away, but nothing here navigates away.
+  await scheme.getByRole("button", { name: "Light", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+    .toBe(false);
+  const backToLightColor = await backlogLabel.evaluate((el) => getComputedStyle(el).color);
+  expect(backToLightColor).toBe(lightColor);
 });

@@ -203,12 +203,18 @@
      * `var(--font-sans)`, not a hardcoded stack: that stack (Public Sans, then
      * `next/font`'s own metric-matched fallback, then `system-ui`) is what
      * `layout.tsx`'s `Public_Sans({ variable: "--font-public-sans" })` and
-     * `tokens.css`'s `--font-sans` exist to name. This rule sits in
-     * `kanso-reset`, which is unlayered-relative-to-`base` on purpose (see this
-     * file's header) — Tailwind's own preflight now also resolves its default
-     * font from the same token (`tokens.css`'s `@theme inline` block), so the
-     * two agree instead of this one silently overriding Public Sans back to
-     * the system stack it replaced.
+     * `tokens.css`'s `--font-sans` exist to name. This line alone is what fixed
+     * Public Sans never rendering: `--font-sans`'s `:root` declaration in
+     * `tokens.css` is unlayered, so it already beat Tailwind's own (layered)
+     * `@theme` default regardless of anything else — the previous, hardcoded
+     * stack here was the one and only thing standing between this property and
+     * Public Sans. `tokens.css`'s `@theme inline` bridge does a different job,
+     * not this one: it registers `--font-sans` as a Tailwind theme key, which is
+     * what makes the `font-sans` utility and preflight's own `html`-level
+     * default agree with this value too — neither of which this rule needed,
+     * since it names `var(--font-sans)` directly and wins over `html` by sitting
+     * on `body`, in `kanso-reset`, which is unlayered-relative-to-`base` on
+     * purpose (see this file's header).
      */
     font: 13px/1.5 var(--font-sans);
     -webkit-font-smoothing: antialiased;

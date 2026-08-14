@@ -385,6 +385,7 @@ export default function InboxPage() {
         <div className="flex items-center gap-3 bg-card px-5 py-3">
           <button
             type="button"
+            data-testid="mobile-nav-trigger"
             className="hidden -ml-2.5 size-11 shrink-0 place-items-center rounded-md text-foreground hover:bg-accent max-[720px]:grid"
             aria-label="Open navigation"
             aria-expanded={mobileNavOpen}
