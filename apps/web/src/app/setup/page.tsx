@@ -22,7 +22,6 @@ import {
 } from "@/lib/api";
 import { useMe } from "@/lib/queries";
 import { applyPreferences } from "@/lib/theme";
-import "./setup.css";
 
 /**
  * Notion and Google are instance-wide, so they belong to whoever owns the instance.
@@ -45,8 +44,8 @@ export default function SetupRoute() {
     return (
       <SetupPage>
         <MessageCard title="Cannot reach the instance">
-          <p className="setup-error">{messageFor(setup.error)}</p>
-          <div className="setup-actions">
+          <p className="m-0 text-12 text-urgent">{messageFor(setup.error)}</p>
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="button" onClick={() => setup.refetch()}>
               Try again
             </button>
@@ -60,7 +59,7 @@ export default function SetupRoute() {
     return (
       <SetupPage>
         <MessageCard title="Setup">
-          <p className="setup-hint">Reading the instance state…</p>
+          <p className="m-0 text-11 text-faint">Reading the instance state…</p>
         </MessageCard>
       </SetupPage>
     );
@@ -72,8 +71,10 @@ export default function SetupRoute() {
     return (
       <SetupPage>
         <MessageCard title="This instance already has an owner">
-          <p>Sign in first — the rest of the wizard writes against your account.</p>
-          <div className="setup-actions">
+          <p className="m-0 text-13 text-muted-foreground">
+            Sign in first — the rest of the wizard writes against your account.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
             <Link className="button button-primary" href="/login">
               Go to sign in
             </Link>

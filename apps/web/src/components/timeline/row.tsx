@@ -5,6 +5,11 @@ import type { Row } from "./view";
 import type { TimelineDependency } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
 
+// This file reads two of the chart's own custom properties rather than a token:
+// --tl-names: the width of the sticky name column.
+// --tl-chart: the width of the day grid, which changes with the zoom.
+// Both are set once, on the scroll container `view.tsx` renders, and cascade down.
+
 /** What a row needs from the view to make the bar in it answer the pointer. */
 export type RowControl = {
   /** The cursor, from the store. A project row is never it: projects are not tickets. */
@@ -113,30 +118,49 @@ export function TimelineRow({
 }) {
   const name = rowLabel(row);
   const notice = row.kind === "ticket" ? overlapNotice(deps, row.ticket.id, nameOf) : undefined;
+  const context = isContextRow(row);
+
+  // The three name-cell looks — project, ordinary ticket, context ticket — never
+  // combine on one row, so they are three whole class strings rather than a pile of
+  // ternaries that could quietly turn on two conflicting font sizes at once.
+  const nameClass =
+    row.kind === "project"
+      ? "text-12 font-medium text-foreground"
+      : context
+        ? "pl-[22px] text-11 italic text-faint"
+        : "pl-[22px] text-11 text-muted-foreground";
 
   return (
-    <div
-      className="tl-row"
-      data-kind={row.kind}
-      data-context={isContextRow(row) ? "" : undefined}
-    >
+    <div className="flex h-row border-b border-border" data-kind={row.kind}>
       <div
-        className="tl-name"
         title={row.kind === "project" ? row.project.name : row.ticket.title}
+        className={`sticky left-0 z-[2] shrink-0 basis-[var(--tl-names)] overflow-hidden text-ellipsis whitespace-nowrap bg-background px-2.5 leading-[calc(var(--row-h)-1px)] ${nameClass}`}
+        style={row.kind === "ticket" ? { fontFamily: "var(--font-mono)" } : undefined}
       >
         {notice && (
-          <span className="tl-warn" role="img" aria-label={notice} title={notice}>
+          <span role="img" aria-label={notice} title={notice} className="mr-1 text-11 text-warning">
             ⚠
           </span>
         )}
         {name}
       </div>
-      <div className="tl-lane">{bar(row, origin, zoom, timezone, control)}</div>
+      <div
+        className={`group/lane relative shrink-0 basis-[var(--tl-chart)] ${context ? "opacity-55" : ""}`}
+      >
+        {bar(row, origin, zoom, timezone, control, Boolean(notice))}
+      </div>
     </div>
   );
 }
 
-function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: RowControl) {
+function bar(
+  row: Row,
+  origin: string,
+  zoom: Zoom,
+  timezone: string,
+  control: RowControl,
+  violated: boolean,
+) {
   if (row.kind === "project") {
     const { project } = row;
     // Either bound alone is enough to draw: `widthOf` floors at one column, so a project
@@ -215,6 +239,9 @@ function bar(row: Row, origin: string, zoom: Zoom, timezone: string, control: Ro
       timezone={timezone}
       done={ticket.status === "done"}
       status={ticket.status}
+      // The same fact the ⚠ badge next to this row's name reports — see the caller
+      // in `TimelineRow`, which computes it once via `overlapNotice` for both.
+      violated={violated}
       // See `canSelectTicket`: a context row alone is unreachable by the cursor.
       selected={canSelectTicket(ticket) && ticket.id === control.selectedId}
       onSelect={canSelectTicket(ticket) ? () => control.onSelect(ticket.id) : undefined}

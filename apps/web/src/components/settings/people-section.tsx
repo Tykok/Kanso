@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, api, type InstanceRole } from "@/lib/api";
 import { keys, usePendingInvitations, usePeople } from "@/lib/queries";
+import { SettingsFormField, SettingsInline, SettingsNote } from "./field";
 
 const ROLE_LABELS: Record<InstanceRole, string> = {
   owner: "Owner",
@@ -19,8 +20,14 @@ function CopyableLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="settings-inline">
-      <input readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
+    <SettingsInline>
+      <input
+        readOnly
+        className="flex-1 min-w-[180px] text-12"
+        style={{ fontFamily: "var(--font-mono)" }}
+        value={url}
+        onFocus={(event) => event.currentTarget.select()}
+      />
       <button
         className="button"
         onClick={() => {
@@ -29,7 +36,7 @@ function CopyableLink({ url }: { url: string }) {
       >
         {copied ? "Copied" : "Copy"}
       </button>
-    </div>
+    </SettingsInline>
   );
 }
 
@@ -68,23 +75,26 @@ export function PeopleSection() {
   });
 
   return (
-    <section className="settings-section">
-      <h2>People</h2>
+    <section className="flex flex-col">
+      <h2 className="mb-4 text-21 font-medium tracking-tight">People</h2>
 
-      <div className="settings-field">
-        <label>Members</label>
-        <ul className="people-list">
+      <SettingsFormField>
+        <span className="text-13 font-medium">Members</span>
+        <ul className="flex flex-col gap-px overflow-hidden rounded-md border border-border">
           {(people.data ?? []).map((person) => (
-            <li key={person.id}>
-              <span className="people-name">
+            <li
+              key={person.id}
+              className="flex items-center gap-3 border-b border-border bg-card px-3 py-2 last:border-b-0"
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-px leading-tight">
                 {person.displayName}
-                <span className="settings-note">{person.email}</span>
+                <SettingsNote>{person.email}</SettingsNote>
               </span>
 
               {person.instanceRole === "owner" ? (
                 // Ownership is not handed over from a dropdown: that is how an
                 // instance ends up with nobody able to configure it.
-                <span className="people-role">Owner</span>
+                <span className="text-11 uppercase tracking-wide text-faint">Owner</span>
               ) : (
                 <select
                   value={person.instanceRole}
@@ -100,19 +110,20 @@ export function PeopleSection() {
             </li>
           ))}
         </ul>
-        <span className="settings-note">
+        <SettingsNote>
           An admin can configure the instance and invite people. A user can do neither.
-        </span>
-        {setUserRole.isError && (
-          <span className="settings-note error">{message(setUserRole.error)}</span>
-        )}
-      </div>
+        </SettingsNote>
+        {setUserRole.isError && <SettingsNote error>{message(setUserRole.error)}</SettingsNote>}
+      </SettingsFormField>
 
-      <div className="settings-field">
-        <label htmlFor="invite-email">Invite someone</label>
-        <div className="settings-inline">
+      <SettingsFormField>
+        <label htmlFor="invite-email" className="text-13 font-medium">
+          Invite someone
+        </label>
+        <SettingsInline>
           <input
             id="invite-email"
+            className="flex-1 min-w-[180px]"
             placeholder="Email (optional)"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -128,36 +139,39 @@ export function PeopleSection() {
           >
             Create link
           </button>
-        </div>
-        <span className="settings-note">
+        </SettingsInline>
+        <SettingsNote>
           With an address the link only works for that person; without one it works for whoever
           opens it. No email is sent — copy the link and pass it on yourself.
-        </span>
-        {invite.isError && <span className="settings-note error">{message(invite.error)}</span>}
+        </SettingsNote>
+        {invite.isError && <SettingsNote error>{message(invite.error)}</SettingsNote>}
         {issued && (
           <>
             <CopyableLink url={issued} />
-            <span className="settings-note">
+            <SettingsNote>
               Shown once. Nothing can display it again — the server keeps only a hash.
-            </span>
+            </SettingsNote>
           </>
         )}
-      </div>
+      </SettingsFormField>
 
       {(invitations.data ?? []).length > 0 && (
-        <div className="settings-field">
-          <label>Pending invitations</label>
-          <ul className="people-list">
+        <SettingsFormField>
+          <span className="text-13 font-medium">Pending invitations</span>
+          <ul className="flex flex-col gap-px overflow-hidden rounded-md border border-border">
             {(invitations.data ?? []).map((invitation) => (
-              <li key={invitation.id}>
-                <span className="people-name">
+              <li
+                key={invitation.id}
+                className="flex items-center gap-3 border-b border-border bg-card px-3 py-2 last:border-b-0"
+              >
+                <span className="flex min-w-0 flex-1 flex-col gap-px leading-tight">
                   {invitation.email ?? "Anyone with the link"}
-                  <span className="settings-note">
+                  <SettingsNote>
                     {ROLE_LABELS[invitation.role]} ·{" "}
                     {invitation.expired
                       ? "expired"
                       : `expires ${new Date(invitation.expiresAt).toLocaleDateString()}`}
-                  </span>
+                  </SettingsNote>
                 </span>
                 <button
                   className="button"
@@ -169,7 +183,7 @@ export function PeopleSection() {
               </li>
             ))}
           </ul>
-        </div>
+        </SettingsFormField>
       )}
     </section>
   );

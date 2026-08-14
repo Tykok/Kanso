@@ -2,40 +2,19 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { ACCENTS, DENSITIES, THEMES, api, type Preferences } from "@/lib/api";
 import {
-  ACCENTS,
-  DENSITIES,
-  THEMES,
-  api,
-  type Accent,
-  type Density,
-  type Preferences,
-  type Theme,
-} from "@/lib/api";
+  ACCENT_LABELS,
+  DENSITY_LABELS,
+  SIDEBAR_HINT,
+  STATUS_BAR_HINT,
+  SYNC_BADGES_HINT,
+  THEME_LABELS,
+} from "@/lib/preferences-copy";
 import { keys } from "@/lib/queries";
 import { ChoiceGroup, Toggle, messageFor } from "./fields";
 import { FormCard } from "./frame";
 import { PreferencePreview } from "./preview";
-
-const THEME_LABELS: Record<Theme, string> = {
-  system: "Follow the system",
-  light: "Light",
-  dark: "Dark",
-};
-
-const DENSITY_LABELS: Record<Density, string> = {
-  comfortable: "Comfortable",
-  compact: "Compact",
-};
-
-const ACCENT_LABELS: Record<Accent, string> = {
-  indigo: "Indigo",
-  blue: "Blue",
-  green: "Green",
-  amber: "Amber",
-  rose: "Rose",
-  violet: "Violet",
-};
 
 type Props = {
   head: ReactNode;
@@ -109,23 +88,13 @@ export function PreferencesStep({ head, value, onChange, onDone, onSkip, onBack 
         onChange={(theme) => set("theme", theme)}
       />
 
-      <div className="setup-field">
-        <span className="setup-label">Accent</span>
-        <div className="setup-accents" role="radiogroup" aria-label="Accent">
-          {ACCENTS.map((accent) => (
-            <label key={accent} className="setup-accent" data-accent={accent}>
-              <input
-                type="radio"
-                name="accent"
-                checked={value.accent === accent}
-                onChange={() => set("accent", accent)}
-              />
-              <span className="setup-swatch" />
-              <span>{ACCENT_LABELS[accent]}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <ChoiceGroup
+        label="Accent"
+        name="accent"
+        value={value.accent}
+        options={ACCENTS.map((accent) => ({ value: accent, label: ACCENT_LABELS[accent], accent }))}
+        onChange={(accent) => set("accent", accent)}
+      />
 
       <ChoiceGroup
         label="Density"
@@ -135,31 +104,31 @@ export function PreferencesStep({ head, value, onChange, onDone, onSkip, onBack 
         onChange={(density) => set("density", density)}
       />
 
-      <div className="setup-toggles">
+      <div className="flex flex-col gap-2.5">
         <Toggle
           label="Sidebar"
-          hint="Teams and projects down the left. Hidden below 720px either way."
+          hint={SIDEBAR_HINT}
           checked={value.sidebarVisible}
           onChange={(checked) => set("sidebarVisible", checked)}
         />
         <Toggle
           label="Sync badges"
-          hint="Per-row state of the Notion mirror. Worth keeping while the mirror is new."
+          hint={SYNC_BADGES_HINT}
           checked={value.showSyncBadges}
           onChange={(checked) => set("showSyncBadges", checked)}
         />
         <Toggle
           label="Status bar"
-          hint="The keyboard reminders along the bottom."
+          hint={STATUS_BAR_HINT}
           checked={value.showStatusBar}
           onChange={(checked) => set("showStatusBar", checked)}
         />
       </div>
 
-      <div className="setup-field">
-        <span className="setup-label">Preview</span>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-11 uppercase tracking-wide text-faint">Preview</span>
         <PreferencePreview preferences={value} />
-        <span className="setup-hint">
+        <span className="text-11 text-faint">
           Everything applies to the whole app as you pick it, this preview included.
           Nothing is stored until you save.
         </span>

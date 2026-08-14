@@ -6,16 +6,16 @@ import { useEffect, useState } from "react";
 import { AccountSection } from "@/components/settings/account-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
+import { SettingsNote } from "@/components/settings/field";
 import { PeopleSection } from "@/components/settings/people-section";
 import { ApiError } from "@/lib/api";
 import { useMe, useSetupState } from "@/lib/queries";
-import "./settings.css";
 
-type SectionId = "account" | "appearance" | "people" | "connections";
+type SectionId = "appearance" | "account" | "people" | "connections";
 
 const SECTION_NAMES: Record<SectionId, string> = {
-  account: "Account",
   appearance: "Appearance",
+  account: "Account",
   people: "People",
   connections: "Connections",
 };
@@ -24,7 +24,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const me = useMe();
   const setup = useSetupState();
-  const [section, setSection] = useState<SectionId>("account");
+  const [section, setSection] = useState<SectionId>("appearance");
 
   const signedOut = me.error instanceof ApiError && me.error.status === 401;
 
@@ -37,33 +37,38 @@ export default function SettingsPage() {
 
   const canConfigure = me.data.user.instanceRole !== "member";
   const sections: SectionId[] = canConfigure
-    ? ["account", "appearance", "people", "connections"]
+    ? ["appearance", "account", "people", "connections"]
     : // A member has nothing to manage about other people, but still sees the
       // connections read-only: the mirror affects their tickets.
-      ["account", "appearance", "connections"];
+      ["appearance", "account", "connections"];
 
   return (
-    <div className="settings-page">
-      <header className="settings-head">
+    <div className="mx-auto flex max-w-[760px] flex-col gap-5 px-5 pb-16 pt-6">
+      <header className="flex items-baseline gap-3 border-b border-border pb-4">
         <Link className="button" href="/">
           Back
         </Link>
-        <h1>Settings</h1>
-        <span className="settings-note">
+        <h1 className="text-15 font-medium tracking-tight">Settings</h1>
+        <span className="ml-auto text-11 text-faint">
           {me.data.user.email} · {me.data.user.instanceRole}
         </span>
       </header>
 
-      <div className="settings-body">
-        <nav className="settings-nav">
+      <div className="grid grid-cols-1 items-start gap-4 pt-5 sm:grid-cols-[148px_1fr] sm:gap-7">
+        <nav className="sticky top-5 flex flex-row flex-wrap gap-0.5 sm:flex-col sm:flex-nowrap">
           {sections.map((id) => (
-            <button key={id} aria-current={id === section} onClick={() => setSection(id)}>
+            <button
+              key={id}
+              aria-current={id === section}
+              onClick={() => setSection(id)}
+              className="rounded-md px-2 py-1.5 text-left text-13 text-muted-foreground hover:bg-accent aria-current:bg-accent-soft aria-current:font-medium aria-current:text-foreground"
+            >
               {SECTION_NAMES[id]}
             </button>
           ))}
         </nav>
 
-        <main className="settings-main">
+        <main className="min-w-0">
           {section === "account" && <AccountSection me={me.data} />}
           {section === "appearance" && <AppearanceSection />}
           {section === "people" && canConfigure && <PeopleSection />}
@@ -71,11 +76,11 @@ export default function SettingsPage() {
             (setup.data ? (
               <ConnectionsSection state={setup.data} canConfigure={canConfigure} />
             ) : (
-              <section className="settings-section">
-                <h2>Connections</h2>
-                <span className="settings-note">
+              <section className="flex flex-col gap-6">
+                <h2 className="text-21 font-medium tracking-tight">Connections</h2>
+                <SettingsNote>
                   {setup.error ? "Instance configuration unavailable." : "Loading…"}
-                </span>
+                </SettingsNote>
               </section>
             ))}
         </main>

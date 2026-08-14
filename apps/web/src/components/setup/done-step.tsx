@@ -39,41 +39,41 @@ export function DoneStep({ head, state, me, preferences, canInvite, onBack }: Pr
       onBack={onBack}
       onSubmit={() => router.push("/")}
     >
-      <dl className="setup-summary">
+      <dl className="m-0 grid grid-cols-[auto_1fr] items-baseline gap-x-3.5 gap-y-2">
         {me && (
           <>
-            <dt>Account</dt>
-            <dd>
+            <dt className="text-11 uppercase tracking-wide text-faint">Account</dt>
+            <dd className="m-0 text-13 text-muted-foreground">
               {me.user.displayName} · {me.user.email} · {me.user.instanceRole}
             </dd>
           </>
         )}
 
-        <dt>Notion</dt>
-        <dd>{notion}</dd>
+        <dt className="text-11 uppercase tracking-wide text-faint">Notion</dt>
+        <dd className="m-0 text-13 text-muted-foreground">{notion}</dd>
 
-        <dt>Google</dt>
-        <dd>{google}</dd>
+        <dt className="text-11 uppercase tracking-wide text-faint">Google</dt>
+        <dd className="m-0 text-13 text-muted-foreground">{google}</dd>
 
-        <dt>Preferences</dt>
-        <dd>
+        <dt className="text-11 uppercase tracking-wide text-faint">Preferences</dt>
+        <dd className="m-0 text-13 text-muted-foreground">
           {preferences.theme} theme · {preferences.accent} · {preferences.density}
         </dd>
       </dl>
 
       {canInvite && (
-        <div className="setup-field">
-          <span className="setup-label">Invite someone</span>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-11 uppercase tracking-wide text-faint">Invite someone</span>
           {invite.data ? (
             <>
               <CopyRow value={invite.data.url} />
-              <span className="setup-hint">
+              <span className="text-11 text-faint">
                 Single use, expires {new Date(invite.data.expiresAt).toLocaleString()}. There is
                 no mail server in the box — send the link yourself.
               </span>
             </>
           ) : (
-            <div className="setup-actions">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className="button"
@@ -82,10 +82,10 @@ export function DoneStep({ head, state, me, preferences, canInvite, onBack }: Pr
               >
                 {invite.isPending ? "Creating…" : "Create an invitation link"}
               </button>
-              <span className="setup-hint">A link to copy and pass on. No email is sent.</span>
+              <span className="text-11 text-faint">A link to copy and pass on. No email is sent.</span>
             </div>
           )}
-          {invite.error && <span className="setup-error">{messageFor(invite.error)}</span>}
+          {invite.error && <span className="text-12 text-urgent">{messageFor(invite.error)}</span>}
         </div>
       )}
     </FormCard>

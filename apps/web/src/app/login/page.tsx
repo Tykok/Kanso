@@ -7,6 +7,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useSetupState } from "@/components/setup/data";
 import {
   PASSWORD_MIN,
+  Divider,
+  ProviderButtons,
   TextField,
   fieldFromDetail,
   messageFor,
@@ -15,7 +17,6 @@ import {
 import { FormCard, MessageCard, SetupPage } from "@/components/setup/frame";
 import { API_URL, ApiError, api, type AuthMode } from "@/lib/api";
 import { keys, useAuthMode } from "@/lib/queries";
-import "../setup/setup.css";
 
 export default function LoginPage() {
   return (
@@ -25,7 +26,7 @@ export default function LoginPage() {
       fallback={
         <SetupPage>
           <MessageCard title="Sign in">
-            <p className="setup-hint">Loading…</p>
+            <p className="m-0 text-11 text-faint">Loading…</p>
           </MessageCard>
         </SetupPage>
       }
@@ -51,8 +52,8 @@ function SignIn() {
     return (
       <SetupPage>
         <MessageCard title="Cannot reach the instance">
-          <p className="setup-error">{messageFor(setup.error)}</p>
-          <div className="setup-actions">
+          <p className="m-0 text-12 text-urgent">{messageFor(setup.error)}</p>
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="button" onClick={() => setup.refetch()}>
               Try again
             </button>
@@ -66,7 +67,7 @@ function SignIn() {
     return (
       <SetupPage>
         <MessageCard title="Sign in">
-          <p className="setup-hint">Loading…</p>
+          <p className="m-0 text-11 text-faint">Loading…</p>
         </MessageCard>
       </SetupPage>
     );
@@ -95,8 +96,8 @@ function SignIn() {
 function SignInError({ error }: { error: unknown }) {
   const limited = error instanceof ApiError && error.status === 429;
   return (
-    <p className="setup-error" role="alert">
-      {limited && <strong>Too many attempts — the password may well be right. </strong>}
+    <p className="m-0 text-12 text-urgent" role="alert">
+      {limited && <strong className="font-medium">Too many attempts — the password may well be right. </strong>}
       {messageFor(error)}
     </p>
   );
@@ -128,24 +129,21 @@ function PasswordSignIn({ mode }: { mode?: AuthMode }) {
     return (
       <MessageCard title={providers.length > 0 ? "Sign in" : "No way in"}>
         {providers.length > 0 ? (
-          <div className="setup-providers">
-            {providers.map((provider) => (
-              <a
-                key={provider.id}
-                className="button button-primary"
-                href={`${API_URL}${provider.authorizeUrl}`}
-              >
-                Continue with {provider.label}
-              </a>
-            ))}
-          </div>
+          <ProviderButtons
+            primary
+            providers={providers.map((provider) => ({
+              id: provider.id,
+              label: provider.label,
+              href: `${API_URL}${provider.authorizeUrl}`,
+            }))}
+          />
         ) : (
           <>
-            <p>
+            <p className="m-0 text-13 text-muted-foreground">
               This instance has no sign-in method configured: password sign-in is off and no
               identity provider is registered.
             </p>
-            <div className="setup-actions">
+            <div className="flex flex-wrap items-center gap-2">
               <Link className="button button-primary" href="/setup">
                 Open setup
               </Link>
@@ -193,18 +191,14 @@ function PasswordSignIn({ mode }: { mode?: AuthMode }) {
 
       {providers.length > 0 && (
         <>
-          <div className="setup-divider">or</div>
-          <div className="setup-providers">
-            {providers.map((provider) => (
-              <a
-                key={provider.id}
-                className="button"
-                href={`${API_URL}${provider.authorizeUrl}`}
-              >
-                Continue with {provider.label}
-              </a>
-            ))}
-          </div>
+          <Divider>or</Divider>
+          <ProviderButtons
+            providers={providers.map((provider) => ({
+              id: provider.id,
+              label: provider.label,
+              href: `${API_URL}${provider.authorizeUrl}`,
+            }))}
+          />
         </>
       )}
     </FormCard>

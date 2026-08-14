@@ -99,7 +99,7 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
         onChange={(event) => setParentPageId(event.target.value)}
       />
 
-      <div className="setup-actions">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           className="button"
@@ -115,15 +115,17 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
         </button>
 
         {test.data && (
-          <span className={test.data.ok ? "setup-ok" : "setup-error"}>{test.data.detail}</span>
+          <span className={`text-12 ${test.data.ok ? "text-status-done" : "text-urgent"}`}>
+            {test.data.detail}
+          </span>
         )}
-        {test.error && <span className="setup-error">{messageFor(test.error)}</span>}
+        {test.error && <span className="text-12 text-urgent">{messageFor(test.error)}</span>}
       </div>
 
       {(stored.configured || managed) && (
-        <div className="setup-actions">
+        <div className="flex flex-wrap items-center gap-2">
           {stored.bootstrapped ? (
-            <span className="setup-hint">Databases already created in Notion.</span>
+            <span className="text-11 text-faint">Databases already created in Notion.</span>
           ) : (
             <>
               <button
@@ -134,7 +136,7 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
               >
                 {bootstrap.isPending ? "Creating…" : "Create the databases now"}
               </button>
-              <span className="setup-hint">
+              <span className="text-11 text-faint">
                 Tickets, teams and projects, once. Safe to leave for later.
               </span>
             </>

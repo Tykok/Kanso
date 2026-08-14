@@ -48,13 +48,13 @@ type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
 
 export function TextField({ label, hint, error, ...input }: TextFieldProps) {
   return (
-    <label className="setup-field">
-      <span className="setup-label">{label}</span>
-      <input {...input} aria-invalid={error ? true : undefined} />
+    <label className="flex flex-col gap-1.5">
+      <span className="text-11 uppercase tracking-wide text-faint">{label}</span>
+      <input className="w-full" {...input} aria-invalid={error ? true : undefined} />
       {error ? (
-        <span className="setup-error">{error}</span>
+        <span className="text-12 text-urgent">{error}</span>
       ) : hint ? (
-        <span className="setup-hint">{hint}</span>
+        <span className="text-11 text-faint">{hint}</span>
       ) : null}
     </label>
   );
@@ -72,14 +72,28 @@ export function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="setup-toggle">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span className="setup-toggle-text">
-        <span>{label}</span>
-        {hint && <span className="setup-hint">{hint}</span>}
+    <label className="flex cursor-pointer items-start gap-2.5">
+      <input
+        type="checkbox"
+        className="mt-0.5 size-3.5 shrink-0 accent-primary"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="flex min-w-0 flex-col gap-px">
+        <span className="text-13">{label}</span>
+        {hint && <span className="text-11 text-faint">{hint}</span>}
       </span>
     </label>
   );
+}
+
+/**
+ * One dot, coloured like the choice it belongs to. `data-accent` scopes `--primary`
+ * on the element itself, exactly the way `AccentSwatches` in `settings/panel.tsx`
+ * borrows the palette — the two never restate a single one of the six colours.
+ */
+function ChoiceDot({ accent }: { accent?: string }) {
+  return <span aria-hidden data-accent={accent} className="size-[13px] shrink-0 rounded-full bg-primary" />;
 }
 
 /**
@@ -96,21 +110,26 @@ export function ChoiceGroup<T extends string>({
   label: string;
   name: string;
   value: T;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; accent?: string }[];
   onChange: (value: T) => void;
 }) {
   return (
-    <div className="setup-field">
-      <span className="setup-label">{label}</span>
-      <div className="setup-choices" role="radiogroup" aria-label={label}>
+    <div className="flex flex-col gap-1.5">
+      <span className="text-11 uppercase tracking-wide text-faint">{label}</span>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
         {options.map((option) => (
-          <label key={option.value} className="setup-choice">
+          <label
+            key={option.value}
+            className="relative inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-13 text-muted-foreground has-[:checked]:border-primary has-[:checked]:bg-accent-soft has-[:checked]:text-foreground has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary has-[:focus-visible]:outline-offset-1 hover:bg-accent"
+          >
             <input
               type="radio"
               name={name}
               checked={value === option.value}
               onChange={() => onChange(option.value)}
+              className="absolute size-px opacity-0"
             />
+            {option.accent && <ChoiceDot accent={option.accent} />}
             <span>{option.label}</span>
           </label>
         ))}
@@ -134,8 +153,14 @@ export function CopyRow({ value, label }: { value: string; label?: string }) {
   }, [state]);
 
   const row = (
-    <div className="setup-copy">
-      <input readOnly value={value} onFocus={(event) => event.currentTarget.select()} />
+    <div className="flex items-center gap-1.5">
+      <input
+        readOnly
+        className="min-w-0 flex-1 text-12"
+        style={{ fontFamily: "var(--font-mono)" }}
+        value={value}
+        onFocus={(event) => event.currentTarget.select()}
+      />
       <button
         type="button"
         className="button"
@@ -153,13 +178,56 @@ export function CopyRow({ value, label }: { value: string; label?: string }) {
 
   if (!label) return row;
   return (
-    <div className="setup-field">
-      <span className="setup-label">{label}</span>
+    <div className="flex flex-col gap-1.5">
+      <span className="text-11 uppercase tracking-wide text-faint">{label}</span>
       {row}
     </div>
   );
 }
 
 export function Callout({ children }: { children: ReactNode }) {
-  return <p className="setup-callout">{children}</p>;
+  return (
+    <p className="m-0 rounded-md border border-border border-l-2 border-l-primary px-2.5 py-2 text-13 text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
+/** "or", between the password form and the identity providers below it. */
+export function Divider({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 text-11 uppercase tracking-wide text-faint">
+      <span className="h-px flex-1 bg-border" />
+      {children}
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/**
+ * One button per identity provider actually configured on the API — never a
+ * button that leads to a broken redirect. Used by the sign-in page and by
+ * `login.tsx`'s bare screen, which is why it lives beside the fields both draw
+ * from rather than in either one.
+ */
+export function ProviderButtons({
+  providers,
+  primary,
+}: {
+  providers: { id: string; label: string; href: string }[];
+  primary?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {providers.map((provider) => (
+        <a
+          key={provider.id}
+          className={`button block text-left no-underline${primary ? " button-primary" : ""}`}
+          href={provider.href}
+        >
+          Continue with {provider.label}
+        </a>
+      ))}
+    </div>
+  );
 }

@@ -35,11 +35,6 @@ import { ZOOMS } from "@/lib/timeline-geometry";
 import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
 import { useUi, type Scope } from "@/store/ui";
 
-// The stylesheet for the timeline, imported from the route rather than from the
-// components that use it: global CSS belongs to a layout or a page in the app router,
-// and this file is the only page that renders a Gantt.
-import "./timeline.css";
-
 const isTypingTarget = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");

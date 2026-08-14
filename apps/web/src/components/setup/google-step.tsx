@@ -66,7 +66,7 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
       )}
 
       <CopyRow label="Authorised redirect URI" value={REDIRECT_URI} />
-      <p className="setup-hint">
+      <p className="m-0 text-11 text-faint">
         Paste it into Google Cloud → APIs &amp; Services → Credentials → your OAuth client,
         under Authorised redirect URIs. Google rejects the sign-in if it differs by a
         single character.

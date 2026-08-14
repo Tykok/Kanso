@@ -4,16 +4,29 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
 import { keys } from "@/lib/queries";
+import { SettingsInline, SettingsNote } from "./field";
 
 function message(error: unknown) {
   return error instanceof ApiError ? error.message : (error as Error)?.message ?? "Something went wrong";
 }
 
-function StateLine({ configured, managed }: { configured: boolean; managed: boolean }) {
+/** Only printed when there is something the badge alone does not say. */
+function ManagedNote({ managed }: { managed: boolean }) {
+  if (!managed) return null;
+  return <SettingsNote>Set by the environment, so it cannot be changed here.</SettingsNote>;
+}
+
+/** A pill saying whether a connection is wired up — "configured" green, else neutral. */
+function ConnectionBadge({ configured }: { configured: boolean }) {
   return (
-    <span className="settings-note">
-      {configured ? "Configured" : "Not configured"}
-      {managed && " · set by the environment, so it cannot be changed here"}
+    <span
+      className={`inline-flex h-[22px] items-center rounded-sm px-1.5 text-11 uppercase tracking-wide ${
+        configured
+          ? "bg-status-done/15 text-status-done"
+          : "bg-accent text-muted-foreground"
+      }`}
+    >
+      {configured ? "configured" : "not configured"}
     </span>
   );
 }
@@ -67,19 +80,22 @@ export function ConnectionsSection({
   const googleLocked = state.google.managedByEnvironment || !canConfigure;
 
   return (
-    <section className="settings-section">
-      <h2>Connections</h2>
+    <section className="flex flex-col gap-6">
+      <h2 className="text-21 font-medium tracking-tight">Connections</h2>
 
-      <div className="settings-field">
-        <label htmlFor="notion-token">Notion</label>
-        <StateLine
-          configured={state.notion.configured}
-          managed={state.notion.managedByEnvironment}
-        />
+      <div className="flex flex-col gap-2.5 rounded-lg bg-card p-4">
+        <div className="flex items-center gap-2.5">
+          <label htmlFor="notion-token" className="flex-1 text-13 font-medium">
+            Notion
+          </label>
+          <ConnectionBadge configured={state.notion.configured} />
+        </div>
+        <ManagedNote managed={state.notion.managedByEnvironment} />
         {canConfigure && (
           <>
             <input
               id="notion-token"
+              className="w-full max-w-[380px]"
               type="password"
               autoComplete="off"
               disabled={notionLocked}
@@ -90,12 +106,13 @@ export function ConnectionsSection({
               onChange={(event) => setToken(event.target.value)}
             />
             <input
+              className="w-full max-w-[380px]"
               disabled={notionLocked}
               placeholder="Parent page id"
               value={parentPageId}
               onChange={(event) => setParentPageId(event.target.value)}
             />
-            <div className="settings-inline">
+            <SettingsInline>
               <button
                 className="button"
                 disabled={notionLocked || test.isPending}
@@ -119,44 +136,40 @@ export function ConnectionsSection({
                   Create the databases
                 </button>
               )}
-            </div>
-            {test.data && (
-              <span className={`settings-note${test.data.ok ? "" : " error"}`}>
-                {test.data.detail}
-              </span>
-            )}
-            {test.isError && <span className="settings-note error">{message(test.error)}</span>}
-            {saveNotion.isError && (
-              <span className="settings-note error">{message(saveNotion.error)}</span>
-            )}
-            {bootstrap.isError && (
-              <span className="settings-note error">{message(bootstrap.error)}</span>
-            )}
-            <span className="settings-note">
+            </SettingsInline>
+            {test.data && <SettingsNote error={!test.data.ok}>{test.data.detail}</SettingsNote>}
+            {test.isError && <SettingsNote error>{message(test.error)}</SettingsNote>}
+            {saveNotion.isError && <SettingsNote error>{message(saveNotion.error)}</SettingsNote>}
+            {bootstrap.isError && <SettingsNote error>{message(bootstrap.error)}</SettingsNote>}
+            <SettingsNote>
               {state.notion.bootstrapped
                 ? "The four mirrored databases exist."
                 : "The databases have not been created yet; nothing can be pushed until they are."}
-            </span>
+            </SettingsNote>
           </>
         )}
       </div>
 
-      <div className="settings-field">
-        <label htmlFor="google-client-id">Google sign-in</label>
-        <StateLine
-          configured={state.google.configured}
-          managed={state.google.managedByEnvironment}
-        />
+      <div className="flex flex-col gap-2.5 rounded-lg bg-card p-4">
+        <div className="flex items-center gap-2.5">
+          <label htmlFor="google-client-id" className="flex-1 text-13 font-medium">
+            Google sign-in
+          </label>
+          <ConnectionBadge configured={state.google.configured} />
+        </div>
+        <ManagedNote managed={state.google.managedByEnvironment} />
         {canConfigure && (
           <>
             <input
               id="google-client-id"
+              className="w-full max-w-[380px]"
               disabled={googleLocked}
               placeholder="Client ID"
               value={clientId}
               onChange={(event) => setClientId(event.target.value)}
             />
             <input
+              className="w-full max-w-[380px]"
               type="password"
               autoComplete="off"
               disabled={googleLocked}
@@ -166,7 +179,7 @@ export function ConnectionsSection({
               value={clientSecret}
               onChange={(event) => setClientSecret(event.target.value)}
             />
-            <div className="settings-inline">
+            <SettingsInline>
               <button
                 className="button button-primary"
                 disabled={googleLocked || saveGoogle.isPending || !clientId.trim() || !clientSecret}
@@ -175,16 +188,16 @@ export function ConnectionsSection({
                 Save
               </button>
               {saveGoogle.isSuccess && (
-                <span className="settings-note">Saved — the button appears without a restart.</span>
+                <SettingsNote>Saved — the button appears without a restart.</SettingsNote>
               )}
-            </div>
-            {saveGoogle.isError && (
-              <span className="settings-note error">{message(saveGoogle.error)}</span>
-            )}
-            <span className="settings-note">
+            </SettingsInline>
+            {saveGoogle.isError && <SettingsNote error>{message(saveGoogle.error)}</SettingsNote>}
+            <SettingsNote>
               Authorised redirect URI to paste into Google Cloud:{" "}
-              <code>{API_URL}/login/oauth2/code/google</code>
-            </span>
+              <code className="rounded-sm bg-accent px-1 py-0.5" style={{ fontFamily: "var(--font-mono)" }}>
+                {API_URL}/login/oauth2/code/google
+              </code>
+            </SettingsNote>
           </>
         )}
       </div>

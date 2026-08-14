@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { KansoInstant, TicketStatus } from "@/lib/api";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import {
@@ -16,12 +16,46 @@ import {
 } from "@/lib/timeline-geometry";
 
 /**
- * The state a bar is drawn in. `late` and `critical` are both red on purpose — a chain
- * that overruns its deadline is a worse case of the same thing — so the stylesheet
- * separates them with a hatch as well, or the difference would vanish for a colour-blind
- * reader and in every greyscale screenshot.
+ * The state a bar is drawn in. `critical` — on the schedule's critical path, no
+ * slack left — carries no colour of its own: the drawing shows it exactly like an
+ * ordinary bar of the same status, and lets the chain of arrows leaving it say
+ * "critical" instead. `late` is the one state this component still colours by
+ * itself, because it is worse than "no slack" — it has already run out — and a
+ * ticket that overran its own deadline needs to be seen without following a chain
+ * of arrows to notice it.
  */
 export type BarState = "normal" | "critical" | "late";
+
+/**
+ * Late, composed from `--urgent` rather than written as a second colour — a
+ * repeating hatch, not a flat fill, so the state survives a colour-blind reader and
+ * a greyscale screenshot alike. Inline style, not a Tailwind arbitrary value: a
+ * `repeating-linear-gradient` wrapped in a bracketed class is unreadable, and this
+ * is no less a token reference for being spelled in JS.
+ */
+const LATE_STRIPE = "color-mix(in srgb, var(--urgent) 70%, black)";
+const LATE_STYLE: CSSProperties = {
+  backgroundImage: `repeating-linear-gradient(45deg, var(--urgent), var(--urgent) 6px, ${LATE_STRIPE} 6px, ${LATE_STRIPE} 12px)`,
+};
+
+/**
+ * An ordinary ticket bar's own colour: a pale tint of its status, exactly the hue a
+ * dot or a pill draws elsewhere, so nothing about a bar needs a legend of its own —
+ * the accent-left stripe from `settings`' preview and the list's selected row is
+ * the same device, coloured by status instead of by selection.
+ *
+ * A ticket with an incoming dependency the schedule no longer respects wears the
+ * urgent colour instead, whatever its own status — see `violated` on `BarProps`.
+ * That fact outranks "todo" or "in review" as the one worth seeing first, which is
+ * why it is read here rather than layered on top as a second, separate mark.
+ */
+function ticketTint(status: TicketStatus | undefined, violated: boolean | undefined): CSSProperties {
+  const color = violated ? "var(--urgent)" : status ? STATUS_COLORS[status] : "var(--faint)";
+  return {
+    backgroundColor: `color-mix(in oklch, ${color} 14%, var(--background))`,
+    boxShadow: `inset 2px 0 0 ${color}`,
+  };
+}
 
 /**
  * What a finished gesture asks the API for: only the bounds the ticket already carried,
@@ -113,6 +147,13 @@ type BarProps = {
    */
   status?: TicketStatus;
   /**
+   * This ticket has an incoming dependency the schedule no longer respects — the
+   * same fact `row.tsx`'s ⚠ badge reports, computed once there by `overlapNotice`
+   * and handed down rather than recomputed here. Tints the bar the drawing's way:
+   * pale red in place of the status tint, not a flag of its own to keep in step.
+   */
+  violated?: boolean;
+  /**
    * Which of the bar's edges was deduced from the tickets inside rather than posted by
    * anyone. Named per edge rather than as a flag because a bound that was deduced must
    * not be dragged: moving it would be editing a consequence, and a project whose start
@@ -175,6 +216,7 @@ export function TimelineBar({
   timezone,
   done,
   status,
+  violated,
   derived,
   selected,
   onSelect,
@@ -185,7 +227,34 @@ export function TimelineBar({
   const to = boundLabel(end, timezone);
   const left = xOf(start, origin, zoom);
   const width = widthOf(start, end, zoom);
-  const accessibleName = status ? `${name} — ${STATUS_LABELS[status]}` : name;
+  const accessibleName = [
+    name,
+    status && STATUS_LABELS[status],
+    // Said once here rather than carried by colour alone: `critical` no longer has
+    // one of its own (see `BarState`), and `late` and `violated` both still do, but
+    // a screen reader gets no colour either way.
+    state === "late" ? "overdue" : state === "critical" ? "critical path" : null,
+    violated && state !== "late" ? "dependency not respected" : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+
+  /*
+   * Kind and state together pick the bar's static classes; its colour is dynamic
+   * (a status, or `--urgent`) and lives in `ticketTint`/`LATE_STYLE` below instead —
+   * see the note there on why that half is inline style, not a Tailwind class.
+   *
+   * `critical` (no slack left, but nothing broken yet) picks no branch of its own:
+   * the drawing shows it exactly like an ordinary bar of the same status, coloured
+   * by `ticketTint` below like any other, and lets the chain of arrows leaving it
+   * say "critical" instead of a colour every merely-tight ticket would also wear.
+   */
+  const look =
+    kind === "project"
+      ? "top-[9px] bottom-[9px] border border-faint bg-accent font-medium text-muted-foreground"
+      : state === "late"
+        ? "top-1 bottom-1 text-white"
+        : "top-1 bottom-1";
 
   /**
    * The link handle is a sibling of the bar rather than a child of it, so it can sit
@@ -336,20 +405,46 @@ export function TimelineBar({
   // Wide enough to keep a middle to grab: see HANDLED_MIN.
   const handles = drag && width >= HANDLED_MIN ? drag.handles : { start: false, end: false };
 
+  // The bar's colour: a project keeps its plain `bg-accent` (a Tailwind class, in
+  // `look`, since it never varies), a late ticket gets the hatch, and any other
+  // ticket gets its status tint — the one thing here that is not a fixed class,
+  // because the status is one of six and a switch of six bracketed classes would
+  // be harder to read than the function computing the same colour once.
+  const colorStyle: CSSProperties | undefined =
+    kind === "project" ? undefined : state === "late" ? LATE_STYLE : ticketTint(status, violated);
+
+  // Which edges were deduced rather than posted. Two arbitrary properties, not four
+  // stacked data-attribute variants: `border-*-style` has no Tailwind utility of its
+  // own, only `border-style` for all four sides at once.
+  const derivedClass =
+    derived === "both"
+      ? "[border-left-style:dashed] [border-right-style:dashed]"
+      : derived === "start"
+        ? "[border-left-style:dashed]"
+        : derived === "end"
+          ? "[border-right-style:dashed]"
+          : "";
+
   return (
     <>
       {status && (
         <span
           ref={statusDot}
-          className="tl-status"
           aria-hidden="true"
           data-status={status}
+          className="pointer-events-none absolute top-1/2 z-[2] -ml-1 -mt-1 size-2 rounded-full border border-background"
           style={{ left, background: STATUS_COLORS[status] }}
         />
       )}
 
       <div
-        className="tl-bar"
+        // `group/bar` for the resize grips inside it; `peer` for the link handle beside
+        // it, which reads this element's own `data-selected` through the sibling
+        // combinator Tailwind's `peer-*` variant compiles to.
+        // `tl-bar` carries no styling of its own any more — every visual rule below is
+        // a Tailwind utility — but it stays as a bare hook: `barAt()` in this file and
+        // the end-to-end suite both find a bar by `.closest(".tl-bar")`.
+        className={`tl-bar group/bar peer absolute z-[1] flex items-center overflow-hidden rounded-md text-11 ${look} ${derivedClass} data-[selected]:outline-2 data-[selected]:outline-primary data-[selected]:outline-offset-1 data-[done]:opacity-55 data-[draggable]:cursor-grab data-[draggable]:active:cursor-grabbing data-[link-target]:outline-2 data-[link-target]:outline-dashed data-[link-target]:outline-primary data-[link-target]:outline-offset-1 group-data-[linking]/chart:cursor-crosshair`}
         role="button"
         aria-label={accessibleName}
         data-ticket-id={ticketId}
@@ -364,7 +459,7 @@ export function TimelineBar({
         data-derived={derived}
         data-selected={selected ? "" : undefined}
         data-draggable={drag ? "" : undefined}
-        style={{ left, width }}
+        style={{ left, width, ...colorStyle }}
         title={`${accessibleName}\n${from} → ${to}${derived ? "\nDeduced from the tickets inside" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -373,9 +468,28 @@ export function TimelineBar({
         // focus. Nothing is posted, and the view is told so it can stop holding on.
         onPointerCancel={(event) => finish(event, false)}
       >
-        {handles.start && <span className="tl-handle" data-edge="start" aria-hidden="true" />}
-        <span className="tl-bar-label">{label}</span>
-        {handles.end && <span className="tl-handle" data-edge="end" aria-hidden="true" />}
+        {handles.start && (
+          <span
+            data-edge="start"
+            aria-hidden="true"
+            // `tl-handle` is how `onPointerDown` below tells a grip from the rest of the
+            // bar; it carries no rule of its own any more.
+            className="tl-handle absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-[color-mix(in_srgb,currentColor_45%,transparent)] opacity-0 group-hover/bar:opacity-100 group-data-[selected]/bar:opacity-100"
+          />
+        )}
+        <span
+          className="truncate px-1.5"
+          style={state === "late" ? { textShadow: "0 1px 2px rgb(0 0 0 / 0.7)" } : undefined}
+        >
+          {label}
+        </span>
+        {handles.end && (
+          <span
+            data-edge="end"
+            aria-hidden="true"
+            className="tl-handle absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-[color-mix(in_srgb,currentColor_45%,transparent)] opacity-0 group-hover/bar:opacity-100 group-data-[selected]/bar:opacity-100"
+          />
+        )}
       </div>
 
       {/*
@@ -389,8 +503,8 @@ export function TimelineBar({
       {link && (
         <span
           ref={handle}
-          className="tl-link"
           aria-hidden="true"
+          className="absolute top-1/2 z-[1] -mt-1.5 size-[11px] cursor-crosshair touch-none rounded-full border border-background bg-primary opacity-0 group-hover/lane:opacity-100 peer-data-[selected]:opacity-100 hover:scale-125"
           title={`Drag to the ticket that waits for ${name}`}
           style={{ left: left + width }}
           onPointerDown={(event) => {
