@@ -225,9 +225,7 @@ export function TimelineBar({
   const look =
     kind === "project"
       ? "top-[9px] bottom-[9px] border border-faint bg-accent font-medium text-muted-foreground"
-      : state === "late"
-        ? "top-1 bottom-1 text-white"
-        : "top-1 bottom-1";
+      : "top-1 bottom-1";
 
   /**
    * The link handle is a sibling of the bar rather than a child of it, so it can sit
@@ -441,12 +439,21 @@ export function TimelineBar({
             className="tl-handle absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-[color-mix(in_srgb,currentColor_45%,transparent)] opacity-0 group-hover/bar:opacity-100 group-data-[selected]/bar:opacity-100"
           />
         )}
-        <span
-          className="truncate px-1.5"
-          style={state === "late" ? { textShadow: "0 1px 2px rgb(0 0 0 / 0.7)" } : undefined}
-        >
-          {label}
-        </span>
+        {/*
+         * Late is the one state whose fill is a two-tone hatch rather than a flat
+         * tint (`LATE_STYLE` below), and no flat ink clears 4.5:1 against both
+         * bands in both themes at once: white holds against the darker band but
+         * fails the lighter one in dark mode (3.12:1), and the reverse is true of
+         * a dark ink — measured, not assumed, before choosing this. `--urgent`
+         * itself is unchanged; only the label moves, onto the plain chart
+         * background beside the bar, where a single colour reads reliably in
+         * both schemes. Nothing in the bundle draws a "late" bar at all — every
+         * problem state it does draw (a violated dependency, a critical-path
+         * ticket) puts its label on a flat tint, never on a texture — so this is
+         * the same move the bundle already makes for every other case, applied
+         * to the one state it never faced.
+         */}
+        {state !== "late" && <span className="truncate px-1.5">{label}</span>}
         {handles.end && (
           <span
             data-edge="end"
@@ -455,6 +462,23 @@ export function TimelineBar({
           />
         )}
       </div>
+
+      {/*
+       * The late label: a sibling for the same structural reason the link handle
+       * and the slack strip are — it sits past the bar's own `overflow: hidden`,
+       * at the bar's right edge, and does not need to track a drag repainting only
+       * the bar's own element. `aria-hidden`, like those two: the name is already
+       * the bar's `aria-label`/`title`, and this is the sighted-only redraw of it.
+       */}
+      {state === "late" && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 z-[1] -mt-2 max-w-40 truncate pl-1.5 text-11 text-urgent"
+          style={{ left: left + width }}
+        >
+          {label}
+        </span>
+      )}
 
       {/*
        * Pointer-only, and `aria-hidden` for the same reason the resize grips are: the
