@@ -50,9 +50,37 @@
   outline-offset: 2px;
 }
 
+/*
+ * The floor governs a primary, standalone control — a nav item, a dialog button, a
+ * row's own menu trigger — not an inline chip. Every mobile screen in the bundle
+ * (`task-9-mobile-reference.md`: the Ticket screen's status/assignee/"Urgente"/cycle
+ * chips at 32px, "Tout lire" and Créer's property chips at 32-36px) deliberately
+ * keeps status pills, priority marks and other in-row metadata under 44px even on a
+ * touch device. `data-chip` is the one opt-out this rule reads, set by exactly those
+ * elements (`pills.tsx`'s `StatusPill`/`PriorityMark` triggers) — a single global
+ * rule with a semantic escape hatch, not a second, local floor.
+ */
 @media (pointer: coarse) {
-  :where(button, a, [role="button"], [role="menuitem"], [role="option"]) {
+  :where(button, a, [role="button"], [role="menuitem"], [role="option"]):not([data-chip]) {
     min-height: var(--touch-min);
+  }
+}
+
+/*
+ * "Sur tactile, la hauteur passe à 44 px minimum quel que soit le réglage" —
+ * `Design system v2` line 127, stated in prose only; no screen in the bundle draws
+ * compact and touch together. The floor supersedes density rather than sitting
+ * beside it: a coarse pointer gets a 44px row whether the preference reads
+ * comfortable (36px) or compact (27px). One custom property, so both readers of
+ * `--row-h` — the ticket list's `<Row>` and the timeline's lane rows — get it at
+ * once instead of each teaching itself the same media query. Declared after
+ * `tokens.css` is imported (same specificity as `[data-density="compact"]`, later
+ * in source), which is what lets it win over that override rather than the other
+ * way around.
+ */
+@media (pointer: coarse) {
+  :root {
+    --row-h: var(--touch-min);
   }
 }
 

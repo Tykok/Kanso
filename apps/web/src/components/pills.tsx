@@ -65,6 +65,7 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
         <button
           type="button"
           data-testid="status-pill"
+          data-chip
           className="status inline-flex items-center gap-[7px] text-12"
         >
           {body}
@@ -99,7 +100,7 @@ export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?
       label={`Priority: ${label}`}
       asChild
       trigger={
-        <button type="button" title={label} className="w-3.5 shrink-0 text-center">
+        <button type="button" title={label} data-chip className="w-3.5 shrink-0 text-center">
           <PriorityGlyph priority={priority} />
         </button>
       }

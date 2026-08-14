@@ -47,7 +47,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
   const allCurrent = scope.kind === "all";
 
   return (
-    <aside className="flex max-[720px]:hidden w-full flex-col gap-[22px] bg-card px-2.5 py-4 overflow-y-auto">
+    <aside className="flex w-full flex-col gap-[22px] bg-card px-2.5 py-4 overflow-y-auto">
       <BrandMenu ctx={rootCtx} />
 
       <div>
