@@ -301,6 +301,17 @@
   --text-15: 15px;
   --text-21: 21px;
   --text-30: 30px;
+
+  /*
+   * Without this line `--font-sans` above is just a same-named custom property:
+   * Tailwind's theme system only reads keys declared inside `@theme`, so the
+   * `font-sans` utility (and, more load-bearing, Tailwind v4 preflight's own
+   * `--default-font-family` on `html`/`:host`) kept resolving to Tailwind's
+   * built-in fallback instead of Public Sans, no matter what `--font-sans`
+   * said. `inline` for the same reason every other bridge line above is: the
+   * `var()` re-resolves at use, so this doesn't have to duplicate the stack.
+   */
+  --font-sans: var(--font-sans);
 }
 
 /*

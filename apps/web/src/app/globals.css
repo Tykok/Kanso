@@ -199,13 +199,18 @@
   body {
     background: var(--background);
     color: var(--foreground);
-    font:
-      13px/1.5 -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      Inter,
-      system-ui,
-      sans-serif;
+    /*
+     * `var(--font-sans)`, not a hardcoded stack: that stack (Public Sans, then
+     * `next/font`'s own metric-matched fallback, then `system-ui`) is what
+     * `layout.tsx`'s `Public_Sans({ variable: "--font-public-sans" })` and
+     * `tokens.css`'s `--font-sans` exist to name. This rule sits in
+     * `kanso-reset`, which is unlayered-relative-to-`base` on purpose (see this
+     * file's header) — Tailwind's own preflight now also resolves its default
+     * font from the same token (`tokens.css`'s `@theme inline` block), so the
+     * two agree instead of this one silently overriding Public Sans back to
+     * the system stack it replaced.
+     */
+    font: 13px/1.5 var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
 

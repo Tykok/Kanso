@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { creationSeed } from "@/lib/creation-seed";
 import { keys, useMe } from "@/lib/queries";
+import { PRIORITY_LABELS } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import type { Scope } from "@/store/ui";
 import { Button } from "./ui/button";
@@ -24,14 +25,6 @@ import { Backdrop } from "./overlays";
  *  one this task would have to reimplement, for a screen that has not asked for it. */
 const CHIP_SELECT =
   "min-w-0 flex-1 basis-32 rounded-md border border-border bg-card px-2.5 py-1 text-12 text-muted-foreground";
-
-const PRIORITY_LABELS: Record<TicketPriority, string> = {
-  none: "No priority",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
 
 /**
  * Whether the composer may offer [team] in its select. `editable` is the server's

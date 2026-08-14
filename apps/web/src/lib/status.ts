@@ -44,3 +44,12 @@ export const PRIORITY_COLORS: Record<TicketPriority, string> = {
   low: "var(--priority-low)",
   none: "var(--priority-none)",
 };
+
+/** Was copied verbatim into `pills.tsx` and `composer.tsx`; both now read this one. */
+export const PRIORITY_LABELS: Record<TicketPriority, string> = {
+  none: "No priority",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
+};

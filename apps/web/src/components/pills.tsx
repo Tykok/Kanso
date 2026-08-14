@@ -1,7 +1,7 @@
 import type { Mirror, TicketPriority, TicketStatus } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
 import { cn } from "@/lib/utils";
-import { STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import { StatusDot } from "./ui/status-dot";
 import { PriorityMark as PriorityGlyph } from "./ui/priority-mark";
 import { Menu } from "./menu";
@@ -77,14 +77,6 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
 }
 
 export const statusLabel = (status: TicketStatus) => STATUS_LABELS[status];
-
-const PRIORITY_LABELS: Record<TicketPriority, string> = {
-  none: "No priority",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
 
 /** The interactive twin of `ui/priority-mark.tsx`'s glyph: same drawing, plus a menu
  *  when there is a `ctx` to run its actions against. */

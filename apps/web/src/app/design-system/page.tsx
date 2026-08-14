@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { DialogDemo, DropdownDemo } from "./sections";
+import { ContrastMatrix, DialogDemo, DropdownDemo } from "./sections";
 
 export const metadata: Metadata = { title: "Design system — Kanso" };
 
@@ -77,6 +77,10 @@ export default function DesignSystemPage() {
             </div>
           ))}
         </div>
+      </Section>
+
+      <Section title="Contrast">
+        <ContrastMatrix />
       </Section>
 
       <Section title="Radius">
