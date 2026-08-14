@@ -109,53 +109,33 @@
  * The last of the pre-migration names. Task 5 of the design-system rollout repointed
  * every CSS rule it could onto tokens.css, but two kinds of reader were left, and
  * deleting the block that fed them would have made the shell, the list and the
- * timeline collapse rather than merely change colour:
+ * timeline collapse rather than merely change colour. The integration pass after
+ * tasks 6-8 merged pruned every name a grep could no longer find a reader for; what
+ * is left is what actually still has one:
  *
- *   - Eight names (`--text` through `--low`) are read only from inline styles in
- *     components that haven't moved to CSS classes yet: pills.tsx, brand-logo.tsx,
- *     overlays.tsx, login.tsx, page.tsx, and arrows.tsx's runtime `getComputedStyle`
- *     read of `--row-height`. Each is aliased below onto its tokens.css equivalent,
- *     so it keeps tracking the real value, density and colour scheme included — a
- *     `var()` naming another custom property re-resolves at the reading element, so
- *     `--row-height` still follows `[data-density="compact"]` through `--row-h`
- *     exactly as it did before.
+ *   - `--text-dim` is read from an inline style in brand-logo.tsx, aliased onto its
+ *     tokens.css equivalent so it keeps tracking the real value, density and colour
+ *     scheme included — a `var()` naming another custom property re-resolves at the
+ *     reading element.
  *
- *   - Five names (`--gutter` through `--nav-gap`) are still read from CSS — the
- *     shell/topbar/statusbar's own spacing, in shell.css, list.css, timeline.css and
- *     the shared-chrome block near the end of this file — and have no tokens.css
- *     equivalent at all, so their literal pixel values are restored instead, compact
- *     override included; inventing a token for them was not this task's call.
+ *   - `--gutter` and `--bar-pad-sm` are read from CSS, by `.statusbar` and
+ *     `.topbar-error` below, and have no tokens.css equivalent at all, so their
+ *     literal pixel values are restored instead, compact override included;
+ *     inventing a token for them was not this task's call.
  *
- * This block dies one declaration at a time as tasks 6-8 delete the rules and
- * components that read it. The two lists above were true when each was written and
- * are already drifting — tasks 6, 7 and 8 each moved surfaces off these names in
- * isolation, so the only trustworthy answer is a grep, not this comment. The
- * integration pass after those three merge prunes whatever has no reader left and
- * rewrites what remains; when nothing remains, delete the block.
+ * This block dies one declaration at a time as whatever still reads a name stops
+ * reading it. When nothing remains, delete the block.
  */
 :root {
-  --text: var(--foreground);
   --text-dim: var(--muted-foreground);
-  --text-faint: var(--faint);
-  --mono: var(--font-mono);
-  --row-height: var(--row-h);
-  --high: var(--priority-high);
-  --medium: var(--priority-medium);
-  --low: var(--priority-low);
 
   --gutter: 16px;
-  --bar-pad: 10px;
   --bar-pad-sm: 6px;
-  --nav-pad: 5px;
-  --nav-gap: 18px;
 }
 
 [data-density="compact"] {
   --gutter: 12px;
-  --bar-pad: 6px;
   --bar-pad-sm: 4px;
-  --nav-pad: 3px;
-  --nav-gap: 12px;
 }
 
 /*

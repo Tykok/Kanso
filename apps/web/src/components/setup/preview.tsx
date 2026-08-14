@@ -1,10 +1,6 @@
 "use client";
 
 import { PriorityMark } from "@/components/ui/priority-mark";
-// `<Row>` is task 6's extraction (shell and list) — not yet in this worktree at the
-// time this file was written, since the two branches are isolated by design. Written
-// against its documented interface (task-6-report.md) rather than left unconverted:
-// see the note on `PreferencePreview` below.
 import { Row } from "@/components/ui/row";
 import { StatusDot } from "@/components/ui/status-dot";
 import type { Mirror, Preferences, TicketPriority, TicketStatus } from "@/lib/api";

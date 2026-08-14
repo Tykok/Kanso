@@ -279,11 +279,13 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowDown");
   await expect(settingsItem).toBeFocused();
 
-  // Settings opens the panel.
+  // Settings opens the panel. `.panel-header` moved to `data-testid` along with the
+  // rest of this panel's shell, onto `Backdrop` — the same move task 7 made for the
+  // detail panel and the command palette, above.
   await settingsItem.click();
-  await expect(page.locator(".panel-header").filter({ hasText: "Settings" })).toBeVisible();
+  await expect(page.getByTestId("panel-header").filter({ hasText: "Settings" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(page.locator(".panel-header").filter({ hasText: "Settings" })).toHaveCount(0);
+  await expect(page.getByTestId("panel-header").filter({ hasText: "Settings" })).toHaveCount(0);
 
   // Sign out drops the identity this browser was asserting. Under
   // `KANSO_AUTH_MODE=dev` the API never actually answers "unauthenticated" —

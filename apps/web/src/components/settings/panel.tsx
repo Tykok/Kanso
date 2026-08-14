@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ACCENTS, DENSITIES, THEMES, type Preferences } from "@/lib/api";
 import { DENSITY_LABELS, THEME_LABELS } from "@/lib/preferences-copy";
 import { useMe, usePreferences, useSavePreferences, useSyncStatus } from "@/lib/queries";
+import { Backdrop } from "@/components/overlays";
+import { Button } from "@/components/ui/button";
 
 export { DENSITY_LABELS, THEME_LABELS };
 
@@ -138,94 +140,94 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       : "Notion mirror off";
 
   return (
-    <div className="backdrop" onClick={onClose}>
-      <div className="panel" onClick={(event) => event.stopPropagation()}>
-        <div className="panel-header">
-          <strong style={{ flex: 1 }}>Settings</strong>
-          <button className="button" onClick={onClose}>
-            Close
-          </button>
-        </div>
+    <Backdrop onClose={onClose}>
+      <div data-testid="panel-header" className="flex items-center gap-2.5 px-4 py-3">
+        <strong className="flex-1 text-13 font-medium text-foreground">Settings</strong>
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </div>
 
-        {/* Escape and the list shortcuts stay with the window handler in page.tsx,
-            which already refuses to act on the list while an overlay is open. */}
-        <div className="panel-body">
-          <div className="flex flex-col gap-2.5">
-            <div className="text-11 font-medium uppercase tracking-wide text-faint">Appearance</div>
+      {/* Escape and the list shortcuts stay with the window handler in page.tsx,
+          which already refuses to act on the list while an overlay is open. */}
+      <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-4 pb-4">
+        <div className="flex flex-col gap-2.5">
+          <div className="text-11 font-medium uppercase tracking-wide text-faint">Appearance</div>
 
-            <div className="flex min-h-[26px] items-center gap-3">
-              <span className="flex-1 text-13">Theme</span>
-              <Segmented
-                label="Theme"
-                value={preferences.theme}
-                options={THEMES.map((theme) => ({ value: theme, label: THEME_LABELS[theme] }))}
-                onChange={(theme) => set({ theme })}
-              />
-            </div>
-
-            <div className="flex min-h-[26px] items-center gap-3">
-              <span className="flex-1 text-13">Accent</span>
-              <AccentSwatches value={preferences.accent} onChange={(accent) => set({ accent })} />
-            </div>
-
-            <div className="flex min-h-[26px] items-center gap-3">
-              <span className="flex-1 text-13">Density</span>
-              <Segmented
-                label="Density"
-                value={preferences.density}
-                options={DENSITIES.map((density) => ({
-                  value: density,
-                  label: DENSITY_LABELS[density],
-                }))}
-                onChange={(density) => set({ density })}
-              />
-            </div>
-
-            <Toggle
-              label="Sidebar"
-              value={preferences.sidebarVisible}
-              onChange={(sidebarVisible) => set({ sidebarVisible })}
+          <div className="flex min-h-[26px] items-center gap-3">
+            <span className="flex-1 text-13">Theme</span>
+            <Segmented
+              label="Theme"
+              value={preferences.theme}
+              options={THEMES.map((theme) => ({ value: theme, label: THEME_LABELS[theme] }))}
+              onChange={(theme) => set({ theme })}
             />
-            <Toggle
-              label="Sync badges"
-              value={preferences.showSyncBadges}
-              onChange={(showSyncBadges) => set({ showSyncBadges })}
-            />
-            <Toggle
-              label="Status bar"
-              value={preferences.showStatusBar}
-              onChange={(showStatusBar) => set({ showStatusBar })}
-            />
-
-            {save.isError && (
-              <div className="text-11 text-urgent">
-                Not saved: {(save.error as Error).message}. The instance kept its previous setting.
-              </div>
-            )}
           </div>
 
-          {/*
-            Deliberately shallow. This overlay exists so a theme is two keystrokes
-            away without leaving the list; account, people and connections are a
-            page because they are forms, and a form in a transient overlay loses
-            what you typed the moment something else takes focus.
-          */}
-          <div className="flex flex-col gap-2.5">
-            <div className="text-11 font-medium uppercase tracking-wide text-faint">Instance</div>
-            <div className="text-11 text-faint">{instanceSummary}</div>
-            <div className="flex min-h-[26px] items-center gap-3">
-              <span className="text-11 text-faint">
-                {canReconfigure
-                  ? "Account, people and connections."
-                  : "Account and your Notion identity."}
-              </span>
-              <Link className="button" href="/settings" onClick={onClose}>
+          <div className="flex min-h-[26px] items-center gap-3">
+            <span className="flex-1 text-13">Accent</span>
+            <AccentSwatches value={preferences.accent} onChange={(accent) => set({ accent })} />
+          </div>
+
+          <div className="flex min-h-[26px] items-center gap-3">
+            <span className="flex-1 text-13">Density</span>
+            <Segmented
+              label="Density"
+              value={preferences.density}
+              options={DENSITIES.map((density) => ({
+                value: density,
+                label: DENSITY_LABELS[density],
+              }))}
+              onChange={(density) => set({ density })}
+            />
+          </div>
+
+          <Toggle
+            label="Sidebar"
+            value={preferences.sidebarVisible}
+            onChange={(sidebarVisible) => set({ sidebarVisible })}
+          />
+          <Toggle
+            label="Sync badges"
+            value={preferences.showSyncBadges}
+            onChange={(showSyncBadges) => set({ showSyncBadges })}
+          />
+          <Toggle
+            label="Status bar"
+            value={preferences.showStatusBar}
+            onChange={(showStatusBar) => set({ showStatusBar })}
+          />
+
+          {save.isError && (
+            <div className="text-11 text-urgent">
+              Not saved: {(save.error as Error).message}. The instance kept its previous setting.
+            </div>
+          )}
+        </div>
+
+        {/*
+          Deliberately shallow. This overlay exists so a theme is two keystrokes
+          away without leaving the list; account, people and connections are a
+          page because they are forms, and a form in a transient overlay loses
+          what you typed the moment something else takes focus.
+        */}
+        <div className="flex flex-col gap-2.5">
+          <div className="text-11 font-medium uppercase tracking-wide text-faint">Instance</div>
+          <div className="text-11 text-faint">{instanceSummary}</div>
+          <div className="flex min-h-[26px] items-center gap-3">
+            <span className="text-11 text-faint">
+              {canReconfigure
+                ? "Account, people and connections."
+                : "Account and your Notion identity."}
+            </span>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/settings" onClick={onClose}>
                 All settings
               </Link>
-            </div>
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    </Backdrop>
   );
 }

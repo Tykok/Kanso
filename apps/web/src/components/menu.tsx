@@ -174,19 +174,10 @@ export function Menu({
         // popover is portalled — so it rides on the trigger, which is now the whole of
         // the menu that stands in the row. tickets.tsx:86 asks `closest(".menu")`
         // whether a double-click belongs to a menu rather than to the row underneath.
-        //
-        // `.menu-trigger` is a second bare marker, kept for the same reason: shell.css
-        // and list.css — outside this task's file set — still select it by name for
-        // things this component does not own, the brand and a row's own opacity-on-
-        // hover reveal chief among them (`.row .menu-trigger`, `.brand .menu-trigger`,
-        // `.nav-item .menu-trigger`, `.new-menu .menu-trigger`). Those rules are
-        // unlayered and this trigger's own dressing is Tailwind utilities in a layer,
-        // so the class-selected rules keep winning wherever the two disagree — the
-        // base 20×20 `⋯` look below is only what nothing else overrides.
         className={cn(
           "menu shrink-0",
           !asChild &&
-            "menu-trigger flex size-5 items-center justify-center rounded-sm leading-none text-faint hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
+            "flex size-5 items-center justify-center rounded-sm leading-none text-faint hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
         )}
         data-testid={asChild ? undefined : "menu-trigger"}
         aria-label={label}

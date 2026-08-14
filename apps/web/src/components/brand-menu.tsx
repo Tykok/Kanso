@@ -40,10 +40,10 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
         // whatever the button contains.
         label="Kanso — account and settings"
         items={items}
-        // `asChild`, rather than the default wrapper: the default trigger carries
-        // `.menu-trigger`, sized elsewhere (surfaces.css) for a 20×20 `⋯` glyph, which
-        // is the wrong shape for a row that fills the sidebar's width. This button is
-        // the trigger itself, so it draws its own shape instead of fighting that base.
+        // `asChild`, rather than the default wrapper: the default trigger draws its
+        // own 20×20 `⋯` glyph, which is the wrong shape for a row that fills the
+        // sidebar's width. This button is the trigger itself, so it draws its own
+        // shape instead of fighting that base.
         asChild
         trigger={
           <button type="button" data-testid="brand-trigger" className="flex w-full items-center rounded-md p-1.5 hover:bg-accent">
