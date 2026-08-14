@@ -3,9 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import { dayValue, type Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
+import { Row, rowActionsTriggerClass } from "./ui/row";
+import { GroupLabel } from "./ui/group-label";
 import { PriorityMark, StatusPill, SyncBadge } from "./pills";
 import { Menu } from "./menu";
 import { menuItems } from "./menu-items";
+
+/** The list's own grid: id, priority, status, title, project, due, mirror, actions.
+ *  Shared between the column header and every row so the two always line up. */
+const COLS = "grid-cols-[70px_20px_108px_1fr_112px_60px_64px_24px]";
+
+function ColumnHeader() {
+  return (
+    <GroupLabel className={`grid ${COLS} items-center gap-3 pt-0`}>
+      <span>ID</span>
+      <span />
+      <span>Status</span>
+      <span>Title</span>
+      <span>Project</span>
+      <span>Due</span>
+      <span>Sync</span>
+      <span />
+    </GroupLabel>
+  );
+}
 
 type RowProps = {
   ticket: Ticket;
@@ -42,7 +63,11 @@ function TitleEditor({
 
   return (
     <input
-      className="row-title-input"
+      data-testid="row-title-input"
+      // Tighter than the global input's 6px/8px: this one lives inside a 36px (or,
+      // compact, 27px) row rather than a form, and the default padding alone would
+      // already be taller than the compact row it has to fit in.
+      className="w-full min-w-0 px-1.5 py-[3px]"
       autoFocus
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
@@ -70,12 +95,15 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
     if (selected) rowRef.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
+  const project = ctx.projects.find((candidate) => candidate.id === ticket.projectId);
+
   return (
-    <div
+    <Row
       ref={rowRef}
-      className="row"
-      data-selected={selected}
+      data-testid="ticket-row"
       data-archived={ticket.archived}
+      selected={selected}
+      className={`grid ${COLS}`}
       onClick={onSelect}
       onDoubleClick={(event) => {
         // `dblclick` is its own native event, dispatched and bubbled independently of
@@ -87,27 +115,48 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
         onOpen();
       }}
     >
-      <span className="row-id">{ticket.identifier}</span>
+      <span data-testid="row-id" className="font-mono text-11 text-faint">
+        {ticket.identifier}
+      </span>
       <PriorityMark priority={ticket.priority} ctx={ctx} />
       <StatusPill status={ticket.status} ctx={ctx} />
 
       {editing ? (
         <TitleEditor initialTitle={ticket.title} onCommit={onRename} onCancel={onCancelEdit} />
       ) : (
-        <span className="row-title">{ticket.title}</span>
+        <span
+          className={
+            ticket.archived
+              ? "truncate text-faint line-through"
+              : "truncate"
+          }
+        >
+          {ticket.title}
+        </span>
       )}
 
-      <span className="row-meta">
-        {/* `MM-DD`, sliced off the ISO string: a day is never run through a Date. */}
-        {ticket.due && <span title="Due date">{dayValue(ticket.due).slice(5)}</span>}
-        {ticket.assigneeIds.length > 0 && <span title="Assignees">{ticket.assigneeIds.length}👤</span>}
-        <SyncBadge mirror={ticket.mirror} />
-        <Menu
-          label={`Actions for ${ticket.identifier}`}
-          items={menuItems(ctx, ["ticket.rename", "ticket.archive", "ticket.delete"])}
-        />
-      </span>
-    </div>
+      {project ? (
+        <span className="truncate text-12 text-muted-foreground">{project.name}</span>
+      ) : (
+        <span />
+      )}
+
+      {/* `MM-DD`, sliced off the ISO string: a day is never run through a Date. */}
+      <span className="text-11 text-faint">{ticket.due ? dayValue(ticket.due).slice(5) : ""}</span>
+
+      <SyncBadge mirror={ticket.mirror} />
+
+      <Menu
+        label={`Actions for ${ticket.identifier}`}
+        asChild
+        trigger={
+          <button type="button" className={rowActionsTriggerClass}>
+            ⋯
+          </button>
+        }
+        items={menuItems(ctx, ["ticket.rename", "ticket.archive", "ticket.delete"])}
+      />
+    </Row>
   );
 }
 
@@ -141,23 +190,26 @@ export function TicketList({
   }
 
   return (
-    <div className="list">
-      {tickets.map((ticket) => {
-        const rowCtx: ActionContext = { ...ctx, selected: ticket };
-        return (
-          <TicketRow
-            key={ticket.id}
-            ticket={ticket}
-            selected={ticket.id === selectedId}
-            editing={ticket.id === editingId}
-            ctx={rowCtx}
-            onSelect={() => onSelect(ticket.id)}
-            onOpen={() => onOpen(ticket.id)}
-            onRename={(title) => onRename(ticket.id, title)}
-            onCancelEdit={onCancelEdit}
-          />
-        );
-      })}
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2 px-3">
+      <ColumnHeader />
+      <div className="flex flex-col gap-row">
+        {tickets.map((ticket) => {
+          const rowCtx: ActionContext = { ...ctx, selected: ticket };
+          return (
+            <TicketRow
+              key={ticket.id}
+              ticket={ticket}
+              selected={ticket.id === selectedId}
+              editing={ticket.id === editingId}
+              ctx={rowCtx}
+              onSelect={() => onSelect(ticket.id)}
+              onOpen={() => onOpen(ticket.id)}
+              onRename={(title) => onRename(ticket.id, title)}
+              onCancelEdit={onCancelEdit}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

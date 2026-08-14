@@ -24,8 +24,6 @@
 
 @import "tailwindcss";
 @import "../styles/tokens.css";
-@import "../styles/shell.css";
-@import "../styles/list.css";
 @import "../styles/surfaces.css";
 
 /*
@@ -110,10 +108,9 @@
 
 /*
  * The last of the pre-migration names. Task 5 of the design-system rollout repointed
- * every CSS rule it could onto tokens.css — shell.css, list.css, surfaces.css,
- * settings.css and timeline.css no longer read any name below — but two kinds of
- * reader are still out there, and deleting the block that fed them would have made
- * the shell, the list and the timeline collapse rather than merely change colour:
+ * every CSS rule it could onto tokens.css, but two kinds of reader were left, and
+ * deleting the block that fed them would have made the shell, the list and the
+ * timeline collapse rather than merely change colour:
  *
  *   - Eight names (`--text` through `--low`) are read only from inline styles in
  *     components that haven't moved to CSS classes yet: pills.tsx, brand-logo.tsx,
@@ -131,8 +128,11 @@
  *     override included; inventing a token for them was not this task's call.
  *
  * This block dies one declaration at a time as tasks 6-8 delete the rules and
- * components that read it. Check here — and grep the two groups above — for what's
- * left; when it's empty, delete it.
+ * components that read it. The two lists above were true when each was written and
+ * are already drifting — tasks 6, 7 and 8 each moved surfaces off these names in
+ * isolation, so the only trustworthy answer is a grep, not this comment. The
+ * integration pass after those three merge prunes whatever has no reader left and
+ * rewrites what remains; when nothing remains, delete the block.
  */
 :root {
   --text: var(--foreground);

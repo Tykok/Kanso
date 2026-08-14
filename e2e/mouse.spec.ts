@@ -192,8 +192,10 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   const page = await openOnceAs(browser, ADMIN);
 
   // The brand itself is the trigger — there is no ellipsis in the sidebar header,
-  // unlike every row's own `⋯`.
-  const trigger = page.locator(".brand .menu-trigger");
+  // unlike every row's own `⋯`. Task 6 moved this trigger to `asChild` — it draws its
+  // own shape now rather than the shared 20×20 `⋯` one — so `.menu-trigger` no longer
+  // names it; `brand-trigger` does.
+  const trigger = page.getByTestId("brand-trigger");
   await expect(trigger).not.toContainText("⋯");
   // The accessible name starts with the visible one: a voice-control user saying
   // "click Kanso" has to reach this button (WCAG 2.5.3, Label in Name). This is the
@@ -342,13 +344,15 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   // over the pill, the shipped defect rendered it at 0×0, and comparing the two boxes was
   // how you caught that. There is no second box to compare any more (`asChild` hands the
   // pill's own `<button>` to Radix), and comparing one against itself would pass whatever
-  // happened. What is checkable instead is that the element carrying the pill's own class
-  // is the element carrying the popup relationship, plus a size floor: a pill that stopped
-  // being a target would still fail here.
-  const statusPill = rowB.locator(".status");
+  // happened. What is checkable instead is that the element carrying the pill's own test
+  // id is the element carrying the popup relationship, plus a size floor: a pill that
+  // stopped being a target would still fail here. `status-pill` is a `data-testid` now,
+  // not a `.status` class — Task 6 moved the drawing to `StatusDot` and `text-*`
+  // utilities, and nothing styles `.status` any longer for a class assertion to describe.
+  const statusPill = rowB.getByTestId("status-pill");
   const statusTrigger = rowB.getByRole("button", { name: /^Status: / });
   await expect(statusPill).toHaveAttribute("aria-haspopup", "menu");
-  await expect(statusTrigger).toHaveClass(/\bstatus\b/);
+  await expect(statusTrigger).toHaveAttribute("data-testid", "status-pill");
   const statusBox = await statusTrigger.boundingBox();
   expect(statusBox, "the status trigger has no box at all").toBeTruthy();
   // And that box is big enough to be a target rather than a coincidence.
@@ -395,7 +399,16 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   await expect(rowA).toHaveAttribute("data-selected", "true");
 
   // The `⋯` stays out of sight until the row earns it — by hover, or by a
-  // keyboard user tabbing straight to it without ever touching the mouse.
+  // keyboard user tabbing straight to it without ever touching the mouse. This is
+  // shipped, specified behaviour (docs/superpowers/specs/2026-08-09-mouse-parity-
+  // design.md:20 lists it under "What ships"), not a stylistic default the drawings
+  // happened to permit — an earlier draft of this task dropped it on that
+  // misreading and was corrected. It is now `RowReveal` (ui/row.tsx): `group-hover:`
+  // and `group-focus-within:` reading `<Row>`'s own `group` class, not a stylesheet
+  // reaching into `menu.tsx`'s `.menu-trigger` the way the deleted `list.css` did.
+  // `toBeVisible()` alone cannot tell "shown" from "hidden by opacity" — an element
+  // at `opacity: 0` with a non-empty box still passes it — so this checks the CSS
+  // property the behaviour actually turns on.
   const rowActionsA = rowA.getByRole("button", { name: `Actions for ${ticketA.identifier}` });
   await expect(rowActionsA).toHaveCSS("opacity", "0");
   await rowA.hover();
@@ -422,7 +435,7 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   await rowB.hover();
   const renameMenu = await openRowMenu(page, ticketB.identifier);
   await renameMenu.getByRole("menuitem", { name: "Rename ticket" }).click();
-  const editor = page.locator(".row-title-input");
+  const editor = page.getByTestId("row-title-input");
   await expect(editor).toBeFocused();
   const renamed = unique("Row B, renamed by mouse");
   await editor.fill(renamed);

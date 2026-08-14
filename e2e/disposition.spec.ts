@@ -101,12 +101,12 @@ test("scenario 4 — deleting a team keeping everything re-homes and renumbers w
   await page.getByRole("button", { name: grandParent.name, exact: true }).click();
   const movedRow = ticketRow(page, movedTitle);
   await expect(movedRow).toBeVisible();
-  await expect(movedRow.locator(".row-id")).toContainText(`${grandParent.key}-`);
-  await expect(movedRow.locator(".row-id")).not.toContainText(moved.identifier);
+  await expect(movedRow.getByTestId("row-id")).toContainText(`${grandParent.key}-`);
+  await expect(movedRow.getByTestId("row-id")).not.toContainText(moved.identifier);
 
   // The ticket of a kept sub-team has not moved at all: no renumbering, identifier
   // untouched. This is the common case, and it has to stay free.
   const untouchedRow = ticketRow(page, untouchedTitle);
   await expect(untouchedRow).toBeVisible();
-  await expect(untouchedRow.locator(".row-id")).toHaveText(untouched.identifier);
+  await expect(untouchedRow.getByTestId("row-id")).toHaveText(untouched.identifier);
 });

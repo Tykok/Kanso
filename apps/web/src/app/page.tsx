@@ -33,6 +33,7 @@ import {
 } from "@/lib/queries";
 import { ZOOMS } from "@/lib/timeline-geometry";
 import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
+import { cn } from "@/lib/utils";
 import { useUi, type Scope } from "@/store/ui";
 
 // The stylesheet for the timeline, imported from the route rather than from the
@@ -352,14 +353,19 @@ export default function InboxPage() {
       : "Notion mirror off";
 
   return (
-    <div className="shell" data-sidebar={preferences.sidebarVisible ? "shown" : "hidden"}>
+    <div
+      className={cn(
+        "grid h-screen max-[720px]:grid-cols-[1fr]",
+        preferences.sidebarVisible ? "grid-cols-[248px_1fr]" : "grid-cols-[1fr]",
+      )}
+    >
       {preferences.sidebarVisible && <Sidebar ctx={ctx} syncSummary={mirrorSummary} />}
 
-      <div className="main">
-        <div className="topbar">
-          <h1>{currentTeam ? currentTeam.name : "All tickets"}</h1>
-          <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{visible.length}</span>
-          <span className="spacer" />
+      <div className="flex min-h-0 min-w-0 flex-col">
+        <div className="flex items-center gap-3 bg-card px-5 py-3">
+          <h1 className="m-0 text-13 font-medium">{currentTeam ? currentTeam.name : "All tickets"}</h1>
+          <span className="font-mono text-11 text-faint">{visible.length}</span>
+          <span className="flex-1" />
 
           {view === "timeline" && (
             <div className="segmented" role="group" aria-label="Zoom">
@@ -391,7 +397,7 @@ export default function InboxPage() {
 
           <input
             id={FILTER_INPUT_ID}
-            className="filter-input"
+            className="w-[180px] rounded-md border border-transparent bg-accent px-2 py-1.5 text-12"
             placeholder="Filter…  /"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
