@@ -209,9 +209,9 @@ function build(
  * either number into TypeScript would be a second place to change it; the observer is
  * what notices when the setting flips, since a shorter row makes the layer shorter too.
  *
- * Reads `--row-h` directly rather than through the `--row-height` alias `globals.css`
- * still carries for pre-migration readers: this is the one remaining reader task 5
- * named, and it has migrated.
+ * Reads `--row-h` directly. There used to be a `--row-height` alias in `globals.css`
+ * for readers that hadn't migrated off it yet; this was the last of them, so the
+ * alias has been deleted rather than kept for no reader.
  */
 function useRowHeight(ref: RefObject<SVGSVGElement | null>): number {
   const [height, setHeight] = useState(0);

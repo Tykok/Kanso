@@ -172,7 +172,7 @@ export function Menu({
         asChild={asChild}
         // `.menu` no longer wraps anything — Radix's root renders no element and the
         // popover is portalled — so it rides on the trigger, which is now the whole of
-        // the menu that stands in the row. tickets.tsx:86 asks `closest(".menu")`
+        // the menu that stands in the row. tickets.tsx:114 asks `closest(".menu")`
         // whether a double-click belongs to a menu rather than to the row underneath.
         className={cn(
           "menu shrink-0",
@@ -301,7 +301,7 @@ export function Menu({
         }}
         // A double-click on the popover — its 4px of padding is the reachable part — is
         // routed by React up to the row that owns this menu, and `dblclick` is its own
-        // native event, so the entries' click stop never touches it. tickets.tsx:86
+        // native event, so the entries' click stop never touches it. tickets.tsx:114
         // guards the row with `closest(".menu")`, which used to match anywhere inside a
         // popover that was a child of the `.menu` wrapper; portalled, it no longer does,
         // and that call site is not this task's to edit. Stopping it here is the same

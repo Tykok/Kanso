@@ -142,7 +142,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   return (
     <Backdrop onClose={onClose}>
       <div data-testid="panel-header" className="flex items-center gap-2.5 px-4 py-3">
-        <strong className="flex-1 text-13 font-medium text-foreground">Settings</strong>
+        <h2 className="flex-1 text-15 font-medium text-foreground">Settings</h2>
         <Button type="button" variant="outline" size="sm" onClick={onClose}>
           Close
         </Button>
