@@ -258,14 +258,24 @@ describe("resolveShortcut", () => {
   });
 
   it("lets no mode-specific key shadow one that works everywhere", () => {
-    // Legal by the registry's rules — a mode bucket wins over `any` — but it would
-    // mean one printed key doing two things, so nothing does it today.
+    /**
+     * Legal by the registry's rules — a mode bucket wins over `any` — and refused here
+     * anyway, because in general it means one printed key doing two things.
+     *
+     * The exceptions are listed, not permitted by category. `j`, `k` and `↵` on the board
+     * are the same intent as in the list — next item, previous item, open this — and a
+     * board has no rows to walk, so the shared action would do nothing there. Anything
+     * else that wants to shadow a shared key has to be added to this set, which is the
+     * point: the rule still refuses by default and the exception is a diff somebody reads.
+     */
+    const MAY_SHADOW = new Set(["board.moveDown", "board.moveUp", "board.open"]);
     const shared = new Set(
       ACTIONS.filter((action) => action.mode === undefined).flatMap(
         (action) => action.shortcut?.split(" ") ?? [],
       ),
     );
     for (const action of ACTIONS.filter((candidate) => candidate.mode !== undefined)) {
+      if (MAY_SHADOW.has(action.id)) continue;
       for (const key of action.shortcut?.split(" ") ?? []) {
         expect({ id: action.id, shadows: shared.has(key) }).toEqual({
           id: action.id,

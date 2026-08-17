@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import {
   TICKET_PRIORITIES,
   TICKET_STATUSES,
   dayValue,
   fromDayValue,
+  ticketHref,
   type Project,
   type Ticket,
   type TicketPriority,
@@ -72,6 +74,17 @@ export function DetailPanel({
       <div data-testid="panel-header" className="flex items-center gap-2 px-5 py-3">
         <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
         <span className="flex-1" />
+        {/* Screen 02's ⤢: the same ticket at page width. It expands *this* ticket without
+            touching the `openTicket` preference, which is what the drawing says the glyph
+            is for — the preference decides the default, the glyph overrides it once. */}
+        <Link
+          className="flex size-6 items-center justify-center rounded-sm text-faint hover:bg-accent hover:text-foreground"
+          href={ticketHref(ticket.identifier)}
+          aria-label={`Open ${ticket.identifier} in a full page`}
+          title="Open in a full page — ⇧↵"
+        >
+          ⤢
+        </Link>
         <Menu label={`Actions for ${ticket.identifier}`} items={actions} />
         <Kbd>esc</Kbd>
       </div>

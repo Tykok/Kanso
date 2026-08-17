@@ -82,19 +82,27 @@ describe("the board's keys against the shared registry", () => {
   });
 
   /**
-   * `j`, `k` and `↵` are the three the board should answer and does not yet. The registry
-   * would let it — a `board:` bucket wins over `any:` — but "lets no mode-specific key
-   * shadow one that works everywhere" in `core.test.ts` asserts nothing does, and that
-   * file is slice 0's. This is the state as it stands, asserted so that flipping
-   * `BOARD_MAY_SHADOW_SHARED_KEYS` fails here and says exactly what else to change.
+   * The three the board answers itself. The registry always allowed it — a `board:` bucket
+   * wins over `any:` — and `core.test.ts`'s shadowing guard refused it until the
+   * integration pass decided the premise did not hold here: on a board there are no rows
+   * to walk, so the shared `j` would move a cursor nothing draws. The guard still refuses
+   * by default and now carries these three ids as a written-down exception.
    */
-  it("still leaves j, k and ↵ to core while that guard stands", () => {
-    expect(resolveShortcut("j", "board")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("k", "board")?.id).toBe("ticket.moveUp");
-    expect(resolveShortcut("Enter", "board")?.id).toBe("ticket.open");
+  it("answers j, k and ↵ itself, and leaves the list's own alone", () => {
+    expect(resolveShortcut("j", "board")?.id).toBe("board.moveDown");
+    expect(resolveShortcut("k", "board")?.id).toBe("board.moveUp");
+    expect(resolveShortcut("Enter", "board")?.id).toBe("board.open");
+
+    // The shared entries are untouched: shadowing is per mode, not a reassignment.
+    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
+    expect(resolveShortcut("Enter", "list")?.id).toBe("ticket.open");
+
     expect(boardActions.map((action) => action.id)).toEqual([
       "board.columnLeft",
       "board.columnRight",
+      "board.moveUp",
+      "board.moveDown",
+      "board.open",
     ]);
   });
 

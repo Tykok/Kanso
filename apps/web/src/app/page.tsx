@@ -4,8 +4,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BoardView } from "@/components/board/view";
 import { BrandSplash } from "@/components/brand-logo";
+import { EmptyState } from "@/components/inbox/empty-state";
+import { ImportDialog } from "@/components/inbox/import-dialog";
 import { DispositionDialog } from "@/components/dialogs/disposition-dialog";
 import { ProjectDialog } from "@/components/dialogs/project-dialog";
+import { SaveViewDialog } from "@/components/dialogs/save-view-dialog";
 import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
 import { MobileNavDrawer } from "@/components/mobile-nav";
@@ -17,7 +20,7 @@ import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
 import { availableActions, hintOf, predecessorsOf, resolveShortcut } from "@/lib/actions";
-import { ApiError, getDevUser, setDevUser, type Ticket } from "@/lib/api";
+import { ApiError, getDevUser, setDevUser, ticketHref, type Ticket } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
 import { isMac } from "@/lib/platform";
 import {
@@ -247,9 +250,25 @@ export default function InboxPage() {
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-      // Shift is deliberately not in the guard above: `event.key` for Shift+h is "H",
-      // which the registry holds as its own entry, so the two halves of a bar edit are
-      // two keys rather than one key and a modifier flag.
+      /**
+       * `⇧↵` opens the selected ticket in its own page.
+       *
+       * Handled here rather than in the registry because it cannot be in the registry:
+       * `event.key` for Shift+Enter is `"Enter"`, the same string the panel's own `↵`
+       * dispatches on, and the registry holds one entry per key with no modifier state.
+       * Shift+h works there only because `event.key` for it is `"H"` — a different
+       * string, not a flag. This is the one gesture in the interface where the modifier
+       * is the whole difference, so it is read where the modifier still exists.
+       */
+      if (event.key === "Enter" && event.shiftKey && selected) {
+        event.preventDefault();
+        router.push(ticketHref(selected.identifier));
+        return;
+      }
+
+      // Shift is otherwise deliberately not in the guard above: `event.key` for Shift+h
+      // is "H", which the registry holds as its own entry, so the two halves of a bar
+      // edit are two keys rather than one key and a modifier flag.
       const action = resolveShortcut(event.key, view);
       // One predicate answers both "may I show this" and "may I run it", so a key
       // whose action is unavailable stays inert rather than half-firing.
@@ -260,7 +279,7 @@ export default function InboxPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [ctx, overlay, dialog, editingId, open, closeOverlay, view]);
+  }, [ctx, overlay, dialog, editingId, open, closeOverlay, view, selected, router]);
 
   const commands = useMemo(() => {
     // Asked for a predecessor, the palette lists tickets instead of commands: same
@@ -458,6 +477,33 @@ export default function InboxPage() {
             // naming the filtered one here is what says the list is the thing the filter
             // box was written for.
             tickets={filtered}
+            /**
+             * Screen 15's empty states and screen 08's three gestures, both of which need
+             * to tell "the filter found nothing" from "there is nothing" — so they need
+             * the count before the filter and the count across the instance, neither of
+             * which the list itself has. `ticketsAnywhere` is summed from the teams query
+             * rather than fetched: `Team.ticketCount` is already on every row, and a
+             * second request to learn whether this is a new install would be one more
+             * thing to keep in step.
+             */
+            empty={
+              <EmptyState
+                total={(tickets.data ?? []).length}
+                filter={query}
+                ticketsAnywhere={(teams.data ?? []).reduce(
+                  (sum, team) => sum + team.ticketCount,
+                  0,
+                )}
+                onClearFilter={() => setQuery("")}
+                onSeeAll={() => {
+                  setQuery("");
+                  setScope({ kind: "all" });
+                }}
+                onCreate={() => open("composer")}
+                notionConnected={sync.data?.bootstrapped ?? false}
+                onConnectNotion={() => open("settings")}
+              />
+            }
             selectedId={selectedId}
             editingId={editingId}
             ctx={ctx}
@@ -542,6 +588,8 @@ export default function InboxPage() {
       {dialog.kind === "project" && (
         <ProjectDialog id={dialog.id} teamId={dialog.teamId} onClose={close} />
       )}
+      {dialog.kind === "importMap" && <ImportDialog onClose={close} />}
+      {dialog.kind === "saveView" && <SaveViewDialog onClose={close} />}
       {dialog.kind === "disposition" && (
         <DispositionDialog target={dialog.target} severity={dialog.severity} onClose={close} />
       )}

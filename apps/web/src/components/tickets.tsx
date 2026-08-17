@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dayValue, type Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
 import { Row, rowActionsTriggerClass } from "./ui/row";
@@ -169,6 +169,15 @@ type ListProps = {
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onCancelEdit: () => void;
+  /**
+   * What to draw instead of rows when there are none.
+   *
+   * A prop rather than a component built here: screen 15 tells "the filter found nothing"
+   * from "there is nothing" and needs the unfiltered count, the instance-wide count and
+   * four callbacks to do it — none of which this component has any other reason to know.
+   * The caller holds them all already.
+   */
+  empty?: ReactNode;
 };
 
 export function TicketList({
@@ -180,12 +189,15 @@ export function TicketList({
   onOpen,
   onRename,
   onCancelEdit,
+  empty,
 }: ListProps) {
   if (tickets.length === 0) {
     return (
-      <div className="empty">
-        Nothing here. Press <kbd>c</kbd> to create a ticket.
-      </div>
+      empty ?? (
+        <div className="empty">
+          Nothing here. Press <kbd>c</kbd> to create a ticket.
+        </div>
+      )
     );
   }
 

@@ -11,6 +11,7 @@ import { keys } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
 import { GroupLabel } from "./ui/group-label";
 import { BrandMenu } from "./brand-menu";
+import { OnboardingChecklist } from "./inbox/onboarding-checklist";
 import { NAV_ITEMS } from "./nav-items";
 import { ProjectRow, rootProjects, TeamRow, tree } from "./sidebar-tree";
 
@@ -197,6 +198,11 @@ export function Sidebar({
       </div>
 
       <div className="mt-auto flex flex-col gap-2 px-1.5">
+        {/* Screen 08's four gestures. It renders nothing once they are done, so this
+            needs no condition of its own — the checklist is the only thing that knows
+            whether it is finished. */}
+        <OnboardingChecklist />
+
         <button
           className={cn(
             "flex items-center gap-2 rounded-md py-[5px] text-left hover:bg-accent",

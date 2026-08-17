@@ -113,7 +113,7 @@ const openCard: Action = {
  * Until then the board keeps core's `j`, `k` and `↵`, and the preference is honoured on
  * the two paths slice A does own: a card's double-click, and `↵` in the palette.
  */
-const BOARD_MAY_SHADOW_SHARED_KEYS = false;
+const BOARD_MAY_SHADOW_SHARED_KEYS = true;
 
 export const boardActions: readonly Action[] = [
   columnLeft,
@@ -122,7 +122,10 @@ export const boardActions: readonly Action[] = [
 ];
 
 /**
- * The three above, reachable by name so their behaviour is proved whether or not the
- * registry is currently allowed to dispatch them. Nothing else imports this.
+ * The three above, reachable by name. They dispatch now: the integration pass decided the
+ * guard's premise did not hold for them — `j`, `k` and `↵` on the board are the same
+ * intent as in the list ("next item", "open this"), drawn differently, which is what
+ * `mode` exists for. `core.test.ts` carries them as a written-down exception rather than
+ * relaxing the rule, so the next key that wants to shadow one still has to argue for it.
  */
 export const boardKeysAwaitingTheGuard: readonly Action[] = [cardUp, cardDown, openCard];
