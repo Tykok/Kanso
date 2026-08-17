@@ -91,6 +91,7 @@ class NotionInboundTeamTest : PostgresTest() {
 		override suspend fun updatePage(pageId: String, properties: Map<String, Any?>?, archived: Boolean?): NotionPage =
 			throw UnsupportedOperationException()
 		override suspend fun retrievePage(pageId: String): NotionPage? = throw UnsupportedOperationException()
+		override suspend fun searchDatabases(startCursor: String?, pageSize: Int) = throw UnsupportedOperationException()
 	}
 
 	/**

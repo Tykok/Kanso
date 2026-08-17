@@ -119,6 +119,13 @@ class NotionInboundConflictTest : PostgresTest() {
 		override suspend fun updatePage(pageId: String, properties: Map<String, Any?>?, archived: Boolean?): NotionPage =
 			throw UnsupportedOperationException()
 		override suspend fun retrievePage(pageId: String): NotionPage? = throw UnsupportedOperationException()
+
+		// The import's discovery, which this fake exists to have nothing to do with. Added
+		// at integration: this test and `searchDatabases` were written on two branches that
+		// never saw each other, so the fake was complete on one and short a member on the
+		// other. The sibling poller fakes answer the same way.
+		override suspend fun searchDatabases(startCursor: String?, pageSize: Int) =
+			throw UnsupportedOperationException()
 	}
 
 	/**

@@ -40,6 +40,10 @@ class HttpNotionClient(
 	@Volatile
 	private var cachedBotUserId: String? = null
 
+	/** The `object` filter this workspace accepted, remembered so later pages don't re-probe. */
+	@Volatile
+	private var searchFilter: String? = null
+
 	override suspend fun botUserId(): String? {
 		cachedBotUserId?.let { return it }
 		val body = request("GET", "/users/me", null) ?: return null
@@ -47,6 +51,51 @@ class HttpNotionClient(
 			?: body.path("id").asText(null)
 		cachedBotUserId = id
 		return id
+	}
+
+	/**
+	 * `POST /search`, filtered to the containers a page can live in.
+	 *
+	 * Which word names those containers depends on the API version — 2025-09-03 moved
+	 * queryable schemas from `database` to `data_source` and search follows it — and the
+	 * published reference documents both spellings. So the same fallback the bootstrap
+	 * uses for relation targets is used here: try the newer filter, drop to the older one
+	 * on a validation error, then remember which the workspace accepted. Results are
+	 * classified by their own `object` field either way, so a workspace answering a mix
+	 * of the two loses nothing.
+	 */
+	override suspend fun searchDatabases(startCursor: String?, pageSize: Int): NotionWorkspaceSearch {
+		val filters = searchFilter?.let { listOf(it) } ?: SEARCH_FILTERS
+		var lastError: NotionApiException? = null
+
+		for (filter in filters) {
+			val payload = buildMap<String, Any?> {
+				put("filter", mapOf("property" to "object", "value" to filter))
+				put("page_size", pageSize)
+				startCursor?.let { put("start_cursor", it) }
+			}
+			val body = try {
+				request("POST", "/search", payload)
+			} catch (e: NotionApiException) {
+				// Only a rejected body is worth retrying with the other spelling; auth and
+				// server errors mean something else is wrong and retrying burns rate limit.
+				if (e.status != 400) throw e
+				log.debug("Search filter '{}' rejected: {}", filter, e.message)
+				lastError = e
+				continue
+			} ?: return NotionWorkspaceSearch(emptyList(), null, false)
+
+			if (searchFilter != filter) {
+				log.info("Notion search accepts object filter '{}'", filter)
+				searchFilter = filter
+			}
+			return NotionWorkspaceSearch(
+				databases = body.path("results").mapNotNull(::workspaceDatabase),
+				nextCursor = body.path("next_cursor").asText(null),
+				hasMore = body.path("has_more").asBoolean(false),
+			)
+		}
+		throw lastError ?: NotionApiException(400, "search", "Notion accepted no object filter")
 	}
 
 	override suspend fun createDatabase(
@@ -195,6 +244,35 @@ class HttpNotionClient(
 		title = body.path("title").firstOrNull()?.path("plain_text")?.asText(null),
 	)
 
+	/**
+	 * A search result, whichever of the two shapes it came back as.
+	 *
+	 * A `database` carries its data sources in an array; a `data_source` *is* one and
+	 * names its database in `parent`. Anything else in the results — a page, a version
+	 * that answers a third shape — is dropped rather than guessed at, which is why this
+	 * returns null instead of an empty [NotionDatabase].
+	 */
+	private fun workspaceDatabase(body: JsonNode): NotionDatabase? {
+		val id = body.path("id").asText(null) ?: return null
+		val title = body.path("title").firstOrNull()?.path("plain_text")?.asText(null)
+			?: body.path("name").asText(null)
+		return when (body.path("object").asText("")) {
+			"database" -> NotionDatabase(
+				id = id,
+				dataSourceIds = body.path("data_sources").mapNotNull { it.path("id").asText(null) },
+				title = title,
+			)
+
+			"data_source" -> NotionDatabase(
+				id = body.path("parent").path("database_id").asText(null) ?: id,
+				dataSourceIds = listOf(id),
+				title = title,
+			)
+
+			else -> null
+		}
+	}
+
 	private fun page(body: JsonNode) = NotionPage(
 		id = body.path("id").asText(),
 		lastEditedTime = body.path("last_edited_time").asText(null)?.let { OffsetDateTime.parse(it) },
@@ -206,6 +284,8 @@ class HttpNotionClient(
 	)
 
 	private companion object {
+		/** Newer spelling first; see [searchDatabases]. */
+		val SEARCH_FILTERS = listOf("data_source", "database")
 		const val DEFAULT_RETRY_AFTER_SECONDS = 5L
 		val ISO: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 	}
