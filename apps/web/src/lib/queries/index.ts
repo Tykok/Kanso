@@ -6,3 +6,4 @@ export * from "./core";
 export * from "./social";
 export * from "./docs";
 export * from "./trash";
+export * from "./inbox";

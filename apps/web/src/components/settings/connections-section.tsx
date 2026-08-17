@@ -2,8 +2,9 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ImportDialog } from "@/components/inbox/import-dialog";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
-import { keys } from "@/lib/queries";
+import { keys, useRetryFailedPushes, useSyncStatus } from "@/lib/queries";
 import { SettingsInline, SettingsNote } from "./field";
 
 function message(error: unknown) {
@@ -51,6 +52,7 @@ export function ConnectionsSection({
   const [parentPageId, setParentPageId] = useState(state.notion.parentPageId ?? "");
   const [clientId, setClientId] = useState(state.google.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const test = useMutation({
     mutationFn: () =>
@@ -78,6 +80,13 @@ export function ConnectionsSection({
 
   const notionLocked = state.notion.managedByEnvironment || !canConfigure;
   const googleLocked = state.google.managedByEnvironment || !canConfigure;
+
+  // The queue is on this page because this is where the inbox's `See the queue` on a
+  // refused push lands: the mirror's failures belong beside the connection that
+  // produced them, not on a screen of their own.
+  const sync = useSyncStatus();
+  const retryPushes = useRetryFailedPushes();
+  const failed = sync.data?.failed ?? [];
 
   return (
     <section className="flex flex-col gap-6">
@@ -146,9 +155,79 @@ export function ConnectionsSection({
                 ? "The four mirrored databases exist."
                 : "The databases have not been created yet; nothing can be pushed until they are."}
             </SettingsNote>
+
+            {/* Screen 24's way in. The import reads Notion and writes Kanso, which is the
+                opposite direction to everything else in this card — so it is a button
+                that opens a three-step dialog rather than another field. */}
+            <SettingsInline>
+              <button
+                className="button"
+                disabled={!state.notion.configured}
+                onClick={() => setImporting(true)}
+              >
+                Import from Notion…
+              </button>
+            </SettingsInline>
           </>
         )}
       </div>
+
+      {/*
+       * The queue, named as a section rather than as a note.
+       *
+       * `See the queue` on a refused push in the inbox lands here, so this has to be
+       * the place where "which writes did the mirror refuse, and why" is answerable.
+       * Drawn only when something has failed: an empty queue is not news, and a
+       * permanent "0 failed" row is one more line to read past on every visit.
+       */}
+      {failed.length > 0 && (
+        <div
+          data-testid="mirror-queue"
+          className="flex flex-col gap-2.5 rounded-lg bg-card p-4"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="flex-1 text-13 font-medium">The mirror refused these writes</span>
+            <span className="text-11 text-urgent">{failed.length}</span>
+          </div>
+
+          <div className="flex flex-col gap-0.5 text-12">
+            {failed.map((job) => (
+              <div
+                key={job.id}
+                data-testid="failed-push"
+                className="grid grid-cols-[80px_1fr] items-start gap-2.5 rounded-sm bg-background px-2.5 py-1.5"
+              >
+                <span className="font-mono text-11 text-faint">{job.entity}</span>
+                <span className="text-muted-foreground">
+                  {job.error ?? "No reason was recorded."}
+                  <span className="text-faint">
+                    {" "}
+                    · {job.attempts} {job.attempts === 1 ? "attempt" : "attempts"}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {canConfigure && (
+            <SettingsInline>
+              <button
+                className="button"
+                disabled={retryPushes.isPending}
+                onClick={() => retryPushes.mutate()}
+              >
+                Retry all
+              </button>
+            </SettingsInline>
+          )}
+          <SettingsNote>
+            Every push writes the whole row from Postgres, so retrying one that already
+            partly landed cannot make the mirror worse.
+          </SettingsNote>
+        </div>
+      )}
+
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
 
       <div className="flex flex-col gap-2.5 rounded-lg bg-card p-4">
         <div className="flex items-center gap-2.5">

@@ -29,7 +29,7 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { id: "inbox", label: "Inbox", href: "/inbox", live: false, badge: "inbox" },
+  { id: "inbox", label: "Inbox", href: "/inbox", live: true, badge: "inbox" },
   { id: "triage", label: "Triage", href: "/triage", live: false, badge: "triage" },
   { id: "cycle", label: "Cycle", href: "/cycles/current", live: false },
   { id: "views", label: "Saved views", href: "/views", live: false },
