@@ -78,8 +78,23 @@ class NotionImportService(
 	 */
 	fun preview(plan: List<ImportPlanEntry>): ImportPreview = ImportPlanner.preview(read(plan))
 
-	/** Step 3. The first thing that writes. */
-	fun perform(actor: User, teamId: UUID, plan: List<ImportPlanEntry>): ImportOutcome = TODO("perform")
+	/**
+	 * Step 3. The first thing that writes.
+	 *
+	 * The team is checked first, before a single page is read: an import is a write and a
+	 * large one, and the refusal belongs in front of the work rather than after four
+	 * hundred inserts have to be rolled back. [teamId] is also *where the team comes from*
+	 * — `architecture.md` says a Notion-authored page can supply neither a team nor a
+	 * per-team number, and this is the request where somebody is present to answer the
+	 * first, which lets `TicketService` answer the second from the team's own counter.
+	 */
+	fun perform(actor: User, teamId: UUID, plan: List<ImportPlanEntry>): ImportOutcome {
+		// Directly, not inside `tx`: `TicketAccess.requireTeam` is transactional itself, and
+		// a refusal raised inside a template here would also mark the caller's transaction
+		// rollback-only on its way out — a 403 that poisons whatever else the request was in.
+		access.requireTeam(actor, teamId)
+		return writer.write(actor, teamId, read(plan))
+	}
 
 	/**
 	 * The plan, resolved against the workspace as it is now.
