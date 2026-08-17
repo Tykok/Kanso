@@ -115,8 +115,21 @@ export const inboxApi = {
 
 // --- screen 24, the Notion import -------------------------------------------
 
-/** A database the workspace search found, with its page count. */
-export type NotionImportSource = { id: string; name: string; pages: number };
+/**
+ * A database the workspace search found, with its page count.
+ *
+ * `pagesExact` is false when the count stopped at the server's discovery bound rather
+ * than at the end of the base: Notion answers no total for a data source, so a count is a
+ * walk of a hundred pages at a time and a long enough base is read as "at least this
+ * many". The distinction is on the wire because the alternative is a screen that says
+ * "2000 pages" about a base holding nine thousand.
+ */
+export type NotionImportSource = {
+  id: string;
+  name: string;
+  pages: number;
+  pagesExact: boolean;
+};
 
 /**
  * What step 1 gets back.
@@ -132,6 +145,9 @@ export type NotionImportSources = {
   sources: NotionImportSource[];
 };
 
+/** One row of the mapping. An ignored base is absent, never `target: "ignore"`. */
+export type NotionImportPlanRow = { sourceId: string; target: "project" | "documents" };
+
 /** What step 3 sends, and what it gets back before anything is written. */
 export type NotionImportPreview = {
   projects: { name: string; pages: number }[];
@@ -140,6 +156,23 @@ export type NotionImportPreview = {
   linkedSources: number;
   /** Properties Kanso has no column for. They land in an "imported from Notion" block. */
   unmappedProperties: string[];
+  /** Pages Kanso cannot make a row out of — one with no title at all. Reported, not hidden. */
+  skipped: number;
+};
+
+/** A page the import reported instead of inventing a row for. */
+export type NotionImportSkip = { source: string; pageId: string; reason: string };
+
+/** What the import did, once it has done it. */
+export type NotionImportResult = {
+  started: boolean;
+  tickets: number;
+  docs: number;
+  projects: number;
+  folders: number;
+  dependencies: number;
+  droppedRelations: number;
+  skipped: NotionImportSkip[];
 };
 
 export const notionImportApi = {
@@ -150,16 +183,26 @@ export const notionImportApi = {
    * and because nothing about it is a rehearsal of a write: it is the last read before
    * one, and the drawing's own promise is that nothing is written until it is confirmed.
    */
-  preview: (plan: { sourceId: string; target: "project" | "documents" }[]) =>
+  preview: (plan: NotionImportPlanRow[]) =>
     request<NotionImportPreview>("/api/notion/import/preview", {
       method: "POST",
       body: JSON.stringify({ plan }),
     }),
 
-  confirm: (plan: { sourceId: string; target: "project" | "documents" }[]) =>
-    request<{ started: boolean }>("/api/notion/import", {
+  /**
+   * Writes, and the only call here that does.
+   *
+   * `teamId` is the one thing the mapping alone cannot supply: a ticket needs a team and a
+   * per-team number, and a page written by hand in Notion has neither — which is why the
+   * inbound poller refuses to adopt one at all (`architecture.md`, "Pages created in
+   * Notion are not adopted"). An import is the case where somebody is present to answer,
+   * so the answer is part of the request, and the server refuses a team the actor may not
+   * write to before it reads a single page.
+   */
+  confirm: (teamId: string, plan: NotionImportPlanRow[]) =>
+    request<NotionImportResult>("/api/notion/import", {
       method: "POST",
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ teamId, plan }),
     }),
 };
 
