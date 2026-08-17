@@ -20,6 +20,7 @@ import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
+import dev.kanso.trash.TrashDisposal
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -37,6 +38,7 @@ class ProjectService(
 	private val docs: DocRepository,
 	private val syncJobs: SyncJobRepository,
 	private val events: EventPublisher,
+	private val trash: TrashDisposal,
 ) {
 
 	@Transactional(readOnly = true)
@@ -193,7 +195,10 @@ class ProjectService(
 			}
 
 			destructive -> {
-				tickets.deleteByProject(projectId)
+				// Whatever it actually removed, which includes tickets already in the trash:
+				// `held` does not see those, and their deletions have to be forgotten too or
+				// a countdown goes on running over a row that is gone.
+				trash.forgetTickets(tickets.deleteByProject(projectId))
 				held.forEach {
 					syncJobs.enqueue(
 						SyncEntityType.TICKET,

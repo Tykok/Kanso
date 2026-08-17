@@ -130,8 +130,15 @@ class DocBlockService(
 
 	// --- helpers -------------------------------------------------------------
 
+	/**
+	 * `findLive`, so a page in the trash takes no writes.
+	 *
+	 * The screen cannot reach one — `DocService.page` is a 404 for it — but a client holding
+	 * the id from before the delete can, and a block written into a document that is
+	 * counting down would be written straight into the sweep.
+	 */
 	private fun requirePage(actor: User, pageId: UUID): DocPage {
-		val page = pages.findById(pageId) ?: throw NotFoundException("No document $pageId")
+		val page = pages.findLive(pageId) ?: throw NotFoundException("No document $pageId")
 		access.requireTeam(actor, page.teamId)
 		return page
 	}

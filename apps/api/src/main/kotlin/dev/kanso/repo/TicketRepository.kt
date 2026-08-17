@@ -279,6 +279,19 @@ class TicketRepository {
 		return ids
 	}
 
+	/**
+	 * Which of [ids] belong to one of [teamIds] — what a team's disposition has to forget.
+	 *
+	 * Unfiltered on the trash, unlike everything else that answers "which tickets are
+	 * there": the caller's [ids] *are* the trash, and the point of asking is that
+	 * `team_id`'s cascade is about to take them.
+	 */
+	fun idsWithinTeams(ids: Collection<UUID>, teamIds: Collection<UUID>): List<UUID> =
+		if (ids.isEmpty() || teamIds.isEmpty()) emptyList()
+		else Tickets.select(Tickets.id)
+			.where { (Tickets.id inList ids) and (Tickets.teamId inList teamIds) }
+			.map { it[Tickets.id] }
+
 	fun idsByProject(projectId: UUID): List<UUID> =
 		Tickets.select(Tickets.id).where { Tickets.projectId eq projectId }.map { it[Tickets.id] }
 

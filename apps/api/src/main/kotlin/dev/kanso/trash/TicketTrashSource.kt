@@ -27,6 +27,9 @@ class TicketTrashSource(
 
 	override val kind = TrashKind.TICKET
 
+	/** The one kind with an `archived` column, and so the one with a middle exit. */
+	override val archivable = true
+
 	override fun describe(ids: Collection<UUID>): List<TrashItem> = itemsOf(rows.findTrashed(ids))
 
 	override fun archived(limit: Int): List<TrashItem> = itemsOf(rows.findArchived(limit))

@@ -1,5 +1,7 @@
 package dev.kanso.docs
 
+import dev.kanso.db.TrashEntries
+import dev.kanso.trash.TrashKind
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
@@ -9,8 +11,40 @@ import java.util.UUID
 @Repository
 class DocPageRepository {
 
+	/**
+	 * A page is soft-deleted exactly when `trash_entries` names it. There is no
+	 * `deleted_at` on `doc_pages` to keep in step with that — `V11`'s whole argument is
+	 * that the entry *is* the deletion, which is why landing this table cost it no column.
+	 *
+	 * The same split [dev.kanso.repo.TicketRepository] keeps: every query that answers
+	 * "which pages are there" excludes the trash, and [findById] deliberately does not.
+	 */
+	private val trashed
+		get() = TrashEntries.select(TrashEntries.entityId)
+			.where { TrashEntries.entityType eq TrashKind.DOC.wire }
+
+	/**
+	 * The row, whatever state it is in — **including** one in the trash.
+	 *
+	 * A row reader, not a scope query: the trash has to describe, restore and purge a page
+	 * *because* it was thrown away, so filtering here would leave three exits pointing at
+	 * nothing. [findLive] is what a reader or a write loads instead.
+	 */
 	fun findById(id: UUID): DocPage? =
 		DocPages.selectAll().where { DocPages.id eq id }.singleOrNull()?.toPage()
+
+	/** The row unless it is in the trash: what an open, an edit or a block write may touch. */
+	fun findLive(id: UUID): DocPage? =
+		DocPages.selectAll()
+			.where { (DocPages.id eq id) and (DocPages.id notInSubQuery trashed) }
+			.singleOrNull()?.toPage()
+
+	/** The trash's own read: only the rows among [ids] that are actually in it. */
+	fun findTrashed(ids: Collection<UUID>): List<DocPage> =
+		if (ids.isEmpty()) emptyList()
+		else DocPages.selectAll()
+			.where { (DocPages.id inList ids) and (DocPages.id inSubQuery trashed) }
+			.map { it.toPage() }
 
 	/**
 	 * Newest edit first, which is the only order screen 22 reads this table in — its
@@ -18,15 +52,44 @@ class DocPageRepository {
 	 */
 	fun search(teamId: UUID?, folderId: UUID?, limit: Int): List<DocPage> {
 		val conditions = buildList {
+			// Unconditional: the tree, the recent list and a folder's contents are all the
+			// same question, and none of them is asking about what somebody threw away.
+			add(DocPages.id notInSubQuery trashed)
 			teamId?.let { add(DocPages.teamId eq it) }
 			folderId?.let { add(DocPages.folderId eq it) }
 		}
 		return DocPages.selectAll()
-			.where { if (conditions.isEmpty()) Op.TRUE else conditions.compoundAnd() }
+			.where { conditions.compoundAnd() }
 			.orderBy(DocPages.updatedAt to SortOrder.DESC)
 			.limit(limit)
 			.map { it.toPage() }
 	}
+
+	/**
+	 * How many live pages sit directly in each of these folders — what a folder's trash
+	 * row counts to say the writing survives it.
+	 *
+	 * One query for the whole set rather than one per folder, and it excludes the trash:
+	 * a folder's pane must not promise to file a page somebody had already thrown away.
+	 */
+	fun countsByFolder(folderIds: Collection<UUID>): Map<UUID, Int> =
+		if (folderIds.isEmpty()) emptyMap()
+		else DocPages.select(DocPages.folderId)
+			.where { (DocPages.folderId inList folderIds) and (DocPages.id notInSubQuery trashed) }
+			.mapNotNull { it[DocPages.folderId] }
+			.groupingBy { it }
+			.eachCount()
+
+	/**
+	 * Which of [ids] belong to one of [teamIds] — what a team's disposition has to forget.
+	 *
+	 * Unfiltered on the trash on purpose: the caller's [ids] *are* the trash.
+	 */
+	fun idsWithinTeams(ids: Collection<UUID>, teamIds: Collection<UUID>): List<UUID> =
+		if (ids.isEmpty() || teamIds.isEmpty()) emptyList()
+		else DocPages.select(DocPages.id)
+			.where { (DocPages.id inList ids) and (DocPages.teamId inList teamIds) }
+			.map { it[DocPages.id] }
 
 	fun insert(teamId: UUID, folderId: UUID?, title: String, authorId: UUID): DocPage {
 		val id = UUID.randomUUID()

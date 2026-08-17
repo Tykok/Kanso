@@ -87,6 +87,46 @@ class DocBlockRepository(private val json: ObjectMapper) {
 			.distinct()
 	}
 
+	// --- what a page holds ---------------------------------------------------
+
+	/**
+	 * How many blocks each of these pages has, in one query.
+	 *
+	 * The first half of a doc page's trash row: these go with the page, and the pane says
+	 * so before anybody presses the red button.
+	 */
+	fun blockCountsFor(pageIds: Collection<UUID>): Map<UUID, Int> =
+		if (pageIds.isEmpty()) emptyMap()
+		else DocBlocks.select(DocBlocks.pageId)
+			.where { DocBlocks.pageId inList pageIds }
+			.map { it[DocBlocks.pageId] }
+			.groupingBy { it }
+			.eachCount()
+
+	/**
+	 * How many distinct tickets each of these pages mentions, in one query per relation.
+	 *
+	 * The second half, and the load-bearing one: these do **not** go with the page. Counted
+	 * distinctly per page for the same reason [ticketIdsForPage] is — two blocks mentioning
+	 * one ticket are one mentioned ticket, and "2 mentioned tickets" about one would make
+	 * the pane's sentence false in the direction that matters.
+	 */
+	fun ticketCountsFor(pageIds: Collection<UUID>): Map<UUID, Int> {
+		if (pageIds.isEmpty()) return emptyMap()
+		val pageOfBlock = DocBlocks.select(DocBlocks.id, DocBlocks.pageId)
+			.where { DocBlocks.pageId inList pageIds }
+			.associate { it[DocBlocks.id] to it[DocBlocks.pageId] }
+		if (pageOfBlock.isEmpty()) return emptyMap()
+		return DocBlockTickets.selectAll()
+			.where { DocBlockTickets.blockId inList pageOfBlock.keys }
+			.mapNotNull { row ->
+				pageOfBlock[row[DocBlockTickets.blockId]]?.to(row[DocBlockTickets.ticketId])
+			}
+			.distinct()
+			.groupingBy { it.first }
+			.eachCount()
+	}
+
 	// --- mapping -------------------------------------------------------------
 
 	/** One extra query for the whole page's backlinks rather than one per block. */

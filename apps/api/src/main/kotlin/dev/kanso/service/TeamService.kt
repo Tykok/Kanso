@@ -20,6 +20,7 @@ import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
+import dev.kanso.trash.TrashDisposal
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -33,6 +34,7 @@ class TeamService(
 	private val users: UserRepository,
 	private val syncJobs: SyncJobRepository,
 	private val events: EventPublisher,
+	private val trash: TrashDisposal,
 ) {
 
 	@Transactional(readOnly = true)
@@ -405,6 +407,11 @@ class TeamService(
 				payload = deletePayload(it.mirror.notionPageId),
 			)
 		}
+		// Before the deletes, and it has to be: everything these teams hold is ON DELETE
+		// CASCADE from `teams`, so a moment later there is no row left to ask which team it
+		// belonged to — and `trash_entries` carries no foreign key that would have taken
+		// their deletions with them.
+		trash.forgetTeams(doomed)
 		// Order is irrelevant: parent_team_id is ON DELETE SET NULL, so no delete can
 		// fail on a child that is still present.
 		doomed.forEach { teams.delete(it) }
