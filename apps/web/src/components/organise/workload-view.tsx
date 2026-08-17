@@ -1,0 +1,157 @@
+"use client";
+
+import { useState } from "react";
+import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import type { WorkloadRow } from "@/lib/api";
+import { useCycles, useWorkload } from "@/lib/queries";
+import { workloadNote } from "./grouping";
+import { OrganiseShell, useOrganiseTeam } from "./shell";
+
+/**
+ * Screen 23 — open tickets per person, cut by status, counted.
+ *
+ * There is no estimate on this screen and there is no field for one on the wire. The
+ * drawing says why in as many words: "la charge se lit au nombre et à l'ancienneté". What
+ * a bar is long in proportion to is the heaviest person's count, so the chart answers "who
+ * is carrying more than whom" and refuses to answer "how much work is this".
+ */
+const PLOTTED = ["in_progress", "in_review", "todo", "backlog"] as const;
+
+export function WorkloadView() {
+  const { team } = useOrganiseTeam();
+  const cycles = useCycles(team?.id);
+  const [cycleId, setCycleId] = useState<string>();
+  const workload = useWorkload(team?.id, cycleId);
+
+  const rows = workload.data?.rows ?? [];
+  const heaviest = Math.max(1, ...rows.map((row) => row.total));
+  const note = workloadNote(rows);
+  const active = cycles.data?.find((cycle) => cycle.state === "active");
+
+  return (
+    <OrganiseShell
+      breadcrumb={
+        <>
+          <span>{team?.name ?? "…"}</span>
+          <span>/</span>
+          <span className="text-muted-foreground">
+            Workload{cycleId && active ? ` · cycle ${active.number}` : ""}
+          </span>
+        </>
+      }
+      trailing={<span>open only</span>}
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
+        <div className="flex max-w-[560px] flex-col gap-2">
+          <p className="m-0 text-12 text-muted-foreground">
+            Open tickets per person, cut by status. No estimate in points: load is read from
+            the count and the age.
+          </p>
+          {active && (
+            <div className="segmented" role="group" aria-label="Scope">
+              <button type="button" aria-pressed={cycleId === undefined} onClick={() => setCycleId(undefined)}>
+                Everything open
+              </button>
+              <button type="button" aria-pressed={cycleId === active.id} onClick={() => setCycleId(active.id)}>
+                Cycle {active.number}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {workload.isPending && <div className="px-4 py-12 text-center text-faint">Loading…</div>}
+
+        {!workload.isPending && rows.length === 0 && (
+          <div className="empty">Nothing open in this team.</div>
+        )}
+
+        <div className="flex flex-col gap-3.5">
+          {rows.map((row) => (
+            <PersonRow key={row.person?.id ?? "unassigned"} row={row} heaviest={heaviest} />
+          ))}
+        </div>
+
+        {note && (
+          <div className="flex items-center gap-2.5 rounded-lg bg-background p-3 text-12 text-muted-foreground">
+            <span
+              aria-hidden
+              className="size-[7px] shrink-0 rounded-full"
+              style={{ background: STATUS_COLORS.in_progress }}
+            />
+            <span className="flex-1">{note}</span>
+          </div>
+        )}
+      </div>
+    </OrganiseShell>
+  );
+}
+
+function PersonRow({ row, heaviest }: { row: WorkloadRow; heaviest: number }) {
+  const name = row.person?.displayName ?? "Unassigned";
+
+  return (
+    <div
+      className="grid grid-cols-[140px_1fr_54px] items-center gap-3.5 max-[720px]:grid-cols-[110px_1fr_44px]"
+      data-testid="workload-row"
+    >
+      <span className="flex items-center gap-2.5 text-12">
+        <Avatar name={row.person?.displayName} />
+        <span className="truncate">{name}</span>
+      </span>
+
+      <div
+        className="flex h-3.5 overflow-hidden rounded-sm bg-accent"
+        role="img"
+        aria-label={`${name}: ${row.total} open, oldest ${row.oldestOpenDays} days`}
+      >
+        {row.person === undefined
+          ? // The unassigned pile is hatched rather than coloured: it is not somebody's load,
+            // and giving it a status hue would put it on the same footing as a person's.
+            [
+              <span
+                key="unowned"
+                style={{ width: `${(row.total / heaviest) * 100}%` }}
+                className="bg-[repeating-linear-gradient(135deg,var(--rule)_0_3px,transparent_3px_6px)]"
+              />,
+            ]
+          : PLOTTED.flatMap((status) => {
+              const count = row.byStatus[status] ?? 0;
+              return count === 0
+                ? []
+                : [
+                    <span
+                      key={status}
+                      title={`${STATUS_LABELS[status]}: ${count}`}
+                      style={{
+                        width: `${(count / heaviest) * 100}%`,
+                        background: STATUS_COLORS[status],
+                      }}
+                    />,
+                  ];
+            })}
+      </div>
+
+      <span className="text-right font-mono text-11 text-muted-foreground">{row.total}</span>
+    </div>
+  );
+}
+
+/** Initials in a circle, as the drawing has them. A dashed ring for the unowned pile. */
+function Avatar({ name }: { name?: string }) {
+  if (name === undefined) {
+    return <span aria-hidden className="size-[22px] shrink-0 rounded-full border border-dashed border-border" />;
+  }
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <span
+      aria-hidden
+      className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] text-accent-ink"
+    >
+      {initials}
+    </span>
+  );
+}

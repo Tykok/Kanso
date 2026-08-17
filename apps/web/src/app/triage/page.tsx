@@ -1,5 +1,6 @@
-import { RouteStub } from "@/components/route-stub";
+import { TriageView } from "@/components/organise/triage-view";
 
+/** Screen 20. */
 export default function TriagePage() {
-  return <RouteStub screen="Triage (20)" slice="C" />;
+  return <TriageView />;
 }

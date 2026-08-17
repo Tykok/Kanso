@@ -8,3 +8,4 @@ export * from "./docs";
 export * from "./trash";
 export * from "./inbox";
 export * from "./views";
+export * from "./organise";
