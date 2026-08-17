@@ -3,6 +3,7 @@ package dev.kanso.sync.inbound
 import dev.kanso.config.KansoProperties
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
+import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.realtime.ChangeKind
@@ -13,6 +14,8 @@ import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
+import dev.kanso.service.NotificationKind
+import dev.kanso.service.NotificationService
 import dev.kanso.service.ScheduleService
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.SyncOperation
@@ -52,6 +55,7 @@ class NotionPoller(
 	private val tickets: TicketRepository,
 	private val jobs: SyncJobRepository,
 	private val schedule: ScheduleService,
+	private val notifications: NotificationService,
 	private val events: EventPublisher,
 	private val tx: TransactionTemplate,
 ) {
@@ -129,6 +133,7 @@ class NotionPoller(
 
 		if (kansoWins(page, ticket.updatedAt, ticket.mirror.notionSyncedAt)) {
 			jobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+			recordConflicts(ticket, page)
 			return
 		}
 
@@ -255,6 +260,83 @@ class NotionPoller(
 		}
 		return localChangedSincePush
 	}
+
+	/**
+	 * Says that [kansoWins] fired, to whoever is answerable for the ticket in Kanso.
+	 *
+	 * This is the only place in the product where a conflict can be observed: the one moment
+	 * where two versions of one field are both in hand and the rule throws one away. Nothing
+	 * here changes the rule — it has already been applied and the corrective push is already
+	 * queued by the time this runs — and the row it writes is what makes screen 15's chooser
+	 * reachable at all. `architecture.md` calls per-field merge a v2 conversation; this is
+	 * the notice, not the merge.
+	 *
+	 * Three restrictions, each load-bearing.
+	 *
+	 * **The fields are diffed.** [kansoWins] answers on timestamps alone, so it fires on
+	 * every poll of a row that moved since the last push — including a page whose
+	 * `last_edited_time` moved for a property Kanso does not mirror, which is a page with no
+	 * disagreement on it at all. No difference, no conflict.
+	 *
+	 * **Only the free text.** A status or a priority coming back is a value out of a closed
+	 * vocabulary that the corrective push settles on its own, and "two versions of the
+	 * priority" side by side tells the reader nothing the ticket does not already say. Title
+	 * and description are the two where the versions are two *sentences* and only a person
+	 * can choose between them — and they are exactly the two the chooser's `Keep Notion`
+	 * knows how to apply, so every chooser this opens has three working ways out.
+	 *
+	 * **Tickets only.** A project's discarded edit is not recorded because the chooser
+	 * patches a ticket and nothing else, and a team's cannot be: `entity_type` is closed by
+	 * `V13` to ticket, project and doc.
+	 */
+	private fun recordConflicts(ticket: Ticket, page: NotionPage) {
+		val recipients = tickets.assigneeIds(ticket.id).ifEmpty {
+			// Nobody holds the ticket, so nobody has been handed the disagreement. The lead
+			// of its project is the next person answerable for it; failing that the conflict
+			// is logged by [kansoWins] and told to no one, because the alternative is a
+			// fan-out to a whole team and this table is one row per person by design.
+			listOfNotNull(ticket.projectId?.let { projects.findById(it)?.leadUserId })
+		}
+		if (recipients.isEmpty()) return
+
+		val pageProps = page.properties
+		val differing = listOfNotNull(
+			difference("title", ticket.title, title(pageProps)),
+			difference("description", ticket.description.orEmpty(), text(pageProps, NotionProps.DESCRIPTION)),
+		)
+		for ((field, mine, theirs) in differing) {
+			if (notifications.conflictRecorded(ticket.id, field, theirs)) continue
+			notifications.record(
+				recipients = recipients,
+				kind = NotificationKind.CONFLICT,
+				entityType = "ticket",
+				entityId = ticket.id,
+				// No actor. Whoever edited the page is a Notion account, and this class has
+				// no Kanso user to name — `V13` makes the column nullable for exactly this.
+				actorId = null,
+				payload = mapOf(
+					"field" to field,
+					"mine" to mine,
+					"theirs" to theirs,
+					// The instant, which is where the chooser reads the hour off. Not
+					// `theirActor`: the page carries Notion's own user id, `NotionClient`
+					// offers no way to resolve it to a name, and a uuid where the chooser
+					// draws a person reads worse than the plain "Notion" it falls back to.
+					"theirEditedAt" to page.lastEditedTime?.toString(),
+				),
+			)
+		}
+	}
+
+	/**
+	 * One field's two versions, or null when there is nothing to choose between.
+	 *
+	 * A value Notion does not send is not a version: [title] and [text] read a blank
+	 * property as absent, so a field cleared in Notion is invisible here — exactly as it is
+	 * to [applyTicket], which falls back to the row's own value for the same reason.
+	 */
+	private fun difference(field: String, mine: String, theirs: String?): Triple<String, String, String>? =
+		theirs?.takeIf { it != mine }?.let { Triple(field, mine, it) }
 
 	/**
 	 * A page Kanso never created. v1 does not adopt it: a ticket needs a team and a

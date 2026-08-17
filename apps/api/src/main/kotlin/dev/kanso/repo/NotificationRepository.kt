@@ -155,6 +155,34 @@ class NotificationRepository(
 		"UPDATE notifications SET read_at = now() WHERE id = :id AND user_id = :userId AND read_at IS NULL"
 	).param("id", id).param("userId", userId).update()
 
+	/**
+	 * Whether this exact disagreement is already in somebody's inbox.
+	 *
+	 * Not scoped to a user: a conflict is recorded for a set of recipients in one go, so
+	 * "already told" is a fact about the entity, the field and the value that was discarded
+	 * — which is also the key that makes it change. A different value in Notion is a new
+	 * conflict; the same one seen again by the poller is not.
+	 *
+	 * `payload->>` rather than a column, and unindexed: this runs once per poll per page
+	 * that lost, against a table already narrowed by `entity_id`.
+	 */
+	fun conflictExists(entityId: UUID, field: String, theirs: String): Boolean = jdbc.sql(
+		"""
+		SELECT 1 FROM notifications
+		 WHERE kind = 'conflict'
+		   AND entity_id = :entityId
+		   AND payload->>'field' = :field
+		   AND payload->>'theirs' = :theirs
+		 LIMIT 1
+		""".trimIndent()
+	)
+		.param("entityId", entityId)
+		.param("field", field)
+		.param("theirs", theirs)
+		.query { _, _ -> true }
+		.optional()
+		.orElse(false)
+
 	fun exists(userId: UUID, id: UUID): Boolean = jdbc.sql(
 		"SELECT 1 FROM notifications WHERE id = :id AND user_id = :userId"
 	).param("id", id).param("userId", userId).query { _, _ -> true }.optional().orElse(false)
