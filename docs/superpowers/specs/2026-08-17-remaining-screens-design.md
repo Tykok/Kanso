@@ -129,8 +129,8 @@ integration pass expects to see.
 
 **Route stubs.** Every route below exists after slice 0, rendering a one-line placeholder,
 so no agent creates a directory a second agent also creates: `/t/[key]`, `/p/[id]`,
-`/docs`, `/docs/[id]`, `/cycles/[number]`, `/triage`, `/views/[id]`, `/workload`, `/inbox`,
-`/trash`, `/roadmap`, `/roadmap/[key]`, `/about`.
+`/docs`, `/docs/[id]`, `/cycles/[number]`, `/triage`, `/views`, `/views/[id]`, `/workload`,
+`/inbox`, `/trash`, `/roadmap`, `/roadmap/[key]`, `/about`.
 
 Frozen for the whole fan-out: `app/globals.css`, `styles/tokens.css`, `app/layout.tsx`,
 `app/providers.tsx`. Existing tokens only, Tailwind utilities for everything else, and

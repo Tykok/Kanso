@@ -142,16 +142,34 @@ avertissement bien visible. Ne jamais exposer une instance tournant dans ce mode
 
 **L'appartenance à une équipe décide désormais qui peut déplacer un ticket, pas
 seulement qui appartient à quoi.** `TicketAccess.claimedBy` est une règle en trois
-volets, essayés dans l'ordre : l'appartenance directe à l'équipe du ticket ; à défaut,
-**une équipe vide est une équipe ouverte** — une équipe sans aucune ligne dans
-`team_members` laisse n'importe quel membre éditer ses tickets ; à défaut, l'appartenance
-à une équipe **ancêtre**. Un `admin` ou le `owner` de l'instance — les deux rôles
-habilités à configurer l'instance — court-circuite toute la règle.
+volets, essayés dans l'ordre : l'acteur est `owner` ou `admin`, ce qui court-circuite
+toute la règle, comme au paragraphe des rôles ci-dessus ; l'acteur est membre de
+l'équipe du ticket **ou de l'un quelconque de ses ancêtres** ; à défaut des deux, une
+**chaîne ouverte** — l'équipe du ticket et chacun de ses ancêtres, sans un seul membre
+entre eux.
 
-La clause de l'équipe vide est la garantie de migration, pas une facilité : toute
-instance tournant avant cette branche a un `team_members` vide, et aucune migration ne
-le remplit. Sans cette clause, déployer cette fonctionnalité verrouillerait les tickets
-de chaque board existant derrière un 403 dont le seul remède serait une invite SQL.
+La clause de la chaîne ouverte n'est pas une garantie de migration, même si elle évite
+bien le désastre de migration : déployer contre un `team_members` vide verrouillerait
+sinon chaque board existant derrière un 403 dont le seul remède serait une invite SQL.
+Mais c'est une conséquence de la clause, pas ce **pour quoi** elle existe.
+`TeamService.create` n'enrôle jamais son créateur, et rien d'autre ne le fait non plus,
+donc une équipe vide n'est pas un état que les instances laissent derrière elles — c'est
+l'état dans lequel chaque équipe **naît**, et où elle reste jusqu'à ce que quelqu'un
+pense à inviter des gens. La clause parcourt toute la chaîne parce que la question posée
+est « quelqu'un, où que ce soit au-dessus de ce ticket, a-t-il revendiqué ce travail » —
+un seul ancêtre peuplé répond à cette question pour tous ses descendants à la fois. Une
+sous-équipe créée sous une organisation déjà peuplée est gouvernée dès l'instant où elle
+existe : c'est le cas courant, et la chaîne le referme sans que personne ait à se
+souvenir d'une étape. Une équipe **racine** reste ouverte jusqu'à ce qu'elle-même,
+spécifiquement, obtienne un membre — ce qui est à la fois le cas de migration (le
+`team_members` de toute instance préexistante est vide le jour où ceci est déployé) et
+la réponse honnête à « personne n'a encore revendiqué ce travail » : on crée l'équipe,
+puis on invite les gens, et le board reste ouvert entre les deux.
+
+Une équipe entre dans l'état ouvert au moment où `TeamService.create` la retourne, et en
+sort au moment où quelqu'un — l'équipe elle-même ou l'un quelconque de ses ancêtres —
+obtient un premier membre. Il n'y a pas de troisième porte, et rien à retenir : c'est la
+règle de la chaîne qui referme d'elle-même la porte d'une sous-équipe.
 
 La filiation ne joue **que vers le bas** : un membre d'une équipe parente peut déplacer
 le travail de n'importe laquelle de ses sous-équipes, jamais l'inverse. L'autre sens
@@ -175,6 +193,38 @@ L'élargissement de périmètre de la timeline — faire apparaître tous les au
 travaillent sur un projet partagé — repose entièrement là-dessus : un projet propriété
 d'une équipe n'a jamais les tickets d'une seconde équipe à faire apparaître, donc
 l'élargissement n'est réel que pour un projet transverse et inerte partout ailleurs.
+
+### Les lectures sont ouvertes, les écritures sont cadrées
+
+Aucun `GET` dans Kanso n'est cadré par équipe. `/api/tickets`, `/api/projects`,
+`/api/timeline` et le roster de chaque équipe répondent à n'importe quel utilisateur
+authentifié pour n'importe quelle équipe, et la timeline transverse que ce projet vient
+de construire repose exactement là-dessus : une ligne de contexte dessine un ticket que
+le lecteur n'a peut-être pas le droit de déplacer, et le chemin critique parcourt les
+arêtes sans demander qui possède l'une ou l'autre extrémité.
+
+Le cadrage des lectures par équipe a été envisagé et refusé, pas simplement jamais
+proposé. Il rendrait les lignes de contexte de la timeline contradictoires — une ligne
+existe pour montrer qui d'autre fait quoi, et cacher une partie de ce « qui d'autre »
+retire la raison pour laquelle la fonctionnalité a été construite. Il mettrait le chemin
+critique en position de traverser des tickets que le lecteur ne peut pas voir, et il
+faudrait répondre à la question de ce à quoi ressemble une barre cachée sur un graphique
+qui, sinon, ne passe jamais sous silence ce qui existe. Aucune de ces trois questions
+n'est un correctif mineur, et toutes trois découlent du cadrage d'un seul point d'accès,
+pas de celui de tous.
+
+La posture est donc délibérée et à sens unique : **tout est lisible, seules les
+écritures sont cadrées.** `TicketAccess` filtre `create`, `patch`, `delete`, et chaque
+déplacement d'équipe — chaque écriture — et ne filtre rien qui ne fasse que lire. Le
+seul écran qui contredisait cela, `MembersSection` cachant le roster à un simple membre
+alors que le point d'accès derrière répondait quand même, a été remis en cohérence plutôt
+que gardé comme exception : un simple membre voit désormais le roster aussi, en lecture
+seule, les contrôles d'ajout et de suppression restant filtrés comme avant.
+
+C'est ce qui doit empêcher la prochaine personne de « corriger » un point d'accès isolé :
+cadrer un seul `GET` ne rendrait pas Kanso plus privé — tous les autres points d'accès
+répondraient toujours à la même question — cela le rendrait seulement incohérent, à un
+coût que la timeline a déjà payé pour éviter.
 
 ### Planification
 

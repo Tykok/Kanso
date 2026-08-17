@@ -316,11 +316,14 @@ the cursor list is the scoped tickets query, and putting a foreign ticket into i
 reintroduce the selection bounce closed on the timeline branch. Its name, dates and status
 are in the tooltip and the accessible name, and that is the whole of what it gets.
 
-**Creating a ticket is ungated by design, and that is a real door, not an oversight.**
-Every mutation on an *existing* ticket runs through `TicketAccess`; `create` does not, so a
-member of any team may drop a ticket onto any other team's board. Not a takeover path — the
-very next patch on that ticket, by anyone, is refused unless it satisfies the three-part
-rule — but a board's ticket count is not protected by team membership, only its content is.
+**Creating a ticket is ungated by design, and that is a real door, not an oversight —
+closed.** Every mutation on an *existing* ticket ran through `TicketAccess`; `create` did
+not, so a member of any team could drop a ticket onto any other team's board. The
+follow-through pass gated it: `create` now calls `access.requireTeam(actor, teamId)`
+before anything else, exactly as `patch` already did for its `teamId` side, and the
+composer stops offering a team that would refuse the ticket (`TeamResponse.editable`).
+One rule, every mutation, finally true — see "Carried out of the ownership follow-through
+pass" below.
 
 ## Test shape, not test count
 

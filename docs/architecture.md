@@ -139,15 +139,31 @@ assignable from the role list: handing ownership away from a dropdown is how an
 instance ends up with nobody able to configure it.
 
 **Team membership now decides who may move a ticket, not only who belongs where.**
-`TicketAccess.claimedBy` is a three-part rule, tried in order: direct membership in the
-ticket's team; failing that, an **empty team is an open team** — a team with no rows at
-all in `team_members` lets any member edit its tickets; failing that, membership in an
-**ancestor** team. An instance admin or owner bypasses the whole rule, per the roles above.
+`TicketAccess.claimedBy` is a three-part rule, tried in order: the actor is `owner` or
+`admin`, which bypasses the whole rule, per the roles above; the actor is a member of
+the ticket's team **or of any of its ancestors**; failing both, an **open chain** — the
+ticket's own team and every ancestor above it, with not one member between them.
 
-The empty-team clause is the migration guarantee, not a convenience: every instance
-running before this branch has an empty `team_members`, and no migration backfills it.
-Without the clause, deploying this feature would lock every existing board's tickets
-behind a 403 with no cure short of a SQL prompt.
+The open-chain clause is not a migration guarantee, though it does prevent the migration
+disaster: deploying against an empty `team_members` would otherwise 403 every existing
+board, with no cure short of a SQL prompt. But that is a consequence of the clause, not
+what it is *for*. `TeamService.create` never enrols its creator, and nothing else does
+either, so an empty team is not a state instances leave behind — it is the state every
+team is **born** into, and stays in until somebody remembers to invite people. The
+clause walks the whole chain because the question it answers is "has anyone, anywhere
+above this ticket, claimed the work" — one populated ancestor answers that for every
+descendant beneath it at once. A sub-team created under a populated organisation is
+governed from the instant it exists: that is the common case, and the chain closes it
+without anyone having to remember a step. A **root** team stays open until it,
+specifically, gets a member — which is both the migration case (every pre-existing
+instance's `team_members` is empty on the day this ships) and the honest answer to
+"nobody has claimed this work yet": you create the team, then you invite people, and the
+board is open in between.
+
+A team enters the open state the moment `TeamService.create` returns it, and leaves the
+moment anyone — the team itself or any ancestor above it — gets a first member. There is
+no third door, and nothing to remember: the chain rule is what makes a sub-team's door
+close on its own.
 
 Ancestry runs **downward only**: a member of a parent team may move work in any of its
 sub-teams, never the reverse. The other direction would turn joining the smallest team
@@ -180,6 +196,35 @@ schema should close.
 The timeline's scope widening — drawing in everyone else with work in a shared project —
 depends on this entirely: a team-owned project never has a second team's tickets to pull
 in, so the widening is live only for a transverse project and inert everywhere else.
+
+### Reads are open, writes are scoped
+
+No `GET` in Kanso is scoped by team. `/api/tickets`, `/api/projects`, `/api/timeline`
+and every team's own member roster answer any authenticated user about any team, and the
+cross-team timeline this project just built depends on exactly that: a context row draws
+a ticket the reader may not be allowed to move, and the critical path walks edges without
+asking who owns either end.
+
+Per-team read scoping was considered and refused, not merely never proposed. It would
+make the timeline's own context rows contradictory — a row exists to show who else is
+doing what, and hiding some of "who else" removes the reason the feature was built. It
+would put the critical path in the position of traversing tickets the reader cannot see,
+and it would need an answer for what a hidden bar looks like on a chart that otherwise
+never omits what exists without saying so. None of those is a small fix, and all three
+follow from scoping a single endpoint, not from scoping all of them.
+
+So the posture is deliberate and one-directional: **everything is readable, only writes
+are scoped.** `TicketAccess` gates `create`, `patch`, `delete`, and every team move —
+every write — and gates nothing that only reads. The one screen that used to disagree,
+`MembersSection` hiding the roster from a plain member while the endpoint behind it
+answered them anyway, has been brought into line rather than kept as the exception: a
+plain member now sees the roster too, read-only, with the add/remove controls gated as
+before.
+
+This is what should stop the next person from "fixing" one endpoint in isolation:
+scoping a single `GET` would not make Kanso more private — every other endpoint would
+still answer the same question — it would only make it inconsistent, at a cost the
+timeline has already paid to avoid.
 
 ### Scheduling
 

@@ -135,12 +135,28 @@ The cross-team context rows the timeline now draws come from two places: the dep
 chain, which works everywhere, and a shared project — which, because a team-owned
 project refuses another team's tickets, means a project with **no** team.
 
-Nothing in the interface says that. The project dialog offers an optional team field and
+~~Nothing in the interface says that. The project dialog offers an optional team field and
 leaves the reader to infer what leaving it blank does. The feature is reachable only by
-someone who already knows the rule, which is the same as not shipping it.
+someone who already knows the rule, which is the same as not shipping it.~~
 
-One sentence under the team field, in the register the dialogs already use. No rule
-changes.
+**Struck during the follow-through pass — this claim is false.**
+`apps/web/src/components/dialogs/project-dialog.tsx:132` has carried
+`hint="No team makes the project transverse: it shows in the root Projects section and
+any team's tickets may point at it."` since commit `6c14a90`, 7 August — five days before
+this spec was written. The interface already says it. The error was describing the
+dialog without opening it, the exact defect class this addendum exists to correct in the
+code; it turns out the spec itself was not exempt.
+
+~~One sentence under the team field, in the register the dialogs already use. No rule
+changes.~~
+
+**What this section's real content is:** nothing ships here. The existing hint is
+adequate, and a second sentence beside it would not close a gap, it would duplicate one.
+The question this section meant to ask survives the correction, though: not whether the
+dialog *states* the rule — it does — but whether a person discovers a hint under a field
+they had no reason to open. That is a product question about discoverability, not a
+copywriting one, and no sentence placed in a dialog answers it. It stays open, correctly
+this time.
 
 ---
 
