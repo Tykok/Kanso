@@ -226,6 +226,29 @@ class NotificationServiceTest : PostgresTest() {
 		assertNull(notifications.inbox(lea.id).rows.single().readAt)
 	}
 
+	/**
+	 * `entity_id` carries no foreign key — it points at whichever of three tables
+	 * `entity_type` names — so nothing cascades and the row outlives its subject. It is
+	 * kept rather than dropped: being told a ticket was assigned to you is true whether
+	 * or not the ticket survived, and dropping it would make the count disagree with the
+	 * list it is counting.
+	 */
+	@Test
+	fun `a notification about a deleted ticket keeps its place and loses its name`() {
+		val lea = person("Lea")
+		val ticket = newTicket()
+		notifications.record(listOf(lea.id), NotificationKind.ASSIGNED, "ticket", ticket.ticket.id, admin.id)
+
+		tickets.delete(admin, ticket.ticket.id)
+
+		val inbox = notifications.inbox(lea.id)
+		val row = inbox.rows.single()
+		assertNull(row.reference)
+		assertNull(row.subject)
+		assertEquals("Admin", row.actor?.displayName)
+		assertEquals(1, inbox.counts.unread)
+	}
+
 	@Test
 	fun `an unknown kind is refused by the database, not by the service`() {
 		val lea = person("Lea")
