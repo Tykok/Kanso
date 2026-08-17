@@ -1,5 +1,10 @@
-import { RouteStub } from "@/components/route-stub";
+import { ProjectPageView } from "@/components/views/project-page";
 
-export default function ProjectPage() {
-  return <RouteStub screen="Project page (05)" slice="A" />;
+/**
+ * Screen 05. A project's id and not its name: two teams may both own a project called
+ * `Onboarding`, which is the same reason `labels` are team-scoped.
+ */
+export default async function ProjectRoute({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <ProjectPageView projectId={id} />;
 }
