@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Menu } from "./menu";
 import { toggle } from "./organise/selection";
 import type { Label } from "@/lib/api/social";
+import { actionErrorMessage } from "@/lib/errors";
 import {
   useCreateLabel,
   useSetTicketLabels,
@@ -58,10 +59,25 @@ export function TicketLabels({
   /**
    * A new label is attached the moment it exists. Two requests rather than one, and the
    * order matters: nothing can wear a label the server has not given an id to yet.
+   *
+   * A name the team already owns attaches that label instead of asking for a second one:
+   * `POST /teams/{id}/labels` answers 409 there, and the reader who typed a name that is
+   * already on the list meant the label, not a duplicate. Matched exactly, because the
+   * server's own `UNIQUE (team_id, name)` is — `Sync` and `sync` are two labels there, and
+   * a case-insensitive guess here would quietly attach the wrong one of them.
    */
   const add = (name: string) => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setNaming(false);
+      return;
+    }
+    const existing = (available.data ?? []).find((label) => label.name === trimmed);
+    if (existing) {
+      setNaming(false);
+      if (!ids.includes(existing.id)) write([...ids, existing.id]);
+      return;
+    }
     create.mutate(
       { name: trimmed },
       {
@@ -72,6 +88,18 @@ export function TicketLabels({
       },
     );
   };
+
+  /** Reads the field and empties it, so no name is submitted twice. */
+  const submit = (input: HTMLInputElement) => {
+    const name = input.value;
+    input.value = "";
+    add(name);
+  };
+
+  // Said out loud rather than left as a menu that appears to do nothing: the panel has no
+  // error region of its own, and a refused write here is usually "that is not one of your
+  // teams", which the reader can act on.
+  const failure = set.error ?? create.error;
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -100,10 +128,18 @@ export function TicketLabels({
           // this, typing a label name would walk the list behind the panel.
           onKeyDown={(event) => {
             event.stopPropagation();
-            if (event.key === "Enter") add(event.currentTarget.value);
-            if (event.key === "Escape") setNaming(false);
+            if (event.key === "Enter") submit(event.currentTarget);
+            // Emptied before it closes, so the blur that may follow reads nothing and
+            // creates nothing: cancelling has to actually cancel.
+            if (event.key === "Escape") {
+              event.currentTarget.value = "";
+              setNaming(false);
+            }
           }}
-          onBlur={(event) => (event.target.value.trim() ? add(event.target.value) : setNaming(false))}
+          // Blur commits too — clicking away from a name somebody typed should keep it —
+          // and `submit` takes the value out of the field, so Enter followed by a blur is
+          // one label and not two.
+          onBlur={(event) => submit(event.target)}
         />
       ) : (
         <Menu
@@ -126,6 +162,12 @@ export function TicketLabels({
           ]}
         />
       )}
+
+      {failure ? (
+        <span role="alert" className="text-11 text-urgent">
+          {actionErrorMessage(failure)}
+        </span>
+      ) : null}
     </div>
   );
 }
