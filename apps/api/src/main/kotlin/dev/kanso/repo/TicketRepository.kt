@@ -3,7 +3,9 @@ package dev.kanso.repo
 import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketDocs
 import dev.kanso.db.Tickets
+import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
+import dev.kanso.trash.TrashKind
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
@@ -18,13 +20,56 @@ import java.util.UUID
 @Repository
 class TicketRepository {
 
+	/**
+	 * A row here is soft-deleted exactly when `trash_entries` names it — there is no
+	 * `deleted` column to keep in step with that, which is `V11`'s whole argument.
+	 *
+	 * Every query below that answers "which tickets are there" excludes the trash;
+	 * [findById] deliberately does not (see its own note). Kept as one expression so no
+	 * caller has to remember the entity type string.
+	 */
+	private val trashed
+		get() = TrashEntries.select(TrashEntries.entityId)
+			.where { TrashEntries.entityType eq TrashKind.TICKET.wire }
+
+	/**
+	 * The row, whatever state it is in — **including** one in the trash.
+	 *
+	 * This is a row reader, not a scope query, and two callers depend on it staying one:
+	 * `SyncWorker.plan` looks a ticket up to build the push that archives its Notion page,
+	 * which happens precisely because it was just thrown away, and `TicketService` loads
+	 * the row before deciding whether the caller may see it. Filtering here would make the
+	 * mirror silently keep a live page for every deleted ticket. `TicketService.get` is
+	 * where a trashed ticket becomes a 404.
+	 */
 	fun findById(id: UUID): Ticket? =
 		Tickets.selectAll().where { Tickets.id eq id }.singleOrNull()?.toTicket()
 
 	/** Whole rows for a set of ids — what the scheduler loads a dependency graph with. */
 	fun findAllById(ids: Collection<UUID>): List<Ticket> =
 		if (ids.isEmpty()) emptyList()
-		else Tickets.selectAll().where { Tickets.id inList ids }.map { it.toTicket() }
+		else Tickets.selectAll()
+			.where { (Tickets.id inList ids) and (Tickets.id notInSubQuery trashed) }
+			.map { it.toTicket() }
+
+	/** The trash's own read: only the rows among [ids] that are actually in it. */
+	fun findTrashed(ids: Collection<UUID>): List<Ticket> =
+		if (ids.isEmpty()) emptyList()
+		else Tickets.selectAll()
+			.where { (Tickets.id inList ids) and (Tickets.id inSubQuery trashed) }
+			.map { it.toTicket() }
+
+	/**
+	 * The Archives tab. Archived and *not* in the trash: the two tabs of screen 26 are
+	 * disjoint, and a ticket somebody archived and then threw away belongs to the one with
+	 * the countdown on it.
+	 */
+	fun findArchived(limit: Int): List<Ticket> =
+		Tickets.selectAll()
+			.where { (Tickets.archived eq true) and (Tickets.id notInSubQuery trashed) }
+			.orderBy(Tickets.updatedAt to SortOrder.DESC)
+			.limit(limit)
+			.map { it.toTicket() }
 
 	fun findByNotionPageId(pageId: String): Ticket? =
 		Tickets.selectAll().where { Tickets.notionPageId eq pageId }.singleOrNull()?.toTicket()
@@ -43,6 +88,9 @@ class TicketRepository {
 		offset: Long = 0,
 	): List<Ticket> {
 		val conditions = buildList {
+			// Unconditional, and not behind `includeArchived`: deleted is not archived, and
+			// showing the archived work must not also surface what is in the trash.
+			add(Tickets.id notInSubQuery trashed)
 			if (!includeArchived) add(Tickets.archived eq false)
 			if (teamIds != null) add(Tickets.teamId inList teamIds)
 			if (projectId != null) add(Tickets.projectId eq projectId)
@@ -71,7 +119,11 @@ class TicketRepository {
 	fun findByProjectIds(projectIds: Collection<UUID>, limit: Int): List<Ticket> =
 		if (projectIds.isEmpty()) emptyList()
 		else Tickets.selectAll()
-			.where { (Tickets.projectId inList projectIds) and (Tickets.archived eq false) }
+			.where {
+				(Tickets.projectId inList projectIds) and
+					(Tickets.archived eq false) and
+					(Tickets.id notInSubQuery trashed)
+			}
 			.orderBy(Tickets.updatedAt to SortOrder.DESC)
 			.limit(limit)
 			.map { it.toTicket() }
@@ -166,6 +218,13 @@ class TicketRepository {
 	}
 
 	fun delete(id: UUID): Boolean = Tickets.deleteWhere { Tickets.id eq id } > 0
+
+	/**
+	 * One flag, for the trash's middle exit. [update] would write the whole row, which is
+	 * more than "archive this instead" asks for and enough to clobber a concurrent edit.
+	 */
+	fun setArchived(id: UUID, archived: Boolean): Boolean =
+		Tickets.update({ Tickets.id eq id }) { it[Tickets.archived] = archived } > 0
 
 	// --- bulk reads ----------------------------------------------------------
 

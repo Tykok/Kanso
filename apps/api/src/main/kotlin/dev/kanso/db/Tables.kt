@@ -237,6 +237,22 @@ object NotionDatabases : Table("notion_databases") {
 	override val primaryKey = PrimaryKey(kind)
 }
 
+/**
+ * The trash, for every kind of thing that can be thrown away.
+ *
+ * A row here *is* the deletion — there is no `deleted` flag on `tickets` to keep in
+ * step with it — so a live read excludes the trash with a subquery on this primary key,
+ * and a kind that lands later needs no column of its own. `entityType` is closed by a
+ * `CHECK` in `V11`; [dev.kanso.trash.TrashKind] is the same vocabulary in Kotlin.
+ */
+object TrashEntries : Table("trash_entries") {
+	val entityType = text("entity_type")
+	val entityId = javaUUID("entity_id")
+	val deletedAt = timestampWithTimeZone("deleted_at")
+	val deletedBy = javaUUID("deleted_by").nullable()
+	override val primaryKey = PrimaryKey(entityType, entityId)
+}
+
 object NotionSyncCursors : Table("notion_sync_cursors") {
 	val dataSourceId = text("data_source_id")
 	val lastEditTime = timestampWithTimeZone("last_edit_time").nullable()
