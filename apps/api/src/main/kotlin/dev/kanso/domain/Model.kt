@@ -76,6 +76,44 @@ enum class MemberRole(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * What an activity row is about. Four kinds of thing, one table: a feed reads them
+ * together, and four tables would be four queries to merge in the client.
+ */
+enum class ActivityEntity(override val wire: String) : Wire {
+	TICKET("ticket"), PROJECT("project"), TEAM("team"), DOC("doc");
+
+	companion object {
+		fun from(raw: String): ActivityEntity = parse(entries.toTypedArray(), raw)
+	}
+}
+
+/**
+ * What happened. Closed, and enforced twice: here, so a typo in a service is a
+ * compile error, and by a CHECK on `activity.kind`, so a row written by anything else
+ * is refused — the same two-sided guard `user_preferences` already has.
+ *
+ * A row per *scalar* that changed, which is why there is no generic `updated`: a feed
+ * that can only say "Tykok updated KAN-142" is a feed nobody reads.
+ */
+enum class ActivityKind(override val wire: String) : Wire {
+	CREATED("created"),
+	STATUS_CHANGED("status_changed"),
+	PRIORITY_CHANGED("priority_changed"),
+	ASSIGNED("assigned"),
+	UNASSIGNED("unassigned"),
+	RENAMED("renamed"),
+	SCHEDULED("scheduled"),
+	ARCHIVED("archived"),
+	COMMENTED("commented"),
+	LABELLED("labelled"),
+	MIRROR_PUSHED("mirror_pushed");
+
+	companion object {
+		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
+	}
+}
+
 /** Mirror bookkeeping shared by every entity Kanso pushes to Notion. */
 data class MirrorInfo(
 	val notionPageId: String? = null,
