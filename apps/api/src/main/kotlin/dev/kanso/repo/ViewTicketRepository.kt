@@ -2,6 +2,7 @@ package dev.kanso.repo
 
 import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketCycles
+import dev.kanso.db.TicketLabels
 import dev.kanso.db.Tickets
 import dev.kanso.db.toTicket
 import dev.kanso.domain.Ticket
@@ -28,6 +29,8 @@ data class SavedViewFilters(
 	val assigneeIds: List<UUID> = emptyList(),
 	val unassigned: Boolean = false,
 	val cycleIds: List<UUID> = emptyList(),
+	/** The drawing's `Étiquette synchro`, by id — see `SavedViewService.SERVED_FILTERS`. */
+	val labelIds: List<UUID> = emptyList(),
 	/** "Blocked for 3 days", from the drawing's own list of saved views. */
 	val openedMoreThanDaysAgo: Int? = null,
 )
@@ -90,6 +93,15 @@ class ViewTicketRepository {
 				add(
 					Tickets.id inSubQuery TicketCycles.select(TicketCycles.ticketId)
 						.where { TicketCycles.cycleId inList filters.cycleIds }
+				)
+			}
+			// Any of the labels asked for, not all of them: one chip is one question, and
+			// `Étiquette synchro, design system` reads as "either", the same way the
+			// priority chip's two values do.
+			if (filters.labelIds.isNotEmpty()) {
+				add(
+					Tickets.id inSubQuery TicketLabels.select(TicketLabels.ticketId)
+						.where { TicketLabels.labelId inList filters.labelIds }
 				)
 			}
 			// Age is measured from creation, not from `updated_at`: "blocked for 3 days" is

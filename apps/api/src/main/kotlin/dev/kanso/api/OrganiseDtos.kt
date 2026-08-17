@@ -207,6 +207,8 @@ data class BulkEditRequest(
 	val priority: String? = null,
 	val assigneeIds: List<UUID>? = null,
 	val cycleId: UUID? = null,
+	/** Added to every selected row, not replacing what they wear — see [BulkEdit]. */
+	val labelId: UUID? = null,
 )
 
 data class BulkEditResponse(val changed: Int)

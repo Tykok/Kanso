@@ -95,6 +95,36 @@ class LabelService(
 		return labels.forTicket(ticketId)
 	}
 
+	/**
+	 * One label onto a whole selection — screen 21's sixth strip button.
+	 *
+	 * It adds rather than replaces, which is the one place this service differs from
+	 * [set]: the strip acts on rows whose labels are not on screen, and a replace would
+	 * silently take off whatever each of them already wore.
+	 *
+	 * Every ticket is resolved and checked before the first row is written, the promise
+	 * [BulkEditService] makes about the rest of the strip — a refusal half-way through
+	 * would leave nobody able to say what the selection now is. Rows already wearing the
+	 * label are skipped rather than re-attached, so the log gets no second row for a
+	 * label that did not move; [attach] alone is idempotent in the table but not in the
+	 * feed. Answers with the size of the selection, which is what the strip reports and
+	 * what `apply` answers for every other button — "6 selected" is the number a reader
+	 * just acted on, not the number of rows that happened to be missing the label.
+	 */
+	@Transactional
+	fun attachAll(actor: User, ticketIds: List<UUID>, labelId: UUID): Int {
+		val label = labels.findById(labelId) ?: throw NotFoundException("No label $labelId")
+		val selection = ticketIds.distinct().map { requireEditableTicket(actor, it) }
+		selection.forEach { requireOwnLabel(it, labelId) }
+
+		val moved = selection.filter { ticket -> labels.forTicket(ticket.id).none { it.id == label.id } }
+		for (ticket in moved) {
+			labels.attach(ticket.id, label.id)
+			record(actor, ticket, label, attached = true)
+		}
+		return selection.size
+	}
+
 	// --- helpers -------------------------------------------------------------
 
 	private fun requireEditableTicket(actor: User, ticketId: UUID): Ticket {
