@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { actionById, type ActionContext } from "@/lib/actions";
@@ -9,6 +11,7 @@ import { keys } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
 import { GroupLabel } from "./ui/group-label";
 import { BrandMenu } from "./brand-menu";
+import { NAV_ITEMS } from "./nav-items";
 import { ProjectRow, rootProjects, TeamRow, tree } from "./sidebar-tree";
 
 /**
@@ -29,6 +32,7 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const { scope, setScope, showArchived, setShowArchived } = useUi();
+  const pathname = usePathname();
   const selectScope = (next: Scope) => {
     setScope(next);
     onNavigate?.();
@@ -90,6 +94,37 @@ export function Sidebar({
             <span className="truncate">All tickets</span>
           </button>
         </div>
+
+        {/* Everything below "All tickets" is a route rather than a scope, and every route
+            belongs to a branch that has not landed yet — so this renders nothing today.
+            The list is what those branches light up, one boolean each. */}
+        {NAV_ITEMS.filter((item) => item.live).map((item) => {
+          const current = pathname === item.href;
+          return (
+            <div
+              key={item.id}
+              data-testid="nav-item"
+              className={cn(
+                "nav-item",
+                "flex items-center gap-1 rounded-md pr-1.5",
+                current
+                  ? "bg-accent-soft font-medium text-foreground"
+                  : "text-muted-foreground hover:bg-accent",
+              )}
+              data-kind="view"
+              data-current={current}
+            >
+              <Link
+                className="min-w-0 flex-1 py-[5px] pl-1.5 text-left"
+                href={item.href}
+                aria-current={current}
+                onClick={onNavigate}
+              >
+                <span className="truncate">{item.label}</span>
+              </Link>
+            </div>
+          );
+        })}
       </div>
 
       <div>

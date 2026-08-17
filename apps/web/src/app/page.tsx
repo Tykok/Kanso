@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BoardView } from "@/components/board/view";
 import { BrandSplash } from "@/components/brand-logo";
 import { DispositionDialog } from "@/components/dialogs/disposition-dialog";
 import { ProjectDialog } from "@/components/dialogs/project-dialog";
@@ -392,6 +393,9 @@ export default function InboxPage() {
             <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")}>
               List
             </button>
+            <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>
+              Board
+            </button>
             <button
               type="button"
               aria-pressed={view === "timeline"}
@@ -444,6 +448,8 @@ export default function InboxPage() {
 
         {view === "timeline" ? (
           <TimelineView reportError={reportError} />
+        ) : view === "board" ? (
+          <BoardView reportError={reportError} />
         ) : tickets.error ? (
           <div className="empty error">{(tickets.error as Error).message}</div>
         ) : (

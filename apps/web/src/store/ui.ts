@@ -1,8 +1,12 @@
 import { create } from "zustand";
 import type { Zoom } from "@/lib/timeline-geometry";
 
-/** The two ways the same tickets are drawn: a list of rows, or a Gantt of bars. */
-export type View = "list" | "timeline";
+/**
+ * The three ways the same tickets are drawn: a list of rows, a board of columns, or a
+ * Gantt of bars. One scoped query feeds all three — the board is a drawing, not a
+ * destination, which is why it has no route of its own.
+ */
+export type View = "list" | "board" | "timeline";
 
 /** What the ticket list is showing — and, verbatim, part of the tickets query key. */
 export type Scope =
@@ -10,7 +14,26 @@ export type Scope =
   | { kind: "team"; id: string }
   | { kind: "project"; id: string };
 
-export type Overlay = "none" | "composer" | "palette" | "detail" | "help" | "settings";
+/**
+ * Every overlay the drawn screens ask for, including the four no branch has built yet.
+ *
+ * Widened once here rather than by each branch as it needs one: this file is read by
+ * `page.tsx`, the sidebar, the palette and every action, so six branches each adding a
+ * member would be six edits to one union. `bulk` is slice C's selection strip, `triage`
+ * its one-at-a-time queue, `conflict` slice D's two-versions chooser, and `blockInsert`
+ * slice B's `/` menu inside a document.
+ */
+export type Overlay =
+  | "none"
+  | "composer"
+  | "palette"
+  | "detail"
+  | "help"
+  | "settings"
+  | "bulk"
+  | "triage"
+  | "conflict"
+  | "blockInsert";
 
 /**
  * A dialog names the entity it is about, so opening one needs no second call to
@@ -25,6 +48,14 @@ export type Dialog =
       kind: "disposition";
       target: { kind: "team" | "project"; id: string };
       severity: "archive" | "delete";
+    }
+  // The three the drawn screens need and no branch has built. Same reason as `Overlay`:
+  // one widening here beats six edits to one union.
+  | { kind: "saveView"; id?: string }
+  | { kind: "importMap" }
+  | {
+      kind: "restore";
+      target: { kind: "ticket" | "doc" | "view" | "folder"; id: string };
     };
 
 /**
