@@ -366,3 +366,37 @@ before assuming either file alone proves the feature.
 - `TimelineService.load` is now ~110 lines with six named collections before the return.
   The decomposition is obvious — a private `resolveDrawn(...)` returning a small holder —
   and the next widening will not fit without it.
+
+---
+
+# Carried out of slice 0, the foundation for the remaining screens
+
+## Not a defect, but load-bearing to know
+
+**A long-lived compose volume makes the whole e2e suite fail at the seed, and the message
+names the wrong thing.** `seedInstance` claims the instance only when `needsOwner` is true.
+On a volume where somebody has already been through the setup wizard by hand, that is false,
+so `owner@kanso.test` is provisioned as a plain member and every scenario dies on
+`Could not create the team …` — sixteen of seventeen, all pointing at `POST /api/teams`
+rather than at the identity that issued it. The suite's own `ADMIN` constant is what makes
+this confusing: the account is *named* owner and is not one.
+
+`users_single_owner` is a unique index, so there is no fixing this by promoting the test
+account beside the existing owner — one of the two has to be demoted, or the volume has to
+go (`docker compose down -v`). Promoting `owner@kanso.test` to `admin` gets sixteen
+scenarios green and leaves scenario 10 red on its display name, which the suite sets only
+when it claims a virgin instance.
+
+The honest fix is for `seedInstance` to assert that `ADMIN` actually holds the role its name
+claims, and to say so, rather than letting the first write fail three call frames later.
+Not done here: it is the e2e suite's shape, and slice 0 had no business changing it while
+six branches were being cut from the same tree.
+
+**`components/route-stub.tsx` is temporary by construction.** Fourteen routes render it so
+that no two parallel branches create the same directory. Each slice deletes its own use of
+it; when the last one has, the file goes too. If it is still here once the six have landed,
+something did not get built.
+
+**`nav-items.ts`' `live` flag is the one shared edit six branches are allowed.** One line
+each, in a list of fourteen. If two branches ever need to change the same row, the
+convention has failed and the row belongs somewhere else.
