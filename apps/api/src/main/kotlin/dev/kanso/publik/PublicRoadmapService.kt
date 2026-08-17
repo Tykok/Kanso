@@ -38,7 +38,12 @@ class PublicRoadmapService(
 		val row = published.findPublishedByKey(teamKey, number)
 			?: throw NotFoundException("No published ticket ${teamKey.uppercase()}-$number")
 		val votes = published.voteCounts(listOf(row.id))[row.id] ?: 0
-		val open = firstSteps().filterNot { it.identifier == row.identifier }
+		// [firstSteps] already holds this ticket when it qualifies as one, so its size is
+		// the count and the list minus this ticket is what to offer next. Adding one for
+		// "this one" would have over-counted a ticket that is unclaimed but already in
+		// progress — available to read, not available to pick up.
+		val steps = firstSteps()
+		val others = steps.filterNot { it.identifier == row.identifier }
 
 		return ContributorPage(
 			identifier = row.identifier,
@@ -53,8 +58,8 @@ class PublicRoadmapService(
 			// asked "who can help with this" and the honest answer is the people whose
 			// board it is on, not everyone with the authority to touch it.
 			helpers = teams.members(row.teamId).map { Helper(it.user.displayName, it.role) },
-			otherFirstSteps = open.take(OTHER_FIRST_STEPS),
-			unclaimedCount = if (row.unclaimed) open.size + 1 else open.size,
+			otherFirstSteps = others.take(OTHER_FIRST_STEPS),
+			unclaimedCount = steps.size,
 		)
 	}
 
