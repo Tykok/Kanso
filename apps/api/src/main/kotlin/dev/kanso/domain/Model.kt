@@ -259,6 +259,21 @@ data class Ticket(
 	val updatedAt: OffsetDateTime,
 )
 
+/**
+ * A word a team puts on its work.
+ *
+ * Team-scoped, so two teams may both own `sync` without arguing about which of them
+ * means it. [colour] is an [Accent] rather than a string of hex: the closed vocabulary
+ * the theme already speaks is the one a pill can be drawn in, and the database refuses
+ * anything outside it.
+ */
+data class Label(
+	val id: UUID,
+	val teamId: UUID,
+	val name: String,
+	val colour: Accent,
+)
+
 data class NotionDoc(
 	val id: UUID,
 	/** The real page someone wrote; Kanso only references it. */
