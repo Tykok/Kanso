@@ -19,13 +19,18 @@ import { PriorityMark } from "./ui/priority-mark";
 import { StatusDot } from "./ui/status-dot";
 
 /** One metadata row: an 11px caption at the left, its control at the right —
- *  the same two-column shape `Field` gives every row of a dialog. */
+ *  the same two-column shape `Field` gives every row of a dialog. Wrapped in a
+ *  `<label>`, the same association `dialogs/field.tsx` and `setup/fields.tsx` use,
+ *  rather than the sibling `<span>` this used to be: a `<select>` or `<input>` with
+ *  no enclosing or `for`-linked label has no accessible name at all. `<label>`
+ *  takes `display: grid` from this className exactly as the `<div>` it replaces
+ *  did, so the layout is unchanged. */
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[88px_1fr] items-center gap-3">
+    <label className="grid grid-cols-[88px_1fr] items-center gap-3">
       <span className="text-11 text-faint">{label}</span>
       <div className="flex min-w-0 items-center gap-2">{children}</div>
-    </div>
+    </label>
   );
 }
 
