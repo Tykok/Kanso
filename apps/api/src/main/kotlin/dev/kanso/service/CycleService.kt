@@ -85,9 +85,12 @@ class CycleService(
 	fun get(id: UUID): Cycle = require(id).toDomain()
 
 	@Transactional(readOnly = true)
+	fun findActive(teamId: UUID): Cycle? = cycles.findActive(teamId)?.toDomain()
+
+	/** For `/cycles/current`, which has no sensible page to render without one. */
+	@Transactional(readOnly = true)
 	fun active(teamId: UUID): Cycle =
-		cycles.findActive(teamId)?.toDomain()
-			?: throw NotFoundException("Team $teamId has no cycle in progress")
+		findActive(teamId) ?: throw NotFoundException("Team $teamId has no cycle in progress")
 
 	@Transactional(readOnly = true)
 	fun byNumber(teamId: UUID, number: Int): Cycle =
