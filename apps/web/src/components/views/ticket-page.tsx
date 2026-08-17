@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import {
   TICKET_PRIORITIES,
@@ -89,7 +90,8 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
   const projects = useProjects();
   const users = useUsers();
   const patch = usePatchTicket();
-  const setScope = useUi((state) => state.setScope);
+  const router = useRouter();
+  const { setScope, select, open } = useUi();
 
   const team = teams.data?.find((candidate) => candidate.id === ticket.teamId);
   const project = projects.data?.find((candidate) => candidate.id === ticket.projectId);
@@ -144,6 +146,26 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
         )}
         <span className="font-mono text-muted-foreground">{ticket.identifier}</span>
         <span className="flex-1" />
+        {/*
+          * The drawing's `⤡`, and the exact inverse of the panel's `⤢`: the same ticket,
+          * the smaller measure, the list back behind it. It selects before it navigates
+          * so the panel opens on this ticket rather than on whatever the cursor was left
+          * on — and, like `⤢`, it does not touch the preference.
+          */}
+        <button
+          type="button"
+          title="Collapse into the panel"
+          aria-label="Collapse into the panel"
+          className="inline-flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => {
+            setScope(project ? { kind: "project", id: project.id } : { kind: "team", id: ticket.teamId });
+            select(ticket.id);
+            open("detail");
+            router.push("/");
+          }}
+        >
+          ⤡
+        </button>
         {ticket.mirror.notionPageId && (
           <a
             className="text-muted-foreground hover:text-foreground"
