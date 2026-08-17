@@ -51,7 +51,7 @@ class DocService(
 	@Transactional(readOnly = true)
 	fun folders(teamId: UUID?): List<DocFolder> {
 		val all = folders.findByTeam(teamId)
-		val doomed = doomedFolderIds(all)
+		val doomed = doomedFolderIds { all }
 		return all.filterNot { it.id in doomed }
 	}
 
@@ -166,14 +166,14 @@ class DocService(
 	fun pages(teamId: UUID?, folderId: UUID?, limit: Int): List<DocPage> {
 		val found = pages.search(teamId, folderId, limit)
 		if (found.isEmpty()) return found
-		return atRoot(found, doomedFolderIds(folders.findByTeam(teamId)))
+		return atRoot(found, doomedFolderIds { folders.findByTeam(teamId) })
 	}
 
 	@Transactional(readOnly = true)
 	fun page(id: UUID): DocPageDetail {
 		val page = pages.findLive(id) ?: throw NotFoundException("No document $id")
 		return DocPageDetail(
-			page = atRoot(listOf(page), doomedFolderIds(folders.findByTeam(page.teamId))).single(),
+			page = atRoot(listOf(page), doomedFolderIds { folders.findByTeam(page.teamId) }).single(),
 			blocks = blocks.findByPage(id),
 			// One `get` per linked ticket. A page's rail carries a handful of them, and
 			// the bulk read that would replace this only exists inside
@@ -284,9 +284,12 @@ class DocService(
 	 * hold a flat list do not read it twice. One query for the whole trash, which is what
 	 * [dev.kanso.trash.TrashRepository.idsOf] exists for.
 	 */
-	private fun doomedFolderIds(all: List<DocFolder>): Set<UUID> {
+	private fun doomedFolderIds(tree: () -> List<DocFolder>): Set<UUID> {
 		val thrownAway = trash.idsOf(TrashKind.FOLDER).toSet()
+		// Before the tree, and that is the point of the lambda: with no folder in the trash —
+		// which is nearly always — the two page reads below cost no extra query at all.
 		if (thrownAway.isEmpty()) return emptySet()
+		val all = tree()
 		val doomed = all.mapNotNullTo(mutableSetOf()) { it.id.takeIf { id -> id in thrownAway } }
 		if (doomed.isEmpty()) return emptySet()
 		var frontier: List<UUID> = doomed.toList()
