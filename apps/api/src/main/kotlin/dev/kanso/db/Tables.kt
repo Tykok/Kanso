@@ -227,6 +227,26 @@ object SyncJobs : Table("sync_jobs") {
 	override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * One row per person who has to be told, not one per change — see `V13`.
+ *
+ * `payload` is jsonb, declared here as text for the same reason `SyncJobs.payload`
+ * is: it is written only through raw SQL, which casts explicitly, and read back with
+ * `::text` so Jackson parses it rather than Exposed.
+ */
+object Notifications : Table("notifications") {
+	val id = javaUUID("id")
+	val userId = javaUUID("user_id")
+	val kind = text("kind")
+	val entityType = text("entity_type")
+	val entityId = javaUUID("entity_id")
+	val actorId = javaUUID("actor_id").nullable()
+	val payload = text("payload")
+	val readAt = timestampWithTimeZone("read_at").nullable()
+	val createdAt = timestampWithTimeZone("created_at")
+	override val primaryKey = PrimaryKey(id)
+}
+
 object NotionDatabases : Table("notion_databases") {
 	val kind = text("kind")
 	val databaseId = text("database_id")
