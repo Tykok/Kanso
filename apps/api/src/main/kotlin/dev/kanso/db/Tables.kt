@@ -4,6 +4,7 @@ import org.jetbrains.exposed.v1.core.Table
 // Exposed 1.x `uuid()` yields kotlin.uuid.Uuid; `javaUUID()` keeps java.util.UUID,
 // which is what JDBC, Jackson and the rest of Spring already speak.
 import org.jetbrains.exposed.v1.core.java.javaUUID
+import org.jetbrains.exposed.v1.javatime.date
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 /**
@@ -243,4 +244,61 @@ object NotionSyncCursors : Table("notion_sync_cursors") {
 	val lastRunAt = timestampWithTimeZone("last_run_at").nullable()
 	val lastError = text("last_error").nullable()
 	override val primaryKey = PrimaryKey(dataSourceId)
+}
+
+/**
+ * A team's rhythm. [startsOn] and [endsOn] are `DATE`, not instants: a cycle is a run of
+ * whole days everyone in the team agrees on, and giving it a timezone would make "six
+ * days left" depend on who is asking.
+ */
+object Cycles : Table("cycles") {
+	val id = javaUUID("id")
+	val teamId = javaUUID("team_id")
+	val number = integer("number")
+	val startsOn = date("starts_on")
+	val endsOn = date("ends_on")
+	val state = text("state")
+	val createdAt = timestampWithTimeZone("created_at")
+	val updatedAt = timestampWithTimeZone("updated_at")
+	override val primaryKey = PrimaryKey(id)
+}
+
+/** A ticket belongs to at most one cycle, so the ticket is the key. */
+object TicketCycles : Table("ticket_cycles") {
+	val ticketId = javaUUID("ticket_id")
+	val cycleId = javaUUID("cycle_id")
+	val addedAt = timestampWithTimeZone("added_at")
+	override val primaryKey = PrimaryKey(ticketId)
+}
+
+/**
+ * What triage decided, and therefore what has left the queue. The queue is every
+ * untriaged ticket, so this table's absence of a row is the membership test — there is
+ * no `in_triage` flag anywhere that could disagree with it.
+ */
+object TriageDecisions : Table("triage_decisions") {
+	val ticketId = javaUUID("ticket_id")
+	val decision = text("decision")
+	val duplicateOf = javaUUID("duplicate_of").nullable()
+	val decidedBy = javaUUID("decided_by").nullable()
+	val decidedAt = timestampWithTimeZone("decided_at")
+	override val primaryKey = PrimaryKey(ticketId)
+}
+
+object SavedViews : Table("saved_views") {
+	val id = javaUUID("id")
+	val teamId = javaUUID("team_id")
+	val name = text("name")
+	val shared = bool("shared")
+
+	// jsonb, read as text and written through raw SQL that casts explicitly — the same
+	// split `sync_jobs.payload` already lives with, for the same reason: the driver
+	// refuses a varchar parameter for a jsonb column.
+	val filters = text("filters")
+	val groupBy = text("group_by")
+	val sortBy = text("sort_by")
+	val createdBy = javaUUID("created_by").nullable()
+	val createdAt = timestampWithTimeZone("created_at")
+	val updatedAt = timestampWithTimeZone("updated_at")
+	override val primaryKey = PrimaryKey(id)
 }
