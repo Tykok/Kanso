@@ -30,10 +30,10 @@ export type NavItem = {
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { id: "inbox", label: "Inbox", href: "/inbox", live: false, badge: "inbox" },
-  { id: "triage", label: "Triage", href: "/triage", live: false, badge: "triage" },
-  { id: "cycle", label: "Cycle", href: "/cycles/current", live: false },
-  { id: "views", label: "Saved views", href: "/views", live: false },
-  { id: "workload", label: "Workload", href: "/workload", live: false },
+  { id: "triage", label: "Triage", href: "/triage", live: true, badge: "triage" },
+  { id: "cycle", label: "Cycle", href: "/cycles/current", live: true },
+  { id: "views", label: "Saved views", href: "/views", live: true },
+  { id: "workload", label: "Workload", href: "/workload", live: true },
   { id: "docs", label: "Documents", href: "/docs", live: false, badge: "docs" },
   { id: "trash", label: "Trash", href: "/trash", live: false, badge: "trash" },
 ];

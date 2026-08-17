@@ -1,5 +1,6 @@
-import { RouteStub } from "@/components/route-stub";
+import { SavedViewsIndex } from "@/components/organise/views-index";
 
+/** The index behind the sidebar's `Saved views` row. */
 export default function ViewsPage() {
-  return <RouteStub screen="Saved views (21)" slice="C" />;
+  return <SavedViewsIndex />;
 }

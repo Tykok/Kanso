@@ -1,5 +1,6 @@
-import { RouteStub } from "@/components/route-stub";
+import { WorkloadView } from "@/components/organise/workload-view";
 
+/** Screen 23. */
 export default function WorkloadPage() {
-  return <RouteStub screen="Workload (23)" slice="C" />;
+  return <WorkloadView />;
 }
