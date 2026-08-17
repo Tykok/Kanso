@@ -218,10 +218,21 @@ export type Theme = (typeof THEMES)[number];
 export type Accent = (typeof ACCENTS)[number];
 export type Density = (typeof DENSITIES)[number];
 
+export const OPEN_TICKET = ["panel", "page"] as const;
+export type OpenTicket = (typeof OPEN_TICKET)[number];
+
 export type Preferences = {
   theme: Theme;
   accent: Accent;
   density: Density;
+  /**
+   * What `↵` on a row does: open the panel, or navigate to the ticket's own page.
+   *
+   * Screen 02 of the design bundle says in as many words that this setting "lives in the
+   * preferences", and until slice 0 it did not. `⤢` and `⇧↵` expand the current ticket
+   * without changing it — the preference is the default, not the only way through.
+   */
+  openTicket: OpenTicket;
   sidebarVisible: boolean;
   showSyncBadges: boolean;
   showStatusBar: boolean;
@@ -234,6 +245,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   accent: "indigo",
   density: "comfortable",
+  openTicket: "panel",
   sidebarVisible: true,
   showSyncBadges: true,
   showStatusBar: true,
@@ -313,7 +325,13 @@ export function setDevUser(email: string | null) {
   else window.localStorage.removeItem(DEV_USER_KEY);
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * The one fetch every slice's client goes through. Exported rather than private because
+ * `api/core.ts` is no longer the only file that talks to the API: each slice owns
+ * `api/<slice>.ts`, and a slice reimplementing the dev-user header, the credentials mode
+ * or the ApiError shape would be a second answer to a question already settled here.
+ */
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const devUser = getDevUser();
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -337,7 +355,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 /** Drops absent parameters rather than sending `undefined` as a literal string. */
-function query(params: Record<string, string | number | boolean | undefined>): string {
+export function query(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) search.set(key, String(value));

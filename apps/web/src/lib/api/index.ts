@@ -8,3 +8,4 @@
  * what it always did.
  */
 export * from "./core";
+export * from "./social";
