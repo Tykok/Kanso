@@ -29,6 +29,8 @@ data class TrashItemResponse(
 	val deletedBy: TrashActorResponse?,
 	/** Whole days left of the thirty. Null for an archive, which has no clock on it. */
 	val daysLeft: Int?,
+	/** Whether "Archive instead" exists for this kind. Only a ticket has an archive. */
+	val canArchive: Boolean,
 ) {
 	companion object {
 		fun of(item: TrashItem) = TrashItemResponse(
@@ -40,6 +42,7 @@ data class TrashItemResponse(
 			deletedAt = item.deletedAt,
 			deletedBy = item.deletedBy?.let { TrashActorResponse(it.id, it.displayName) },
 			daysLeft = item.daysLeft,
+			canArchive = item.canArchive,
 		)
 	}
 }

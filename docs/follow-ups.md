@@ -446,16 +446,25 @@ block, and written down so it is not rediscovered.
 
 ## Worth a decision
 
-**The trash covers tickets and nothing else yet.** `TrashService` never branches on a kind
-— it looks up a `TrashSource` bean — and only `TicketTrashSource` exists. Documents, saved
-views and folders each need one `@Component : TrashSource` of about fifty lines, plus a
-delete entry point calling `TrashRepository.add` and a live read that excludes the trash the
-way `TicketRepository` now does. `TrashKind` and the web client already carry all four, and
-`copy.test.ts` asserts all four labels, so the screen is ready for them; an entry of an
-unanswered kind is skipped rather than drawn. The doc source is the interesting one: its
-`holds` has to say `BLOCKS(cascades = true)` and `MENTIONED_TICKETS(cascades = false)`,
-because that pair is what makes the drawing's sentence — deleting a page deletes neither
-ticket — true rather than merely written.
+**The trash covers all four kinds now, and the folder's cascade was the decision in it.**
+`DocTrashSource`, `ViewTrashSource` and `FolderTrashSource` landed as three beans with no
+branch in `TrashService` and no column in any of the three schemas, which is what `V11` bet
+on. Two things are worth knowing rather than rediscovering.
+
+Deleting a folder **cascades to its sub-folders and not to its pages** — the line `V9` drew
+in the schema, where `doc_folders.parent_id` is CASCADE and `doc_pages.folder_id` is SET
+NULL. So one entry is the countdown for a whole branch: nothing is destroyed without a row
+in `trash_entries` (the invariant the table rests on), one gesture stays one row to restore,
+and `holds` says `FOLDERS(cascades = true)` so the pane names the branch before anybody
+confirms. The pages are never written to at all, which is what makes a restore exact — they
+read at the root while the folder counts down, and `DocService.folders` prunes the branch in
+Kotlin rather than by subquery because what has to disappear is a *branch*, which a `NOT IN`
+cannot ask.
+
+`archiveInstead` is refused by default on the `TrashSource` interface, and `archivable` is
+sent to the client as `canArchive` so the pane draws two buttons rather than a third that
+refuses everything. Only `tickets` has an `archived` column; giving the other three one to
+fill a tab would invent a fact no screen draws.
 
 **Screen 21's label chip is refused, by name.** `SavedViewService.SERVED_FILTERS` rejects a
 `label` key with a message naming it, because slice C was cut before `V8` landed and a chip
@@ -534,9 +543,10 @@ agents hit this.
 - Drag-and-drop reordering of doc blocks is not wired: the handle is drawn, and the two
   arrow buttons beside it do the work. `PUT /blocks/{id}/position` takes an index, so the
   gesture is a layer over an endpoint that already exists.
-- `V11` has no FK on `entity_id`, so a hard delete through `TeamService.delete` leaves an
-  orphan trash entry. The read skips it, and a `forget(kind, ids)` call from the two
-  disposition paths is the cure.
+- `V11` still has no FK on `entity_id` — it cannot, pointing at four tables — but the two
+  disposition paths now clean up after themselves through `TrashRepository.forget(kind, ids)`
+  and `TrashDisposal`. The read still skips an entry with nothing behind it, because nothing
+  in the schema can promise the state never arises.
 - A trashed ticket still appears in the dependency closure the timeline draws, and
   `schedule.link` will still accept an edge onto one.
 - `DocService.page()` calls `tickets.get(id)` once per linked ticket because

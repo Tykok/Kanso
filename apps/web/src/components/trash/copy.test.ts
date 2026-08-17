@@ -9,6 +9,7 @@ const item = (over: Partial<TrashItem> = {}): TrashItem => ({
   parent: { kind: "project", id: "p1", name: "Product" },
   holds: [],
   daysLeft: 28,
+  canArchive: true,
   ...over,
 });
 
@@ -97,6 +98,28 @@ describe("the detail pane's sentence", () => {
     expect(paneSentence(doc, 30)).toBe(
       "Deleted 2 days ago. Held 1 mentioned ticket — the ticket was not deleted, only the " +
         "reference goes.",
+    );
+  });
+
+  /**
+   * The folder's own pair, and the decision behind it: the delete reaches the sub-folders
+   * and not the pages, which is the line `V9` drew in the schema — `parent_id` cascades,
+   * `folder_id` is SET NULL. The rider is literally true at the moment it matters, because
+   * purging the folder is exactly what clears the reference and keeps the writing.
+   */
+  it("says a folder takes its branch and leaves its pages", () => {
+    const folder = item({
+      kind: "folder",
+      label: "Product",
+      holds: [
+        { kind: "folders", count: 2, cascades: true },
+        { kind: "pages", count: 3, cascades: false },
+      ],
+    });
+
+    expect(paneSentence(folder, 30)).toBe(
+      "Deleted 2 days ago. Held 2 sub-folders and 3 pages — the pages were not deleted, " +
+        "only the reference goes.",
     );
   });
 

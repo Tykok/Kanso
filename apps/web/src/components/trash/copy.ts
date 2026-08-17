@@ -60,6 +60,8 @@ const HOLDING_COPY: Record<TrashHoldingKind, { one: string; many: string; rider:
   blocks: { one: "block", many: "blocks", rider: "block" },
   mentionedTickets: { one: "mentioned ticket", many: "mentioned tickets", rider: "ticket" },
   linkedDocs: { one: "linked document", many: "linked documents", rider: "document" },
+  folders: { one: "sub-folder", many: "sub-folders", rider: "sub-folder" },
+  pages: { one: "page", many: "pages", rider: "page" },
 };
 
 const counted = (holding: TrashHolding): string => {

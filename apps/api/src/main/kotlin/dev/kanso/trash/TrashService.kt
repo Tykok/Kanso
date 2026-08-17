@@ -54,6 +54,7 @@ class TrashService(
 						deletedAt = entry.deletedAt,
 						deletedBy = entry.deletedById?.let(actors::get),
 						daysLeft = entry.daysLeft(now),
+						canArchive = source.archivable,
 					)
 				}
 			}

@@ -9,12 +9,22 @@
 
 import { request } from "./core";
 
-/** Closed, and closed again by `V11`'s CHECK. Three of the four have no table yet. */
+/** Closed, and closed again by `V11`'s CHECK. All four have a table and a source. */
 export const TRASH_KINDS = ["ticket", "doc", "view", "folder"] as const;
 export type TrashKind = (typeof TRASH_KINDS)[number];
 
-/** What the deleted thing holds, and whether the delete reaches it. */
-export type TrashHoldingKind = "blocks" | "mentionedTickets" | "linkedDocs";
+/**
+ * What the deleted thing holds, and whether the delete reaches it.
+ *
+ * `folders` and `pages` are a folder's pair, as `blocks` and `mentionedTickets` are a
+ * document's: the branch goes with it and the writing does not.
+ */
+export type TrashHoldingKind =
+  | "blocks"
+  | "mentionedTickets"
+  | "linkedDocs"
+  | "folders"
+  | "pages";
 
 export type TrashHolding = {
   kind: TrashHoldingKind;
@@ -37,6 +47,14 @@ export type TrashItem = {
   deletedBy?: { id: string; displayName: string };
   /** Whole days left of the retention window. Absent for an archive, which has no clock. */
   daysLeft?: number;
+  /**
+   * Whether "Archive instead" exists for this kind — only a ticket carries `archived`.
+   *
+   * Read from here rather than compared against `"ticket"` in the pane: it is the same fact
+   * the server refuses the request with, and a copy of it in a component would be the
+   * sentence that outlives the behaviour it describes.
+   */
+  canArchive: boolean;
 };
 
 export type Trash = {

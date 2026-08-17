@@ -16,6 +16,12 @@ import { paneSentence, restoreLabel } from "./copy";
  * An archive gets the same pane with no exits. Un-archiving is done where the thing lives
  * — the sidebar's own row menu for a team or a project, the list for a ticket — and a
  * second path to it from here would be a second answer to "where do I put this back".
+ *
+ * "Archive instead" is drawn only when the row says it exists. Three of the four kinds have
+ * no `archived` column and the server refuses the request by name, so drawing the button for
+ * them would be a control that fails everything it is offered — and `item.canArchive` is
+ * read rather than `kind === "ticket"` compared, because the rule belongs to the server that
+ * enforces it.
  */
 export function TrashDetail({
   item,
@@ -53,14 +59,16 @@ export function TrashDetail({
           >
             {restoreLabel(item.parent)}
           </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onArchive}
-            className="button shrink-0 text-12 whitespace-nowrap text-muted-foreground"
-          >
-            Archive instead
-          </button>
+          {item.canArchive ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onArchive}
+              className="button shrink-0 text-12 whitespace-nowrap text-muted-foreground"
+            >
+              Archive instead
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={busy}

@@ -83,6 +83,16 @@ data class TrashItem(
 	val deletedAt: OffsetDateTime? = null,
 	val deletedBy: User? = null,
 	val daysLeft: Int? = null,
+	/**
+	 * Whether the middle exit exists for this kind — [TrashSource.archivable], stamped by
+	 * [TrashService.load] rather than set by a source, for the same reason the countdown is:
+	 * it is one fact about a kind and a source repeating it would be a second copy of it.
+	 *
+	 * Sent so the pane can draw the exits a row actually has. A button that refuses
+	 * everything it is offered for is worse than a button that is not there, and hardcoding
+	 * "only a ticket" in a component would be the sentence that outlives the behaviour.
+	 */
+	val canArchive: Boolean = false,
 )
 
 /** Both tabs, with both counts, in one read: the drawing shows them side by side. */
@@ -102,6 +112,16 @@ data class TrashView(val trash: List<TrashItem>, val archives: List<TrashItem>)
  */
 interface TrashSource {
 	val kind: TrashKind
+
+	/**
+	 * Whether this kind has an archive to be put into. False unless it carries `archived`,
+	 * which today is `tickets` and nothing else.
+	 *
+	 * Declared beside [archiveInstead] because it is the same fact read from the other end —
+	 * one says no to a request, the other stops the request being offered — and a source
+	 * that overrode one without the other would draw a button it refuses.
+	 */
+	val archivable: Boolean get() = false
 
 	/**
 	 * Rows for the ids the trash names, without the deletion's own facts — the service

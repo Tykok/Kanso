@@ -195,6 +195,23 @@ class TrashSourcesTest : PostgresTest() {
 		assertEquals(listOf(page.id), trash.load().trash.map { it.id }, "and nothing moved")
 	}
 
+	/**
+	 * And the row says so *before* anybody presses it. A button that refuses everything it
+	 * is offered for is worse than a button that is not there: the pane draws the exits a
+	 * row actually has, from the same fact the refusal above is made of.
+	 */
+	@Test
+	fun `a row says whether the middle exit exists for its kind`() {
+		val team = newTeam()
+		val page = documents.createPage(admin, team.id, null, "Cycle notes 22", null).page
+		val ticket = newTicket(team.id, "SVG seal")
+		documents.deletePage(admin, page.id)
+		tickets.delete(admin, ticket.id)
+
+		assertFalse(trashRow(page.id).canArchive, "a document has no archive to go to")
+		assertTrue(trashRow(ticket.id).canArchive, "a ticket does, and it is the only one that does")
+	}
+
 	@Test
 	fun `a stranger cannot restore or purge a claimed team's document`() {
 		val team = newTeam("Mobile")
