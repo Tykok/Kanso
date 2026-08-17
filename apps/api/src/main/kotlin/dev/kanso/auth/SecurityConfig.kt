@@ -1,9 +1,11 @@
 package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.publik.PublicRoutes
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -62,6 +64,16 @@ class SecurityConfig(
 						"/api/setup/state",
 						"/api/setup/owner",
 					).permitAll()
+					// The public surfaces — screens 27, 28 and the landing page — which are
+					// the only routes in Kanso that answer a reader with no session at all.
+					// Named path by path and method by method from `PublicRoutes`, never a
+					// prefix: `/api/public/**` would open whatever anybody puts there next,
+					// and this is the one widening in the application that has to stay
+					// auditable at a glance. What those routes may read is narrowed a second
+					// time in the read model itself (`PublicTickets`, `PublicRoadmapRepository`),
+					// because a filter chain decides who asks, not what comes back.
+					.requestMatchers(HttpMethod.GET, *PublicRoutes.OPEN_GET).permitAll()
+					.requestMatchers(HttpMethod.POST, *PublicRoutes.OPEN_POST).permitAll()
 					.anyRequest().authenticated()
 			}
 			// A 302 to Google is useless to a fetch() call; the SPA wants a 401 and

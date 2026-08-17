@@ -244,3 +244,54 @@ object NotionSyncCursors : Table("notion_sync_cursors") {
 	val lastError = text("last_error").nullable()
 	override val primaryKey = PrimaryKey(dataSourceId)
 }
+
+/**
+ * The public read model's own view of `tickets`, and deliberately a second object on
+ * the same table rather than three more columns on [Tickets].
+ *
+ * The public routes are the only ones that answer without a session, so they are the
+ * only place where selecting one column too many is a disclosure rather than a
+ * rendering bug. This object carries exactly what a stranger may read; the projection
+ * cannot leak a description of a private neighbour, an assignee, or a Notion page id,
+ * because those columns are not absent from its queries — they are absent from its
+ * type. Widening this object is the edit a reviewer should stop at, which is the whole
+ * reason it is small enough to read in one glance.
+ *
+ * [isPublic] is the flag itself, and it is on this object because every query that
+ * reads this table has to name it. Nothing outside `dev.kanso.publik` uses this.
+ */
+object PublicTickets : Table("tickets") {
+	val id = javaUUID("id")
+	val number = integer("number")
+	/** Not shown; needed to resolve the team's key into `KAN-142`. */
+	val teamId = javaUUID("team_id")
+	val title = text("title")
+	val description = text("description").nullable()
+	val status = text("status")
+	/** When it shipped — the date the delivered column prints beside a ticket. */
+	val completedAt = timestampWithTimeZone("completed_at").nullable()
+	val isPublic = bool("public")
+	val archived = bool("archived")
+	override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Open voting, one row per voter per ticket. [voterKey] is a keyed hash of an address
+ * and a day, never an address — see `VoterKeys` and V12's own comment for why that is
+ * the better trade rather than the weaker one.
+ */
+object Votes : Table("votes") {
+	val ticketId = javaUUID("ticket_id")
+	val voterKey = text("voter_key")
+	val createdAt = timestampWithTimeZone("created_at")
+	override val primaryKey = PrimaryKey(ticketId, voterKey)
+}
+
+/** Where to look first, in the order a maintainer put the paths in. */
+object TicketFiles : Table("ticket_files") {
+	val ticketId = javaUUID("ticket_id")
+	val path = text("path")
+	val note = text("note").nullable()
+	val position = integer("position")
+	override val primaryKey = PrimaryKey(ticketId, path)
+}
