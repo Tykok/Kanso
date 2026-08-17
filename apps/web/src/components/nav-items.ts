@@ -34,6 +34,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: "cycle", label: "Cycle", href: "/cycles/current", live: false },
   { id: "views", label: "Saved views", href: "/views", live: false },
   { id: "workload", label: "Workload", href: "/workload", live: false },
-  { id: "docs", label: "Documents", href: "/docs", live: false, badge: "docs" },
+  { id: "docs", label: "Documents", href: "/docs", live: true, badge: "docs" },
   { id: "trash", label: "Trash", href: "/trash", live: false, badge: "trash" },
 ];

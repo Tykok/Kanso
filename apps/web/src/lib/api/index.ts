@@ -9,3 +9,4 @@
  */
 export * from "./core";
 export * from "./social";
+export * from "./docs";
