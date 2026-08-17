@@ -468,13 +468,28 @@ test asserts the refusal, so it will say so when someone tries.
 recorded that a ticket *is* a good first step. `PublicRoadmapService.firstSteps()` is the
 query that narrows to the label, and it says so in place.
 
-**Notifications are written by nobody.** `V13` and `NotificationService.record` exist and
-the inbox draws them; the call sites do not. Assignment and status changes want one in
-`TicketService`, mentions and replies in `CommentService`, and the conflict chooser is
-unreachable until `NotionPoller.kansoWins` records one — that last is the only thing that
-makes screen 15's third state appear at all. The failures tab needs none: it is derived from
+**Notifications have call sites now, and `project_slipped` still has none.** Assignment,
+status moves, mentions, replies and the mirror's conflicts are all recorded, each in the
+transaction of the change it is about; the failures tab needs none, being derived from
 `sync_jobs`, because the queue is already where "the mirror refused this" is true and a
-stored copy keeps saying so after a retry succeeds.
+stored copy keeps saying so after a retry succeeds. `PROJECT_SLIPPED` is the one kind of the
+seven with no writer, and not for want of looking: a project's end is *derived* —
+`TimelineService.projectRows` computes it from its tickets' bounds on every read, and
+nothing stores the previous answer to compare against. Nor is the scheduler one place.
+`ScheduleService.cascadeFrom` returns early for a ticket with no dependencies, so a lone due
+date moves a project's end with the cascade never running, and `TicketService.create`,
+`patch`, `delete` and `NotionPoller.applyTicket` each move it by their own route. Recording
+the slip means storing the derived end — one column, and a migration — or leaving the kind
+unwritten, which is what it is.
+
+**Three things a conflict row does not carry.** They are written for tickets only: the
+chooser's `Keep Notion` is `ticketPatchFor`, which patches a ticket and nothing else, and a
+team could not be recorded whatever the chooser did, `entity_type` being closed to ticket,
+project and doc. They carry no `theirActor`, because the page gives Notion's own user id and
+`NotionClient` exposes no way to resolve one to a name — the chooser draws a bare "Notion"
+rather than a uuid, which it was already written to do. And only `title` and `description`
+are diffed: a status or a priority coming back is a value from a closed vocabulary that the
+corrective push settles on its own, and it is not one the chooser could apply either.
 
 **`ticket_files` is a table the spec did not authorise.** Slice F added it because screen
 28's "where to look" list had nowhere to live and one screen draws it. Flagged rather than
@@ -504,6 +519,12 @@ register a working navigation action. `lib/actions/docs.ts` and `lib/actions/tra
 deliberately empty and say why; `⇧e` in the inbox and `x`/`⇧↑↓` in a saved view are
 dispatched by their own pages. Three slices hit this independently, which makes it the next
 thing to decide about the registry rather than three separate annoyances.
+
+**A notification is not access-checked.** `NotificationService.record` writes to whoever it
+is handed, so mentioning somebody outside a ticket's team puts that ticket's name and an
+excerpt of the comment in their inbox. Right for a mention — a member typed the address on
+purpose, and the excerpt is the sentence they wrote — and worth knowing before a kind with a
+recipient set nobody chose by hand is added.
 
 **`store/ui.ts`'s `restore` dialog is unused.** The trash restores in place, and a
 confirmation for an undo is not worth a dialog. Slice 0 reserved it; nothing opens it.
