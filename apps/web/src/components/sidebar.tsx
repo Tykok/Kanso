@@ -11,8 +11,28 @@ import { GroupLabel } from "./ui/group-label";
 import { BrandMenu } from "./brand-menu";
 import { ProjectRow, rootProjects, TeamRow, tree } from "./sidebar-tree";
 
-export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary: string }) {
+/**
+ * `onNavigate` fires beside every `setScope` call, never on its own: the row
+ * actions (rename, archive, the `+` buttons) do not navigate, so they must not
+ * close whatever is hosting this component. The desktop column has nothing to
+ * close and leaves it unset; `MobileNavDrawer` passes its own `onClose` — picking
+ * a destination is what the drawer is for, and a modal that stays open over the
+ * page it was just asked to leave is not doing its one job.
+ */
+export function Sidebar({
+  ctx,
+  syncSummary,
+  onNavigate,
+}: {
+  ctx: ActionContext;
+  syncSummary: string;
+  onNavigate?: () => void;
+}) {
   const { scope, setScope, showArchived, setShowArchived } = useUi();
+  const selectScope = (next: Scope) => {
+    setScope(next);
+    onNavigate?.();
+  };
 
   /**
    * One query for every project, with no `teamId`: the sidebar needs the whole tree
@@ -65,7 +85,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
           <button
             className="min-w-0 flex-1 py-[5px] pl-1.5 text-left"
             aria-current={allCurrent}
-            onClick={() => setScope({ kind: "all" })}
+            onClick={() => selectScope({ kind: "all" })}
           >
             <span className="truncate">All tickets</span>
           </button>
@@ -77,7 +97,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
           <span className="flex-1">Teams</span>
           {newTeam.when(rootCtx) && (
             <button
-              className="nav-add flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
+              className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
               aria-label="New team"
               title={newTeam.label}
               onClick={() => newTeam.run(rootCtx)}
@@ -97,7 +117,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
               depth={row.depth}
               current={scope.kind === "team" && scope.id === row.team.id}
               ctx={at({ kind: "team", id: row.team.id })}
-              onSelect={() => setScope({ kind: "team", id: row.team.id })}
+              onSelect={() => selectScope({ kind: "team", id: row.team.id })}
             />
           ) : (
             <ProjectRow
@@ -106,7 +126,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
               depth={row.depth}
               current={scope.kind === "project" && scope.id === row.project.id}
               ctx={at({ kind: "project", id: row.project.id })}
-              onSelect={() => setScope({ kind: "project", id: row.project.id })}
+              onSelect={() => selectScope({ kind: "project", id: row.project.id })}
             />
           ),
         )}
@@ -117,7 +137,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
           <span className="flex-1">Projects</span>
           {newProject.when(rootCtx) && (
             <button
-              className="nav-add flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
+              className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
               aria-label="New project"
               title={newProject.label}
               onClick={() => newProject.run(rootCtx)}
@@ -136,7 +156,7 @@ export function Sidebar({ ctx, syncSummary }: { ctx: ActionContext; syncSummary:
             depth={0}
             current={scope.kind === "project" && scope.id === project.id}
             ctx={at({ kind: "project", id: project.id })}
-            onSelect={() => setScope({ kind: "project", id: project.id })}
+            onSelect={() => selectScope({ kind: "project", id: project.id })}
           />
         ))}
       </div>

@@ -66,9 +66,6 @@ export default function InboxPage() {
   } = useUi();
   const [editingId, setEditingId] = useState<string | undefined>();
   const [actionError, setActionError] = useState<{ scope: Scope; message: string } | null>(null);
-  // The sidebar's off-canvas twin under 720px — see `MobileNavDrawer`. Page-local:
-  // it is a fact about this viewport's chrome, not app state anything else reads.
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   /**
    * The ticket whose arrows the palette is asking about, and which question it is
    * asking. Page-local rather than in the store: it lives exactly as long as the overlay
@@ -264,18 +261,6 @@ export default function InboxPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [ctx, overlay, dialog, editingId, open, closeOverlay, view]);
 
-  // A separate listener, not folded into the one above: the drawer is mobile-only
-  // chrome, not one more state that handler's overlay/dialog/editingId guard needs
-  // to learn about.
-  useEffect(() => {
-    if (!mobileNavOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileNavOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mobileNavOpen]);
-
   const commands = useMemo(() => {
     // Asked for a predecessor, the palette lists tickets instead of commands: same
     // overlay, same filtering, same keys, so `d` costs nobody a new mental model.
@@ -383,17 +368,7 @@ export default function InboxPage() {
 
       <div className="flex min-h-0 min-w-0 flex-col">
         <div className="flex items-center gap-3 bg-card px-5 py-3">
-          <button
-            type="button"
-            data-testid="mobile-nav-trigger"
-            className="hidden -ml-2.5 size-11 shrink-0 place-items-center rounded-md text-foreground hover:bg-accent max-[720px]:grid"
-            aria-label="Open navigation"
-            aria-expanded={mobileNavOpen}
-            aria-controls={mobileNavOpen ? "mobile-nav-drawer" : undefined}
-            onClick={() => setMobileNavOpen(true)}
-          >
-            ☰
-          </button>
+          <MobileNavDrawer ctx={ctx} syncSummary={mirrorSummary} />
           <h1 className="m-0 text-13 font-medium">{currentTeam ? currentTeam.name : "All tickets"}</h1>
           <span className="font-mono text-11 text-faint">{visible.length}</span>
           <span className="flex-1" />
@@ -538,14 +513,6 @@ export default function InboxPage() {
           </div>
         )}
       </div>
-
-      {mobileNavOpen && (
-        <MobileNavDrawer
-          ctx={ctx}
-          syncSummary={mirrorSummary}
-          onClose={() => setMobileNavOpen(false)}
-        />
-      )}
 
       {overlay === "composer" && <Composer scope={scope} onClose={close} />}
       {overlay === "palette" && <CommandPalette commands={commands} onClose={closeOverlay} />}

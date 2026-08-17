@@ -15,7 +15,7 @@ test.beforeAll(seedInstance);
  * 16 prior e2e scenarios never opened it once. 390×844 is the mobile mockups' own
  * frame size, not a number invented for this test.
  */
-test("scenario 16 — the mobile drawer opens, reaches a team, and closes by scrim and by Escape", async ({
+test("scenario 16 — the mobile drawer traps focus, reaches a team, and closes by navigation, scrim and Escape", async ({
   browser,
 }) => {
   const api = await apiAs(ADMIN);
@@ -36,12 +36,35 @@ test("scenario 16 — the mobile drawer opens, reaches a team, and closes by scr
   const drawer = page.locator("#mobile-nav-drawer");
   await expect(drawer).toBeVisible();
 
+  // `aria-modal="true"` is a promise: focus moves in on open, Tab cannot walk it
+  // out into the page underneath, and it comes back to the trigger on close. Radix's
+  // `Dialog` primitive keeps that promise (`mobile-nav.tsx`); this is what a
+  // hand-rolled `<div role="dialog" aria-modal>` with no supporting behaviour would
+  // have failed at three different ways.
+  await expect(drawer.locator(":focus")).toHaveCount(1);
+  for (let i = 0; i < 25; i++) await page.keyboard.press("Tab");
+  await expect(drawer.locator(":focus")).toHaveCount(1);
+
   // A nav row is reachable inside it. Scoped to `drawer`, not the unscoped
   // `sidebarRow` helper: the desktop copy of the same row is still in the
   // document (hidden, not gone), so an unscoped locator would now match two and
   // trip Playwright's strict mode.
   await drawer.getByRole("button", { name: team, exact: true }).click();
+  // Selecting a destination closes the drawer itself — a real `aria-modal` hides
+  // everything behind it from assistive technology while it's open (Radix's
+  // `hideOthers`), so it cannot stay open once a row has sent you somewhere on the
+  // page it was hiding; the heading below would otherwise be unreachable by role,
+  // not merely obscured. `sidebar.tsx`'s `onNavigate` is what closes it.
+  await expect(page.locator("#mobile-nav-drawer")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: team, level: 1 })).toBeVisible();
+  // Closing must not drop a keyboard user on <body> — focus comes back to the
+  // control that opened the drawer, the same contract `menu.tsx` and
+  // `DialogFrame` already hold for their own overlays.
+  await expect(trigger).toBeFocused();
+
+  // Reopens, to prove the scrim and Escape close it too, independently of navigation.
+  await trigger.click();
+  await expect(drawer).toBeVisible();
 
   // Closes on a scrim click. The scrim is `inset: 0` — the whole 390px-wide
   // viewport — but the 288px drawer panel paints on top of it for the width it
@@ -50,10 +73,12 @@ test("scenario 16 — the mobile drawer opens, reaches a team, and closes by scr
   // past the panel's right edge is what actually reaches it.
   await page.getByTestId("mobile-nav-scrim").click({ position: { x: 340, y: 100 } });
   await expect(page.locator("#mobile-nav-drawer")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 
   // Reopens, and closes on Escape.
   await trigger.click();
   await expect(page.locator("#mobile-nav-drawer")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("#mobile-nav-drawer")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
