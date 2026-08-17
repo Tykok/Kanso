@@ -70,6 +70,13 @@ class TicketService(
 	private val access: TicketAccess,
 	private val activity: ActivityService,
 	/**
+	 * Written at the same points as [activity] and in the same transaction, and it is not
+	 * the same row: an activity row says what happened to the ticket, a notification says
+	 * a person has to be told. Two of the inbox's four tabs are fed from here and from
+	 * nowhere else.
+	 */
+	private val notifications: NotificationService,
+	/**
 	 * The repository, not `TrashService`: that one is built out of [TrashSource] beans and
 	 * one of them is built out of this service, so depending on it here would close a
 	 * cycle. Writing the entry is a row insert and belongs at this level anyway — the
@@ -279,6 +286,7 @@ class TicketService(
 		) ?: throw NotFoundException("No ticket $id")
 
 		recordScalarChanges(actor, before = current, after = updated)
+		notifyStatusMoved(actor, id, before = current, after = updated)
 		patch.assigneeIds?.let { wanted ->
 			// Read before the write, not after: the log's whole value is the difference.
 			val before = tickets.assigneeIds(id)
@@ -458,6 +466,31 @@ class TicketService(
 		}
 	}
 
+	/**
+	 * The one scalar move somebody who is not looking at the ticket has to hear about.
+	 *
+	 * Only the status, of the six [recordScalarChanges] logs. A rename, a priority and a
+	 * date are all worth a line in the feed under the ticket; none of them is worth an
+	 * unread count on somebody's sidebar, and an inbox that filled up with them is one
+	 * nobody would open to find the assignment underneath.
+	 *
+	 * Called before the patch's own assignee change is applied, so the recipients are the
+	 * assignees as they were when the status moved. Somebody added in the same request is
+	 * already being told they have the ticket; a second row about a status they never held
+	 * is noise.
+	 */
+	private fun notifyStatusMoved(actor: User, id: UUID, before: Ticket, after: Ticket) {
+		if (after.status == before.status) return
+		notifications.record(
+			recipients = tickets.assigneeIds(id),
+			kind = NotificationKind.STATUS_MOVED,
+			entityType = "ticket",
+			entityId = id,
+			actorId = actor.id,
+			payload = mapOf("from" to before.status.wire, "to" to after.status.wire),
+		)
+	}
+
 	/** The instant alone. The granularity flag is how a date is *drawn*, not what changed. */
 	private fun bound(field: String, before: KansoInstant?, after: KansoInstant?): Map<String, Any?> =
 		mapOf("field" to field, "from" to before?.at?.toString(), "to" to after?.at?.toString())
@@ -468,10 +501,11 @@ class TicketService(
 	 * the payload back apart to find them.
 	 */
 	private fun recordAssigneeChanges(actor: User, ticketId: UUID, before: List<UUID>, after: List<UUID>) {
-		for (added in after.toSet() - before.toSet()) {
+		val added = after.toSet() - before.toSet()
+		for (person in added) {
 			activity.record(
 				ActivityEntity.TICKET, ticketId, actor.id, ActivityKind.ASSIGNED,
-				mapOf("userId" to added.toString()),
+				mapOf("userId" to person.toString()),
 			)
 		}
 		for (removed in before.toSet() - after.toSet()) {
@@ -480,6 +514,19 @@ class TicketService(
 				mapOf("userId" to removed.toString()),
 			)
 		}
+
+		// Here rather than at the three call sites — [create], [patch] and [setAssignees]
+		// all reach the log through this method, and a fourth written later inherits the
+		// notification instead of forgetting it. Only the people *added*: being handed work
+		// is the news, and only they are the ones it is news to.
+		//
+		// No payload. The sentence the inbox draws for `assigned` is the actor and the
+		// ticket's own name, and the row carries both already.
+		notifications.record(added, NotificationKind.ASSIGNED, "ticket", ticketId, actor.id)
+
+		// Nothing for a removal, and not because it does not matter: the vocabulary is
+		// closed by a `CHECK` in `V13` and has no `unassigned`, so there is no row to write
+		// and inventing a kind is a migration. The activity row above is where it is said.
 	}
 
 	// --- helpers -------------------------------------------------------------

@@ -53,6 +53,7 @@ class CommentService(
 	private val users: UserRepository,
 	private val access: TicketAccess,
 	private val activity: ActivityService,
+	private val notifications: NotificationService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -90,6 +91,7 @@ class CommentService(
 			ActivityKind.COMMENTED,
 			mapOf("commentId" to comment.id.toString()),
 		)
+		notify(actor, ticketId, comment.id, body, mentioned)
 		return CommentRow(
 			id = comment.id,
 			author = actor,
@@ -119,6 +121,41 @@ class CommentService(
 	}
 
 	// --- helpers -------------------------------------------------------------
+
+	/**
+	 * Who is told about one comment.
+	 *
+	 * Two kinds out of one write, and the mention wins: somebody named in the sentence who
+	 * has also written on this ticket before would otherwise collect two rows for one
+	 * sentence, and the mentions tab would count them both.
+	 *
+	 * The reply half is a **heuristic, not a thread model** — there is no thread model here,
+	 * deliberately. `V8` gives a comment one parent and that parent is the ticket, so "whose
+	 * comment was this a reply to" is not recorded anywhere and cannot be. What *is* recorded
+	 * is who else has written under this ticket, and that is the answer used: on a ticket
+	 * with two people on it, which is nearly all of them, it is the right one, and the
+	 * sentence the inbox draws — "Your comment received a reply" — stays true of everybody
+	 * it picks. It over-tells on a long argument between six people; a real thread model is
+	 * the cure, and it is a schema change rather than a better guess here.
+	 */
+	private fun notify(actor: User, ticketId: UUID, commentId: UUID, body: String, mentioned: List<User>) {
+		// One payload for both kinds. `excerpt` is what the inbox quotes under a mention,
+		// and `commentId` is what a link into the thread needs and no join can recover —
+		// the notification names the ticket, and a ticket has many comments.
+		val payload = mapOf("commentId" to commentId.toString(), "excerpt" to excerpt(body))
+		val named = mentioned.map { it.id }.toSet()
+		notifications.record(named, NotificationKind.MENTIONED, "ticket", ticketId, actor.id, payload)
+
+		// The whole thread, for its authors: a ticket carries a handful of comments and this
+		// is the same read the ticket page already makes. The actor is in there — the
+		// comment just written is theirs — and `record` is what drops them.
+		val alreadyHere = comments.forTicket(ticketId).map { it.authorId }.toSet() - named
+		notifications.record(alreadyHere, NotificationKind.COMMENT_REPLIED, "ticket", ticketId, actor.id, payload)
+	}
+
+	/** Enough of the sentence to recognise it, on the one line the row has for it. */
+	private fun excerpt(body: String): String =
+		if (body.length <= EXCERPT_LENGTH) body else body.take(EXCERPT_LENGTH).trimEnd() + "…"
 
 	private fun requireOneParent(request: CreateComment): UUID {
 		if (request.docId != null) {
@@ -165,6 +202,9 @@ class CommentService(
 	}
 
 	private companion object {
+		/** The inbox gives an excerpt one line. Past this it is cut and marked as cut. */
+		const val EXCERPT_LENGTH = 140
+
 		/**
 		 * `@` followed by the characters an address's local part may hold. Deliberately
 		 * not the full RFC grammar: what this has to match is what somebody types into a
