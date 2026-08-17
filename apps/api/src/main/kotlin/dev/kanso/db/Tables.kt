@@ -83,6 +83,9 @@ object UserPreferences : Table("user_preferences") {
 	 * no DDL, which this file never does.
 	 */
 	val timezone = text("timezone").default("UTC")
+
+	/** Which of the two ways `↵` opens a ticket. Same `default` reasoning as above. */
+	val openTicket = text("open_ticket").default("panel")
 	val updatedAt = timestampWithTimeZone("updated_at")
 	override val primaryKey = PrimaryKey(userId)
 }
@@ -206,6 +209,76 @@ object TicketDocs : Table("ticket_docs") {
 	val ticketId = javaUUID("ticket_id")
 	val docId = javaUUID("doc_id")
 	override val primaryKey = PrimaryKey(ticketId, docId)
+}
+
+/**
+ * A sentence somebody wrote, on exactly one thing.
+ *
+ * Both parents are nullable and a CHECK insists on one of them: the alternative shape
+ * — a `parent_type` plus a `parent_id` with no foreign key at all — buys the third
+ * case nothing and loses the cascade that keeps a deleted ticket from leaving its
+ * discussion behind.
+ */
+object Comments : Table("comments") {
+	val id = javaUUID("id")
+	val ticketId = javaUUID("ticket_id").nullable()
+	val docId = javaUUID("doc_id").nullable()
+	val authorId = javaUUID("author_id")
+	val body = text("body")
+	val createdAt = timestampWithTimeZone("created_at")
+	val updatedAt = timestampWithTimeZone("updated_at")
+	override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Who a comment named, resolved when it was written. Re-parsing the body on read
+ * would make a mention disappear the day its author's display name changes, after it
+ * had already been delivered.
+ */
+object CommentMentions : Table("comment_mentions") {
+	val commentId = javaUUID("comment_id")
+	val userId = javaUUID("user_id")
+	override val primaryKey = PrimaryKey(commentId, userId)
+}
+
+/** Team-scoped, so two teams may both own the word `sync` without fighting for it. */
+object Labels : Table("labels") {
+	val id = javaUUID("id")
+	val teamId = javaUUID("team_id")
+	val name = text("name")
+
+	/** A token name from the accent vocabulary, not a hex string. */
+	val colour = text("colour").default("indigo")
+	override val primaryKey = PrimaryKey(id)
+}
+
+object TicketLabels : Table("ticket_labels") {
+	val ticketId = javaUUID("ticket_id")
+	val labelId = javaUUID("label_id")
+	override val primaryKey = PrimaryKey(ticketId, labelId)
+}
+
+/**
+ * What happened, written in the transaction that made it happen.
+ *
+ * [entityId] carries no foreign key on purpose: one table answers for tickets,
+ * projects, teams and docs, and four nullable columns with four constraints would buy
+ * nothing a feed can read. The consequence is that a row outlives the thing it
+ * describes, which is what a log is for.
+ */
+object Activity : Table("activity") {
+	val id = javaUUID("id")
+	val entityType = text("entity_type")
+	val entityId = javaUUID("entity_id")
+	val actorId = javaUUID("actor_id").nullable()
+	val kind = text("kind")
+
+	// jsonb, read as text — Postgres hands it back as a PGobject whose toString is the
+	// document. Written through raw SQL, which casts explicitly, because the driver
+	// refuses a varchar parameter for a jsonb column: same split as `sync_jobs.payload`.
+	val payload = text("payload")
+	val createdAt = timestampWithTimeZone("created_at")
+	override val primaryKey = PrimaryKey(id)
 }
 
 object SyncJobs : Table("sync_jobs") {

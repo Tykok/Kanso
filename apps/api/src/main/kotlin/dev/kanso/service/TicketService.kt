@@ -1,5 +1,7 @@
 package dev.kanso.service
 
+import dev.kanso.domain.ActivityEntity
+import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
@@ -64,6 +66,7 @@ class TicketService(
 	private val events: EventPublisher,
 	private val schedule: ScheduleService,
 	private val access: TicketAccess,
+	private val activity: ActivityService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -155,6 +158,10 @@ class TicketService(
 		tickets.setDocs(ticket.id, docIds)
 
 		syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+		// No payload: a creation has no before, and the title a feed wants to print is on
+		// the row it is already reading. What the log adds is who, and when.
+		activity.record(ActivityEntity.TICKET, ticket.id, actor.id, ActivityKind.CREATED)
+		recordAssigneeChanges(actor, ticket.id, before = emptyList(), after = assigneeIds)
 		events.publish(KansoEvent.ticket(ChangeKind.CREATED, ticket.id, teamId, projectId))
 		return TicketDetail(ticket, team.key, assigneeIds, docIds)
 	}
@@ -242,7 +249,13 @@ class TicketService(
 			archived = patch.archived ?: current.archived,
 		) ?: throw NotFoundException("No ticket $id")
 
-		patch.assigneeIds?.let { tickets.setAssignees(id, it) }
+		recordScalarChanges(actor, before = current, after = updated)
+		patch.assigneeIds?.let { wanted ->
+			// Read before the write, not after: the log's whole value is the difference.
+			val before = tickets.assigneeIds(id)
+			tickets.setAssignees(id, wanted)
+			recordAssigneeChanges(actor, id, before, wanted)
+		}
 		patch.docIds?.let { tickets.setDocs(id, it) }
 
 		syncJobs.enqueue(
@@ -281,7 +294,9 @@ class TicketService(
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
 		access.require(actor, ticket)
 		requireUsers(userIds)
+		val before = tickets.assigneeIds(id)
 		tickets.setAssignees(id, userIds)
+		recordAssigneeChanges(actor, id, before, userIds)
 		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
 		return decorate(listOf(ticket)).single()
@@ -296,6 +311,70 @@ class TicketService(
 		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
 		return decorate(listOf(ticket)).single()
+	}
+
+	// --- the log -------------------------------------------------------------
+
+	/**
+	 * One row per scalar that actually changed, and nothing for a patch that changed
+	 * none. A row per call would make the feed a list of the times somebody pressed a
+	 * key; a row per changed field is what "moved KAN-142 to in progress" is written from.
+	 *
+	 * The two bounds are separate rows carrying which one moved, rather than one row with
+	 * four keys: they are two scalars, and a reader that has to work out which of them
+	 * changed is a reader doing the log's job.
+	 *
+	 * The cascade the caller runs afterwards is not logged. It moves other tickets' dates,
+	 * and the same argument `follow-ups.md` records for the event applies to the log: two
+	 * hundred rows nobody reads, for a change every receiver answers by refetching.
+	 */
+	private fun recordScalarChanges(actor: User, before: Ticket, after: Ticket) {
+		fun log(kind: ActivityKind, payload: Map<String, Any?>) =
+			activity.record(ActivityEntity.TICKET, after.id, actor.id, kind, payload)
+
+		if (after.title != before.title) {
+			log(ActivityKind.RENAMED, mapOf("from" to before.title, "to" to after.title))
+		}
+		if (after.status != before.status) {
+			log(ActivityKind.STATUS_CHANGED, mapOf("from" to before.status.wire, "to" to after.status.wire))
+		}
+		if (after.priority != before.priority) {
+			log(ActivityKind.PRIORITY_CHANGED, mapOf("from" to before.priority.wire, "to" to after.priority.wire))
+		}
+		if (after.archived != before.archived) {
+			// Both directions: coming back out of the archive is a decision too.
+			log(ActivityKind.ARCHIVED, mapOf("from" to before.archived, "to" to after.archived))
+		}
+		if (after.start != before.start) {
+			log(ActivityKind.SCHEDULED, bound("start", before.start, after.start))
+		}
+		if (after.due != before.due) {
+			log(ActivityKind.SCHEDULED, bound("due", before.due, after.due))
+		}
+	}
+
+	/** The instant alone. The granularity flag is how a date is *drawn*, not what changed. */
+	private fun bound(field: String, before: KansoInstant?, after: KansoInstant?): Map<String, Any?> =
+		mapOf("field" to field, "from" to before?.at?.toString(), "to" to after?.at?.toString())
+
+	/**
+	 * A row per person, not one row carrying a list: the inbox slice (D) turns each of
+	 * these into a notification for exactly one reader, and a list would make it split
+	 * the payload back apart to find them.
+	 */
+	private fun recordAssigneeChanges(actor: User, ticketId: UUID, before: List<UUID>, after: List<UUID>) {
+		for (added in after.toSet() - before.toSet()) {
+			activity.record(
+				ActivityEntity.TICKET, ticketId, actor.id, ActivityKind.ASSIGNED,
+				mapOf("userId" to added.toString()),
+			)
+		}
+		for (removed in before.toSet() - after.toSet()) {
+			activity.record(
+				ActivityEntity.TICKET, ticketId, actor.id, ActivityKind.UNASSIGNED,
+				mapOf("userId" to removed.toString()),
+			)
+		}
 	}
 
 	// --- helpers -------------------------------------------------------------

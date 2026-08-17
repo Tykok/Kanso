@@ -3,6 +3,7 @@ package dev.kanso.settings
 import dev.kanso.PostgresTest
 import dev.kanso.domain.Accent
 import dev.kanso.domain.Density
+import dev.kanso.domain.OpenTicket
 import dev.kanso.domain.Preferences
 import dev.kanso.domain.Theme
 import dev.kanso.repo.UserRepository
@@ -57,6 +58,19 @@ class PreferencesTest : PostgresTest() {
 		assertFailsWith<BadRequestException> {
 			preferences.save(id, PreferencesPatch(accent = "chartreuse"))
 		}
+	}
+
+	@Test
+	fun `how enter opens a ticket is a preference, and it round-trips`() {
+		val id = someone()
+
+		assertEquals(OpenTicket.PANEL, preferences.get(id).openTicket, "the panel is the default")
+
+		val saved = preferences.save(id, PreferencesPatch(openTicket = "page"))
+
+		assertEquals(OpenTicket.PAGE, saved.openTicket)
+		assertEquals(OpenTicket.PAGE, preferences.get(id).openTicket, "and it survives the row")
+		assertFailsWith<BadRequestException> { preferences.save(id, PreferencesPatch(openTicket = "modal")) }
 	}
 
 	@Test

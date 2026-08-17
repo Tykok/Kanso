@@ -19,6 +19,7 @@ data class PreferencesResponse(
 	val sidebarVisible: Boolean,
 	val showSyncBadges: Boolean,
 	val showStatusBar: Boolean,
+	val openTicket: String,
 	val defaultTeamId: UUID?,
 	val onboardedAt: OffsetDateTime?,
 ) {
@@ -30,6 +31,7 @@ data class PreferencesResponse(
 			sidebarVisible = preferences.sidebarVisible,
 			showSyncBadges = preferences.showSyncBadges,
 			showStatusBar = preferences.showStatusBar,
+			openTicket = preferences.openTicket.wire,
 			defaultTeamId = preferences.defaultTeamId,
 			onboardedAt = preferences.onboardedAt,
 		)

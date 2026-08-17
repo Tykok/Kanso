@@ -76,6 +76,44 @@ enum class MemberRole(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * What an activity row is about. Four kinds of thing, one table: a feed reads them
+ * together, and four tables would be four queries to merge in the client.
+ */
+enum class ActivityEntity(override val wire: String) : Wire {
+	TICKET("ticket"), PROJECT("project"), TEAM("team"), DOC("doc");
+
+	companion object {
+		fun from(raw: String): ActivityEntity = parse(entries.toTypedArray(), raw)
+	}
+}
+
+/**
+ * What happened. Closed, and enforced twice: here, so a typo in a service is a
+ * compile error, and by a CHECK on `activity.kind`, so a row written by anything else
+ * is refused — the same two-sided guard `user_preferences` already has.
+ *
+ * A row per *scalar* that changed, which is why there is no generic `updated`: a feed
+ * that can only say "Tykok updated KAN-142" is a feed nobody reads.
+ */
+enum class ActivityKind(override val wire: String) : Wire {
+	CREATED("created"),
+	STATUS_CHANGED("status_changed"),
+	PRIORITY_CHANGED("priority_changed"),
+	ASSIGNED("assigned"),
+	UNASSIGNED("unassigned"),
+	RENAMED("renamed"),
+	SCHEDULED("scheduled"),
+	ARCHIVED("archived"),
+	COMMENTED("commented"),
+	LABELLED("labelled"),
+	MIRROR_PUSHED("mirror_pushed");
+
+	companion object {
+		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
+	}
+}
+
 /** Mirror bookkeeping shared by every entity Kanso pushes to Notion. */
 data class MirrorInfo(
 	val notionPageId: String? = null,
@@ -160,6 +198,21 @@ enum class Density(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * What `↵` does to the selected row: open the detail panel beside the list, or leave
+ * the list for the ticket's own page.
+ *
+ * A preference rather than a per-press choice — `⇧↵` already names the page
+ * explicitly, so this only decides which of the two the unmodified key is.
+ */
+enum class OpenTicket(override val wire: String) : Wire {
+	PANEL("panel"), PAGE("page");
+
+	companion object {
+		fun from(raw: String): OpenTicket = parse(entries.toTypedArray(), raw)
+	}
+}
+
 data class Preferences(
 	val theme: Theme = Theme.SYSTEM,
 	val accent: Accent = Accent.INDIGO,
@@ -167,6 +220,7 @@ data class Preferences(
 	val sidebarVisible: Boolean = true,
 	val showSyncBadges: Boolean = true,
 	val showStatusBar: Boolean = true,
+	val openTicket: OpenTicket = OpenTicket.PANEL,
 	val defaultTeamId: UUID? = null,
 	val onboardedAt: OffsetDateTime? = null,
 )
@@ -203,6 +257,21 @@ data class Ticket(
 	val mirror: MirrorInfo,
 	val createdAt: OffsetDateTime,
 	val updatedAt: OffsetDateTime,
+)
+
+/**
+ * A word a team puts on its work.
+ *
+ * Team-scoped, so two teams may both own `sync` without arguing about which of them
+ * means it. [colour] is an [Accent] rather than a string of hex: the closed vocabulary
+ * the theme already speaks is the one a pill can be drawn in, and the database refuses
+ * anything outside it.
+ */
+data class Label(
+	val id: UUID,
+	val teamId: UUID,
+	val name: String,
+	val colour: Accent,
 )
 
 data class NotionDoc(

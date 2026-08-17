@@ -31,6 +31,23 @@ class UserRepository {
 	fun findAll(): List<User> =
 		Users.selectAll().orderBy(Users.displayName to SortOrder.ASC).map { it.toKansoUser() }
 
+	/**
+	 * Candidates for the `@handles` written in a comment.
+	 *
+	 * `users` has no handle column, and the local part of the address is the only thing
+	 * it holds that is unique, stable and typeable — a display name is neither of the
+	 * first two. Two addresses can share a local part across domains, so this returns
+	 * *candidates*: the caller decides what an ambiguous handle means.
+	 *
+	 * A handle reaches this method already stripped to word characters, so no `%` or `_`
+	 * of the writer's can leak into the pattern.
+	 */
+	fun findByHandles(handles: Collection<String>): List<User> {
+		if (handles.isEmpty()) return emptyList()
+		val patterns = handles.map { handle -> Users.email.lowerCase() like "${handle.lowercase()}@%" }
+		return Users.selectAll().where(patterns.compoundOr()).map { it.toKansoUser() }
+	}
+
 	fun insert(email: String, displayName: String, avatarUrl: String? = null): User {
 		val id = UUID.randomUUID()
 		Users.insert {

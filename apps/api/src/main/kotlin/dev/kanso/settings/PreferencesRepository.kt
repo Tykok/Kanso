@@ -3,6 +3,7 @@ package dev.kanso.settings
 import dev.kanso.db.UserPreferences
 import dev.kanso.domain.Accent
 import dev.kanso.domain.Density
+import dev.kanso.domain.OpenTicket
 import dev.kanso.domain.Preferences
 import dev.kanso.domain.Theme
 import org.jetbrains.exposed.v1.core.*
@@ -27,6 +28,7 @@ class PreferencesRepository {
 			it[sidebarVisible] = preferences.sidebarVisible
 			it[showSyncBadges] = preferences.showSyncBadges
 			it[showStatusBar] = preferences.showStatusBar
+			it[openTicket] = preferences.openTicket.wire
 			it[defaultTeamId] = preferences.defaultTeamId
 			it[onboardedAt] = preferences.onboardedAt
 			it[updatedAt] = OffsetDateTime.now()
@@ -41,6 +43,7 @@ private fun ResultRow.toPreferences() = Preferences(
 	sidebarVisible = this[UserPreferences.sidebarVisible],
 	showSyncBadges = this[UserPreferences.showSyncBadges],
 	showStatusBar = this[UserPreferences.showStatusBar],
+	openTicket = OpenTicket.from(this[UserPreferences.openTicket]),
 	defaultTeamId = this[UserPreferences.defaultTeamId],
 	onboardedAt = this[UserPreferences.onboardedAt],
 )
