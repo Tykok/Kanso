@@ -12,13 +12,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
-/** A base, what it becomes, and the pages that were read out of it. */
-data class PlannedBase(
-	val base: WorkspaceBase,
-	val target: ImportTarget,
-	val pages: List<NotionPage>,
-)
-
 /**
  * The half of the import that writes, and the only half.
  *

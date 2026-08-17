@@ -67,11 +67,49 @@ class NotionImportService(
 		}
 	}
 
-	/** Step 2 → 3. Reads, and is the screen's promise that step 3 has something true to show. */
-	fun preview(plan: List<ImportPlanEntry>): ImportPreview = TODO("preview")
+	/**
+	 * Step 2 → 3, and the screen's central promise: this answers what *would* happen and
+	 * writes nothing.
+	 *
+	 * Nothing in here could write if it tried — the reading is [NotionDiscovery]'s and the
+	 * arithmetic is [ImportPlanner]'s, and neither has ever been handed a repository. The
+	 * one seam that could break the promise is [perform] reading the workspace a second
+	 * time and getting a different answer; that is the reason both go through [read].
+	 */
+	fun preview(plan: List<ImportPlanEntry>): ImportPreview = ImportPlanner.preview(read(plan))
 
 	/** Step 3. The first thing that writes. */
 	fun perform(actor: User, teamId: UUID, plan: List<ImportPlanEntry>): ImportOutcome = TODO("perform")
+
+	/**
+	 * The plan, resolved against the workspace as it is now.
+	 *
+	 * A row naming a base the workspace no longer holds is dropped rather than refused: the
+	 * search happens again between the steps, a base can be deleted in Notion in between,
+	 * and failing the whole import over one stale id would be worse than importing the rest
+	 * of what somebody asked for. `import-map.ts` drops the same row on its own side, and
+	 * for the same reason.
+	 */
+	private fun read(plan: List<ImportPlanEntry>): List<PlannedBase> {
+		if (plan.isEmpty()) return emptyList()
+		val excluded = tx.execute { mirrorIds() }.orEmpty()
+
+		return runBlocking {
+			val found = discovery.search(excluded)
+			found.unavailable?.let { throw BadRequestException(it) }
+			val byId = found.bases.associateBy { it.dataSourceId }
+
+			plan.distinctBy { it.sourceId }.mapNotNull { entry ->
+				val base = byId[entry.sourceId]
+				if (base == null) {
+					log.info("Ignoring plan row for {}: the workspace no longer holds it", entry.sourceId)
+					null
+				} else {
+					PlannedBase(base, entry.target, discovery.pages(base.dataSourceId))
+				}
+			}
+		}
+	}
 
 	/**
 	 * Kanso's own four databases, by both ids.
