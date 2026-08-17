@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ApiError, type MemberRole } from "@/lib/api";
 import { useAddTeamMember, useRemoveTeamMember, usePeople, useTeamMembers } from "@/lib/queries";
+import { Button } from "@/components/ui/button";
 
 const ROLE_LABELS: Record<MemberRole, string> = {
   member: "Member",
@@ -69,7 +70,13 @@ export function MembersSection({
 
   return (
     <div className="settings-group">
-      <span className="settings-label">Members</span>
+      {/* The same caption weight and tracking as `ui/group-label.tsx`'s `GroupLabel`,
+          spelled out rather than reused verbatim: `GroupLabel`'s own `pt-group
+          px-row-x` spacing is a sidebar-row concern, and would misalign this label
+          inside `.settings-group`'s own flow. `.settings-label` (globals.css) is
+          gone — it shipped `font-weight: 600`, the one bold in an interface that
+          has none, and a `0.06em` tracking the rest of the branch doesn't use. */}
+      <span className="text-11 font-medium tracking-[0.1em] text-faint uppercase">Members</span>
 
       {(members.data ?? []).map((row) => (
         <div className="settings-row" key={row.user.id}>
@@ -78,14 +85,15 @@ export function MembersSection({
             <span className="settings-note"> · {ROLE_LABELS[row.role]}</span>
           </span>
           {canConfigure && (
-            <button
+            <Button
               type="button"
-              className="button"
+              variant="outline"
+              size="sm"
               disabled={remove.isPending}
               onClick={() => handleRemove(row.user.id)}
             >
               Remove
-            </button>
+            </Button>
           )}
         </div>
       ))}
@@ -116,14 +124,9 @@ export function MembersSection({
             <option value="member">{ROLE_LABELS.member}</option>
             <option value="admin">{ROLE_LABELS.admin}</option>
           </select>
-          <button
-            type="button"
-            className="button"
-            disabled={!userId || add.isPending}
-            onClick={submit}
-          >
+          <Button type="button" size="sm" disabled={!userId || add.isPending} onClick={submit}>
             Add
-          </button>
+          </Button>
         </div>
       )}
     </div>

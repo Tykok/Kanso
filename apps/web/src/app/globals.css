@@ -128,12 +128,6 @@
 }
 
 /*
- * One stylesheet, no framework. The interface is a dense list plus a couple of
- * overlays; a utility framework would add a build step and a vocabulary without
- * removing any of the decisions below.
- */
-
-/*
  * The last of the pre-migration names. Task 5 of the design-system rollout repointed
  * every CSS rule it could onto tokens.css, but two kinds of reader were left, and
  * deleting the block that fed them would have made the shell, the list and the
@@ -285,21 +279,6 @@
   color: var(--primary-foreground);
 }
 
-/*
- * The red is written out rather than taken from the theme: `--urgent` is the same
- * value in both schemes, and white on top of it holds contrast on both sides, which
- * `--primary-foreground` would not guarantee here.
- */
-.button-danger {
-  background: var(--urgent);
-  border-color: var(--urgent);
-  color: #ffffff;
-}
-
-.button-danger:hover {
-  background: color-mix(in srgb, var(--urgent) 85%, black);
-}
-
 .button:disabled {
   opacity: 0.55;
   cursor: default;
@@ -313,10 +292,6 @@
   background: var(--primary);
 }
 
-.button-danger:disabled:hover {
-  background: var(--urgent);
-}
-
 /*
  * Shared chrome the settings split (task 5) would otherwise have orphaned. These
  * render on every page, not only /settings, which loads settings.css and nothing
@@ -325,25 +300,19 @@
  * the team member list in dialogs/members-section.tsx); `.segmented` is the Zoom
  * and View toggles on the main page as well as every control in the `,` quick-
  * settings panel (components/settings/panel.tsx, mounted from page.tsx); `.settings-
- * group/-label/-row/-note` and `.swatches`/`.swatch` are that same quick-settings
- * panel; `.shortcuts` is the `?` keyboard-shortcuts overlay (components/overlays.tsx).
+ * group/-row/-note` and `.swatches`/`.swatch` are that same quick-settings panel;
+ * `.shortcuts` is the `?` keyboard-shortcuts overlay (components/overlays.tsx).
  * `.statusbar` is the app's own status line and the setup wizard's live preview of
  * it. None of it is settings-page-only, so none of it belongs in settings.css.
  *
- * Stays here, unmoved, until tasks 6-8 rewrite the surfaces that render it.
+ * Tasks 6-8 finished without touching any of these: settings, setup and login are
+ * still `.button`-shaped, an unfinished migration tracked as a follow-up rather than
+ * silently left implied as done. This block stays until they are rewritten.
  */
 .settings-group {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.settings-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--faint);
 }
 
 .settings-row {

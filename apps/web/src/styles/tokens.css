@@ -1,12 +1,11 @@
 /*
  * The design tokens, and the only file to edit to change how Kanso looks.
  *
- * Two token systems live in this document while the interface migrates. The ones
- * below are shadcn's, named as shadcn names them so a component copied from the
- * documentation works unmodified. Kanso's original palette is the `--k-*` family in
- * globals.css, and it still dresses every surface that has not moved yet. Both are
- * driven from the same preference, so they cannot disagree: `data-theme` narrows the
- * legacy `color-scheme`, and `.dark` selects the block below. See lib/theme.ts.
+ * One token system lives in this document: shadcn's, named as shadcn names them so
+ * a component copied from the documentation works unmodified. Kanso's original
+ * `--k-*` palette is gone — every surface reads from here now. `data-theme` narrows
+ * the legacy `color-scheme`, and `.dark` selects the block below; both are driven
+ * from the same preference, so they cannot disagree. See lib/theme.ts.
  */
 
 /* Dark mode by class, the shadcn standard. */
@@ -332,9 +331,10 @@
  *
  * In `base` on purpose, which is what scopes it. The layer order is `theme, base,
  * components, kanso-reset, utilities` (see globals.css), so this loses to every
- * unlayered legacy rule — `border: 1px solid var(--k-border)` and its kin keep winning —
- * and loses to `utilities`, so `border-destructive` still overrides it. What it reaches
- * is exactly the set nothing else colours: the generated components.
+ * unlayered legacy rule — `.button`'s own `border: 1px solid var(--border)` and its
+ * kin keep winning — and loses to `utilities`, so `border-destructive` still
+ * overrides it. What it reaches is exactly the set nothing else colours: the
+ * generated components.
  */
 @layer base {
   *,

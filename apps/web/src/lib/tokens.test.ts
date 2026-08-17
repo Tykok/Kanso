@@ -11,26 +11,44 @@ function walk(dir: string): string[] {
   });
 }
 
-/** Tokens the browser defines, or that a component scopes to itself. */
+/**
+ * Tokens the browser defines, a component scopes to itself, or that come from
+ * outside every CSS file entirely. `--font-public-sans` and `--font-noto-sans-jp`
+ * are the last kind: next/font and an inline `style` on `<html>` supply them
+ * (`app/layout.tsx`), so no `--name:` declaration for either exists in any
+ * stylesheet for this test to find on its own. Without this entry both would read
+ * as missing the moment `tokens.css` and `app/globals.css` joined the walk below —
+ * which is exactly the check that would have caught `layout.tsx` losing
+ * `sealFontStyle`: with `--font-noto-sans-jp` undefined, `--font-seal` in
+ * `tokens.css` resolves to nothing, and the seal falls back to a system font.
+ */
 const NOT_OURS = new Set([
   "--radix-popper-available-height",
   "--radix-popper-anchor-width",
+  "--font-public-sans",
+  "--font-noto-sans-jp",
 ]);
 
 describe("design tokens", () => {
   const tokens = readFileSync(join(SRC, "styles/tokens.css"), "utf8");
   // Two sources of truth: tokens.css for the current names, and the alias/literal
-  // block at the top of globals.css for the pre-migration names that surfaces still
-  // read directly (see the comment there) until tasks 6-8 delete those rules.
+  // block at the top of globals.css for the pre-migration names some surfaces still
+  // read directly (see the comment there) — task 5's own migration, not tasks 6-8's,
+  // and the block outlives them: `.button`, the setup wizard and the settings pages
+  // are still unmigrated (tracked as a C3 follow-up), so it is not yet empty.
+  // `defined` is every `--name:` declaration in either file, not only that block —
+  // `--row-h` in tokens.css counts the same as `--gutter` in the alias block below.
   const globals = readFileSync(join(SRC, "app/globals.css"), "utf8");
   const defined = new Set(
     Array.from((tokens + globals).matchAll(/^\s*(--[\w-]+):/gm), (m) => m[1]),
   );
 
   it("defines every token the interface reads", () => {
-    const files = walk(SRC).filter(
-      (f) => /\.(tsx?|css)$/.test(f) && !f.endsWith("tokens.css") && !f.endsWith("app/globals.css"),
-    );
+    // tokens.css and globals.css are in the walk, not exempt from it: a `var()`
+    // read inside either file is exactly as real as one in a component, and this
+    // is the test that would have caught tokens.css reaching for
+    // `--font-noto-sans-jp` before `NOT_OURS` named where it actually comes from.
+    const files = walk(SRC).filter((f) => /\.(tsx?|css)$/.test(f));
     const missing = new Set<string>();
     for (const file of files) {
       const source = readFileSync(file, "utf8");

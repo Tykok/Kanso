@@ -41,13 +41,9 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
     </>
   );
 
-  // `.status` carries no styling of its own in this app any more, but the setup
-  // wizard's read-only preview (setup/preview.tsx, another task's file) renders this
-  // same component and narrows its width through `.setup-preview .status` — a rule
-  // that has nothing left to reach for once list.css is gone unless the class stays.
   if (!ctx) {
     return (
-      <span data-testid="status-pill" className="status inline-flex items-center gap-[7px] text-12">
+      <span data-testid="status-pill" className="inline-flex items-center gap-[7px] text-12">
         {body}
       </span>
     );
@@ -66,7 +62,7 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
           type="button"
           data-testid="status-pill"
           data-chip
-          className="status inline-flex items-center gap-[7px] text-12"
+          className="inline-flex items-center gap-[7px] text-12"
         >
           {body}
         </button>
