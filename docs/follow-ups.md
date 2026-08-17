@@ -522,7 +522,8 @@ agents hit this.
 
 ## Small and mechanical
 
-- `components/route-stub.tsx` has no callers left; the file can go.
+- `components/route-stub.tsx` had no callers left once the six landed, which is the check
+  it was written to be. Deleted.
 - `components/inbox/import-dialog.tsx` is 318 lines, the one file in the fan-out past the
   re-read-in-one-sitting bar. Splitting it per step is the obvious cut.
 - Screen 24's first step needs a workspace-search method `NotionClient` does not have, and
