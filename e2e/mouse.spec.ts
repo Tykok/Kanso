@@ -429,8 +429,13 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
   // ticket underneath — `dblclick` bubbles independently of the click the menu's
   // trigger already stops.
   const rowActionsB = rowB.getByRole("button", { name: `Actions for ${ticketB.identifier}` });
-  // `.panel-header` moved to `data-testid` with task 7's restyle.
-  const detailFor = (t: string) => page.getByTestId("panel-header").filter({ hasText: t });
+  // The title used to sit inside `.panel-header` (`getByTestId("panel-header")`
+  // filtered by it); task 7's restyle moved it out to its own `<h2>`
+  // (`detail-panel.tsx`), so the header no longer contains the ticket's text at
+  // all — filtering the header by title now matches nothing, open or closed, and
+  // both assertions below would pass whether or not the panel ever opened. The
+  // heading is what actually identifies an open detail panel for this ticket.
+  const detailFor = (t: string) => page.getByRole("heading", { level: 2, name: t });
   await rowB.hover();
   await rowActionsB.dblclick();
   await expect(detailFor(ticketB.title)).toHaveCount(0);
