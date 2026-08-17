@@ -77,7 +77,9 @@ export function ViewsShell({
    * whatever is open over the page first, and only takes them off the page when there is
    * nothing left to close. `router.back()` rather than `push("/")` — the ticket page is
    * reached from the list, the board, the palette and a link in a document, and going
-   * back to where you came from is what "esc" promised on the screen you left.
+   * back to where you came from is what "esc" promised on the screen you left. With no
+   * history to go back into — a pasted link in a fresh tab — it lands on the list, because
+   * a key that does nothing is indistinguishable from a key that is broken.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -98,7 +100,8 @@ export function ViewsShell({
 
       if (event.key === "Escape" && !typing) {
         event.preventDefault();
-        router.back();
+        if (window.history.length > 1) router.back();
+        else router.push("/");
         return;
       }
 

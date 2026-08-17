@@ -4,11 +4,9 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { openTicketMode, ticketHref } from "@/lib/api";
 import { usePreferences, useProjects, useSearchableTickets, useDocs } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 import {
   countLabel,
-  highlight,
   isPickerList,
   nextTab,
   search,
@@ -17,11 +15,10 @@ import {
   type SearchRow,
   type SearchTab,
 } from "./search/results";
+import { SearchList } from "./search/list";
 import { SearchPreview } from "./search/preview";
 import { Backdrop } from "./overlays";
-import { GroupLabel } from "./ui/group-label";
 import { Kbd } from "./ui/kbd";
-import { StatusDot } from "./ui/status-dot";
 
 /**
  * Screen 06 — the global search.
@@ -215,73 +212,15 @@ export function CommandPalette({
 
           <div className="h-px bg-border" />
 
-          <div className="flex max-h-[60vh] min-h-[240px] flex-col gap-px overflow-y-auto p-2">
-            {rows.length === 0 && (
-              <div className="empty">
-                {query ? "Nothing matches that." : "No command is available here."}
-              </div>
-            )}
-
-            {found.tickets.length > 0 && <GroupLabel className="pt-2.5">Tickets</GroupLabel>}
-            {found.tickets.map((ticket) => (
-              <ResultRow
-                key={ticket.id}
-                index={rows.findIndex((row) => row.key === ticket.id)}
-                active={current?.key === ticket.id}
-                onHover={setActive}
-                onOpen={openRow}
-                rows={rows}
-              >
-                <span className="w-[62px] shrink-0 font-mono text-11 text-faint">
-                  {ticket.identifier}
-                </span>
-                <StatusDot status={ticket.status} />
-                <span className="min-w-0 flex-1 truncate">
-                  <Marked text={ticket.title} query={query} />
-                </span>
-                <span className="shrink-0 text-11 text-faint">
-                  {projects.data?.find((project) => project.id === ticket.projectId)?.name ?? ""}
-                </span>
-              </ResultRow>
-            ))}
-
-            {found.docs.length > 0 && <GroupLabel>Documents</GroupLabel>}
-            {found.docs.map((doc) => (
-              <ResultRow
-                key={doc.id}
-                index={rows.findIndex((row) => row.key === doc.id)}
-                active={current?.key === doc.id}
-                onHover={setActive}
-                onOpen={openRow}
-                rows={rows}
-              >
-                <span aria-hidden className="w-[62px] shrink-0 text-center text-faint">
-                  ◈
-                </span>
-                <span className="min-w-0 flex-1 truncate">
-                  <Marked text={doc.title ?? doc.notionPageId} query={query} />
-                </span>
-                <span className="shrink-0 text-11 text-faint">Notion</span>
-              </ResultRow>
-            ))}
-
-            {found.commands.length > 0 && searching && <GroupLabel>Commands</GroupLabel>}
-            {found.commands.map((command) => (
-              <ResultRow
-                key={command.id}
-                index={rows.findIndex((row) => row.key === command.id)}
-                active={current?.key === command.id}
-                onHover={setActive}
-                onOpen={openRow}
-                rows={rows}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  <Marked text={command.label} query={query} />
-                </span>
-                {command.hint && <span className="shrink-0 text-11 text-faint">{command.hint}</span>}
-              </ResultRow>
-            ))}
-          </div>
+          <SearchList
+            found={found}
+            query={query}
+            active={current}
+            showCommandHeading={searching}
+            projects={projects.data ?? []}
+            onHover={setActive}
+            onOpen={openRow}
+          />
 
           <div className="h-px bg-border" />
           <div className="flex items-center gap-2.5 px-4 py-2.5 text-11 text-faint">
@@ -309,54 +248,3 @@ export function CommandPalette({
   );
 }
 
-/** One row of the result list. The three kinds differ only in what they put inside it. */
-function ResultRow({
-  index,
-  active,
-  rows,
-  onHover,
-  onOpen,
-  children,
-}: {
-  index: number;
-  active: boolean;
-  rows: SearchRow[];
-  onHover: (index: number) => void;
-  onOpen: (row: SearchRow | undefined, inPage: boolean) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid="search-result"
-      data-active={active}
-      className={cn(
-        "flex h-[38px] w-full items-center gap-2.5 rounded-md px-2.5 text-left text-13",
-        active ? "bg-accent-soft" : "hover:bg-accent",
-      )}
-      onMouseEnter={() => onHover(index)}
-      // `metaKey` too: opening a result in a new tab is what a reader expects of a link,
-      // and shift is the drawing's own "in page".
-      onClick={(event) => onOpen(rows[index], event.shiftKey || event.metaKey)}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** What was typed, marked. `<mark>` and not a span: the emphasis is the meaning. */
-function Marked({ text, query }: { text: string; query: string }) {
-  return (
-    <>
-      {highlight(text, query).map((part, index) =>
-        part.hit ? (
-          <mark key={index} className="rounded-sm bg-accent-soft px-0.5 text-accent-ink">
-            {part.text}
-          </mark>
-        ) : (
-          <span key={index}>{part.text}</span>
-        ),
-      )}
-    </>
-  );
-}
