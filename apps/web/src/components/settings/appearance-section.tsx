@@ -1,6 +1,13 @@
 "use client";
 
-import { DENSITIES, THEMES, type Preferences } from "@/lib/api";
+import {
+  DENSITIES,
+  OPEN_TICKET_MODES,
+  openTicketMode,
+  THEMES,
+  type OpenTicketMode,
+  type Preferences,
+} from "@/lib/api";
 import {
   ACCENT_HINT,
   DENSITY_HINT,
@@ -12,9 +19,26 @@ import {
   THEME_LABELS,
 } from "@/lib/preferences-copy";
 import { PreferencePreview } from "@/components/setup/preview";
-import { usePreferences, useSavePreferences } from "@/lib/queries";
+import { usePreferences, useSaveOpenTicket, useSavePreferences } from "@/lib/queries";
 import { SettingsField } from "./field";
 import { AccentSwatches, Segmented, Toggle } from "./panel";
+
+/**
+ * The one preference slice A adds a control for, with its copy beside it.
+ *
+ * `lib/preferences-copy.ts` holds the other six hints and is not this branch's file, so
+ * these two live here — next to the only control that reads them, which is where copy
+ * this specific is easiest to keep true.
+ */
+const OPEN_TICKET_LABELS: Record<OpenTicketMode, string> = {
+  panel: "Panel",
+  page: "Page",
+};
+
+const OPEN_TICKET_HINT =
+  "What ↵ does to the selected ticket. The panel keeps the list behind it; the page gives " +
+  "the description room to be read. ⤢ and ⇧↵ expand the ticket in front of you either way, " +
+  "without changing this.";
 
 /**
  * No Save button, on purpose.
@@ -28,6 +52,7 @@ import { AccentSwatches, Segmented, Toggle } from "./panel";
 export function AppearanceSection() {
   const preferences = usePreferences();
   const save = useSavePreferences();
+  const { setOpenTicket } = useSaveOpenTicket();
   const set = (patch: Partial<Preferences>) => save.mutate(patch);
 
   return (
@@ -81,6 +106,28 @@ export function AppearanceSection() {
             label="Status bar"
             value={preferences.showStatusBar}
             onChange={(showStatusBar) => set({ showStatusBar })}
+          />
+        </SettingsField>
+
+        {/*
+          * Screen 02 draws this control in the foot of the ticket panel and its own
+          * caption says the setting "lives in the preferences" — so it lives here, and
+          * `⤢` and `⇧↵` still expand the ticket in front of you without changing it.
+          *
+          * The column behind it, `user_preferences.open_ticket`, is slice 0's; until it
+          * exists the server answers this write with a row that carries no `openTicket`
+          * and the control visibly reverts, which is the same honest signal a failed
+          * theme change already gives.
+          */}
+        <SettingsField label="Open a ticket" hint={OPEN_TICKET_HINT}>
+          <Segmented
+            label="Open a ticket"
+            value={openTicketMode(preferences)}
+            options={OPEN_TICKET_MODES.map((mode) => ({
+              value: mode,
+              label: OPEN_TICKET_LABELS[mode],
+            }))}
+            onChange={setOpenTicket}
           />
         </SettingsField>
       </div>
