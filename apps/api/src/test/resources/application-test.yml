@@ -8,6 +8,11 @@ kanso:
       enabled: false
     inbound:
       enabled: false
+  # Same reason, one screen along: a sweep firing mid-test would empty a countdown a
+  # test is asserting about. `TrashServiceTest` calls `TrashService.empty` itself.
+  trash:
+    sweep:
+      enabled: false
 
 logging:
   level:

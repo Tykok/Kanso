@@ -97,5 +97,13 @@ kanso:
       # Re-scan window on each poll, to absorb clock skew between Notion and us.
       overlap: 60s
 
+  # Screen 26 prints "emptied after 30 days", so something has to do the emptying.
+  # Hourly, because the unit on screen is a whole day: an entry can sit an hour past
+  # its expiry without anybody being able to tell.
+  trash:
+    sweep:
+      enabled: true
+      interval-ms: 3600000
+
   realtime:
     channel: kanso_events

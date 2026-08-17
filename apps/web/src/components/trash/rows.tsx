@@ -62,7 +62,10 @@ export function TrashRow({
       type="button"
       data-testid="trash-row"
       data-selected={selected}
-      aria-pressed={selected}
+      // `aria-current`, not `aria-pressed`: this is the one row of a set the pane below is
+      // about, the same relationship the sidebar's own current row has. `aria-pressed`
+      // would promise a toggle, and pressing a selected row again does nothing.
+      aria-current={selected}
       aria-label={[
         item.label,
         typeLabel(item.kind),

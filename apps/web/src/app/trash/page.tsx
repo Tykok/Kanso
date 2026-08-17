@@ -40,7 +40,9 @@ export default function TrashPage() {
         <h1 className="text-15 font-medium tracking-tight">Trash and archives</h1>
       </header>
 
-      <div className="flex flex-col rounded-panel border border-border bg-card shadow-flat">
+      {/* `overflow-hidden` so the header strip's own ground stops at the panel's corner
+          rather than squaring it off — the strip is a full-bleed band, not a padded row. */}
+      <div className="flex flex-col overflow-hidden rounded-panel border border-border bg-card shadow-flat">
         <TrashView />
       </div>
     </div>
