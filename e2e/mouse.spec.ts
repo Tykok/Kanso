@@ -284,7 +284,16 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   // detail panel and the command palette, above.
   await settingsItem.click();
   await expect(page.getByTestId("panel-header").filter({ hasText: "Settings" })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  /**
+   * Scoped to the panel header, and exact. `name: "Close"` is a substring match, so this
+   * matched every sidebar row for a team whose name starts with "Closed" the moment
+   * another scenario started seeding them — five elements, none of them this button. The
+   * looseness was always here; the collision arrived with the new specs.
+   */
+  await page
+    .getByTestId("panel-header")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await expect(page.getByTestId("panel-header").filter({ hasText: "Settings" })).toHaveCount(0);
 
   // Sign out drops the identity this browser was asserting. Under

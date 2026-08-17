@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { CycleView } from "@/components/organise/cycle-view";
 
 /**
@@ -10,5 +11,11 @@ import { CycleView } from "@/components/organise/cycle-view";
  */
 export default async function CyclePage({ params }: { params: Promise<{ number: string }> }) {
   const { number } = await params;
-  return <CycleView number={number} />;
+  // The boundary is required: the screen reads `?team=` with `useSearchParams`, and Next
+  // refuses to prerender a page that reads the query string without one.
+  return (
+    <Suspense fallback={<div className="empty">Loading…</div>}>
+      <CycleView number={number} />
+    </Suspense>
+  );
 }

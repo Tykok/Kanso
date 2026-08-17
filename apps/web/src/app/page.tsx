@@ -154,6 +154,18 @@ export default function InboxPage() {
   const currentTeam =
     scope.kind === "team" ? teams.data?.find((team) => team.id === scope.id) : undefined;
 
+  /**
+   * What the list is showing, said in the heading.
+   *
+   * A project scope used to read "All tickets" here, which is the one label that is false
+   * for it: the rows *are* filtered, and the header was the only thing on screen claiming
+   * otherwise. Screen 05's "See all" lands exactly here, so the sentence it lands on has to
+   * name the project it came from.
+   */
+  const currentProject =
+    scope.kind === "project" ? projects.data?.find((row) => row.id === scope.id) : undefined;
+  const heading = currentTeam?.name ?? currentProject?.name ?? "All tickets";
+
   const move = useCallback(
     (delta: number) => {
       if (visible.length === 0) return;
@@ -389,7 +401,7 @@ export default function InboxPage() {
       <div className="flex min-h-0 min-w-0 flex-col">
         <div className="flex items-center gap-3 bg-card px-5 py-3">
           <MobileNavDrawer ctx={ctx} syncSummary={mirrorSummary} />
-          <h1 className="m-0 text-13 font-medium">{currentTeam ? currentTeam.name : "All tickets"}</h1>
+          <h1 className="m-0 text-13 font-medium">{heading}</h1>
           <span className="font-mono text-11 text-faint">{visible.length}</span>
           <span className="flex-1" />
 

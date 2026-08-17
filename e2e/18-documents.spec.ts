@@ -68,6 +68,10 @@ test("scenario 18 — a template starts a page, and a mentioned ticket stays liv
   // the start of a block is the gesture, and inside a sentence it is a hash.
   const firstBlock = page.getByTestId("doc-block").first().locator("textarea").first();
   await firstBlock.click();
+  // Explicitly at offset 0. `#` opens the picker only at the very start of a block —
+  // inside a sentence it has to stay a typeable character — and a click lands the caret
+  // where the pointer was, which on a template's prefilled block is not the start.
+  await firstBlock.evaluate((node: HTMLTextAreaElement) => node.setSelectionRange(0, 0));
   await firstBlock.press("#");
   await page.getByTestId("mention-filter").fill(ticket.identifier);
   await page.getByTestId("mention-choice").first().click();
@@ -76,7 +80,8 @@ test("scenario 18 — a template starts a page, and a mentioned ticket stays liv
   await expect(chip).toBeVisible();
   await expect(page.getByTestId("doc-rail-ticket")).toHaveText([ticket.identifier]);
   // `todo` is where a seeded ticket starts; the chip's title is what the reader hovers.
-  await expect(chip).toHaveAttribute("title", /To do$/);
+  // STATUS_LABELS.todo is "Todo", one word — the chip carries the app's own label.
+  await expect(chip).toHaveAttribute("title", /Todo$/);
 
   // --- the claim: the document is true without being re-read -------------------
   const moved = await api.patch(`/api/tickets/${ticket.id}`, { data: { status: "in_progress" } });
@@ -89,8 +94,15 @@ test("scenario 18 — a template starts a page, and a mentioned ticket stays liv
 
   // --- `c`: a new ticket, already attached ------------------------------------
   const raised = unique("Persist the cursor");
-  const secondBlock = page.getByTestId("doc-block").nth(1).locator("textarea").first();
+  /**
+   * Index 2, not 1. The decision template's second block is its empty paragraph — which is
+   * what `c` needs, since the gesture fires only on an empty block at offset 0 — but the
+   * `#` above inserted a ticket-link block after the anchor, so everything below it moved
+   * down one. A link block has no textarea, which is what made `nth(1)` unclickable.
+   */
+  const secondBlock = page.getByTestId("doc-block").nth(2).locator("textarea").first();
   await secondBlock.click();
+  await secondBlock.evaluate((node: HTMLTextAreaElement) => node.setSelectionRange(0, 0));
   await secondBlock.press("c");
   await page.getByTestId("linked-ticket-title").fill(raised);
   await page.getByTestId("linked-ticket-title").press("Enter");
@@ -104,12 +116,24 @@ test("scenario 18 — a template starts a page, and a mentioned ticket stays liv
 
   // --- back on screen 22, the page is in the tree and in the recent list -------
   await page.getByRole("link", { name: "Documents", exact: true }).click();
-  await expect(page.getByTestId("doc-tree-page").filter({ hasText: "Decision" })).toHaveCount(1);
+
+  /**
+   * The row for *this* page, found by its href rather than by its title.
+   *
+   * Every page started from the same template is called "Decision", and the README says
+   * the stack is long-lived and the suite replayed against it — so a count of one held
+   * only on the first run against a fresh volume. The href carries the id, which is the
+   * one thing that distinguishes this page from every earlier run's.
+   */
+  const row = page.locator(
+    `[data-testid="doc-tree-page"][href="${new URL(documentUrl).pathname}"]`,
+  );
+  await expect(row).toHaveCount(1);
   await expect(page.getByTestId("doc-recent-row").first()).toContainText("Decision");
   await expect(page.getByTestId("doc-recent-row").first()).toContainText("E2E owner");
 
   // The tree row leads back to the same document, not to a second copy of it.
-  await page.getByTestId("doc-tree-page").filter({ hasText: "Decision" }).click();
+  await row.click();
   await expect(page).toHaveURL(documentUrl);
 
   await api.dispose();

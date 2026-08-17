@@ -40,6 +40,16 @@ async function scopeTo(page: Page, teamName: string) {
   await page.getByRole("button", { name: teamName, exact: true }).first().click();
 }
 
+/**
+ * These routes take the team in the URL, which is why this is a `goto` and not a click.
+ *
+ * `scopeTo` sets the sidebar scope, and the scope lives in a zustand store that a page load
+ * wipes — so a bare `goto("/cycles/current")` after it landed on whichever team the
+ * fallback picked, silently, and the assertions below measured a stranger's cycle. Naming
+ * the team is what makes each of these a link rather than a coincidence.
+ */
+const at = (route: string, teamId: string) => `${route}?team=${teamId}`;
+
 const day = (offset: number) =>
   new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
@@ -63,7 +73,7 @@ test("scenario 19 — a cycle's progress is one fact, and what will not fit is n
 
   const page = await openAs(browser, ADMIN);
   await scopeTo(page, team.name);
-  await page.goto("/cycles/current");
+  await page.goto(at("/cycles/current", team.id));
 
   // One closed of two is 50 %, and the count beside it has to be the same fact. The
   // drawing's own header shows "58 % · 14 tickets sur 24", which its breakdown contradicts;
@@ -92,7 +102,7 @@ test("scenario 19b — a triage decision advances, and the queue keeps what it d
 
   const page = await openAs(browser, ADMIN);
   await scopeTo(page, team.name);
-  await page.goto("/triage");
+  await page.goto(at("/triage", team.id));
 
   await expect(page.getByTestId("triage-row")).toHaveCount(2);
   // Oldest first: the ticket that has waited longest is the one being asked about.
@@ -178,16 +188,24 @@ test("scenario 19d — workload is a count and an age, never an estimate", async
 
   const page = await openAs(browser, ADMIN);
   await scopeTo(page, team.name);
-  await page.goto("/workload");
+  await page.goto(at("/workload", team.id));
 
   // One row for the person, one for the pile nobody owns — the drawing's own fourth row,
   // and the reason it is a row rather than a footnote in the copy.
   await expect(page.getByTestId("workload-row")).toHaveCount(2);
   await expect(page.getByTestId("workload-row").last()).toContainText("Unassigned");
 
-  // The bar's accessible name is the count and the age, in words. If a points column ever
-  // arrives, this is where it would have to be described — and the drawing forbids it.
-  await expect(page.getByRole("img", { name: /1 open, oldest 0 days/ })).toBeVisible();
+  /**
+   * The bar's accessible name is the count and the age, in words. If a points column ever
+   * arrives, this is where it would have to be described — and the drawing forbids it.
+   *
+   * Scoped to the person's row: both rows here carry one open ticket zero days old, so the
+   * name is ambiguous by construction rather than by accident, and asserting it unscoped
+   * matched two elements.
+   */
+  await expect(
+    page.getByTestId("workload-row").first().getByRole("img", { name: /1 open, oldest 0 days/ }),
+  ).toBeVisible();
   await expect(page.getByText(/No estimate in points/)).toBeVisible();
 
   await api.dispose();

@@ -12,6 +12,7 @@ import {
   type Ticket,
   type TicketPriority,
   type TicketStatus,
+  parseTicketKey,
 } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import {
@@ -51,6 +52,14 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
   const query = useTicketByKey(ticketKey);
   const ticket = query.data;
 
+  /**
+   * A key that does not parse never becomes a request — `useTicketByKey` disables itself —
+   * so `isError` stays false and, until this existed, the page drew nothing at all. The
+   * refusal has to be said in both cases: one of them is a typo somebody can see and fix,
+   * and a blank screen tells them neither that the link is wrong nor that it was read.
+   */
+  const unresolvable = parseTicketKey(ticketKey) === null;
+
   return (
     <ViewsShell
       tickets={ticket ? [ticket] : []}
@@ -71,8 +80,8 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
         ) : undefined
       }
     >
-      {query.isLoading && <div className="empty">Loading…</div>}
-      {query.isError && (
+      {query.isLoading && !unresolvable && <div className="empty">Loading…</div>}
+      {(query.isError || unresolvable) && (
         <div className="empty error">
           {/* The interesting failure is a 404, and it is about a link rather than about
               the network: saying which key did not resolve is what lets the reader see

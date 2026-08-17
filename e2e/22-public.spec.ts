@@ -51,14 +51,30 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
   // --- the API, with no credentials whatsoever --------------------------------
   const anonymous = await playwrightRequest.newContext({ baseURL: API_URL });
   try {
-    // The control: this instance runs in dev mode, where identity comes from a header.
-    // Without one, a private route has to refuse — if it does not, everything below
-    // passes for the wrong reason.
-    const refused = await anonymous.get("/api/tickets");
-    expect(
-      refused.status(),
-      "the ordinary tickets endpoint must still need a session",
-    ).toBe(401);
+    /**
+     * The control, and it cannot be the obvious one.
+     *
+     * This scenario originally asserted that `GET /api/tickets` 401s without credentials,
+     * so that everything below could not pass for the wrong reason. It does not: the suite
+     * runs the stack in `KANSO_AUTH_MODE=dev`, and `DevAuthenticationFilter` falls back to
+     * `dev@kanso.local` when the header is absent — it provisions that user on the spot.
+     * In dev mode *no* request is anonymous, so no assertion made from here can prove a
+     * route needs a session. `PublicLeakTest` is where that is proved, in process, against
+     * the real filter chain.
+     *
+     * What this asserts instead is that the mode is what we think it is: a header-less
+     * caller is answered, and answered as the fallback identity rather than as the admin
+     * who published the ticket. That makes the content assertions below meaningful — the
+     * public projection has to exclude an unpublished ticket *even from a caller the
+     * filter chain considers signed in*, which is a stronger statement than excluding it
+     * from a caller it refuses outright.
+     */
+    const control = await anonymous.get("/api/me");
+    expect(control.status(), "dev mode answers a header-less caller").toBe(200);
+    const fallback = (await control.json()) as { user: { email: string } };
+    expect(fallback.user.email, "and answers as the fallback identity, not as the admin").not.toBe(
+      ADMIN,
+    );
 
     const roadmap = await anonymous.get("/api/public/roadmap");
     expect(roadmap.status(), "the roadmap answers a stranger").toBe(200);
@@ -98,9 +114,13 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
     await expect(visitor.getByRole("heading", { level: 1, name: "What we are working on" })).toBeVisible();
     await expect(visitor.getByRole("link", { name: shown.title })).toBeVisible();
     await expect(visitor.getByText(hidden.title)).toHaveCount(0);
-    // The column heading is the application's own label, not a word invented for the
-    // shop window: `STATUS_LABELS.backlog`.
-    await expect(visitor.getByRole("heading", { level: 2, name: /Backlog/ })).toBeVisible();
+    /**
+     * The column heading is the application's own label, not a word invented for the shop
+     * window — `STATUS_LABELS.todo`, because `seedTicket` creates a ticket in `todo` and
+     * the roadmap draws one column per *non-empty* status. This asserted `/Backlog/` when
+     * it was written, which no seeded ticket could ever have put on the page.
+     */
+    await expect(visitor.getByRole("heading", { level: 2, name: /Todo/ })).toBeVisible();
 
     // The app's own chrome is not here. A stranger has no scope to pick and no palette.
     await expect(visitor.getByTestId("nav-item")).toHaveCount(0);

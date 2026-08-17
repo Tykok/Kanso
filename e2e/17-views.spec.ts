@@ -53,13 +53,20 @@ test("03 — a ticket at page width, reached by the identifier people read out l
 
   // The chips are the panel's own controls at a larger measure — the same wire call, so a
   // status changed here has to reach the server exactly as it does from the panel.
+  /**
+   * By role, not by label. The chip labels its `<select>` with a `sr-only` span, and
+   * `getByLabel` matches a label's *visible* text — so it found nothing here while the
+   * accessibility tree carried the name perfectly. `getByRole` reads that tree, which is
+   * also the thing a screen reader reads, so this asserts the name that matters.
+   */
+  const status = page.getByRole("combobox", { name: "Status" });
   const [patched] = await Promise.all([
     page.waitForResponse(
       (response) =>
         response.url().endsWith(`/api/tickets/${ticket.id}`) &&
         response.request().method() === "PATCH",
     ),
-    page.getByLabel("Status", { exact: true }).selectOption("in_progress"),
+    status.selectOption("in_progress"),
   ]);
   expect(patched.status(), "the status change was refused").toBe(200);
 
@@ -210,7 +217,9 @@ test("05 — a project reads as a summary rather than as a second list", async (
   // with `hasTime: false` names a day, and a reader west of UTC must not be shown the day
   // before the one that was posted.
   await expect(page.getByText("4 Aug → 30 Sep")).toBeVisible();
-  await expect(page.getByText(teamName, { exact: true })).toBeVisible();
+  // Scoped to the definition list: the team's name is also the sidebar's row and the
+  // breadcrumb's link, and this assertion is about the summary naming its team.
+  await expect(page.getByRole("definition").filter({ hasText: teamName })).toBeVisible();
 
   // One done out of six, canceled excluded from the denominator — see `donePercent`.
   await expect(page.getByText(/· 17%/)).toBeVisible();
@@ -255,7 +264,14 @@ test("06 — one field over tickets, documents and commands, with a preview", as
   // The ticket is found, and the group heading says what kind of answer it is.
   const result = palette.getByTestId("search-result").filter({ hasText: ticket.identifier });
   await expect(result).toHaveCount(1);
-  await expect(palette.getByText("Tickets", { exact: true })).toBeVisible();
+  // The group heading, not the tab button of the same name — `getByText` matched both,
+  // and the claim here is about what kind of answer was found, not about what is filtered.
+  await expect(
+    palette.getByRole("group", { name: "What to search" }).getByRole("button", {
+      name: "Tickets",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   // The preview pane exists to let a reader decide without opening, which is why it shows
   // the description and not only the metadata the row already carries.
