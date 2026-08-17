@@ -313,7 +313,17 @@ export function setDevUser(email: string | null) {
   else window.localStorage.removeItem(DEV_USER_KEY);
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Exported for the per-slice clients beside this file.
+ *
+ * Slice 0 split `lib/api.ts` so each branch could add `lib/api/<slice>.ts` and one
+ * re-export line, but left this function module-private — so no slice file could reach
+ * the one place that attaches the session cookie, the dev-mode identity header and the
+ * `ApiError` conversion. Re-implementing any of that per slice is how a screen ends up
+ * silently unauthenticated. Additive and read-only in every other respect: no caller of
+ * `api` sees a difference.
+ */
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const devUser = getDevUser();
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
