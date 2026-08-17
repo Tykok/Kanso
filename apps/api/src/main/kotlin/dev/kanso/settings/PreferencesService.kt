@@ -2,6 +2,7 @@ package dev.kanso.settings
 
 import dev.kanso.domain.Accent
 import dev.kanso.domain.Density
+import dev.kanso.domain.OpenTicket
 import dev.kanso.domain.Preferences
 import dev.kanso.domain.Theme
 import dev.kanso.service.BadRequestException
@@ -22,6 +23,7 @@ data class PreferencesPatch(
 	val sidebarVisible: Boolean? = null,
 	val showSyncBadges: Boolean? = null,
 	val showStatusBar: Boolean? = null,
+	val openTicket: String? = null,
 	val defaultTeamId: UUID? = null,
 	/** True stamps the moment the wizard was finished; false sends the user back through it. */
 	val onboarded: Boolean? = null,
@@ -42,6 +44,7 @@ data class PreferencesPatch(
 			sidebarVisible = sidebarVisible ?: current.sidebarVisible,
 			showSyncBadges = showSyncBadges ?: current.showSyncBadges,
 			showStatusBar = showStatusBar ?: current.showStatusBar,
+			openTicket = openTicket?.let { parse("openTicket", it, OpenTicket::from) } ?: current.openTicket,
 			defaultTeamId = if ("defaultTeamId" in unset) null else defaultTeamId ?: current.defaultTeamId,
 			onboardedAt = when (onboarded) {
 				null -> current.onboardedAt

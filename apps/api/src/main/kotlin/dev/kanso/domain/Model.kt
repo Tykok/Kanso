@@ -160,6 +160,21 @@ enum class Density(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * What `↵` does to the selected row: open the detail panel beside the list, or leave
+ * the list for the ticket's own page.
+ *
+ * A preference rather than a per-press choice — `⇧↵` already names the page
+ * explicitly, so this only decides which of the two the unmodified key is.
+ */
+enum class OpenTicket(override val wire: String) : Wire {
+	PANEL("panel"), PAGE("page");
+
+	companion object {
+		fun from(raw: String): OpenTicket = parse(entries.toTypedArray(), raw)
+	}
+}
+
 data class Preferences(
 	val theme: Theme = Theme.SYSTEM,
 	val accent: Accent = Accent.INDIGO,
@@ -167,6 +182,7 @@ data class Preferences(
 	val sidebarVisible: Boolean = true,
 	val showSyncBadges: Boolean = true,
 	val showStatusBar: Boolean = true,
+	val openTicket: OpenTicket = OpenTicket.PANEL,
 	val defaultTeamId: UUID? = null,
 	val onboardedAt: OffsetDateTime? = null,
 )
