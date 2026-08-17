@@ -14,6 +14,7 @@ import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.NotificationService
 import dev.kanso.service.ScheduleService
 import dev.kanso.service.TeamService
 import dev.kanso.sync.SyncOperation
@@ -50,6 +51,7 @@ class NotionInboundTeamTest : PostgresTest() {
 	@Autowired lateinit var meta: NotionMetaRepository
 	@Autowired lateinit var jobs: SyncJobRepository
 	@Autowired lateinit var schedule: ScheduleService
+	@Autowired lateinit var notifications: NotificationService
 	@Autowired lateinit var events: EventPublisher
 	@Autowired lateinit var tx: TransactionTemplate
 	@Autowired lateinit var users: UserRepository
@@ -124,6 +126,7 @@ class NotionInboundTeamTest : PostgresTest() {
 			tickets = ticketRows,
 			jobs = jobs,
 			schedule = schedule,
+			notifications = notifications,
 			events = events,
 			tx = tx,
 		)

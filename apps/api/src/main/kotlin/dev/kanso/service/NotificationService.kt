@@ -101,6 +101,20 @@ class NotificationService(private val notifications: NotificationRepository) {
 		return targets.size
 	}
 
+	/**
+	 * Whether this exact disagreement has already been recorded, for anybody.
+	 *
+	 * The inbound poller's guard, and the reason it is a question rather than an `ON
+	 * CONFLICT`: the Kanso-wins rule answers on timestamps alone and so fires on every poll
+	 * of a row that moved since the last push. Without this the same two versions of the
+	 * same title would be recorded every thirty seconds until the corrective push landed —
+	 * and for as long as it kept failing, which is exactly when somebody is reading the
+	 * inbox.
+	 */
+	@Transactional(readOnly = true)
+	fun conflictRecorded(entityId: UUID, field: String, theirs: String): Boolean =
+		notifications.conflictExists(entityId, field, theirs)
+
 	@Transactional(readOnly = true)
 	fun inbox(userId: UUID, tab: InboxTab = InboxTab.ALL, limit: Int = DEFAULT_LIMIT): Inbox {
 		val stored = if (tab == InboxTab.FAILURES) {
