@@ -40,10 +40,11 @@ class PublicRoadmapService(
 		val votes = published.voteCounts(listOf(row.id))[row.id] ?: 0
 		// [firstSteps] already holds this ticket when it qualifies as one, so its size is
 		// the count and the list minus this ticket is what to offer next. Adding one for
-		// "this one" would have over-counted a ticket that is unclaimed but already in
-		// progress — available to read, not available to pick up.
+		// "this one" would over-count a ticket that is unclaimed but already in progress —
+		// available to read, not available to pick up — and, now that the list narrows to a
+		// label, a ticket nobody marked as a first step at all.
 		val steps = firstSteps()
-		val others = steps.filterNot { it.identifier == row.identifier }
+		val others = steps.entries.filterNot { it.identifier == row.identifier }
 
 		return ContributorPage(
 			identifier = row.identifier,
@@ -52,6 +53,7 @@ class PublicRoadmapService(
 			status = row.status,
 			votes = votes,
 			unclaimed = row.unclaimed,
+			labels = published.labelNames(row.id),
 			whereToLook = published.whereToLook(row.id),
 			// The ticket's own team, by display name. Members of a *parent* team may also
 			// move this ticket (TicketAccess walks the chain upwards), but a contributor
@@ -59,21 +61,44 @@ class PublicRoadmapService(
 			// board it is on, not everyone with the authority to touch it.
 			helpers = teams.members(row.teamId).map { Helper(it.user.displayName, it.role) },
 			otherFirstSteps = others.take(OTHER_FIRST_STEPS),
-			unclaimedCount = steps.size,
+			firstStepLabel = steps.label,
+			availableCount = steps.entries.size,
 		)
 	}
 
+	/** What [firstSteps] found, and which question it answered to find it. */
+	private data class FirstSteps(val entries: List<RoadmapEntry>, val label: String?)
+
 	/**
-	 * Published tickets nobody has picked up, in the two statuses where starting on one
-	 * is still useful. Not "tickets labelled `good first step`" — labels are the
-	 * foundation's and are not in the schema yet; when they are, this is the query that
-	 * narrows, and `unclaimed` stays the fact that decides the badge either way.
+	 * The work a contributor can pick up, narrowed to the [FIRST_STEP_LABEL] label.
+	 *
+	 * Two conditions, and they are not the same kind of thing. `unclaimed` is a fact —
+	 * `ticket_assignees` is empty — and stays derived; the label is a maintainer's
+	 * judgement that this one is a reasonable place to start. Both are needed: a ticket
+	 * marked as a first step that somebody is already on is not available, and an
+	 * unclaimed ticket nobody marked may be the hardest thing on the board.
+	 *
+	 * When no team has defined the label at all, this falls back to every unclaimed
+	 * ticket and says so by answering with a null label. That is the older, more generous
+	 * list, and the page prints `Unclaimed · N available` over it rather than promising a
+	 * maintainer picked them out. A team that *has* defined the label and marked nothing
+	 * with it gets an empty list, not the fallback: they said there are none.
 	 */
-	private fun firstSteps(): List<RoadmapEntry> {
-		val rows = published.findPublished(listOf(TicketStatus.BACKLOG, TicketStatus.TODO), LIMIT)
+	private fun firstSteps(): FirstSteps {
+		val unclaimed = published.findPublished(listOf(TicketStatus.BACKLOG, TicketStatus.TODO), LIMIT)
 			.filter { it.unclaimed }
+		val narrowing = published.labelDefined(FIRST_STEP_LABEL)
+		val rows = if (narrowing) {
+			val marked = published.idsLabelled(FIRST_STEP_LABEL)
+			unclaimed.filter { it.id in marked }
+		} else {
+			unclaimed
+		}
 		val votes = published.voteCounts(rows.map { it.id })
-		return rows.map { it.entry(votes[it.id] ?: 0) }.sortedWith(byVotes)
+		return FirstSteps(
+			entries = rows.map { it.entry(votes[it.id] ?: 0) }.sortedWith(byVotes),
+			label = FIRST_STEP_LABEL.takeIf { narrowing },
+		)
 	}
 
 	private fun PublishedRow.entry(votes: Int) = RoadmapEntry(
@@ -112,6 +137,15 @@ class PublicRoadmapService(
 			TicketStatus.IN_REVIEW,
 			TicketStatus.DONE,
 		)
+
+		/**
+		 * The label screen 28 narrows to, in the words the rest of the project already
+		 * uses: the drawing's `bon premier pas`, and `copy.ts`'s own
+		 * `Tickets marked “good first step”` on the landing page. A team spells it exactly
+		 * this way or the page falls back — matched on the name because a hard-coded id
+		 * cannot exist and because it has to hold across every team on the instance.
+		 */
+		const val FIRST_STEP_LABEL = "good first step"
 
 		/** The whole shop window in one response; it is not a paginated surface. */
 		const val LIMIT = 400

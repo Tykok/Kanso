@@ -7,6 +7,7 @@ import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.LabelService
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,6 +28,7 @@ class PublicRoadmapTest : PostgresTest() {
 	@Autowired lateinit var votes: VoteService
 	@Autowired lateinit var publication: PublicationService
 	@Autowired lateinit var tickets: TicketService
+	@Autowired lateinit var labels: LabelService
 	@Autowired lateinit var teams: TeamRepository
 	@Autowired lateinit var users: UserRepository
 
@@ -68,6 +70,16 @@ class PublicRoadmapTest : PostgresTest() {
 	}
 
 	private fun groups() = roadmap.roadmap().groups.associateBy { it.status }
+
+	private fun idOf(key: String): UUID {
+		val (teamKey, number) = key.split("-")
+		return tickets.getByIdentifier(teamKey, number.toInt()).ticket.id
+	}
+
+	private fun page(key: String): ContributorPage {
+		val (teamKey, number) = key.split("-")
+		return roadmap.contributorPage(teamKey, number.toInt())
+	}
 
 	@Test
 	fun `the columns are the application's own statuses, canceled excluded`() {
@@ -185,7 +197,69 @@ class PublicRoadmapTest : PostgresTest() {
 		)
 		assertTrue(page.otherFirstSteps.any { it.identifier == other }, "and where to go next")
 		assertFalse(page.otherFirstSteps.any { it.identifier == key }, "but not back to itself")
-		assertEquals(2, page.unclaimedCount, "this one and the other one")
+		assertEquals(2, page.availableCount, "this one and the other one")
+		assertNull(
+			page.firstStepLabel,
+			"nobody has defined a `good first step` label, so the eyebrow may not claim one",
+		)
+	}
+
+	/**
+	 * Screen 28's eyebrow reads `Good first step · 12 available`, not `Unclaimed · 12`.
+	 * Once a team defines the label, the list is the tickets wearing it — strictly fewer
+	 * than the unclaimed ones, which is why the old count could only ever have been too
+	 * generous rather than a claim no ticket backed.
+	 */
+	@Test
+	fun `first steps narrow to the good first step label once a team defines one`() {
+		val chosen = published("Translate the status labels", TicketStatus.TODO)
+		val alsoChosen = published("Documents trash", TicketStatus.TODO)
+		val bare = published("Rewrite the synchronisation engine", TicketStatus.TODO)
+		val first = labels.create(owner, team.id, "good first step", "green")
+		labels.attach(owner, idOf(chosen), first.id)
+		labels.attach(owner, idOf(alsoChosen), first.id)
+
+		val page = page(chosen)
+
+		assertEquals("good first step", page.firstStepLabel, "and the page says what it narrowed to")
+		assertEquals(2, page.availableCount, "the two wearing the label, not the three unclaimed ones")
+		assertTrue(page.otherFirstSteps.any { it.identifier == alsoChosen })
+		assertFalse(
+			page.otherFirstSteps.any { it.identifier == bare },
+			"an unclaimed ticket nobody marked is not a first step, whatever else it is",
+		)
+	}
+
+	/**
+	 * The narrowing is decided by the label existing, not by any published ticket wearing
+	 * it: a team that defined `good first step` and marked nothing yet is saying there are
+	 * none, and answering with every unclaimed ticket instead would overrule them.
+	 */
+	@Test
+	fun `a defined label nobody has used yet leaves no first steps rather than falling back`() {
+		val key = published("Rewrite the synchronisation engine", TicketStatus.TODO)
+		labels.create(owner, team.id, "good first step", "green")
+
+		val page = page(key)
+
+		assertEquals("good first step", page.firstStepLabel)
+		assertEquals(0, page.availableCount)
+		assertEquals(emptyList(), page.otherFirstSteps)
+	}
+
+	/** The drawing's badges beside the title: the ticket's own labels, then `nobody on it`. */
+	@Test
+	fun `the badges beside the title are the ticket's own labels, by name`() {
+		val key = published("The seal is unreadable at 100% zoom", TicketStatus.TODO)
+		val design = labels.create(owner, team.id, "design system", "blue")
+		val first = labels.create(owner, team.id, "good first step", "green")
+		labels.attach(owner, idOf(key), design.id)
+		labels.attach(owner, idOf(key), first.id)
+
+		val page = page(key)
+
+		assertEquals(listOf("design system", "good first step"), page.labels)
+		assertTrue(page.unclaimed, "and `nobody on it` stays derived from ticket_assignees")
 	}
 
 	@Test

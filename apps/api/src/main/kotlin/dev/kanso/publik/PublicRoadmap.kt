@@ -57,12 +57,27 @@ data class ContributorPage(
 	val explanation: String?,
 	val status: TicketStatus,
 	val votes: Int,
-	/** Nobody is on it. The drawing's third badge, and a fact, not a label. */
+	/** Nobody is on it. The drawing's last badge, and a fact, not a label. */
 	val unclaimed: Boolean,
+	/**
+	 * The ticket's own labels, by name — `design system`, `good first step`. The drawing's
+	 * middle badges. Names only: a public surface prints no ids, and neither badge draws
+	 * the colour the label carries.
+	 */
+	val labels: List<String>,
 	val whereToLook: List<FilePointer>,
 	val helpers: List<Helper>,
-	/** Other published tickets nobody has claimed. Three of them, as drawn. */
+	/** Other first steps to pick up. Three of them, as drawn. */
 	val otherFirstSteps: List<RoadmapEntry>,
-	/** How many unclaimed published tickets there are in total, this one included. */
-	val unclaimedCount: Int,
+	/**
+	 * The label the first-step list was narrowed to, or null when no team has defined one
+	 * and it is every unclaimed ticket instead.
+	 *
+	 * On the wire because the eyebrow says which question it answered — `Good first step ·
+	 * 12 available` against `Unclaimed · 12 available`. A page that printed the first
+	 * sentence over the second list would be claiming a maintainer picked these out.
+	 */
+	val firstStepLabel: String?,
+	/** How many there are to pick up in total, this one included when it qualifies. */
+	val availableCount: Int,
 )
