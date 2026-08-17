@@ -123,6 +123,38 @@ La connexion `LISTEN` est ouverte directement plutôt qu'empruntée à Hikari : 
 connexion du pool garée indéfiniment réduit le pool et se fait recycler sous vos
 pieds par `maxLifetime`. La perdre reste attendu, donc la boucle se reconnecte.
 
+### Le journal d'activité, et pourquoi ce n'est pas le flux d'événements
+
+`activity` enregistre ce qui s'est passé : un acteur, un genre pris dans un vocabulaire
+fermé, et un payload `jsonb` portant l'avant et l'après d'un scalaire. Il est écrit par
+les services qui publient déjà des événements — `TicketService` à la création, au patch,
+à l'assignation et à l'archivage ; `CommentService` et `LabelService` sur leurs propres
+écritures — **dans la transaction métier**, au même endroit que le changement lui-même.
+
+C'est là toute la décision, et elle est l'inverse de celle du dessus. `EventPublisher`
+émet après commit précisément pour que personne ne voie un changement avant qu'il soit
+durable, ce qui veut dire qu'un récepteur qui n'écoutait pas n'apprend jamais qu'il a eu
+lieu. Un journal bâti sur `pg_notify` serait donc lacunaire exactement dans le cas qu'il
+existe pour expliquer : la coupure, le redémarrage, l'onglet qu'on a fermé. Donc le
+journal est une table écrite dans la transaction, et le flux d'événements reste ce qu'il
+est — une indication de refetch, qui ne porte aucun historique.
+
+Les deux sont lus par des choses différentes et répondent à des questions différentes.
+Une vue demande au flux *est-ce que quelque chose a changé* ; la page projet et la page
+ticket demandent au journal *qu'est-ce qui a été fait ici*, du plus récent au plus
+ancien. Rien ne dérive l'un de l'autre.
+
+Deux conséquences à énoncer. Parce que le journal est transactionnel, `now()` ne peut pas
+être son horloge : Postgres résout `now()` à l'horodatage de la transaction, donc toutes
+les lignes qu'une transaction écrit seraient à égalité et l'ordre serait indéfini
+précisément là où un fil en a besoin. `created_at` est écrit depuis Kotlin à la place. Et
+parce que la suite de tests est `@Transactional` et rollback, aucun test n'atteint jamais
+`pg_notify` — donc le journal s'assertit à travers `ActivityService`, jamais à travers un
+événement.
+
+Une ligne peut nommer un ticket privé, ce qui est la raison pour laquelle aucune
+projection publique ne la lit.
+
 ### Authentification
 
 Login OAuth2 (Google, GitHub) se terminant par un cookie de session. Le même cookie
@@ -264,7 +296,7 @@ le plan en silence.
 Exposed pour le CRUD, avec Flyway propriétaire du schéma — pas de génération de DDL,
 donc les migrations sont la définition unique de la base.
 
-Six requêtes sont du SQL brut via le `JdbcClient` de Spring, parce que le DSL
+Sept requêtes sont du SQL brut via le `JdbcClient` de Spring, parce que le DSL
 Exposed ne peut pas les exprimer et que chacune est porteuse :
 
 1. `WITH RECURSIVE` pour le sous-arbre d'équipes.
@@ -276,6 +308,9 @@ Exposed ne peut pas les exprimer et que chacune est porteuse :
    `UNION ALL` ne terminerait pas.
 6. `WITH RECURSIVE` accumulant un `uuid[]` pour le chemin qu'une dépendance refusée
    refermerait. « Cycle détecté » tout seul n'est pas actionnable.
+7. `CAST(:payload AS jsonb)` sur l'insertion d'activité. Le driver envoie une chaîne
+   Kotlin en `varchar`, ce que Postgres refuse pour une colonne `jsonb` ; `sync_jobs`
+   caste de la même façon. Les lectures repassent par Exposed.
 
 Elles tournent sur la connexion que Spring détient déjà, dans la même transaction que
 les requêtes Exposed qui les entourent.
@@ -296,6 +331,7 @@ alignée.
 - La synchro entrante est scalaire uniquement (voir plus haut).
 - Les sessions sont en mémoire : plus d'une instance d'API nécessite un store de
   session partagé (une propriété avec `spring-session-jdbc`).
-- Pas de commentaires, pièces jointes, vues sauvegardées ni sous-tickets.
+- Pas de pièces jointes ni de sous-tickets. Les commentaires, les mentions et les
+  étiquettes existent depuis `V8` ; les vues sauvegardées non.
 - Une réconciliation complète met en file au plus 500 tickets par appel et le dit
   dans les logs.

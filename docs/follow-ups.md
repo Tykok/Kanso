@@ -400,3 +400,38 @@ something did not get built.
 **`nav-items.ts`' `live` flag is the one shared edit six branches are allowed.** One line
 each, in a list of fourteen. If two branches ever need to change the same row, the
 convention has failed and the row belongs somewhere else.
+
+## Worth a decision
+
+**`comments.doc_id` exists and is refused.** The column is in `V8` because the foundation is
+shared and slice B was not going to get its own comments table. `CommentService` throws a
+400 on a `docId` all the same: the spec asks for comments on documents *and* for
+`TicketAccess` on every write, and `notion_docs` has no team, so both cannot hold. The
+service chose the access rule over the column. Whoever gives a document an owner — slice B's
+`doc_pages` carries a team — is the one who can lift the refusal, and until then the schema
+promises something the API declines.
+
+**Comments and labels publish no `KansoEvent`.** Every other mutation announces itself on
+`pg_notify` and every client answers by invalidating a query key. These two do not, so a
+comment thread open in two tabs does not converge until something else forces a refetch.
+Deliberate: naming a wire event is a contract, and the branch that wrote the service was not
+the branch that would consume it. `queries/social.ts` keys on `comments` / `labels` /
+`activity` as first segments precisely so `applyEvent` can invalidate them the day the
+contract exists.
+
+**A mention resolves against the email local part.** `users` has no handle column, so
+`@lea` matches `lea@anything`, case-insensitively. An unresolved handle stays plain text, as
+specified. An *ambiguous* one — the same local part at two domains — resolves to nobody,
+which is a judgement call made in the service: notifying the wrong person is worse than
+notifying none. A real handle column would retire the whole question.
+
+## Small and mechanical
+
+- `activity.payload` is typed `Record<string, unknown>` on the client rather than a union
+  discriminated on `kind`. Eleven payload shapes each carrying one sentence would be eleven
+  types to hold what a renderer reads with a `switch` on `kind` anyway. Revisit if a second
+  consumer starts reaching into payloads it did not write.
+- `ActivityKind` is spelled out in three places: the `activity_kind_chk` CHECK, the Kotlin
+  enum, and `ACTIVITY_KINDS` in `lib/api/social.ts`. The Kotlin enum and the CHECK guard each
+  other the way `user_preferences` already does; the client list is a third copy nothing can
+  reconcile from a test, because Vitest has no database.

@@ -117,6 +117,35 @@ The `LISTEN` connection is opened directly rather than borrowed from Hikari: a
 pooled connection parked forever shrinks the pool and gets recycled out from under
 you by `maxLifetime`. Losing it is still expected, so the loop reconnects.
 
+### The activity log, and why it is not the event stream
+
+`activity` records what happened: an actor, a kind from a closed vocabulary, and a
+`jsonb` payload carrying the before and after of one scalar. It is written by the
+services that already publish events — `TicketService` on create, patch, assignment
+and archive; `CommentService` and `LabelService` on their own writes — **inside the
+business transaction**, at the same point as the change itself.
+
+That is the whole design decision, and it is the opposite of the one above.
+`EventPublisher` fires after commit precisely so that nobody sees a change before it
+is durable, which means a receiver that was not listening never learns it happened.
+A log built on `pg_notify` would therefore be lossy in exactly the case it exists
+to explain: the outage, the restart, the tab that was closed. So the log is a table
+written in the transaction, and the event stream stays what it is — a hint to
+refetch, carrying no history.
+
+The two are read by different things and answer different questions. A view asks the
+event stream *has anything changed*; the project page and the ticket page ask the log
+*what has been done here*, newest first. Nothing derives one from the other.
+
+Two consequences worth stating. Because the log is transactional, `now()` cannot be
+its clock: Postgres resolves `now()` to the transaction timestamp, so every row a
+transaction wrote would tie and the order would be undefined exactly where a feed
+needs it. `created_at` is written from Kotlin instead. And because the suite is
+`@Transactional` and rolls back, no test in it ever reaches `pg_notify` — so the log
+is asserted through `ActivityService`, never through an event.
+
+A row can name a private ticket, which is why no public projection reads it.
+
 ### Auth
 
 OAuth2 login (Google, GitHub) ending in a session cookie. The same cookie
@@ -264,7 +293,7 @@ silence.
 Exposed for CRUD, with Flyway owning the schema — no DDL generation, so the
 migrations are the single definition of the database.
 
-Six statements are raw SQL through Spring's `JdbcClient`, because the Exposed DSL
+Seven statements are raw SQL through Spring's `JdbcClient`, because the Exposed DSL
 cannot express them and each is load-bearing:
 
 1. `WITH RECURSIVE` for the team subtree.
@@ -276,6 +305,9 @@ cannot express them and each is load-bearing:
    would not terminate.
 6. `WITH RECURSIVE` accumulating a `uuid[]` for the path a refused dependency would
    close. "Cycle detected" on its own is not something anyone can act on.
+7. `CAST(:payload AS jsonb)` on the activity insert. The driver sends a Kotlin string
+   as `varchar`, which Postgres refuses for a `jsonb` column; `sync_jobs` casts the
+   same way. Reads come back through Exposed.
 
 They run on the connection Spring already holds, inside the same transaction as the
 Exposed statements around them.
@@ -295,5 +327,6 @@ per-team sequence to keep in step.
 - Inbound sync is scalar-only (see above).
 - Sessions are in memory: more than one API instance needs a shared session store
   (one property with `spring-session-jdbc`).
-- No comments, attachments, saved views, or sub-tickets.
+- No attachments or sub-tickets. Comments, mentions and labels exist as of `V8`;
+  saved views do not.
 - A full reconcile queues at most 500 tickets per call and says so in the log.
