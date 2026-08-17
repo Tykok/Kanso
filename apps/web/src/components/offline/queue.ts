@@ -34,6 +34,14 @@ export type QueuedWrite = {
   summary: string;
   request: { path: string; method: string; body?: unknown };
   /**
+   * `queued` while it may still go, `rejected` once the server has said no.
+   *
+   * The difference is not cosmetic: a chain stops at either, but a `rejected` write
+   * needs somebody to decide something (retry it, or discard it), and a `queued` one
+   * needs nothing but a network. A flush that could not reach the server at all must
+   * leave the whole queue `queued`, or an outage would fill the banner with refusals
+   * nobody has to act on.
+   *
    * There is no `sending`.
    *
    * A third state would have to be written to disk before the request goes out, and a
@@ -58,7 +66,10 @@ export type QueueStore = {
 
 export type FlushResult = {
   sent: number;
+  /** Refused by a server that answered. Each needs a decision. */
   rejected: number;
+  /** Chains that stopped because nothing answered. Nothing to decide, only to wait. */
+  unreachable: number;
   /** Still on disk afterwards — what the banner counts. */
   remaining: number;
 };
@@ -66,6 +77,15 @@ export type FlushResult = {
 type Options = {
   send: (write: QueuedWrite) => Promise<void>;
   actor: string;
+  /**
+   * Whether a thrown error means the server answered.
+   *
+   * Injected rather than sniffed here: what an answered request looks like is the
+   * client's business (`lib/api` throws `ApiError` for every one), and this module has
+   * no import from it. Defaults to true, which is the conservative reading — a failure
+   * of unknown origin is treated as a refusal and stops asking.
+   */
+  answered?: (error: unknown) => boolean;
   now?: () => Date;
   newId?: () => string;
 };
@@ -89,6 +109,7 @@ export class OfflineQueue {
     this.options = {
       now: () => new Date(),
       newId: () => globalThis.crypto.randomUUID(),
+      answered: () => true,
       ...options,
     };
   }
@@ -140,6 +161,7 @@ export class OfflineQueue {
     const rows = (await this.store.all()).sort(bySeq);
     let sent = 0;
     let rejected = 0;
+    let unreachable = 0;
 
     // Grouped in `seq` order, so the chains are attempted in the order they were
     // started rather than in whatever order the disk enumerated them.
@@ -158,14 +180,21 @@ export class OfflineQueue {
           await this.store.remove(write.id);
           sent++;
         } catch (error) {
-          await this.store.put({ ...write, state: "rejected", error: reasonOf(error) });
-          rejected++;
+          if (this.options.answered(error)) {
+            await this.store.put({ ...write, state: "rejected", error: reasonOf(error) });
+            rejected++;
+          } else {
+            // Left exactly as it was, including its state: the network is what failed,
+            // and nothing about the write has been decided. Writing an error onto it
+            // would fill the banner with refusals nobody has to act on.
+            unreachable++;
+          }
           break;
         }
       }
     }
 
-    return { sent, rejected, remaining: (await this.store.all()).length };
+    return { sent, rejected, unreachable, remaining: (await this.store.all()).length };
   }
 
   /** Puts a refused write back in line, at the position it always had. */

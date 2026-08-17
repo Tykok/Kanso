@@ -102,7 +102,7 @@ describe("the offline queue", () => {
 
     const result = await queue.flush();
 
-    expect(result).toEqual({ sent: 0, rejected: 1, remaining: 1 });
+    expect(result).toEqual({ sent: 0, rejected: 1, unreachable: 0, remaining: 1 });
     const [write] = await queue.list();
     expect(write.state).toBe("rejected");
     expect(write.error).toBe("The ticket is gone");
@@ -125,11 +125,33 @@ describe("the offline queue", () => {
     // supposed to have produced, so sending it would apply a change to a state that
     // never happened. Rey's writes are a different chain and go.
     expect(sink.sent).toEqual(["rey 1"]);
-    expect(result).toEqual({ sent: 1, rejected: 1, remaining: 2 });
+    expect(result).toEqual({ sent: 1, rejected: 1, unreachable: 0, remaining: 2 });
     expect((await lea.list()).map((write) => [write.summary, write.state])).toEqual([
       ["lea 1", "rejected"],
       ["lea 2", "queued"],
     ]);
+  });
+
+  it("leaves a write the network never carried queued, not refused", async () => {
+    // The distinction the banner leans on. A refusal needs a decision — retry it, or
+    // discard it — and an outage needs nothing but a network, so an outage that marked
+    // four writes "refused" would ask for four decisions nobody has to make.
+    const sink = recorder(() => "Failed to fetch");
+    const queue = new OfflineQueue(store, {
+      send: sink.send,
+      actor: "lea",
+      answered: () => false,
+    });
+    await queue.enqueue({ reference: "KAN-142", summary: "waiting", request: patch("a") });
+
+    const result = await queue.flush();
+
+    expect(result).toEqual({ sent: 0, rejected: 0, unreachable: 1, remaining: 1 });
+    const [write] = await queue.list();
+    expect(write.state).toBe("queued");
+    // And no error written onto it either: there is nothing to tell the reader that
+    // "queued" does not already say.
+    expect(write.error).toBeUndefined();
   });
 
   it("puts a rejected write back in line when it is retried", async () => {

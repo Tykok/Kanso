@@ -31,6 +31,7 @@ function theQueue(): OfflineQueue {
     queue = new OfflineQueue(store, {
       actor: getDevUser() ?? "me",
       send: (write) => sendRaw(write.request.path, write.request.method, write.request.body).then(() => undefined),
+      answered: isAnswered,
     });
   }
   return queue;
@@ -82,9 +83,10 @@ export const useOffline = create<OfflineState>((set) => {
 
     flush: async () => {
       const result = await theQueue().flush();
-      // Back online only if something actually went through. A flush that refused
-      // everything is not evidence the network returned.
-      if (result.sent > 0) set({ online: true });
+      // Online if anything was answered at all — sent or refused. A refusal is proof
+      // the server is reachable; only `unreachable` says otherwise.
+      if (result.sent > 0 || result.rejected > 0) set({ online: true });
+      else if (result.unreachable > 0) set({ online: false });
       await reload();
     },
 
@@ -125,7 +127,15 @@ export async function withOfflineFallback<T>(
   }
 }
 
-/** True when the server answered — even to refuse. See [withOfflineFallback]. */
-function isAnswered(error: unknown): boolean {
+/**
+ * True when the server answered — even to refuse.
+ *
+ * A duck-typed check on `status` rather than `error instanceof ApiError`. Two reasons,
+ * and the second is the real one: `lib/api/core.ts` and `lib/api/inbox.ts` each throw
+ * their own construction of the class today, and a queued write is replayed by whichever
+ * of them is loaded weeks later — a prototype identity is the wrong thing for that to
+ * hinge on. The field is the contract.
+ */
+export function isAnswered(error: unknown): boolean {
   return typeof (error as { status?: unknown } | null)?.status === "number";
 }

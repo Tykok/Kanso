@@ -180,10 +180,16 @@ export default function InboxPage() {
           <span>/</span>
           <span className="text-muted-foreground">Inbox</span>
           <span className="flex-1" />
+          {/*
+            Never disabled, which is deliberate and matches the drawing: the count it
+            would be gated on is up to a minute stale, and a control that is sometimes
+            dead for reasons the reader cannot see is worse than one whose click
+            occasionally changes nothing. `⇧e` answers unconditionally for the same
+            reason, so the key and the button cannot disagree.
+          */}
           <button
             type="button"
             className="hover:text-muted-foreground"
-            disabled={counts.unread === counts.failures}
             onClick={() => markAllRead.mutate()}
           >
             Mark all read

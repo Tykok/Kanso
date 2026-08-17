@@ -19,7 +19,11 @@ export function useOfflineWatch() {
   const { refresh, flush, setOnline } = useOffline();
 
   useEffect(() => {
-    void refresh();
+    // A flush on mount, not just a read. The tab may have been closed through the whole
+    // outage, in which case no `online` event ever fired for it and the writes on disk
+    // would sit there until the reader made another one. If the network is still gone
+    // this costs one failed request and leaves every write `queued`.
+    void refresh().then(flush);
 
     const back = () => {
       setOnline(true);
@@ -126,11 +130,16 @@ export function OfflineBanner({ className }: { className?: string }) {
           </span>
         )}
 
-        {online && (
-          <Button size="sm" variant="outline" className="self-start" onClick={() => void flush()}>
-            Send now
-          </Button>
-        )}
+        {/*
+          Offered whether or not this store thinks the network is back, because neither
+          signal it has is trustworthy: `navigator.onLine` is false only when the OS is
+          certain, and `online` here is the last request's outcome. A captive portal that
+          has just been signed into leaves both saying the wrong thing, and one button is
+          how somebody gets out of that without reloading.
+        */}
+        <Button size="sm" variant="outline" className="self-start" onClick={() => void flush()}>
+          Send now
+        </Button>
       </div>
     </section>
   );
