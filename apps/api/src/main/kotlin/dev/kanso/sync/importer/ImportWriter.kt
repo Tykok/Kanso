@@ -3,6 +3,7 @@ package dev.kanso.sync.importer
 import dev.kanso.docs.DocBlockKind
 import dev.kanso.docs.DocBlockRepository
 import dev.kanso.docs.DocService
+import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -114,7 +115,7 @@ class ImportWriter(
 		docIds = emptyList(),
 	).project
 
-	private fun createTicket(actor: User, teamId: UUID, project: dev.kanso.domain.Project, page: NotionPage): UUID =
+	private fun createTicket(actor: User, teamId: UUID, project: Project, page: NotionPage): UUID =
 		tickets.create(
 			actor = actor,
 			teamId = teamId,

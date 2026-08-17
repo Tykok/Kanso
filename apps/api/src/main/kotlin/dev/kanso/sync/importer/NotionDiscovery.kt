@@ -22,9 +22,6 @@ class NotionDiscovery(private val props: KansoProperties, private val client: No
 
 	private val limits get() = props.notion.import
 
-	/** True when there is a token; false means the dialog gets a sentence, not a spinner. */
-	val enabled: Boolean get() = client.enabled
-
 	/**
 	 * Every base the token can see, minus [excluded].
 	 *
