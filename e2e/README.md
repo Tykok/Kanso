@@ -118,9 +118,53 @@ resize grip, the last six pixels inside a bar's right edge, and the link handle,
 begins one pixel past it. Neither does anything when pressed — only when dragged — and
 `bar.tsx` explains why naming them would promise an activation that does not exist.
 
+## The database the suite needs, and the one it will get
+
+Three of these scenarios can only pass against an instance the suite itself claimed.
+`seedInstance` calls `POST /api/setup/owner` **only when `needsOwner` is true**, so on a
+volume where somebody has already been through the wizard by hand, `owner@kanso.test` is
+provisioned as a plain member with its email as its display name — and scenario 10 asserts
+the role, scenario 18 asserts the name, and every other scenario dies at
+`Could not create the team …` three call frames from the identity that actually caused it.
+`users_single_owner` is a unique index, so there is no fixing it by promoting the test
+account beside the existing owner.
+
+Rather than wipe a working dev database, give the suite its own stack:
+
+```bash
+COMPOSE_PROJECT_NAME=kanso-e2e POSTGRES_PORT=5442 API_PORT=8090 WEB_PORT=3010 \
+  KANSO_WEB_ORIGIN=http://localhost:3010 KANSO_AUTH_MODE=dev \
+  docker compose up -d --build --wait
+
+KANSO_API_URL=http://localhost:8090 KANSO_WEB_URL=http://localhost:3010 pnpm test:e2e
+```
+
+`KANSO_WEB_ORIGIN` is not optional once `WEB_PORT` moves: without it CORS renders every
+visitor as a member, which turns scenario 3 into a permissions test that cannot fail.
+
+A long-lived stack is still supported and the suite is replayed against it — which is a
+constraint on how a scenario asserts, not only on how it seeds. Anything that counts rows
+matching a *name* eventually counts other runs' rows too: pages started from the same
+template are all called "Decision", and `getByRole("button", { name: "Close" })` matched
+four sidebar teams called `Closed-…` before it matched the button. Find your own row by
+its id or its href.
+
+## Nothing is anonymous in dev mode
+
+`DevAuthenticationFilter` authenticates every request, falling back to `dev@kanso.local`
+when no `X-Kanso-User` header is attached. So a Playwright context with no credentials is
+not an anonymous caller here, and **no assertion made from this suite can prove that a
+route requires a session** — a `401` guard written to prove it will read `200` and a
+missing guard will look like a pass. The public surfaces' anonymity is proved in process
+by `PublicLeakTest`; scenario 22 pins the mode instead, so its content assertions still
+mean something.
+
 ## Queries
 
-New files query by role and accessible name. `follow-ups.md` holds it against the older
+New files query by role and accessible name. A label whose text is an `sr-only` span is
+invisible to `getByLabel`, which matches a label's *rendered* text — the property chips on
+the ticket page are labelled that way, and `getByRole("combobox", { name: … })` is what
+reaches them, through the same accessibility tree a screen reader reads. `follow-ups.md` holds it against the older
 scenarios that they reach for private CSS classes — `.row`, `.status`, `.shortcuts` —
 which couples the suite to the stylesheet and breaks on refactors that changed nothing a
 person can see. Timeline bars are `role="button"` named `${identifier}: ${title}`, tray

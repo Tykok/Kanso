@@ -435,3 +435,112 @@ notifying none. A real handle column would retire the whole question.
   enum, and `ACTIVITY_KINDS` in `lib/api/social.ts`. The Kotlin enum and the CHECK guard each
   other the way `user_preferences` already does; the client list is a third copy nothing can
   reconcile from a test, because Vitest has no database.
+
+---
+
+# Carried out of the six parallel slices
+
+Fourteen screens and five migrations, built on six branches at once and integrated in one
+sequential pass. Same rule as every section above: each of these was found, judged not to
+block, and written down so it is not rediscovered.
+
+## Worth a decision
+
+**The trash covers tickets and nothing else yet.** `TrashService` never branches on a kind
+— it looks up a `TrashSource` bean — and only `TicketTrashSource` exists. Documents, saved
+views and folders each need one `@Component : TrashSource` of about fifty lines, plus a
+delete entry point calling `TrashRepository.add` and a live read that excludes the trash the
+way `TicketRepository` now does. `TrashKind` and the web client already carry all four, and
+`copy.test.ts` asserts all four labels, so the screen is ready for them; an entry of an
+unanswered kind is skipped rather than drawn. The doc source is the interesting one: its
+`holds` has to say `BLOCKS(cascades = true)` and `MENTIONED_TICKETS(cascades = false)`,
+because that pair is what makes the drawing's sentence — deleting a page deletes neither
+ticket — true rather than merely written.
+
+**Screen 21's label chip is refused, by name.** `SavedViewService.SERVED_FILTERS` rejects a
+`label` key with a message naming it, because slice C was cut before `V8` landed and a chip
+that stored and displayed but never filtered would be a worse lie than a refused one. `V8` is
+here now: lifting it is one entry in that set and one clause in `ViewTicketRepository`. A
+test asserts the refusal, so it will say so when someone tries.
+
+**Screen 28 badges no labels, for the same reason and with the same cure.** Slice F drew
+`Unclaimed · N available` rather than `Good first step · 12 available` because nothing
+recorded that a ticket *is* a good first step. `PublicRoadmapService.firstSteps()` is the
+query that narrows to the label, and it says so in place.
+
+**Notifications are written by nobody.** `V13` and `NotificationService.record` exist and
+the inbox draws them; the call sites do not. Assignment and status changes want one in
+`TicketService`, mentions and replies in `CommentService`, and the conflict chooser is
+unreachable until `NotionPoller.kansoWins` records one — that last is the only thing that
+makes screen 15's third state appear at all. The failures tab needs none: it is derived from
+`sync_jobs`, because the queue is already where "the mirror refused this" is true and a
+stored copy keeps saying so after a retry succeeds.
+
+**`ticket_files` is a table the spec did not authorise.** Slice F added it because screen
+28's "where to look" list had nowhere to live and one screen draws it. Flagged rather than
+hidden; overrule it if the list belongs in a doc page instead.
+
+**`README.md` still says MIT.** The landing page, screen 28 and `github.md` all say
+AGPL-3.0, and the pages now say AGPL-3.0 to visitors. One of the two is wrong and it is not
+a thing to change on somebody else's behalf.
+
+## Not a defect, but load-bearing to know
+
+**The sidebar's Cycle, Triage and Workload links do not carry `?team=`.** `useOrganiseTeam`
+now reads that parameter first, which is what makes those routes linkable and reload-stable
+— but `nav-items.ts` is a static list, so clicking through the app still relies on the
+scope. It works, because clicking sets the scope in the same session; a link copied out of
+the address bar after clicking will not carry the team.
+
+**Comments and labels publish no `KansoEvent`, and neither does anything in `docs`.**
+`realtime.ts` subscribes to a hardcoded `["tickets","projects","teams"]` and `applyEvent`
+branches on the same three, so a `docs` event would be unreceivable and publishing one would
+be dead code. Every new query key starts with its own first segment (`docs`, `comments`,
+`labels`, `activity`, `trash`) precisely so one `applyEvent` branch and one topic will be
+the whole of that work.
+
+**`ActionContext` carries no router and no query client**, so no route-owning slice could
+register a working navigation action. `lib/actions/docs.ts` and `lib/actions/trash.ts` are
+deliberately empty and say why; `⇧e` in the inbox and `x`/`⇧↑↓` in a saved view are
+dispatched by their own pages. Three slices hit this independently, which makes it the next
+thing to decide about the registry rather than three separate annoyances.
+
+**`store/ui.ts`'s `restore` dialog is unused.** The trash restores in place, and a
+confirmation for an undo is not worth a dialog. Slice 0 reserved it; nothing opens it.
+
+**Three of the drawings contradict themselves, and each was decided in code with a test
+whose message says so.** Screen 19 reads "58 % · 14 of 24" over a breakdown summing to 24
+where done is 9 — percent and count are one fact here. Screen 05 shows 62% against a legend
+of 4 done of 18 — `donePercent` is done over not-canceled. Screen 27's delivered cards carry
+version numbers (`v0.7`) that no model in the product can supply, so they print the real
+completion date instead.
+
+**`pnpm install` in a fresh worktree silently skips `@rolldown/binding-darwin-arm64`** under
+Node 20.14 (rolldown wants `^20.19 || >=22.12`), and vitest then dies on a missing wasm
+binding. `pnpm install --force` fixes it and leaves the lockfile alone. Four of the six
+agents hit this.
+
+## Small and mechanical
+
+- `components/route-stub.tsx` has no callers left; the file can go.
+- `components/inbox/import-dialog.tsx` is 318 lines, the one file in the fan-out past the
+  re-read-in-one-sitting bar. Splitting it per step is the obvious cut.
+- Screen 24's first step needs a workspace-search method `NotionClient` does not have, and
+  its document half needs slice B's folders; the step says so in a sentence rather than
+  drawing an empty table.
+- Screen 07's "Lié à" rail lists tickets only. The drawing also shows a project above them,
+  derivable from the linked tickets' `projectId` — left out rather than guessed.
+- Drag-and-drop reordering of doc blocks is not wired: the handle is drawn, and the two
+  arrow buttons beside it do the work. `PUT /blocks/{id}/position` takes an index, so the
+  gesture is a layer over an endpoint that already exists.
+- `V11` has no FK on `entity_id`, so a hard delete through `TeamService.delete` leaves an
+  orphan trash entry. The read skips it, and a `forget(kind, ids)` call from the two
+  disposition paths is the cure.
+- A trashed ticket still appears in the dependency closure the timeline draws, and
+  `schedule.link` will still accept an edge onto one.
+- `DocService.page()` calls `tickets.get(id)` once per linked ticket because
+  `TicketService.decorate` is private. A page's rail carries a handful; a `getAll(ids)` is
+  the right fix.
+- Slice B put its Exposed objects in `dev.kanso.docs.DocTables` rather than appending to
+  `db/Tables.kt`, and invites the integrator to move them. Slices C, D, E and F appended.
+  Two conventions now.
