@@ -60,6 +60,15 @@ A ticket needs a team and a per-team number, neither of which a page created by
 hand in Notion can supply. The poller logs such pages and moves on rather than
 inventing rows. Create tickets in Kanso.
 
+**The import is the one exception, and it is one because a person is present.** The
+Notion import asks which team a base becomes work in, so the thing the poller cannot
+supply is supplied by the answer; the number then comes from that team's counter like
+any other ticket's. Two rules keep the exception from leaking back into the mirror:
+an imported ticket gets its **own** page in `Kanso · Tickets`, and the source page is
+never adopted and never written to. Adopting it would put "Kanso wins" in charge of a
+workspace somebody had just handed over, which is how an import erases the thing it
+imported. A page the import still cannot take — no title, or already archived — is
+reported with its id and its reason rather than filed as another "Untitled".
 ---
 
 ## Where the Notion mapping is lossy

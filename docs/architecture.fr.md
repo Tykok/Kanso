@@ -63,6 +63,16 @@ Un ticket a besoin d'une équipe et d'un numéro par équipe, deux choses qu'une
 créée à la main dans Notion ne peut pas fournir. Le poller journalise ces pages et
 passe son chemin plutôt que d'inventer des lignes. Les tickets se créent dans Kanso.
 
+**L'import est la seule exception, et il l'est parce qu'une personne est là.** L'import
+Notion demande dans quelle équipe une base devient du travail, donc ce que le poller ne
+peut pas fournir est fourni par la réponse ; le numéro vient ensuite du compteur de cette
+équipe, comme pour n'importe quel ticket. Deux règles empêchent l'exception de refluer
+vers le miroir : un ticket importé reçoit sa **propre** page dans `Kanso · Tickets`, et la
+page source n'est jamais adoptée ni jamais écrite. L'adopter mettrait « Kanso gagne » aux
+commandes d'un espace de travail que quelqu'un vient de confier, ce qui est la manière dont
+un import efface ce qu'il importe. Une page que l'import ne peut toujours pas prendre — sans
+titre, ou déjà archivée — est signalée avec son identifiant et sa raison plutôt que classée
+sous un « Untitled » de plus.
 ---
 
 ## Là où le mapping Notion est lossy

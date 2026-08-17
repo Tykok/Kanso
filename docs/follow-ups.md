@@ -561,11 +561,15 @@ agents hit this.
 
 - `components/route-stub.tsx` had no callers left once the six landed, which is the check
   it was written to be. Deleted.
-- `components/inbox/import-dialog.tsx` is 318 lines, the one file in the fan-out past the
-  re-read-in-one-sitting bar. Splitting it per step is the obvious cut.
-- Screen 24's first step needs a workspace-search method `NotionClient` does not have, and
-  its document half needs slice B's folders; the step says so in a sentence rather than
-  drawing an empty table.
+- ~~`import-dialog.tsx` is 318 lines.~~ Split per step: a 137-line shell plus one file per
+  step and a small module for the labels two of them share.
+- ~~Screen 24's first step needs a workspace-search method `NotionClient` does not have.~~
+  Done: `searchDatabases`, implemented in every client, with `NoopNotionClient` answering
+  "no token, and here is why" rather than throwing. Discovery excludes Kanso's own four
+  mirrored databases by both ids — without that the import offers `Kanso · Tickets` back
+  and duplicates every ticket in the instance. Notion answers no total for a data source,
+  so the page count is a bounded walk and the screen prints `2000+` rather than a number it
+  did not finish computing.
 - Screen 07's "Lié à" rail lists tickets only. The drawing also shows a project above them,
   derivable from the linked tickets' `projectId` — left out rather than guessed.
 - Drag-and-drop reordering of doc blocks is not wired: the handle is drawn, and the two
@@ -583,3 +587,79 @@ agents hit this.
 - Slice B put its Exposed objects in `dev.kanso.docs.DocTables` rather than appending to
   `db/Tables.kt`, and invites the integrator to move them. Slices C, D, E and F appended.
   Two conventions now.
+
+---
+
+# Carried out of the pass that made the fourteen functional
+
+Four branches, in parallel again, closing what the fan-out had left drawn but unreachable.
+
+## Worth a decision
+
+**`PROJECT_SLIPPED` still has no writer, and it needs a column.** A project's end is
+*derived*: `TimelineService.projectRows` recomputes it from its tickets' bounds on every
+read, and nothing stores the previous answer to diff against. The scheduler is not a funnel
+either — `ScheduleService.cascadeFrom` returns early on a component of fewer than two nodes,
+so a lone ticket's due date moves a project's end without the cascade running at all, and
+four other paths move it by their own routes. Recording "the project slipped three days"
+means persisting the derived end. The drawing shows it; the schema cannot say it.
+
+**The conflict chooser can name the field but not the person who edited it.** `NotionPage`
+carries `lastEditedById`, a Notion user id, and `NotionClient` exposes no user lookup. The
+chooser falls back to a bare "Notion", which is honest; a uuid where a person goes would not
+be. A `users.retrieve` call and a small cache would close it.
+
+**`conflictExists` is not scoped by recipient.** The guard that stops the mirror recording
+the same conflict every thirty seconds keys on entity, field and the discarded value — so if
+the assignee set changes between two polls, somebody who became an assignee after the first
+recording is never told about a conflict that is still live. Scoping the guard per user
+records N times instead of once; leaving it means a new reader can miss one. Neither is
+obviously right, which is why it is here.
+
+**`NotificationService.record` performs no access check.** Mentioning somebody outside a
+ticket's team puts that ticket's name and a comment excerpt in their inbox. That is right for
+a mention — you were addressed — and worth knowing before a kind with an unchosen recipient
+set is added.
+
+## Not a defect, but load-bearing to know
+
+**A folder's delete cascades to sub-folders and not to pages, and that is `V9`'s own line.**
+`doc_folders.parent_id` is `ON DELETE CASCADE`, `doc_pages.folder_id` is `ON DELETE SET
+NULL` — structure travels with the branch, writing does not. One trash entry is the countdown
+for the whole branch, the pane counts it before anyone confirms, and the pages read at the
+root while the branch is doomed so that restoring puts them back exactly rather than
+approximately.
+
+**"Archive instead" only means something for tickets.** Nothing else carries `archived`, and
+adding the column elsewhere would assert a fact no screen draws. `canArchive` travels from
+the bean to the response to the pane, so the exit is drawn only where it works — rather than
+`kind === "ticket"` in the pane, which is the sentence that outlives the behaviour.
+
+**A trashed saved view still holds its name against the unique index.** `findByTeamAndName`
+stays unfiltered on purpose, and `create` now says the name is in the trash instead of naming
+a view nobody can see.
+
+**"Pages created in Notion are not adopted" has an exception now** — the import adopts them,
+because a person supplies the team the poller cannot. An imported ticket gets its *own*
+mirror page in `Kanso · Tickets`; the source page is never adopted or written to, since
+"Kanso wins" would otherwise overwrite the workspace that was just imported. Recorded in
+`architecture.md`.
+
+**Five of the import's six discovery tests were written implementation-first.** The branch
+mutated `NotionDiscovery` to check and reported that they did not fail. Preview and import
+were genuinely red first. Worth knowing which half of that slice the tests actually pin.
+
+## Small and mechanical
+
+- A label's `colour` is stored, closed by a `CHECK`, and drawn nowhere: no screen in the
+  bundle colours a label and there is no token for the six accents in that role.
+- The label control on the panel and the ticket page has no test of its own — the web suite
+  is pure-logic Vitest with no component tests, and no scenario opens the detail panel. The
+  bulk path is covered end to end and at the service level.
+- `V11__trash.sql`'s comments still say only `ticket` has a table behind it. Flyway validates
+  checksums, so an applied migration cannot be edited; `Trash.kt` carries the correction.
+- `e2e/support.ts` has no document seeders, so `21-trash.spec.ts` inlines its own `seedJson`.
+- `Menu` writes `aria-label` on its trigger, which *replaces* a visible child's text. With
+  `asChild` that is WCAG 2.5.3 waiting to happen: `pills.tsx` prefixes (`Status: In
+  progress`), the bulk strip's Label button now uses the visible word itself, and any future
+  `asChild` trigger with text has to do one or the other.
