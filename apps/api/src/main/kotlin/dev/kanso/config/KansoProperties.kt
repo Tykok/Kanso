@@ -39,8 +39,25 @@ data class KansoProperties(
 		val apiVersion: String = "2025-09-03",
 		val baseUrl: String = "https://api.notion.com/v1",
 		val requestTimeout: Duration = Duration.ofSeconds(20),
+		val import: Import = Import(),
 	) {
 		val enabled: Boolean get() = token.isNotBlank()
+
+		/**
+		 * What screen 24's discovery step is willing to spend.
+		 *
+		 * Notion answers no total for a data source: the only way to a page count is to
+		 * walk the pages, 100 at a time, at roughly 2.5 requests a second. So the walk is
+		 * bounded rather than complete, and a base longer than [maxPagesPerDatabase]
+		 * reports the count it reached and says it is not exact. Both numbers are
+		 * configuration because the right answer depends on the workspace, and the person
+		 * running the instance is the one who knows how long they will wait.
+		 */
+		data class Import(
+			val maxDatabases: Int = 50,
+			val maxPagesPerDatabase: Int = 2000,
+			val pageSize: Int = 100,
+		)
 	}
 
 	data class Sync(val outbound: Outbound = Outbound(), val inbound: Inbound = Inbound())

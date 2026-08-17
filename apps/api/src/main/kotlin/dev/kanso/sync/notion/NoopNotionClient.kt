@@ -20,6 +20,22 @@ class NoopNotionClient : NotionClient {
 
 	override suspend fun botUserId(): String? = null
 
+	/**
+	 * Answers "not available, and here is why" rather than throwing or pretending the
+	 * workspace is empty.
+	 *
+	 * An empty list would reach screen 24 as a table with no rows, which reads as "your
+	 * Notion workspace holds nothing" — the one wrong conclusion available. The dialog
+	 * prints this sentence instead, and it names the thing to go and do.
+	 */
+	override suspend fun searchDatabases(startCursor: String?, pageSize: Int) = NotionWorkspaceSearch(
+		databases = emptyList(),
+		nextCursor = null,
+		hasMore = false,
+		unavailable = "No Notion token is configured, so Kanso cannot see a workspace to import from. " +
+			"Add one in the setup wizard, then open this dialog again.",
+	)
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,

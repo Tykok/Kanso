@@ -27,6 +27,21 @@ data class NotionQueryPage(
 	val hasMore: Boolean,
 )
 
+/**
+ * One page of a workspace search.
+ *
+ * [unavailable] is a first-class answer rather than an exception: an instance with no
+ * token has no workspace to search, and screen 24's first step is drawn to print that
+ * sentence instead of an empty table. A client that *could* search and failed throws;
+ * a client that never could says so here.
+ */
+data class NotionWorkspaceSearch(
+	val databases: List<NotionDatabase>,
+	val nextCursor: String?,
+	val hasMore: Boolean,
+	val unavailable: String? = null,
+)
+
 /** 429. [retryAfter] comes from the header when Notion sends one. */
 class NotionRateLimited(val retryAfter: Duration) :
 	RuntimeException("Notion rate limit hit, retry after ${retryAfter.toSeconds()}s")
@@ -61,6 +76,17 @@ interface NotionClient {
 	 * page's `last_edited_by` to recognise the echo of its own writes.
 	 */
 	suspend fun botUserId(): String?
+
+	/**
+	 * Every database the token can see, one page of results at a time.
+	 *
+	 * The only call in here that does not already know what it is looking for: the
+	 * mirror is told its four data sources by [dev.kanso.repo.NotionMetaRepository],
+	 * while the import has to ask the workspace what it holds. Paginated because a
+	 * workspace can hold hundreds, and cursor-driven rather than "give me everything"
+	 * so the caller decides how much of one it is willing to wait for.
+	 */
+	suspend fun searchDatabases(startCursor: String? = null, pageSize: Int = 100): NotionWorkspaceSearch
 
 	suspend fun createDatabase(
 		parentPageId: String,
