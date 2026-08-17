@@ -19,7 +19,7 @@ import {
   type Ticket,
   type TicketPriority,
   type TicketStatus,
-} from "./api";
+} from "../api";
 
 export const keys = {
   authMode: ["authMode"] as const,

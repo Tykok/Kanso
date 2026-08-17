@@ -10,8 +10,8 @@ import {
   shortcutRows,
   type Action,
   type ActionContext,
-} from "./actions";
-import type { Project, Team, Ticket, TimelineDependency } from "./api";
+} from "./index";
+import type { Project, Team, Ticket, TimelineDependency } from "../api";
 
 const core: Team = {
   id: "team-core",
