@@ -3,3 +3,4 @@
  * `queries/<slice>.ts` beside `core` and one re-export line here.
  */
 export * from "./core";
+export * from "./organise";
