@@ -115,7 +115,15 @@ export function BulkStrip({
           where a new one can be attached to the ticket in front of you. */}
       {labels.length > 0 && (
         <Menu
-          label="Add a label"
+          /**
+           * The accessible name is the visible word, not a friendlier sentence.
+           * `Menu` writes `aria-label={label}` on its trigger, which *replaces* the child's
+           * text — so "Add a label" left a button reading `Label` and announcing something
+           * else, which is WCAG 2.5.3 (Label in Name) failing. `pills.tsx` gets this right
+           * by prefixing rather than replacing (`Status: In progress`); here the visible
+           * text is the whole name, so the label is the word itself.
+           */
+          label="Label"
           asChild
           trigger={<button type="button" className={itemClass} disabled={busy}>Label</button>}
           items={labels.map((label) => ({

@@ -44,9 +44,27 @@ import { extend, toggle } from "./selection";
  * through `useUi().close()` at the same time as this page's own handler.
  */
 export function SavedViewScreen({ id }: { id: string }) {
-  const { team } = useOrganiseTeam();
+  const { team: resolved, teams } = useOrganiseTeam();
   const view = useSavedView(id);
   const rows = useViewTickets(id);
+  /**
+   * The view's own team, not the one the sidebar happens to be scoped to.
+   *
+   * This screen is the one of the four that names its subject in the path, and a saved view
+   * carries `teamId` — so nothing here has to be guessed. It used to read `useOrganiseTeam`,
+   * which falls back to the first team in the instance when a page load has wiped the scope:
+   * the view itself resolved correctly (its id is in the URL) while its cycles, its people
+   * and its *labels* came from a stranger's team, so the strip's Label button silently
+   * vanished and the `Étiquette` chip could not resolve a name. `resolved` stays as the
+   * fallback for the moment before the view lands.
+   */
+  const team = view.data
+    ? (teams.find((candidate) => candidate.id === view.data.teamId) ?? {
+        id: view.data.teamId,
+        name: "…",
+      })
+    : resolved;
+
   const views = useSavedViews(team?.id);
   const cycles = useCycles(team?.id);
   const users = useUsers();

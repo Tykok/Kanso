@@ -210,10 +210,16 @@ test("scenario 21 — a deleted document keeps its tickets, a deleted folder kee
   expect(tree.map((row) => row.id)).toEqual([]);
   const pages = (await (await api.get(`/api/docs/pages?teamId=${team.id}`)).json()) as {
     id: string;
-    folderId: string | null;
+    folderId?: string | null;
   }[];
-  // Readable, and at the root: the page is the one thing a tree operation must never take.
-  expect(pages.map((row) => [row.id, row.folderId])).toEqual([[doc.id, null]]);
+  /**
+   * Readable, and at the root: the page is the one thing a tree operation must never take.
+   *
+   * `?? null` because the claim is "no folder", not "the key is spelled null" — the API's
+   * mapper omits a null rather than sending one, everywhere, so the field arrives absent.
+   * Asserting the encoding rather than the meaning is what made this fail.
+   */
+  expect(pages.map((row) => [row.id, row.folderId ?? null])).toEqual([[doc.id, null]]);
 
   await page.reload();
   await trashRow(page, folder.name).click();
