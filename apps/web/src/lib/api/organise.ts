@@ -106,11 +106,8 @@ export type ViewGroupBy = (typeof VIEW_GROUP_BYS)[number];
 export type ViewSortBy = (typeof VIEW_SORT_BYS)[number];
 
 /**
- * The facets the server actually matches on.
- *
- * `label` is absent on purpose and not by omission: slice 0's `V8` owns the `labels` table
- * the drawing's third chip reads, that migration has not landed, and the server refuses
- * the key rather than storing a chip it cannot honour.
+ * The facets the server actually matches on — `SavedViewService.SERVED_FILTERS`, key for
+ * key. A key this type carries that the set does not is a 400 on the write, not a chip.
  */
 export type ViewFilters = {
   status?: TicketStatus[];
@@ -121,6 +118,12 @@ export type ViewFilters = {
   assignee?: string[];
   unassigned?: boolean;
   cycle?: string[];
+  /**
+   * The drawing's `Étiquette synchro`, by label id and not by name: labels are
+   * team-scoped, a view reaches into descendant teams, and two of them may both own the
+   * name `sync`.
+   */
+  label?: string[];
   /** "Blocked for 3 days", measured from creation. */
   openedForDays?: number;
 };
@@ -146,6 +149,8 @@ export type BulkEdit = {
   priority?: TicketPriority;
   assigneeIds?: string[];
   cycleId?: string;
+  /** Added to every selected row, not replacing what they wear — see `BulkEdit.kt`. */
+  labelId?: string;
 };
 
 // --- workload -------------------------------------------------------------

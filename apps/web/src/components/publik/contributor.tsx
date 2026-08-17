@@ -52,11 +52,13 @@ function Explanation({ page }: { page: ContributorPage }) {
     <div className="flex flex-col gap-6 px-6 py-8 md:px-10">
       <div className="flex max-w-2xl flex-col gap-2.5">
         <span className="font-mono text-11 uppercase tracking-[0.12em] text-faint">
-          {/* "N available" counts published tickets nobody has claimed. Once the
-              foundation's labels land this narrows to the `good first step` label, which
-              is strictly fewer tickets — so the number can only ever have been too
-              generous, never a claim that no ticket backs. */}
-          Unclaimed · {page.unclaimedCount} available
+          {/* The drawing reads `Bon premier pas · 12 disponibles`, and this says so only
+              when a maintainer actually marked them: the server narrows the list to the
+              `good first step` label where a team has defined one, and answers with the
+              name it narrowed to. With no such label anywhere the list is every unclaimed
+              ticket — strictly more — so the eyebrow reads `Unclaimed` rather than
+              crediting a judgement nobody made. */}
+          {page.firstStepLabel ?? "Unclaimed"} · {page.availableCount} available
         </span>
         <h1 className="text-30 font-medium leading-tight tracking-[-0.02em]">{page.title}</h1>
         <div className="flex flex-wrap items-center gap-2">
@@ -68,6 +70,20 @@ function Explanation({ page }: { page: ContributorPage }) {
             />
             {STATUS_LABELS[page.status]}
           </Badge>
+          {/* The drawing's middle badges: `bon premier pas`, `design system`. The labels'
+              own words, in the server's order (by name), and no colour — neither this
+              badge nor screen 21's chip draws one. */}
+          {page.labels.map((label) => (
+            <Badge
+              key={label}
+              variant="outline"
+              className="bg-card font-normal text-muted-foreground"
+            >
+              {label}
+            </Badge>
+          ))}
+          {/* Last, and not a label: it is `ticket_assignees` being empty. Derived, so it
+              cannot disagree with the board the way a label nobody took off would. */}
           {page.unclaimed ? (
             <Badge variant="outline" className="bg-card font-normal text-faint">
               nobody on it
@@ -197,8 +213,11 @@ function Aside({ page }: { page: ContributorPage }) {
         <>
           <hr className="border-border" />
           <section className="flex flex-col gap-3">
+            {/* The drawing's `Autres bons premiers pas`, and the same distinction the
+                eyebrow makes: these are picked out by a maintainer or they are merely
+                unclaimed, and the heading may not claim the first for the second. */}
             <h2 className="text-11 uppercase tracking-[0.1em] text-faint">
-              Other unclaimed tickets
+              {page.firstStepLabel ? "Other first steps" : "Other unclaimed tickets"}
             </h2>
             <ul className="flex flex-col gap-0.5 text-12">
               {page.otherFirstSteps.map((entry) => (

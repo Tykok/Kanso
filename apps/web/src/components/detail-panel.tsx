@@ -16,6 +16,7 @@ import {
 import { STATUS_LABELS } from "@/lib/status";
 import { Menu, type MenuItem } from "./menu";
 import { Backdrop } from "./overlays";
+import { TicketLabels } from "./ticket-labels";
 import { Kbd } from "./ui/kbd";
 import { PriorityMark } from "./ui/priority-mark";
 import { StatusDot } from "./ui/status-dot";
@@ -29,12 +30,14 @@ import { StatusDot } from "./ui/status-dot";
  *  did, so the layout is unchanged. */
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid grid-cols-[88px_1fr] items-center gap-3">
+    <label className={META_ROW}>
       <span className="text-11 text-faint">{label}</span>
       <div className="flex min-w-0 items-center gap-2">{children}</div>
     </label>
   );
 }
+
+const META_ROW = "grid grid-cols-[88px_1fr] items-center gap-3";
 
 /** The `<select>` still does the choosing — see `menu.tsx`'s own comment on why a
  *  native control beats a bespoke one here — dressed down to read as plain text
@@ -144,6 +147,14 @@ export function DetailPanel({
               ))}
             </select>
           </MetaRow>
+
+          {/* Not a `MetaRow`: that row exists to give a single `<select>` or `<input>` an
+              accessible name, and this one holds a pill each with its own `×` and a menu
+              that names itself. A `<label>` wrapping several controls names none of them. */}
+          <div className={META_ROW}>
+            <span className="text-11 text-faint">Labels</span>
+            <TicketLabels ticket={ticket} />
+          </div>
 
           <MetaRow label="Due date">
             <input

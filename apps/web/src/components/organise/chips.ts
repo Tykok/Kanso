@@ -25,6 +25,7 @@ const LABELS: Record<keyof ViewFilters, string> = {
   assignee: "Assignee",
   unassigned: "Unassigned",
   cycle: "Cycle",
+  label: "Label",
   openedForDays: "Open for",
 };
 
@@ -37,6 +38,7 @@ const ORDER: (keyof ViewFilters)[] = [
   "assignee",
   "unassigned",
   "cycle",
+  "label",
   "openedForDays",
 ];
 
@@ -45,6 +47,7 @@ export type ChipNames = {
   project: (id: string) => string;
   person: (id: string) => string;
   cycle: (id: string) => string;
+  label: (id: string) => string;
 };
 
 const titleCase = (wire: string) =>
@@ -98,6 +101,8 @@ function valueOf(
       return joined(filters.assignee?.map(names.person));
     case "cycle":
       return joined(filters.cycle?.map(names.cycle));
+    case "label":
+      return joined(filters.label?.map(names.label));
   }
 }
 

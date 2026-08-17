@@ -6,14 +6,14 @@ import { chipsOf, withoutChip } from "./chips";
  * The removable filter chips on screen 21, and what the `×` on one does.
  *
  * The drawing shows three: `Projet Miroir Notion`, `Statut ≠ Done`, `Étiquette synchro`.
- * The third is not testable here and not buildable at all — the server refuses a `label`
- * key until slice 0's `V8` lands — so these cover the two that exist plus the facets the
- * saved-view list implies (`Sans assigné`, `Bloqués depuis 3 j`).
+ * All three exist now — the server refused the `label` key until `V8` landed — plus the
+ * facets the saved-view list implies (`Sans assigné`, `Bloqués depuis 3 j`).
  */
 const names = {
   project: (id: string) => (id === "p1" ? "Notion mirror" : id),
   person: (id: string) => (id === "u1" ? "M. Rey" : id),
   cycle: (id: string) => (id === "c1" ? "Cycle 24" : id),
+  label: (id: string) => (id === "l1" ? "sync" : id),
 };
 
 describe("chipsOf", () => {
@@ -60,6 +60,15 @@ describe("chipsOf", () => {
     expect(chipsOf({ assignee: ["u1"], cycle: ["c1"] }, names)).toEqual([
       { key: "assignee", label: "Assignee", value: "M. Rey" },
       { key: "cycle", label: "Cycle", value: "Cycle 24" },
+    ]);
+  });
+
+  // The drawing's third chip, `Étiquette synchro`. The filter stores the label's id, as
+  // `project` and `cycle` do, because two teams may both own the name `sync`; the chip
+  // resolves it to the name for exactly the same reason those two do.
+  it("draws the label chip from the id the filter stores", () => {
+    expect(chipsOf({ label: ["l1"] }, names)).toEqual([
+      { key: "label", label: "Label", value: "sync" },
     ]);
   });
 

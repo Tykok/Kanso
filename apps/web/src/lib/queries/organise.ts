@@ -42,7 +42,18 @@ export const organiseKeys = {
  * does, so a key can grow a segment without this having to learn about it.
  */
 function invalidateOrganise(queryClient: ReturnType<typeof useQueryClient>) {
-  for (const family of ["cycles", "cycleReport", "triage", "views", "workload", "tickets", "timeline"]) {
+  // `labels` because the strip's sixth button changes what the selected rows wear, and a
+  // ticket page left open beside the list would otherwise keep drawing the old pills.
+  for (const family of [
+    "cycles",
+    "cycleReport",
+    "triage",
+    "views",
+    "workload",
+    "tickets",
+    "timeline",
+    "labels",
+  ]) {
     queryClient.invalidateQueries({ queryKey: [family] });
   }
 }

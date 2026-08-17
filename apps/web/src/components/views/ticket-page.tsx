@@ -28,6 +28,7 @@ import { SyncBadge } from "../pills";
 import { Kbd } from "../ui/kbd";
 import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
+import { TicketLabels } from "../ticket-labels";
 import { Avatar } from "./avatar";
 import { ViewsShell } from "./shell";
 
@@ -262,6 +263,11 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
                 {person.displayName}
               </span>
             ))}
+
+            {/* Writable, unlike the assignees beside it: `PUT /api/tickets/{id}/labels` is
+                a call the client does carry, and it is the same control the panel draws —
+                the labels of one ticket are one question, not two implementations. */}
+            <TicketLabels ticket={ticket} />
           </div>
 
           {dependsOn.length > 0 && (
