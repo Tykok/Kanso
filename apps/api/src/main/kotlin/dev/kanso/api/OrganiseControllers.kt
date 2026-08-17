@@ -49,7 +49,12 @@ class CycleController(
 	fun current(@PathVariable teamId: UUID): CycleReportResponse =
 		CycleReportResponse.of(cycles.report(cycles.active(teamId).id))
 
-	@GetMapping("/teams/{teamId}/cycles/{number}")
+	/**
+	 * A literal segment, as `/api/tickets/by-key/{teamKey}/{number}` already does.
+	 * `/cycles/{number}` beside `/cycles/current` would leave the word `current` resolving
+	 * by Spring's pattern precedence rather than by anything written down here.
+	 */
+	@GetMapping("/teams/{teamId}/cycles/by-number/{number}")
 	fun byNumber(@PathVariable teamId: UUID, @PathVariable number: Int): CycleReportResponse =
 		CycleReportResponse.of(cycles.report(cycles.byNumber(teamId, number).id))
 

@@ -168,7 +168,7 @@ export const organiseApi = {
   currentCycle: (teamId: string) => request<CycleReport>(`/api/teams/${teamId}/cycles/current`),
 
   cycleByNumber: (teamId: string, number: number) =>
-    request<CycleReport>(`/api/teams/${teamId}/cycles/${number}`),
+    request<CycleReport>(`/api/teams/${teamId}/cycles/by-number/${number}`),
 
   cycleReport: (id: string) => request<CycleReport>(`/api/cycles/${id}`),
 
