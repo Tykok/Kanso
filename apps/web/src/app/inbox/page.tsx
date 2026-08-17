@@ -234,7 +234,7 @@ export default function InboxPage() {
                   onError: (failure) => setError(actionErrorMessage(failure)),
                 })
               }
-              onSeeQueue={() => router.push("/settings?section=connections")}
+              onSeeQueue={() => router.push("/settings")}
             />
           ))}
 
@@ -246,7 +246,7 @@ export default function InboxPage() {
               now={now}
               onOpen={() => openRow(row)}
               onRetry={() => retryPushes.mutate()}
-              onSeeQueue={() => router.push("/settings?section=connections")}
+              onSeeQueue={() => router.push("/settings")}
             />
           ))}
         </div>
