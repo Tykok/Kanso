@@ -49,7 +49,7 @@ const RADII = [
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+      <h2 className="text-15 font-medium tracking-tight">{title}</h2>
       {children}
     </section>
   );
@@ -59,8 +59,8 @@ export default function DesignSystemPage() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-12 bg-background p-10 text-foreground">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Design system</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-30 font-medium tracking-tight">Design system</h1>
+        <p className="text-13 text-muted-foreground">
           Every token and component, in the current theme. Tune the values in{" "}
           <code className="rounded-sm bg-muted px-1.5 py-0.5">src/styles/tokens.css</code>.
         </p>
@@ -71,7 +71,7 @@ export default function DesignSystemPage() {
           {SURFACES.map((surface) => (
             <div
               key={surface.name}
-              className={`${surface.bg} ${surface.fg} rounded-lg border border-border p-4 text-xs`}
+              className={`${surface.bg} ${surface.fg} rounded-lg border border-border p-4 text-11`}
             >
               {surface.name}
             </div>
@@ -88,7 +88,7 @@ export default function DesignSystemPage() {
           {RADII.map((radius) => (
             <div key={radius.name} className="flex flex-col items-center gap-2">
               <div className={`size-16 border border-border bg-muted ${radius.cls}`} />
-              <span className="text-xs text-muted-foreground">{radius.name}</span>
+              <span className="text-11 text-muted-foreground">{radius.name}</span>
             </div>
           ))}
         </div>
@@ -128,7 +128,7 @@ export default function DesignSystemPage() {
             <CardTitle>Notion mirror</CardTitle>
             <CardDescription>Pushed a moment ago.</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
+          <CardContent className="text-13 text-muted-foreground">
             The mirror runs behind by design, so its state is shown per row.
           </CardContent>
           <CardFooter>

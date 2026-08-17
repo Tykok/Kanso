@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { StatusDot } from "@/components/ui/status-dot";
+import { Segmented } from "@/components/settings/panel";
 import { ACCENTS, TICKET_PRIORITIES, TICKET_STATUSES, type TicketPriority, type TicketStatus } from "@/lib/api";
 import { ACCENT_LABELS } from "@/lib/preferences-copy";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
@@ -107,13 +108,21 @@ export function ContrastMatrix() {
 
   return (
     <div className="flex flex-col gap-5 rounded-lg border border-border bg-background p-4 text-foreground">
-      <div className="segmented self-start" role="group" aria-label="Preview scheme">
-        <button type="button" aria-pressed={scheme === "light"} onClick={() => setScheme("light")}>
-          Light
-        </button>
-        <button type="button" aria-pressed={scheme === "dark"} onClick={() => setScheme("dark")}>
-          Dark
-        </button>
+      {/* The workbench's own control, not the legacy `.segmented` it exists to have
+          replaced: `Segmented` (settings/panel.tsx) is what every real toggle in the
+          app draws now. `self-start` keeps it from stretching to the full width of
+          this flex column, the way the `.segmented` div it replaces did explicitly
+          and `Segmented`'s own root — which takes no `className` — cannot. */}
+      <div className="self-start">
+        <Segmented
+          label="Preview scheme"
+          value={scheme}
+          onChange={setScheme}
+          options={[
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+          ]}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
