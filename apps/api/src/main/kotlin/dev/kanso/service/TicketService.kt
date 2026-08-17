@@ -19,6 +19,8 @@ import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
 import dev.kanso.sync.SyncOperation
+import dev.kanso.trash.TrashKind
+import dev.kanso.trash.TrashRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
@@ -67,6 +69,13 @@ class TicketService(
 	private val schedule: ScheduleService,
 	private val access: TicketAccess,
 	private val activity: ActivityService,
+	/**
+	 * The repository, not `TrashService`: that one is built out of [TrashSource] beans and
+	 * one of them is built out of this service, so depending on it here would close a
+	 * cycle. Writing the entry is a row insert and belongs at this level anyway — the
+	 * trash's own service owns *removing* it, which is the half that has three exits.
+	 */
+	private val trash: TrashRepository,
 ) {
 
 	@Transactional(readOnly = true)
@@ -87,7 +96,7 @@ class TicketService(
 
 	@Transactional(readOnly = true)
 	fun get(id: UUID): TicketDetail {
-		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		val ticket = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
 		return decorate(listOf(ticket)).single()
 	}
 
@@ -97,7 +106,27 @@ class TicketService(
 			?: throw NotFoundException("No team with key $teamKey")
 		val ticket = tickets.findByTeamAndNumber(team.id, number)
 			?: throw NotFoundException("No ticket $teamKey-$number")
+		requireLive(ticket)
 		return TicketDetail(ticket, team.key, tickets.assigneeIds(ticket.id), tickets.docIds(ticket.id))
+	}
+
+	/**
+	 * A ticket in the trash is not live work.
+	 *
+	 * It answers 404 to every read and refuses every edit — exactly what a destroyed one
+	 * used to do, which is what keeps soft deletion invisible to every caller that has no
+	 * business knowing about it. Screen 26 is the one surface that can see it, and it goes
+	 * through `TrashService`, never through here.
+	 *
+	 * A 404 rather than a 410 or a 409: nothing in the interface can act on a ticket it
+	 * cannot see, so a caller reaching one is either stale or guessing, and both are best
+	 * answered with the same sentence as an id that never existed.
+	 */
+	private fun requireLive(ticket: Ticket): Ticket {
+		if (trash.find(TrashKind.TICKET, ticket.id) != null) {
+			throw NotFoundException("No ticket ${ticket.id}")
+		}
+		return ticket
 	}
 
 	@Transactional
@@ -172,7 +201,7 @@ class TicketService(
 	 */
 	@Transactional
 	fun patch(actor: User, id: UUID, patch: TicketPatch): TicketDetail {
-		val current = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		val current = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
 		access.require(actor, current)
 		// Both ends, not one. `TicketPatch` carries `teamId`, so a single-sided check
 		// lets anyone move a foreign ticket into a team of their own and then edit it
@@ -275,10 +304,86 @@ class TicketService(
 		return decorate(listOf(updated)).single()
 	}
 
+	/**
+	 * Throws the ticket away. It is not destroyed: a `trash_entries` row starts a
+	 * thirty-day countdown, and screen 26 is where it can be restored, archived instead, or
+	 * finally destroyed.
+	 *
+	 * Every live read stops answering for it at once, which is why the event is still
+	 * `DELETED` — from the point of view of any list on any other screen, it *is* gone, and
+	 * a receiver that only invalidates its ticket query needs to hear nothing else.
+	 *
+	 * The mirror gets `ARCHIVE`, not `DELETE`. Notion has no hard delete worth relying on
+	 * either way, so both operations end up archiving the page — but only `ARCHIVE` leaves
+	 * `notion_page_id` on the row, and a ticket that may come back in twenty-nine days has
+	 * to come back to the same page rather than to a second one. [purge] is where the page
+	 * goes for good.
+	 *
+	 * Idempotent: deleting something already in the trash restarts nothing. Two clicks on
+	 * one row would otherwise buy it another thirty days.
+	 */
 	@Transactional
 	fun delete(actor: User, id: UUID) {
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
 		access.require(actor, ticket)
+		if (trash.find(TrashKind.TICKET, id) != null) return
+		trash.add(TrashKind.TICKET, id, actor.id)
+		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.ARCHIVE)
+		events.publish(KansoEvent.ticket(ChangeKind.DELETED, id, ticket.teamId, ticket.projectId))
+	}
+
+	/**
+	 * The first exit of screen 26. Removing the trash entry is [dev.kanso.trash.TrashService]'s
+	 * half, and it is the whole of what makes the ticket visible again — the row itself was
+	 * never touched by the delete, so a restore has nothing to put back and cannot get the
+	 * parent wrong. `CREATED` is the honest event for a reader whose list is about to grow a
+	 * row it had already dropped.
+	 *
+	 * A ticket that was archived *and* then thrown away comes back archived: the delete
+	 * asked nothing about that flag, so the restore does not answer for it either.
+	 */
+	@Transactional
+	fun restore(actor: User, id: UUID) {
+		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		access.require(actor, ticket)
+		syncJobs.enqueue(
+			SyncEntityType.TICKET,
+			id,
+			if (ticket.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+		)
+		events.publish(KansoEvent.ticket(ChangeKind.CREATED, id, ticket.teamId, ticket.projectId))
+	}
+
+	/**
+	 * The middle exit: out of the trash and into the archives, the countdown off because
+	 * somebody made a decision instead of letting the clock make it.
+	 *
+	 * A method of its own rather than a `patch(archived = true)`, because [patch] refuses a
+	 * ticket that is in the trash — right for every other caller, and exactly the state
+	 * this one starts from. It writes the one flag, so it cannot clobber a concurrent edit
+	 * to a field it has no business touching.
+	 */
+	@Transactional
+	fun archiveFromTrash(actor: User, id: UUID) {
+		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		access.require(actor, ticket)
+		tickets.setArchived(id, true)
+		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.ARCHIVE)
+		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
+	}
+
+	/**
+	 * The last exit, and the only one that does not come back. What [delete] used to do.
+	 *
+	 * [actor] is null for the retention sweep: thirty days is the consent, and there is
+	 * nobody left to ask by the time it fires.
+	 */
+	@Transactional
+	fun purge(actor: User?, id: UUID) {
+		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		actor?.let { access.require(it, ticket) }
+		// Read before the delete: the job carries the Notion page id, and by the time the
+		// worker runs there is no row left to look it up from.
 		syncJobs.enqueue(
 			SyncEntityType.TICKET,
 			id,
@@ -291,7 +396,7 @@ class TicketService(
 
 	@Transactional
 	fun setAssignees(actor: User, id: UUID, userIds: List<UUID>): TicketDetail {
-		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		val ticket = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
 		access.require(actor, ticket)
 		requireUsers(userIds)
 		val before = tickets.assigneeIds(id)
@@ -304,7 +409,7 @@ class TicketService(
 
 	@Transactional
 	fun setDocs(actor: User, id: UUID, docIds: List<UUID>): TicketDetail {
-		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
+		val ticket = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
 		access.require(actor, ticket)
 		requireDocs(docIds)
 		tickets.setDocs(id, docIds)

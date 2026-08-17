@@ -326,10 +326,14 @@ export function setDevUser(email: string | null) {
 }
 
 /**
- * The one fetch every slice's client goes through. Exported rather than private because
- * `api/core.ts` is no longer the only file that talks to the API: each slice owns
- * `api/<slice>.ts`, and a slice reimplementing the dev-user header, the credentials mode
- * or the ApiError shape would be a second answer to a question already settled here.
+ * The one fetch every slice's client goes through.
+ *
+ * Exported rather than private because `api/core.ts` is no longer the only file that
+ * talks to the API: each slice owns `api/<slice>.ts`. This is the single place that
+ * attaches the session cookie, the dev-mode identity header and the `ApiError`
+ * conversion, and re-implementing any of that per slice is how a screen ends up
+ * silently unauthenticated. Three of the six branches copied it before this line
+ * existed, which is the argument.
  */
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const devUser = getDevUser();
