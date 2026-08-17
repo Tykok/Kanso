@@ -10,6 +10,8 @@ import dev.kanso.repo.SavedViewRepository
 import dev.kanso.repo.SavedViewRow
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.ViewTicketRepository
+import dev.kanso.trash.TrashKind
+import dev.kanso.trash.TrashRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import tools.jackson.databind.ObjectMapper
@@ -64,6 +66,7 @@ class SavedViewService(
 	private val details: TicketDetails,
 	private val access: TicketAccess,
 	private val json: ObjectMapper,
+	private val trash: TrashRepository,
 ) {
 
 	@Transactional(readOnly = true)
@@ -75,7 +78,7 @@ class SavedViewService(
 	}
 
 	@Transactional(readOnly = true)
-	fun get(id: UUID): SavedView = require(id).toDomain()
+	fun get(id: UUID): SavedView = requireLive(id).toDomain()
 
 	/**
 	 * The rows, matched now and ordered as the view asks. Grouping is left to the client:
@@ -84,7 +87,7 @@ class SavedViewService(
 	 */
 	@Transactional(readOnly = true)
 	fun tickets(id: UUID, limit: Int = 200): List<TicketDetail> {
-		val row = require(id)
+		val row = requireLive(id)
 		val found = rows.matching(
 			teamIds = scopeOf(row.teamId),
 			filters = parseFilters(row.filters),
@@ -107,7 +110,15 @@ class SavedViewService(
 		access.requireTeam(actor, teamId)
 		if (name.isBlank()) throw BadRequestException("A saved view needs a name")
 		validate(filters)
-		if (views.findByTeamAndName(teamId, name) != null) {
+		views.findByTeamAndName(teamId, name)?.let { taken ->
+			// `saved_views_team_name_uniq` holds a view in the trash to its name too, so the
+			// refusal is unavoidable — but one naming a view the reader cannot find anywhere
+			// reads as a bug in the app. It says where the name went instead.
+			if (trash.find(TrashKind.VIEW, taken.id) != null) {
+				throw ConflictException(
+					"A view called \"$name\" is in the trash. Restore it, or delete it for good.",
+				)
+			}
 			throw ConflictException("This team already has a view called \"$name\"")
 		}
 		return views.insert(
@@ -137,7 +148,7 @@ class SavedViewService(
 		groupBy: ViewGroupBy? = null,
 		sortBy: ViewSortBy? = null,
 	): SavedView {
-		val current = require(id)
+		val current = requireLive(id)
 		access.requireTeam(actor, current.teamId)
 		filters?.let(::validate)
 		val renamed = name ?: current.name
@@ -154,10 +165,32 @@ class SavedViewService(
 		)?.toDomain() ?: throw NotFoundException("No saved view $id")
 	}
 
+	/**
+	 * Puts the view in the trash, and touches the row not at all.
+	 *
+	 * A saved view is a stored question, so there is nothing to unpick: the rail stops
+	 * asking it because [SavedViewRepository.findByTeam] is a live read, and the question
+	 * itself sits untouched for thirty days. A second delete is not a second countdown.
+	 */
 	@Transactional
 	fun delete(actor: User, id: UUID) {
 		val current = require(id)
 		access.requireTeam(actor, current.teamId)
+		if (trash.find(TrashKind.VIEW, id) != null) return
+		trash.add(TrashKind.VIEW, id, actor.id)
+	}
+
+	/** Nothing to put back. Who may do it is the whole of this. */
+	@Transactional
+	fun restoreFromTrash(actor: User, id: UUID) {
+		access.requireTeam(actor, require(id).teamId)
+	}
+
+	/** For good, and what [delete] used to do. [actor] is null for the retention sweep. */
+	@Transactional
+	fun purge(actor: User?, id: UUID) {
+		val current = require(id)
+		actor?.let { access.requireTeam(it, current.teamId) }
 		views.delete(id)
 	}
 
@@ -206,8 +239,16 @@ class SavedViewService(
 		else -> listOf(value.toString())
 	}
 
+	/**
+	 * The row whatever state it is in, including one in the trash — which is what the three
+	 * exits need, because each of them is reached *because* the view was thrown away.
+	 */
 	private fun require(id: UUID): SavedViewRow =
 		views.findById(id) ?: throw NotFoundException("No saved view $id")
+
+	/** What every other caller needs: a view in the trash is a 404, not an empty list. */
+	private fun requireLive(id: UUID): SavedViewRow =
+		views.findLive(id) ?: throw NotFoundException("No saved view $id")
 
 	private fun SavedViewRow.toDomain(): SavedView {
 		@Suppress("UNCHECKED_CAST")

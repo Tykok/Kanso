@@ -15,12 +15,12 @@ import java.util.UUID
  * each has a [TrashSource] bean; this service owns the **entry** — writing it is
  * `TicketService.delete`'s job, removing it is this file's, and the countdown is read from
  * it — while every source owns its own **entity**. That split is what keeps a source
- * roughly twenty lines and what makes landing `doc_pages` or `saved_views` a new bean
- * rather than an edit here.
+ * roughly twenty lines and what made landing `doc_pages`, `doc_folders` and `saved_views`
+ * three new beans rather than an edit here — this file has not changed to accept them.
  *
- * On this branch exactly one source is registered. [load] says so by omission rather than
- * by pretending: an entry of a kind nobody answers for is skipped, the same way an entry
- * whose entity was destroyed by another path is.
+ * [load] still answers by omission rather than by pretending: an entry of a kind nobody
+ * answers for is skipped, the same way an entry whose entity was destroyed by another path
+ * is. Nothing registers a fifth kind today, and `V11`'s `CHECK` is what stops one arriving.
  */
 @Service
 class TrashService(

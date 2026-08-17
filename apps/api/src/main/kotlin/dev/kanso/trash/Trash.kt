@@ -13,10 +13,10 @@ const val TRASH_RETENTION_DAYS = 30L
  * What can be thrown away.
  *
  * Closed here and closed again by `V11`'s `CHECK`, so a fifth kind is a migration rather
- * than a string a service lets through. Only [TICKET] has a table behind it on this
- * branch: [DOC], [VIEW] and [FOLDER] name what slices B and C are building, and they are
- * declared now so that landing those tables adds a [TrashSource] bean rather than a
- * branch to [TrashService].
+ * than a string a service lets through. All four now have a table and a [TrashSource]
+ * bean, which is what `V11` was betting on: landing `doc_pages`, `doc_folders` and
+ * `saved_views` cost three beans and not one branch in [TrashService], and not one column
+ * in their own schemas.
  */
 enum class TrashKind(override val wire: String) : Wire {
 	TICKET("ticket"),
@@ -44,15 +44,24 @@ data class TrashParent(val kind: String, val id: UUID?, val name: String)
 /**
  * Something the deleted thing holds, and whether the delete reaches it.
  *
- * [BLOCKS] and [MENTIONED_TICKETS] are slice B's to fill from `doc_pages`; the drawing's
- * sentence about them is the load-bearing one — "les tickets n'ont pas été supprimés,
- * seul le renvoi disparaît" — and [TrashHolding.cascades] is what makes it a fact the
- * screen reads rather than a sentence somebody typed.
+ * [BLOCKS] and [MENTIONED_TICKETS] are the doc page's, and the drawing's sentence about
+ * them is the load-bearing one — "les tickets n'ont pas été supprimés, seul le renvoi
+ * disparaît" — with [TrashHolding.cascades] the fact the screen reads rather than a
+ * sentence somebody typed.
+ *
+ * [FOLDERS] and [PAGES] are a folder's, and they are a pair for the same reason: a
+ * folder's branch goes with it and its writing does not, so one entry carries `true` and
+ * the other `false` and the pane says both before anybody confirms. Unlike this
+ * vocabulary's namesake in `V11`, nothing in the database constrains it — a holding is
+ * counted at read time and never stored — so a sixth kind is an entry here and one in
+ * `components/trash/copy.ts`, not a migration.
  */
 enum class TrashHoldingKind(override val wire: String) : Wire {
 	BLOCKS("blocks"),
 	MENTIONED_TICKETS("mentionedTickets"),
-	LINKED_DOCS("linkedDocs");
+	LINKED_DOCS("linkedDocs"),
+	FOLDERS("folders"),
+	PAGES("pages");
 }
 
 /** [cascades] is false when the thing goes and this stays. */
@@ -103,12 +112,32 @@ interface TrashSource {
 	 */
 	fun describe(ids: Collection<UUID>): List<TrashItem>
 
-	/** The Archives tab. Never anything in the trash: the two tabs are disjoint. */
-	fun archived(limit: Int): List<TrashItem>
+	/**
+	 * The Archives tab. Never anything in the trash: the two tabs are disjoint.
+	 *
+	 * Empty by default, because three of the four kinds have no archive to draw from:
+	 * `archived` is a column on `tickets` and on nothing else, and giving `doc_pages`,
+	 * `doc_folders` or `saved_views` one would be a migration inventing a fact no screen
+	 * asks for. A kind with no archive contributes nothing to the tab rather than
+	 * pretending the tab is about deletion.
+	 */
+	fun archived(limit: Int): List<TrashItem> = emptyList()
 
 	fun restore(actor: User, id: UUID)
 
-	fun archiveInstead(actor: User, id: UUID)
+	/**
+	 * The middle exit — for the one kind that has somewhere to go.
+	 *
+	 * Refused by default, and refused *loudly*: the countdown belongs to the entry, so a
+	 * source that quietly did nothing here would let [TrashService] remove the entry
+	 * afterwards and the thing would come back live, which is the opposite of what the
+	 * button says. [TrashService.exit] runs this before it touches the entry precisely so
+	 * that a refusal leaves the thing in the trash.
+	 */
+	fun archiveInstead(actor: User, id: UUID): Unit = throw BadRequestException(
+		"A ${kind.wire} cannot be archived: archiving is a decision only a ticket carries." +
+			" Restore it, or delete it for good.",
+	)
 
 	/** [actor] is null for the retention sweep, which answers to the clock, not a person. */
 	fun purge(actor: User?, id: UUID)
