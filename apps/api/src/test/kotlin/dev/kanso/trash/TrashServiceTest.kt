@@ -267,28 +267,42 @@ class TrashServiceTest : PostgresTest() {
 	// --- the seams ------------------------------------------------------------
 
 	/**
-	 * `trash_entries.entity_id` carries no foreign key — it points at four tables — so a
-	 * path that hard-deletes an entity outright can leave an entry with nothing behind
-	 * it. The team disposition is exactly that path. A blank row offering three exits
-	 * would be worse than no row at all.
+	 * `trash_entries.entity_id` carries no foreign key — it points at four tables — so an
+	 * entry can name a row that is not there. The two disposition paths now clean up after
+	 * themselves, so this is no longer a state the application produces; the read's answer
+	 * to it is still omission, because a blank row offering three exits on nothing would be
+	 * worse than no row at all, and nothing else in the schema can promise it never happens.
 	 */
 	@Test
-	fun `an entry whose entity another path destroyed is skipped, not drawn blank`() {
+	fun `an entry with nothing behind it is skipped, not drawn blank`() {
+		entries.add(TrashKind.TICKET, UUID.randomUUID(), admin.id)
+
+		assertTrue(trash.load().trash.isEmpty(), "no blank row offering three exits on nothing")
+	}
+
+	/**
+	 * The team disposition destroys its tickets outright, under its own consent model — a
+	 * retyped team name rather than a countdown — and `V11` has no foreign key to take
+	 * their entries with them. So the path forgets them itself: a countdown left running on
+	 * something already destroyed is a row the sweep will one day try to purge twice, and a
+	 * name nobody can restore in the meantime.
+	 */
+	@Test
+	fun `a hard delete forgets the entry it would otherwise orphan`() {
 		val team = newTeam()
 		val ticket = newTicket(team.id).ticket
 		tickets.delete(admin, ticket.id)
-		// `take` destroys the tickets with the team, which is the path that leaves the
-		// orphan: the entry has no foreign key holding it to the row that just went.
+
 		teams.delete(
 			admin,
 			team.id,
 			DispositionPlan(tickets = DispositionChoice.TAKE, counts = teams.contents(team.id).direct),
 		)
 
-		assertTrue(trash.load().trash.isEmpty(), "no blank row offering three exits on nothing")
-		assertTrue(
-			entries.find(TrashKind.TICKET, ticket.id) != null,
-			"the orphan entry is still there; `follow-ups.md` records what cleaning it would cost",
+		assertTrue(trash.load().trash.isEmpty())
+		assertNull(
+			entries.find(TrashKind.TICKET, ticket.id),
+			"the entry went with the row it was a deletion of",
 		)
 	}
 

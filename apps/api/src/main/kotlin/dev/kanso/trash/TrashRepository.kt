@@ -98,6 +98,24 @@ class TrashRepository {
 		} > 0
 
 	/**
+	 * Forgets deletions whose thing another path destroyed outright.
+	 *
+	 * The foreign key `entity_id` cannot have — it points at four tables — paid by hand, and
+	 * the only caller is a disposition: those paths destroy under their own consent model, a
+	 * retyped team name rather than a countdown, so a row here that survived them would be a
+	 * clock still running on something already gone. [remove] is the *entry's* exit and this
+	 * is the *entity's*; they are one statement apart and worth two names, because a source
+	 * calling this one would be losing a countdown it has no business ending.
+	 *
+	 * Returns how many it forgot, so a caller can log a number rather than a reassurance.
+	 */
+	fun forget(kind: TrashKind, entityIds: Collection<UUID>): Int =
+		if (entityIds.isEmpty()) 0
+		else TrashEntries.deleteWhere {
+			(entityType eq kind.wire) and (TrashEntries.entityId inList entityIds)
+		}
+
+	/**
 	 * Moves an entry's clock back, so a test can be two days old without sleeping for
 	 * two days. Nothing in the application calls it, and it lives here rather than as raw
 	 * SQL in a test so that the countdown is exercised through the same column the sweep

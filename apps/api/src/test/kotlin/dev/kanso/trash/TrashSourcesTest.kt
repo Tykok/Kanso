@@ -387,6 +387,75 @@ class TrashSourcesTest : PostgresTest() {
 		assertEquals(2, trash.load().trash.size, "and nothing moved")
 	}
 
+	// --- the seams -----------------------------------------------------------
+
+	/**
+	 * `doc_pages`, `doc_folders` and `saved_views` are all `ON DELETE CASCADE` from `teams`,
+	 * so a team's disposition takes them in Postgres without any Kotlin asking — and `V11`
+	 * has no foreign key to take their entries with them. Three kinds, one orphan each,
+	 * from one gesture.
+	 */
+	@Test
+	fun `deleting a team forgets the entries of the documents, folders and views it takes`() {
+		val team = newTeam()
+		val page = documents.createPage(admin, team.id, null, "Cycle notes 22", null).page
+		val folder = documents.createFolder(admin, team.id, null, "Product")
+		val view = newView(team.id, "Slipping")
+		documents.deletePage(admin, page.id)
+		documents.deleteFolder(admin, folder.id)
+		views.delete(admin, view.id)
+
+		teams.delete(
+			admin,
+			team.id,
+			DispositionPlan(tickets = DispositionChoice.TAKE, counts = teams.contents(team.id).direct),
+		)
+
+		assertTrue(trash.load().trash.isEmpty())
+		assertNull(entries.find(TrashKind.DOC, page.id))
+		assertNull(entries.find(TrashKind.FOLDER, folder.id))
+		assertNull(entries.find(TrashKind.VIEW, view.id))
+	}
+
+	/**
+	 * The other disposition path, and the only kind it destroys.
+	 *
+	 * The live ticket is what makes the case real rather than hypothetical:
+	 * `ProjectService.disperseTickets` returns early when it can see nothing, and it cannot
+	 * see the trash — so a project holding *only* a thrown-away ticket destroys nothing at
+	 * all and leaves it alive with `project_id` cleared, which is `ON DELETE SET NULL` doing
+	 * the right thing. It is the mixed case that reaches `deleteByProject`, and that
+	 * statement deletes by `project_id` without asking about the trash.
+	 */
+	@Test
+	fun `deleting a project forgets the entry of a ticket it destroys`() {
+		val team = newTeam()
+		val project = projects.create(
+			name = "Product",
+			status = ProjectStatus.PLANNED,
+			start = null,
+			end = null,
+			leadUserId = null,
+			teamId = team.id,
+			docIds = emptyList(),
+		).project
+		newTicket(team.id, "Still live", project.id)
+		val ticket = newTicket(team.id, "SVG seal", project.id)
+		tickets.delete(admin, ticket.id)
+
+		projects.delete(
+			admin,
+			project.id,
+			DispositionPlan(
+				tickets = DispositionChoice.TAKE,
+				counts = projects.contents(project.id).direct,
+			),
+		)
+
+		assertTrue(trash.load().trash.isEmpty())
+		assertNull(entries.find(TrashKind.TICKET, ticket.id))
+	}
+
 	// --- the sweep reaches every kind ----------------------------------------
 
 	/**
