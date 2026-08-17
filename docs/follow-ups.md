@@ -457,16 +457,23 @@ unanswered kind is skipped rather than drawn. The doc source is the interesting 
 because that pair is what makes the drawing's sentence — deleting a page deletes neither
 ticket — true rather than merely written.
 
-**Screen 21's label chip is refused, by name.** `SavedViewService.SERVED_FILTERS` rejects a
-`label` key with a message naming it, because slice C was cut before `V8` landed and a chip
-that stored and displayed but never filtered would be a worse lie than a refused one. `V8` is
-here now: lifting it is one entry in that set and one clause in `ViewTicketRepository`. A
-test asserts the refusal, so it will say so when someone tries.
+**~~Screen 21's label chip is refused, by name.~~ Done.** `SERVED_FILTERS` serves `label`,
+`ViewTicketRepository` has the clause, and the test that asserted the refusal asserts the
+filter. The key holds label *ids*, not names: a view reaches into descendant teams and two
+of them may both own the name `sync`.
 
-**Screen 28 badges no labels, for the same reason and with the same cure.** Slice F drew
-`Unclaimed · N available` rather than `Good first step · 12 available` because nothing
-recorded that a ticket *is* a good first step. `PublicRoadmapService.firstSteps()` is the
-query that narrows to the label, and it says so in place.
+**~~Screen 28 badges no labels.~~ Done.** `firstSteps()` narrows to a label named
+`good first step`, matched across the instance because no id can be hard-coded. Where no
+team has defined one it falls back to every unclaimed ticket and says so — the response
+carries `firstStepLabel`, and the eyebrow reads `Unclaimed · N available` rather than
+crediting a judgement nobody made. A team that defined it and marked nothing gets none.
+
+**Nothing else attaches a label yet.** `ticket-labels.tsx` is the one control — the detail
+panel, the ticket page, and the strip's sixth button through `BulkEdit.labelId`. The board
+rows, the triage list and the search results draw no labels at all, and neither does a
+document. The label's `colour` is stored and never drawn: no screen in the bundle colours a
+label, so there is no token for the six accents and inventing one was not this branch's
+call.
 
 **Notifications are written by nobody.** `V13` and `NotificationService.record` exist and
 the inbox draws them; the call sites do not. Assignment and status changes want one in

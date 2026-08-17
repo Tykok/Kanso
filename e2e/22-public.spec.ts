@@ -48,6 +48,30 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
   });
   expect(pointers.ok(), "and may say where to look").toBeTruthy();
 
+  /**
+   * The drawing's badges, and the label the page narrows its list to.
+   *
+   * `good first step` is matched by name across the instance, so defining it here is what
+   * turns the eyebrow from `Unclaimed · N` into `Good first step · N`. The second label
+   * goes on the *private* ticket: a stranger may not learn its title, and must not learn
+   * what it was filed under either.
+   */
+  const label = async (name: string) => {
+    const made = await admin.post(`/api/teams/${team.id}/labels`, { data: { name } });
+    expect(made.ok(), `a maintainer may define ${name}`).toBeTruthy();
+    return ((await made.json()) as { id: string }).id;
+  };
+  const firstStep = await label("good first step");
+  const secret = await label("project-cormorant");
+
+  for (const [ticketId, labelIds] of [
+    [shown.id, [firstStep]],
+    [hidden.id, [firstStep, secret]],
+  ] as const) {
+    const marked = await admin.put(`/api/tickets/${ticketId}/labels`, { data: labelIds });
+    expect(marked.ok(), "labels are a scoped write on the ticket").toBeTruthy();
+  }
+
   // --- the API, with no credentials whatsoever --------------------------------
   const anonymous = await playwrightRequest.newContext({ baseURL: API_URL });
   try {
@@ -85,6 +109,12 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
 
     const page = await anonymous.get(route(shown.identifier));
     expect(page.status()).toBe(200);
+    const contributor = await page.text();
+    expect(contributor, "the badge is the label's own name").toContain("good first step");
+    expect(
+      contributor,
+      "and a label a private ticket wears is as private as its title",
+    ).not.toContain("project-cormorant");
 
     // A 404 rather than a 403 for the private one: 403 confirms it exists.
     const denied = await anonymous.get(route(hidden.identifier));
@@ -139,6 +169,15 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
     await visitor.getByRole("link", { name: shown.title }).click();
     await expect(visitor.getByRole("heading", { level: 1, name: shown.title })).toBeVisible();
     await expect(visitor.getByText("apps/web/src/components/publik/shell.tsx")).toBeVisible();
+    /**
+     * Four badges, as the drawing has them: the status, the ticket's labels, and `nobody on
+     * it` last — which is not a label but `ticket_assignees` being empty. The eyebrow says
+     * `Good first step` rather than `Unclaimed` only because the label above exists; the
+     * count is left loose because every published ticket wearing it on this instance is in
+     * it, which is the honest reading and not a number this scenario owns.
+     */
+    await expect(visitor.getByText("good first step").first()).toBeVisible();
+    await expect(visitor.getByText(/good first step · \d+ available/)).toBeVisible();
     await expect(visitor.getByText("nobody on it")).toBeVisible();
     await expect(
       visitor.getByText(/This ticket is visible because it is marked public/),

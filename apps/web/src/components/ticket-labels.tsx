@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Menu } from "./menu";
+import { toggle } from "./organise/selection";
 import type { Label } from "@/lib/api/social";
 import {
   useCreateLabel,
@@ -49,8 +50,10 @@ export function TicketLabels({
 
   const write = (labelIds: string[]) => set.mutate({ ticketId: ticket.id, labelIds });
 
-  const toggle = (label: Label) =>
-    write(ids.includes(label.id) ? ids.filter((id) => id !== label.id) : [...ids, label.id]);
+  // `toggle` is screen 21's own, and a set of ids is a set of ids: writing a second one
+  // here would be two implementations of "is it in the list" to keep in step. The order it
+  // appends in does not matter — the server answers with the labels sorted by name.
+  const flip = (label: Label) => write(toggle(ids, label.id));
 
   /**
    * A new label is attached the moment it exists. Two requests rather than one, and the
@@ -117,7 +120,7 @@ export function TicketLabels({
               // A tick rather than two lists: the menu is the whole set the team owns, and
               // splitting it into "on" and "off" halves would move an entry every click.
               label: `${ids.includes(label.id) ? "✓ " : ""}${label.name}`,
-              onSelect: () => toggle(label),
+              onSelect: () => flip(label),
             })),
             { id: "label.new", label: "New label…", onSelect: () => setNaming(true) },
           ]}
