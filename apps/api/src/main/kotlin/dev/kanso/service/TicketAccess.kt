@@ -69,17 +69,17 @@ class TicketAccess(private val teams: TeamRepository) {
 	 * `{teamId} ∪ ancestors` that [TeamRepository.teamsWithMembers] found holding a row;
 	 * both are prefetched so this function never queries on its own.
 	 *
-	 * The open-chain clause is the migration guarantee, not a convenience: every
-	 * instance running today has an empty `team_members`, and without some form of it
-	 * deploying this locks every board behind a 403 whose only cure is a SQL prompt.
-	 * But it is not a state instances leave behind — `TeamService.create` never enrols
-	 * its creator, so an empty team is the state every team is *born* into, and stays in
-	 * until somebody remembers to invite people. A single populated ancestor is enough
-	 * to say somebody has claimed the work; nothing short of the whole chain being
-	 * silent should open the door. That is why the clause walks every team between
-	 * [teamId] and the root, not just [teamId] itself: a sub-team created under a
-	 * populated parent is governed from the instant it exists, and only a chain that is
-	 * unclaimed all the way up stays open — which a bare root with no members always is.
+	 * The open-chain clause exists because deploying against an empty `team_members`
+	 * would otherwise 403 every board, with no cure short of a SQL prompt — every
+	 * instance running today has exactly that empty table. But it is not a state
+	 * instances leave behind — `TeamService.create` never enrols its creator, so an
+	 * empty team is the state every team is *born* into, and stays in until somebody
+	 * remembers to invite people. A single populated ancestor is enough to say somebody
+	 * has claimed the work; nothing short of the whole chain being silent should open
+	 * the door. That is why the clause walks every team between [teamId] and the root,
+	 * not just [teamId] itself: a sub-team created under a populated parent is governed
+	 * from the instant it exists, and only a chain that is unclaimed all the way up
+	 * stays open — which a bare root with no members always is.
 	 *
 	 * Ancestry runs downwards only. A member of Product may move work in Product /
 	 * Mobile; the reverse would make joining the smallest team in the instance a way to

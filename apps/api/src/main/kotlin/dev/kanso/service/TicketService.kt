@@ -111,8 +111,11 @@ class TicketService(
 		assigneeIds: List<UUID>,
 		docIds: List<UUID>,
 	): TicketDetail {
-		// First, because a check placed after `nextTicketNumber` below would already have
-		// burned a number from a team's counter the actor may not touch — the same reason
+		// First, because `nextTicketNumber` below takes an exclusive row lock on the
+		// team — a check placed after it would serialise every legitimate creator in that
+		// team behind a request already destined for 403, for the rest of this
+		// transaction. (The counter itself is not at risk either way: the UPDATE rolls
+		// back with the refusal, this method being @Transactional.) The same reason
 		// `patch` checks its destination side before doing anything else.
 		access.requireTeam(actor, teamId)
 		val team = teams.findById(teamId) ?: throw BadRequestException("No team $teamId")

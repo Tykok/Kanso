@@ -233,14 +233,15 @@ class ProjectService(
 	}
 
 	/**
-	 * Archiving or deleting a project reaches every ticket it holds, across whichever
-	 * teams those tickets belong to — the same blast radius as `TeamService.archive`
-	 * and `TeamService.delete`, and the same rule applies: disposition is instance
-	 * configuration, not daily work, regardless of which container is being disposed of.
+	 * Archiving, unarchiving, or deleting a project reaches every ticket it holds,
+	 * across whichever teams those tickets belong to — the same blast radius as
+	 * `TeamService.archive` and `TeamService.delete`, and the same rule applies:
+	 * disposition is instance configuration, not daily work, regardless of which
+	 * container is being disposed of or which direction the disposition runs.
 	 */
 	private fun requireConfigurator(actor: User) {
 		if (!actor.instanceRole.canConfigureInstance) {
-			throw AccessDeniedException("Only the owner or an admin can archive or delete a project")
+			throw AccessDeniedException("Only the owner or an admin can change projects")
 		}
 	}
 

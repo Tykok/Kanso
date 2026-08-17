@@ -65,7 +65,7 @@ class TicketAccessTest : PostgresTest() {
 	}
 
 	@Test
-	fun `a team with no members is open to everyone`() {
+	fun `a root team with no members is open to everyone`() {
 		val team = teams.create(admin, "Unclaimed", key(), null)
 		val ticket = ticketIn(team.id)
 
