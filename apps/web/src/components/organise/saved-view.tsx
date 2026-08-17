@@ -19,11 +19,13 @@ import {
   useBulkEdit,
   useCycles,
   usePatchView,
+  useProjects,
   useSavedView,
   useSavedViews,
   useUsers,
   useViewTickets,
 } from "@/lib/queries";
+import { PRIORITY_LABELS } from "@/lib/status";
 import { BulkStrip } from "./bulk-strip";
 import { chipsOf, withoutChip } from "./chips";
 import { groupTickets } from "./grouping";
@@ -47,6 +49,7 @@ export function SavedViewScreen({ id }: { id: string }) {
   const views = useSavedViews(team?.id);
   const cycles = useCycles(team?.id);
   const users = useUsers();
+  const projects = useProjects();
   const patch = usePatchView();
   const bulkEdit = useBulkEdit();
   const bulkDelete = useBulkDelete();
@@ -62,7 +65,8 @@ export function SavedViewScreen({ id }: { id: string }) {
 
   const names = useMemo(
     () => ({
-      project: (projectId: string) => projectId,
+      project: (projectId: string) =>
+        projects.data?.find((project) => project.id === projectId)?.name ?? projectId,
       person: (userId: string) =>
         users.data?.find((user) => user.id === userId)?.displayName ?? userId,
       cycle: (cycleId: string) => {
@@ -70,7 +74,7 @@ export function SavedViewScreen({ id }: { id: string }) {
         return cycle ? `Cycle ${cycle.number}` : cycleId;
       },
     }),
-    [users.data, cycles.data],
+    [users.data, cycles.data, projects.data],
   );
 
   const clear = useCallback(() => {
@@ -327,8 +331,14 @@ function Rows({
                 <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
                 <span className="truncate">{ticket.title}</span>
                 <PriorityMark priority={ticket.priority} />
-                <span className="truncate text-11 text-muted-foreground">
-                  {ticket.priority === "none" ? "" : ticket.priority}
+                <span
+                  className={
+                    ticket.priority === "urgent"
+                      ? "truncate text-11 text-urgent"
+                      : "truncate text-11 text-muted-foreground"
+                  }
+                >
+                  {ticket.priority === "none" ? "" : PRIORITY_LABELS[ticket.priority]}
                 </span>
               </Row>
             ))}

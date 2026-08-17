@@ -4,7 +4,7 @@ import Link from "next/link";
 import { GroupLabel } from "@/components/ui/group-label";
 import { Row } from "@/components/ui/row";
 import { PriorityMark } from "@/components/ui/priority-mark";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import type { Cycle, CycleReport, Ticket, TicketStatus } from "@/lib/api";
 import { useCycleReport, useCycles, usePlaceInCycle } from "@/lib/queries";
 import { bars, progressSegments } from "./burndown";
@@ -229,8 +229,14 @@ function StatusGroups({ tickets }: { tickets: Ticket[] }) {
                 <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
                 <span className="truncate">{ticket.title}</span>
                 <PriorityMark priority={ticket.priority} />
-                <span className="truncate text-11 text-muted-foreground">
-                  {ticket.priority === "none" ? "" : ticket.priority}
+                <span
+                  className={
+                    ticket.priority === "urgent"
+                      ? "truncate text-11 text-urgent"
+                      : "truncate text-11 text-muted-foreground"
+                  }
+                >
+                  {ticket.priority === "none" ? "" : PRIORITY_LABELS[ticket.priority]}
                 </span>
                 <span className="text-11 text-faint">{daysOpen(ticket)} d open</span>
               </Row>
