@@ -11,22 +11,54 @@ function walk(dir: string): string[] {
   });
 }
 
+// Finds the `{...}` that starts at `openIndex` (which must point at the `{`
+// itself) by counting brace depth rather than a non-greedy regex, so a `}`
+// that closes a template-literal interpolation inside the object's values
+// (`${...}`) doesn't get mistaken for the object's own end: it's one open
+// brace and one close brace either way, so a running count still lands on
+// zero at the real close.
+function balancedBraces(source: string, openIndex: number): string {
+  let depth = 0;
+  for (let i = openIndex; i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    else if (source[i] === "}" && --depth === 0) return source.slice(openIndex, i + 1);
+  }
+  return "";
+}
+
 /**
- * Tokens the browser defines, a component scopes to itself, or that come from
- * outside every CSS file entirely. `--font-public-sans` and `--font-noto-sans-jp`
- * are the last kind: next/font and an inline `style` on `<html>` supply them
- * (`app/layout.tsx`), so no `--name:` declaration for either exists in any
- * stylesheet for this test to find on its own. Without this entry both would read
- * as missing the moment `tokens.css` and `app/globals.css` joined the walk below —
- * which is exactly the check that would have caught `layout.tsx` losing
- * `sealFontStyle`: with `--font-noto-sans-jp` undefined, `--font-seal` in
- * `tokens.css` resolves to nothing, and the seal falls back to a system font.
+ * A .tsx file can hand a custom property to the cascade without ever writing
+ * `--name:` in a stylesheet. Two idioms cover every case this codebase uses:
+ *  - next/font's `variable` option, which generates a class that sets the
+ *    name (`app/layout.tsx`'s `Public_Sans({ variable: "--font-public-sans" })`).
+ *  - an object assigned to a `style={}` JSX attribute (that same file's
+ *    `sealFontStyle`; `timeline/view.tsx`'s `chart`).
+ * The second idiom only counts a name if the object holding it is actually
+ * wired to a `style={}` somewhere in the file — an object that still declares
+ * `"--font-noto-sans-jp"` but whose `style={sealFontStyle}` got deleted must
+ * not count, or this test couldn't tell "the seal has a font" from "the seal
+ * used to have a font", which is the exact gap this function exists to close.
  */
+function tsxDefinitions(source: string): Set<string> {
+  const defined = new Set<string>();
+  for (const [, name] of source.matchAll(/variable:\s*["'](--[\w-]+)["']/g)) {
+    defined.add(name);
+  }
+  const wired = new Set(Array.from(source.matchAll(/style=\{(\w+)\}/g), (m) => m[1]));
+  for (const m of source.matchAll(/const (\w+)\s*=\s*(\{)/g)) {
+    if (!wired.has(m[1])) continue;
+    const body = balancedBraces(source, m.index + m[0].length - 1);
+    for (const [, name] of body.matchAll(/["'](--[\w-]+)["']\s*:/g)) {
+      defined.add(name);
+    }
+  }
+  return defined;
+}
+
+/** Tokens the browser defines itself; nothing in this codebase ever will. */
 const NOT_OURS = new Set([
   "--radix-popper-available-height",
   "--radix-popper-anchor-width",
-  "--font-public-sans",
-  "--font-noto-sans-jp",
 ]);
 
 describe("design tokens", () => {
@@ -39,16 +71,23 @@ describe("design tokens", () => {
   // `defined` is every `--name:` declaration in either file, not only that block —
   // `--row-h` in tokens.css counts the same as `--gutter` in the alias block below.
   const globals = readFileSync(join(SRC, "app/globals.css"), "utf8");
+  const files = walk(SRC).filter((f) => /\.(tsx?|css)$/.test(f));
   const defined = new Set(
     Array.from((tokens + globals).matchAll(/^\s*(--[\w-]+):/gm), (m) => m[1]),
   );
+  // See `tsxDefinitions` above: a .tsx file can define a token without any
+  // `--name:` at all, via next/font's `variable` option or a `style={}`-wired
+  // object. Counting those here means deleting one is exactly as visible to
+  // this test as deleting a CSS declaration would be.
+  for (const file of files.filter((f) => f.endsWith(".tsx"))) {
+    for (const name of tsxDefinitions(readFileSync(file, "utf8"))) {
+      defined.add(name);
+    }
+  }
 
   it("defines every token the interface reads", () => {
     // tokens.css and globals.css are in the walk, not exempt from it: a `var()`
-    // read inside either file is exactly as real as one in a component, and this
-    // is the test that would have caught tokens.css reaching for
-    // `--font-noto-sans-jp` before `NOT_OURS` named where it actually comes from.
-    const files = walk(SRC).filter((f) => /\.(tsx?|css)$/.test(f));
+    // read inside either file is exactly as real as one in a component.
     const missing = new Set<string>();
     for (const file of files) {
       const source = readFileSync(file, "utf8");
