@@ -113,6 +113,56 @@ export const inboxApi = {
     request<{ requeued: number }>("/api/admin/sync/retry-failed", { method: "POST" }),
 };
 
+// --- screen 24, the Notion import -------------------------------------------
+
+/** A database the workspace search found, with its page count. */
+export type NotionImportSource = { id: string; name: string; pages: number };
+
+/**
+ * What step 1 gets back.
+ *
+ * `available: false` is a first-class answer, not an error: an instance with no Notion
+ * token has nothing to import from, and so does one whose API client cannot yet search
+ * the workspace. Either way the dialog has a sentence to print rather than a spinner
+ * that never resolves, and `reason` is that sentence.
+ */
+export type NotionImportSources = {
+  available: boolean;
+  reason?: string;
+  sources: NotionImportSource[];
+};
+
+/** What step 3 sends, and what it gets back before anything is written. */
+export type NotionImportPreview = {
+  projects: { name: string; pages: number }[];
+  folders: { name: string; pages: number }[];
+  /** Relations between the chosen databases, which become ticket dependencies. */
+  linkedSources: number;
+  /** Properties Kanso has no column for. They land in an "imported from Notion" block. */
+  unmappedProperties: string[];
+};
+
+export const notionImportApi = {
+  sources: () => request<NotionImportSources>("/api/notion/import/sources"),
+
+  /**
+   * Reads. Named `preview` rather than `dryRun` because that is what the button says,
+   * and because nothing about it is a rehearsal of a write: it is the last read before
+   * one, and the drawing's own promise is that nothing is written until it is confirmed.
+   */
+  preview: (plan: { sourceId: string; target: "project" | "documents" }[]) =>
+    request<NotionImportPreview>("/api/notion/import/preview", {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    }),
+
+  confirm: (plan: { sourceId: string; target: "project" | "documents" }[]) =>
+    request<{ started: boolean }>("/api/notion/import", {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    }),
+};
+
 /**
  * One arbitrary write, sent as it was recorded.
  *
