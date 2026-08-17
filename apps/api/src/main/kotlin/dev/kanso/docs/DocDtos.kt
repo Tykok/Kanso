@@ -130,9 +130,11 @@ data class DocFolderRequest(
 	@field:NotBlank @field:Size(max = 120) val name: String,
 )
 
+/** `unset: ["parentId"]` is how a folder is moved to the root; see [DocPagePatchRequest]. */
 data class DocFolderPatchRequest(
 	@field:Size(max = 120) val name: String? = null,
 	val parentId: UUID? = null,
+	val unset: Set<String> = emptySet(),
 )
 
 data class DocPageRequest(

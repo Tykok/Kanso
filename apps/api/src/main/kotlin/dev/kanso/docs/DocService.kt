@@ -48,20 +48,32 @@ class DocService(
 		return folders.insert(teamId, parentId, requireName(name))
 	}
 
+	/**
+	 * `null` means "leave alone"; `"parentId"` in [unset] moves the folder to the root.
+	 *
+	 * The `unset` convention rather than a bare nullable, and the reason is not symmetry:
+	 * a bare nullable made *renaming* a nested folder un-nest it, because a client sending
+	 * only a name sends no parent and `null` had to mean something.
+	 */
 	@Transactional
-	fun updateFolder(actor: User, id: UUID, name: String?, parentId: UUID?): DocFolder {
+	fun updateFolder(actor: User, id: UUID, name: String?, parentId: UUID?, unset: Set<String>): DocFolder {
 		val folder = folders.findById(id) ?: throw NotFoundException("No folder $id")
 		access.requireTeam(actor, folder.teamId)
-		if (parentId != null) {
-			requireSameTeam(parentId, folder.teamId)
-			// The same guard team parenting has, for the same reason: a folder reparented
-			// under its own descendant disappears from the tree it is still in, and no
-			// constraint can express reachability.
-			if (parentId == id || id in folders.ancestorIds(parentId)) {
-				throw BadRequestException("Folder $id cannot be filed inside itself")
+		val nextParent = when {
+			"parentId" in unset -> null
+			parentId != null -> {
+				requireSameTeam(parentId, folder.teamId)
+				// The same guard team parenting has, for the same reason: a folder filed
+				// under its own descendant disappears from the tree it is still in, and no
+				// constraint can express reachability.
+				if (parentId == id || id in folders.ancestorIds(parentId)) {
+					throw BadRequestException("Folder $id cannot be filed inside itself")
+				}
+				parentId
 			}
+			else -> folder.parentId
 		}
-		return folders.update(id, name?.let(::requireName) ?: folder.name, parentId)
+		return folders.update(id, name?.let(::requireName) ?: folder.name, nextParent)
 			?: throw NotFoundException("No folder $id")
 	}
 
@@ -96,7 +108,11 @@ class DocService(
 			// One `get` per linked ticket. A page's rail carries a handful of them, and
 			// the bulk read that would replace this only exists inside
 			// `TicketService.decorate` — private, in a file this branch does not own.
-			tickets = blocks.ticketIdsForPage(id).map(tickets::get),
+			//
+			// Sorted by identifier, not left in the order the rows came back: the rail
+			// draws this list, and a rail that reshuffles between two reads of an
+			// unchanged page reads as a change to the page.
+			tickets = blocks.ticketIdsForPage(id).map(tickets::get).sortedBy { it.identifier },
 		)
 	}
 

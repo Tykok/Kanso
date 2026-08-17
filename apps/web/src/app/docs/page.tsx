@@ -82,12 +82,10 @@ export default function DocsPage() {
     );
   };
 
-  const newFolder = () => {
+  const newFolder = (name: string) => {
     if (!writableTeamId) return;
-    const name = window.prompt("Folder name");
-    if (!name?.trim()) return;
     createFolder.mutate(
-      { teamId: writableTeamId, name: name.trim() },
+      { teamId: writableTeamId, name },
       {
         onError: (cause) =>
           setError(cause instanceof ApiError ? cause.detail : "Could not create the folder"),
@@ -100,7 +98,7 @@ export default function DocsPage() {
       <DocTree
         folders={folders.data ?? []}
         pages={pages.data ?? []}
-        onNewFolder={writableTeamId ? newFolder : undefined}
+        onCreateFolder={writableTeamId ? newFolder : undefined}
       />
 
       <main className="flex min-w-0 flex-col">
@@ -133,8 +131,10 @@ export default function DocsPage() {
             disabled={!writableTeamId || createPage.isPending}
             onChoose={start}
           />
+          {/* Five rows, the number screen 22 draws. Everything older is one column to
+              the left in the tree, which is the list that is meant to be complete. */}
           <RecentlyChanged
-            pages={pages.data ?? []}
+            pages={(pages.data ?? []).slice(0, 5)}
             folders={folders.data ?? []}
             people={people.data ?? []}
           />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import type { DocFolder, DocPage } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -19,15 +20,17 @@ export function DocTree({
   folders,
   pages,
   currentPageId,
-  onNewFolder,
+  onCreateFolder,
 }: {
   folders: DocFolder[];
   pages: DocPage[];
   currentPageId?: string;
-  onNewFolder?: () => void;
+  /** Absent when the reader may write in no team: then `+` is not drawn at all. */
+  onCreateFolder?: (name: string) => void;
 }) {
   const collapsed = useDocsUi((state) => state.collapsed);
   const toggleFolder = useDocsUi((state) => state.toggleFolder);
+  const [draft, setDraft] = useState<string | undefined>();
 
   const rows = docTree(folders, pages);
 
@@ -52,16 +55,43 @@ export function DocTree({
     <div className="flex min-h-0 flex-col gap-3 bg-card px-2 py-3.5">
       <div className="flex items-center gap-2 px-2">
         <span className="flex-1 text-13 font-medium">Tree</span>
-        {onNewFolder && (
+        {onCreateFolder && (
           <button
             className="flex size-5 items-center justify-center rounded-sm text-15 text-faint hover:bg-accent hover:text-foreground"
             aria-label="New folder"
-            onClick={onNewFolder}
+            onClick={() => setDraft("")}
           >
             +
           </button>
         )}
       </div>
+
+      {/* Named in place rather than in a dialog: a folder is one word, and the row it
+          will become is already where the caret is. `↵` keeps it, `esc` drops it. */}
+      {draft !== undefined && onCreateFolder && (
+        <input
+          autoFocus
+          data-testid="doc-folder-draft"
+          aria-label="Folder name"
+          placeholder="Folder name"
+          value={draft}
+          className="mx-2 w-auto text-12"
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => setDraft(undefined)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && draft.trim()) {
+              event.preventDefault();
+              onCreateFolder(draft.trim());
+              setDraft(undefined);
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setDraft(undefined);
+            }
+            event.stopPropagation();
+          }}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-row overflow-y-auto text-12">
         {visible.length === 0 && (

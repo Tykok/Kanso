@@ -45,7 +45,7 @@ class DocumentController(
 		@PathVariable id: UUID,
 		@Valid @RequestBody request: DocFolderPatchRequest,
 	): DocFolderResponse = DocFolderResponse.of(
-		documents.updateFolder(currentUser.require(), id, request.name, request.parentId),
+		documents.updateFolder(currentUser.require(), id, request.name, request.parentId, request.unset),
 	)
 
 	@DeleteMapping("/folders/{id}")

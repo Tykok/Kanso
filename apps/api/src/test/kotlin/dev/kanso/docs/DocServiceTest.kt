@@ -66,6 +66,45 @@ class DocServiceTest : PostgresTest() {
 		assertEquals(team.id, cycles.teamId)
 	}
 
+	/**
+	 * The same `unset` convention `TicketPatch` uses, and the same reason: `null` cannot
+	 * mean both "leave alone" and "move to the root". Renaming a nested folder used to
+	 * un-nest it, silently, because the parent came through as a bare nullable.
+	 */
+	@Test
+	fun `renaming a nested folder leaves it where it is`() {
+		val team = newTeam()
+		val product = documents.createFolder(admin, team.id, null, "Product")
+		val cycles = documents.createFolder(admin, team.id, product.id, "Cycle notes")
+
+		val renamed = documents.updateFolder(admin, cycles.id, "Cycle reviews", null, emptySet())
+
+		assertEquals("Cycle reviews", renamed.name)
+		assertEquals(product.id, renamed.parentId)
+	}
+
+	@Test
+	fun `a folder goes to the root only when asked`() {
+		val team = newTeam()
+		val product = documents.createFolder(admin, team.id, null, "Product")
+		val cycles = documents.createFolder(admin, team.id, product.id, "Cycle notes")
+
+		val moved = documents.updateFolder(admin, cycles.id, null, null, setOf("parentId"))
+
+		assertNull(moved.parentId)
+	}
+
+	@Test
+	fun `a folder cannot be filed inside its own descendant`() {
+		val team = newTeam()
+		val product = documents.createFolder(admin, team.id, null, "Product")
+		val cycles = documents.createFolder(admin, team.id, product.id, "Cycle notes")
+
+		assertFailsWith<BadRequestException> {
+			documents.updateFolder(admin, product.id, null, cycles.id, emptySet())
+		}
+	}
+
 	@Test
 	fun `a folder cannot be parented into another team`() {
 		val core = newTeam()
