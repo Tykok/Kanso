@@ -135,7 +135,10 @@ export function CommandPalette({
 
   return (
     <Backdrop onClose={onClose} panelClassName="w-[min(820px,94vw)]">
-      <div className="flex">
+      {/* The overlay is still in front of the whole application, sidebar included, so a
+          test asking for "Tickets" needs somewhere to ask it of. `Backdrop` takes only a
+          className, which is why the handle sits on this element rather than on the panel. */}
+      <div data-testid="palette" className="flex">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2.5 px-[18px] py-3.5">
             <span aria-hidden className="text-15 text-faint">
