@@ -87,11 +87,22 @@ class TeamService(
 	 * The plan's `projects` and `tickets` choices apply to every team going away — this
 	 * one, plus its whole subtree when its sub-teams are taken. Kept sub-teams leave
 	 * first, with their own contents untouched.
+	 *
+	 * A team already archived is returned untouched, and a second plan is not applied.
+	 * This method names an end state the team is already in; what a second run would do
+	 * is not archive anything twice but *re-disperse* — re-homing rows the first plan
+	 * already placed, and in the `take` then `keep` order lifting a sub-team out of the
+	 * subtree it was archived with, so `unarchive` on the leaf stops bringing its parent
+	 * back. [unarchive] has always been idempotent for the same reason: it filters to the
+	 * rows that are actually archived and pushes nothing when nothing moved. Refusing with
+	 * a 409 instead was the other candidate and is worse on the path this guard exists
+	 * for — a retried request — where nothing is wrong and there is nothing to report.
 	 */
 	@Transactional
 	fun archive(actor: User, id: UUID, plan: DispositionPlan): Team {
 		requireConfigurator(actor)
 		val team = get(id)
+		if (team.archived) return team
 		val ticketsTarget = requireTicketDestination(team, plan)
 
 		val doomed = disperse(team, plan, ticketsTarget, destructive = false)

@@ -282,6 +282,37 @@ class TeamArchiveTest : PostgresTest() {
 		}
 	}
 
+	/**
+	 * Archiving names an end state, and a team already in it has already had a plan
+	 * applied to what it held. Running a second one does not archive anything twice —
+	 * it *re-disperses*, which is a different operation wearing the same name: here the
+	 * sub-team archived alongside its parent is quietly lifted out of the subtree, so
+	 * `unarchive` on it no longer brings that parent back. `follow-ups.md` recorded this
+	 * as "re-archiving re-runs the whole dispersal"; the damage is what the run does to
+	 * rows the first plan already placed.
+	 */
+	@Test
+	fun `re-archiving an archived team disperses nothing a second time`() {
+		val core = newTeam("Core")
+		val mobile = newTeam("Mobile", core.id)
+		val ios = newTeam("iOS", mobile.id)
+		teams.archive(admin, mobile.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
+		jobs.claimBatch(200, "drain")
+
+		teams.archive(admin, mobile.id, DispositionPlan(subTeams = DispositionChoice.KEEP))
+
+		assertEquals(
+			mobile.id,
+			teams.get(ios.id).parentTeamId,
+			"the subtree it was archived with has to stay a subtree, or unarchiving the leaf loses its parent",
+		)
+		assertTrue(teams.get(ios.id).archived)
+		assertTrue(
+			jobs.claimBatch(200, "test").isEmpty(),
+			"nothing changed, so there is nothing for the mirror to hear about",
+		)
+	}
+
 	@Test
 	fun `unarchiving a nested team unarchives its ancestors`() {
 		val core = newTeam("Core")
