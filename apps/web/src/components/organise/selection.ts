@@ -11,7 +11,11 @@
  * be out of order with itself.
  */
 
-/** `x` on the focused row. */
+/**
+ * `x` on the focused row — and, since a set of ids is a set of ids, the label picker's own
+ * toggle in `ticket-labels.tsx`. Two implementations of "is it in the list, take it out"
+ * would be two chances to disagree.
+ */
 export function toggle(selected: readonly string[], id: string): string[] {
   return selected.includes(id) ? selected.filter((each) => each !== id) : [...selected, id];
 }

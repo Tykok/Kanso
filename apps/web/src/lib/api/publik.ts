@@ -55,10 +55,18 @@ export type ContributorPage = {
   status: TicketStatus;
   votes: number;
   unclaimed: boolean;
+  /** The ticket's own labels, by name. No id and no colour — see `PublicDtos.kt`. */
+  labels: string[];
   whereToLook: FilePointer[];
   helpers: Helper[];
   otherFirstSteps: RoadmapEntry[];
-  unclaimedCount: number;
+  /**
+   * The label the list of first steps was narrowed to, or absent when no team has defined
+   * one and it is every unclaimed ticket instead. The eyebrow says which it was.
+   */
+  firstStepLabel?: string;
+  /** How many there are to pick up, this one included when it qualifies. */
+  availableCount: number;
 };
 
 export type VoteResult = { votes: number; voted: boolean };

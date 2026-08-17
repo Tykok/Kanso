@@ -1,9 +1,11 @@
 package dev.kanso.publik
 
+import dev.kanso.db.Labels
 import dev.kanso.db.PublicTickets
 import dev.kanso.db.Teams
 import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketFiles
+import dev.kanso.db.TicketLabels
 import dev.kanso.db.Votes
 import dev.kanso.domain.TicketStatus
 import org.jetbrains.exposed.v1.core.*
@@ -119,6 +121,44 @@ class PublicRoadmapRepository {
 			.groupBy(Votes.ticketId)
 			.associate { it[Votes.ticketId] to it[votes].toInt() }
 	}
+
+	/**
+	 * The names of the labels a *published* ticket wears, for screen 28's badges.
+	 *
+	 * Names only, and joined back through the public projection rather than reading
+	 * `ticket_labels` on its own: an id would let a visitor line a label up against any
+	 * endpoint that ever leaks one, and a query keyed on ticket id alone would answer for
+	 * a private ticket the day somebody called it with one. The colour is left behind —
+	 * neither screen 21's chip nor screen 28's badge draws one.
+	 */
+	fun labelNames(ticketId: UUID): List<String> =
+		PublicTickets
+			.join(TicketLabels, JoinType.INNER, PublicTickets.id, TicketLabels.ticketId)
+			.join(Labels, JoinType.INNER, TicketLabels.labelId, Labels.id)
+			.select(Labels.name)
+			.where { published and (PublicTickets.id eq ticketId) }
+			.orderBy(Labels.name to SortOrder.ASC)
+			.map { it[Labels.name] }
+
+	/**
+	 * Has any team defined a label by this name?
+	 *
+	 * Asked separately from [idsLabelled] because the two answer different questions: a
+	 * team that defined `good first step` and has marked nothing with it yet is saying
+	 * there are none, and that is not the same as an instance where nobody ever heard of
+	 * the idea. About a label, not about a ticket, so it reads no ticket at all.
+	 */
+	fun labelDefined(name: String): Boolean =
+		Labels.selectAll().where { Labels.name eq name }.limit(1).any()
+
+	/** The published tickets wearing a label of this name, in whichever team owns it. */
+	fun idsLabelled(name: String): Set<UUID> =
+		PublicTickets
+			.join(TicketLabels, JoinType.INNER, PublicTickets.id, TicketLabels.ticketId)
+			.join(Labels, JoinType.INNER, TicketLabels.labelId, Labels.id)
+			.select(PublicTickets.id)
+			.where { published and (Labels.name eq name) }
+			.mapTo(mutableSetOf()) { it[PublicTickets.id] }
 
 	fun whereToLook(ticketId: UUID): List<FilePointer> =
 		TicketFiles.selectAll()

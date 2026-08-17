@@ -2,6 +2,7 @@
 
 import { Menu } from "@/components/menu";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import type { Label } from "@/lib/api/social";
 import {
   TICKET_PRIORITIES,
   TICKET_STATUSES,
@@ -19,30 +20,35 @@ import {
  * page — it is the same key that closes everything else, and this component would be the
  * wrong owner of it.
  *
- * There is no `Label` button, though the drawing has one. Slice 0's `V8` owns the `labels`
- * table and it has not landed on this branch; a button that opened an empty picker would be
- * worse than one that is not there yet.
+ * The `Label` button is the drawing's sixth and was missing while `V8` had not landed —
+ * a button opening an empty picker being worse than no button. It *adds* the label to
+ * every selected row rather than replacing what each wears: the labels of six rows are
+ * nowhere on this screen, and a replace would take off what nobody could see.
  */
 export function BulkStrip({
   count,
   cycles,
   people,
+  labels,
   busy,
   onStatus,
   onPriority,
   onAssign,
   onCycle,
+  onLabel,
   onDelete,
   onCancel,
 }: {
   count: number;
   cycles: Cycle[];
   people: Person[];
+  labels: Label[];
   busy: boolean;
   onStatus: (status: TicketStatus) => void;
   onPriority: (priority: TicketPriority) => void;
   onAssign: (userId: string | null) => void;
   onCycle: (cycleId: string) => void;
+  onLabel: (labelId: string) => void;
   onDelete: () => void;
   onCancel: () => void;
 }) {
@@ -102,6 +108,22 @@ export function BulkStrip({
         <button type="button" className={itemClass} disabled={busy} onClick={() => onCycle(nextCycle.id)}>
           Cycle {nextCycle.number}
         </button>
+      )}
+
+      {/* Only when the team owns one. A menu whose single entry is "there are none" is a
+          button that punishes the click; the label a ticket needs is made from the panel,
+          where a new one can be attached to the ticket in front of you. */}
+      {labels.length > 0 && (
+        <Menu
+          label="Add a label"
+          asChild
+          trigger={<button type="button" className={itemClass} disabled={busy}>Label</button>}
+          items={labels.map((label) => ({
+            id: `bulk.label.${label.id}`,
+            label: label.name,
+            onSelect: () => onLabel(label.id),
+          }))}
+        />
       )}
 
       <span aria-hidden className="h-[22px] w-px bg-border" />

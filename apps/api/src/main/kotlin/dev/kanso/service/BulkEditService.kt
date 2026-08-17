@@ -21,6 +21,12 @@ data class BulkEdit(
 	val priority: TicketPriority? = null,
 	val assigneeIds: List<UUID>? = null,
 	val cycleId: UUID? = null,
+	/**
+	 * One label added to every selected row. Not a whole set like `assigneeIds`: the
+	 * strip's other list-valued control replaces because the panel beside it shows what is
+	 * being replaced, and the labels of six rows are nowhere on screen 21.
+	 */
+	val labelId: UUID? = null,
 )
 
 /**
@@ -42,19 +48,26 @@ class BulkEditService(
 	private val tickets: TicketService,
 	private val ticketRepo: TicketRepository,
 	private val cycles: CycleService,
+	private val labels: LabelService,
 	private val access: TicketAccess,
 ) {
 
 	@Transactional
 	fun apply(actor: User, edit: BulkEdit): Int {
 		val selection = resolve(actor, edit.ticketIds)
-		if (edit.status == null && edit.priority == null && edit.assigneeIds == null && edit.cycleId == null) {
+		if (
+			edit.status == null && edit.priority == null && edit.assigneeIds == null &&
+			edit.cycleId == null && edit.labelId == null
+		) {
 			throw BadRequestException("A bulk edit has to change something")
 		}
 
 		// The cycle move once for the whole selection rather than per ticket: it is the only
 		// field `patch` does not own, and doing it per row would take the same lock N times.
 		edit.cycleId?.let { cycles.addTickets(actor, it, edit.ticketIds) }
+		// Likewise the label: `attachAll` owns the team-scope rule, and it checks every row
+		// before it writes any of them, which is this service's own promise.
+		edit.labelId?.let { labels.attachAll(actor, edit.ticketIds, it) }
 
 		if (edit.status != null || edit.priority != null || edit.assigneeIds != null) {
 			val patch = TicketPatch(

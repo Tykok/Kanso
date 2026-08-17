@@ -25,6 +25,7 @@ import {
   useUsers,
   useViewTickets,
 } from "@/lib/queries";
+import { useTeamLabels } from "@/lib/queries/social";
 import { PRIORITY_LABELS } from "@/lib/status";
 import { BulkStrip } from "./bulk-strip";
 import { chipsOf, withoutChip } from "./chips";
@@ -50,6 +51,9 @@ export function SavedViewScreen({ id }: { id: string }) {
   const cycles = useCycles(team?.id);
   const users = useUsers();
   const projects = useProjects();
+  // The team's labels, for two things at once: the `Étiquette synchro` chip resolves an id
+  // to a name through them, and the strip's sixth button offers them.
+  const labels = useTeamLabels(team?.id);
   const patch = usePatchView();
   const bulkEdit = useBulkEdit();
   const bulkDelete = useBulkDelete();
@@ -73,8 +77,10 @@ export function SavedViewScreen({ id }: { id: string }) {
         const cycle = cycles.data?.find((each) => each.id === cycleId);
         return cycle ? `Cycle ${cycle.number}` : cycleId;
       },
+      label: (labelId: string) =>
+        labels.data?.find((label) => label.id === labelId)?.name ?? labelId,
     }),
-    [users.data, cycles.data, projects.data],
+    [users.data, cycles.data, projects.data, labels.data],
   );
 
   const clear = useCallback(() => {
@@ -194,11 +200,13 @@ export function SavedViewScreen({ id }: { id: string }) {
               displayName: user.displayName,
               avatarUrl: user.avatarUrl,
             }))}
+            labels={labels.data ?? []}
             busy={bulkEdit.isPending || bulkDelete.isPending}
             onStatus={(status) => edit({ ticketIds: selected, status })}
             onPriority={(priority) => edit({ ticketIds: selected, priority })}
             onAssign={(userId) => edit({ ticketIds: selected, assigneeIds: userId ? [userId] : [] })}
             onCycle={(cycleId) => edit({ ticketIds: selected, cycleId })}
+            onLabel={(labelId) => edit({ ticketIds: selected, labelId })}
             onDelete={() => bulkDelete.mutate(selected, onDone)}
             onCancel={clear}
           />

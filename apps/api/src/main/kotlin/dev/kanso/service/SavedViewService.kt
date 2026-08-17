@@ -196,6 +196,7 @@ class SavedViewService(
 			assigneeIds = strings(map["assignee"]).map(UUID::fromString),
 			unassigned = map["unassigned"] == true,
 			cycleIds = strings(map["cycle"]).map(UUID::fromString),
+			labelIds = strings(map["label"]).map(UUID::fromString),
 			openedMoreThanDaysAgo = (map["openedForDays"] as? Number)?.toInt(),
 		)
 	}
@@ -228,11 +229,13 @@ class SavedViewService(
 		/**
 		 * The facets the matcher actually implements.
 		 *
-		 * `label` is deliberately absent. The drawing's third chip is `Étiquette synchro`
-		 * and slice 0 owns the `labels` table it would read; that migration has not landed
-		 * on this branch, so a label chip here could be stored and drawn but never
-		 * honoured. Refusing it is the smaller lie, and adding it once `V8` exists is one
-		 * entry in this set plus one clause in `ViewTicketRepository`.
+		 * `label` was deliberately absent while `V8` had not landed: the drawing's third
+		 * chip is `Étiquette synchro`, and a chip stored and drawn but never honoured is
+		 * worse than one refused, because the reader cannot tell the list is wrong. `V8`
+		 * landed with `labels` and `ticket_labels`, so it is served — this entry plus the
+		 * one clause in `ViewTicketRepository` the old comment promised. It holds label
+		 * *ids*, like `project`, `assignee` and `cycle`: labels are team-scoped, a view
+		 * reaches into descendant teams, and two of them may both own the name `sync`.
 		 */
 		val SERVED_FILTERS = setOf(
 			"status",
@@ -242,6 +245,7 @@ class SavedViewService(
 			"assignee",
 			"unassigned",
 			"cycle",
+			"label",
 			"openedForDays",
 		)
 	}

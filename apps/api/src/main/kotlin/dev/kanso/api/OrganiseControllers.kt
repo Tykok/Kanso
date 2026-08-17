@@ -225,6 +225,7 @@ class SavedViewController(
 				priority = request.priority?.let(TicketPriority::from),
 				assigneeIds = request.assigneeIds,
 				cycleId = request.cycleId,
+				labelId = request.labelId,
 			),
 		)
 	)

@@ -34,6 +34,7 @@ class SavedViewTest : PostgresTest() {
 	@Autowired lateinit var views: SavedViewService
 	@Autowired lateinit var bulk: BulkEditService
 	@Autowired lateinit var cycles: CycleService
+	@Autowired lateinit var labels: LabelService
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 
@@ -134,14 +135,40 @@ class SavedViewTest : PostgresTest() {
 		assertEquals(listOf(orphan), views.tickets(unassigned.id).map { it.ticket.id })
 	}
 
+	/**
+	 * This test used to assert the opposite: `label` was refused, because `V8` had not
+	 * landed and a chip that stored and drew but never filtered is worse than one that was
+	 * refused. `V8` landed, so the refusal became the lie and the chip is now honoured.
+	 *
+	 * The stored value is the label's id, like `project`, `assignee` and `cycle` beside it,
+	 * and not its name: labels are team-scoped, a view reaches into descendant teams, and
+	 * two of those teams may both own the name `sync`. A name would quietly answer with
+	 * somebody else's work, and would stop answering at all the day the label is renamed.
+	 */
+	@Test
+	fun `the drawing's third chip narrows to the tickets wearing that label`() {
+		val sync = labels.create(admin, team.id, "sync", "indigo")
+		val wearing = ticket("Echo suppression drops our own writes")
+		ticket("Nothing to do with synchronisation")
+		labels.attach(admin, wearing, sync.id)
+
+		val chip = view(mapOf("label" to listOf(sync.id.toString())))
+
+		assertEquals(listOf(wearing), views.tickets(chip.id).map { it.ticket.id })
+
+		// And the `×` widens it back, like every other chip's does.
+		views.update(admin, chip.id, filters = emptyMap())
+		assertEquals(2, views.tickets(chip.id).size)
+	}
+
 	@Test
 	fun `a filter key nobody serves is refused when the view is written, not silently ignored`() {
 		val error = assertFailsWith<BadRequestException> {
-			view(mapOf("label" to listOf("sync")))
+			view(mapOf("labelColour" to listOf("indigo")))
 		}
 
 		assertTrue(
-			error.message!!.contains("label"),
+			error.message!!.contains("labelColour"),
 			"a chip that displays and does not filter is worse than a chip that was refused",
 		)
 	}
@@ -252,6 +279,39 @@ class SavedViewTest : PostgresTest() {
 		bulk.apply(admin, BulkEdit(ticketIds = selected, cycleId = cycle.id))
 
 		assertEquals(selected.toSet(), cycles.report(cycle.id).tickets.map { it.ticket.id }.toSet())
+	}
+
+	/**
+	 * The drawing's sixth button. It *adds* a label rather than replacing the set, unlike
+	 * `PUT /api/tickets/{id}/labels`: the strip acts on rows a reader cannot see the labels
+	 * of, and a replace would silently strip whatever each of them already wore.
+	 */
+	@Test
+	fun `the strip's label button puts one label on the whole selection`() {
+		val sync = labels.create(admin, team.id, "sync", "indigo")
+		val selected = listOf(ticket("a"), ticket("b"))
+		val untouched = ticket("c")
+
+		assertEquals(2, bulk.apply(admin, BulkEdit(ticketIds = selected, labelId = sync.id)))
+
+		assertTrue(selected.all { labels.forTicket(it).map { label -> label.id } == listOf(sync.id) })
+		assertEquals(emptyList(), labels.forTicket(untouched))
+	}
+
+	@Test
+	fun `a label another team owns is refused before the first row is written`() {
+		val elsewhere = teams.create(admin, "Elsewhere labels", key(), null)
+		val foreign = labels.create(admin, elsewhere.id, "sync", "amber")
+		val selected = listOf(ticket("a"), ticket("b"))
+
+		assertFailsWith<ConflictException> {
+			bulk.apply(admin, BulkEdit(ticketIds = selected, labelId = foreign.id))
+		}
+
+		assertTrue(
+			selected.all { labels.forTicket(it).isEmpty() },
+			"the whole selection is checked first, so no row wears a label the rest were refused",
+		)
 	}
 
 	@Test

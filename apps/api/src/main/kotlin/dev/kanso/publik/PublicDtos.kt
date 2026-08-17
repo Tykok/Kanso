@@ -72,10 +72,13 @@ data class ContributorResponse(
 	val status: String,
 	val votes: Int,
 	val unclaimed: Boolean,
+	/** Label names, never ids and never colours — see [ContributorPage.labels]. */
+	val labels: List<String>,
 	val whereToLook: List<FilePointerResponse>,
 	val helpers: List<HelperResponse>,
 	val otherFirstSteps: List<RoadmapEntryResponse>,
-	val unclaimedCount: Int,
+	val firstStepLabel: String?,
+	val availableCount: Int,
 ) {
 	companion object {
 		fun of(page: ContributorPage) = ContributorResponse(
@@ -85,10 +88,12 @@ data class ContributorResponse(
 			status = page.status.wire,
 			votes = page.votes,
 			unclaimed = page.unclaimed,
+			labels = page.labels,
 			whereToLook = page.whereToLook.map(FilePointerResponse::of),
 			helpers = page.helpers.map(HelperResponse::of),
 			otherFirstSteps = page.otherFirstSteps.map(RoadmapEntryResponse::of),
-			unclaimedCount = page.unclaimedCount,
+			firstStepLabel = page.firstStepLabel,
+			availableCount = page.availableCount,
 		)
 	}
 }

@@ -138,6 +138,14 @@ test("scenario 19c — six rows selected, one strip action, and a chip removed w
   await api.patch(`/api/tickets/${urgent.id}`, { data: { priority: "urgent" } });
   await api.patch(`/api/tickets/${low.id}`, { data: { priority: "low" } });
 
+  // Seeded before the page opens, because the strip only offers the button when the team
+  // owns a label and the page reads that list once.
+  const madeLabel = await api.post(`/api/teams/${team.id}/labels`, {
+    data: { name: "sync", colour: "indigo" },
+  });
+  expect(madeLabel.ok(), "a label is a scoped write like any other").toBeTruthy();
+  const label = (await madeLabel.json()) as { id: string };
+
   const created = await api.post(`/api/teams/${team.id}/views`, {
     data: { name: unique("Urgent debt"), shared: true, filters: { priority: ["urgent"] } },
   });
@@ -172,6 +180,39 @@ test("scenario 19c — six rows selected, one strip action, and a chip removed w
   const after = await api.get(`/api/tickets?teamId=${team.id}`);
   const tickets = (await after.json()) as { id: string; status: string }[];
   expect(tickets.filter((ticket) => ticket.status === "in_review")).toHaveLength(2);
+
+  // --- the drawing's sixth button, and its third chip ------------------------
+
+  await page.getByTestId("view-row").nth(0).click();
+  await page.getByTestId("view-row").nth(1).click();
+  await page.getByRole("button", { name: "Label", exact: true }).click();
+  await page.getByRole("menuitem", { name: "sync" }).click();
+  await expect(page.getByRole("toolbar")).toHaveCount(0);
+
+  const worn = await api.get(`/api/tickets/${urgent.id}/labels`);
+  expect(
+    ((await worn.json()) as { name: string }[]).map((each) => each.name),
+    "the strip put the label on every selected row",
+  ).toEqual(["sync"]);
+
+  /**
+   * The chip `Étiquette synchro`, which the server refused outright until `V8` landed.
+   * The filter stores the label's *id* — two teams may both own the name `sync` — and the
+   * chip prints the name, so this asserts both halves: the view answers with the rows
+   * wearing it, and the `×` removes the key like every other chip's does.
+   */
+  const filtered = await api.patch(`/api/views/${view.id}`, {
+    data: { filters: { label: [label.id] } },
+  });
+  expect(filtered.ok(), "a label filter is served, not refused").toBeTruthy();
+
+  await page.reload();
+  await expect(page.getByTestId("filter-chip")).toContainText("sync");
+  await expect(page.getByTestId("view-row")).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Remove Label filter" }).click();
+  await expect(page.getByTestId("filter-chip")).toHaveCount(0);
+  await expect(page.getByTestId("view-row")).toHaveCount(2);
 
   await api.dispose();
 });

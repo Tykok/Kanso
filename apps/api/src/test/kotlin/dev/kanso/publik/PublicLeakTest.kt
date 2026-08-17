@@ -8,6 +8,7 @@ import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.LabelService
 import dev.kanso.service.NotFoundException
 import dev.kanso.service.TicketService
 import org.springframework.beans.factory.annotation.Autowired
@@ -41,6 +42,7 @@ class PublicLeakTest : PostgresTest() {
 	@Autowired lateinit var votes: VoteService
 	@Autowired lateinit var publication: PublicationService
 	@Autowired lateinit var tickets: TicketService
+	@Autowired lateinit var labels: LabelService
 	@Autowired lateinit var teams: TeamRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var json: ObjectMapper
@@ -82,6 +84,17 @@ class PublicLeakTest : PostgresTest() {
 		val shown = ticket(team.id, "Two-level sub-tickets")
 		publication.publish(owner, shown.ticket.id, public = true)
 
+		// Labels are the newest way in: screen 28 narrows its list to `good first step` and
+		// prints the badges beside the title, so both the query that narrows and the one
+		// that badges are now reads a private ticket could ride out on. Marked *before* the
+		// assertions below so the private ticket is wearing the very label the page looks
+		// for, which is the only version of this that could catch the mistake.
+		val first = labels.create(owner, team.id, "good first step", "green")
+		val secret = labels.create(owner, team.id, "project-cormorant", "rose")
+		labels.attach(owner, hidden.ticket.id, first.id)
+		labels.attach(owner, hidden.ticket.id, secret.id)
+		labels.attach(owner, shown.ticket.id, first.id)
+
 		val listed = roadmap.roadmap().groups.flatMap { it.tickets }
 		assertTrue(
 			listed.any { it.identifier == shown.identifier },
@@ -94,6 +107,18 @@ class PublicLeakTest : PostgresTest() {
 		assertFalse(
 			listed.any { it.title.contains("acquisition") },
 			"nor may its title reach the list by any other field",
+		)
+
+		val page = roadmap.contributorPage(shown.teamKey, shown.ticket.number)
+		assertEquals(listOf("good first step"), page.labels, "the shown ticket wears its own badge")
+		assertFalse(
+			page.otherFirstSteps.any { it.identifier == hidden.identifier },
+			"a private ticket marked `good first step` is still private",
+		)
+		assertEquals(1, page.availableCount, "and is not counted in the number offered either")
+		assertFalse(
+			json.writeValueAsString(ContributorResponse.of(page)).contains("cormorant"),
+			"nor may the name of a label it wears reach the page by any route",
 		)
 
 		// A 404 rather than a 403: "you may not see this" tells a stranger the ticket
@@ -114,6 +139,12 @@ class PublicLeakTest : PostgresTest() {
 
 		val open = ticket(team.id, "The seal is unreadable at 100% zoom on Windows")
 		publication.publish(owner, open.ticket.id, public = true)
+		// A badge on the wire, so the `@` sweep below is actually reading label names too.
+		labels.attach(
+			owner,
+			open.ticket.id,
+			labels.create(owner, team.id, "design system", "blue").id,
+		)
 		publication.whereToLook(
 			owner,
 			open.ticket.id,
