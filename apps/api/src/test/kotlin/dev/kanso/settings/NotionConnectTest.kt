@@ -119,6 +119,28 @@ class NotionConnectTest : PostgresTest() {
 	}
 
 	@Test
+	fun `a refusal that has to be read survives being put in a URL`() {
+		// Found by probing the running API, not by this suite: `queryParam` takes a value as
+		// given, so the sentence the callback redirects with built an illegal URI and came
+		// back as a 400 — the exact answer the redirect exists to avoid. Every message worth
+		// reading has a space in it; `access_denied` was the one that worked.
+		val sentence = "This connection did not start in this browser session. Try again."
+		val target = org.springframework.web.util.UriComponentsBuilder
+			.fromUriString("http://localhost:3000")
+			.path("/settings")
+			.queryParam("notion_error", sentence)
+			.build()
+			.encode()
+			.toUriString()
+
+		// The assertion is that it *parses*, which is what failed.
+		val parsed = java.net.URI.create(target)
+		assertEquals("/settings", parsed.path)
+		assertContains(parsed.query, "notion_error=")
+		assertFalse(target.contains(" "), "a space in a query value is what produced the 400")
+	}
+
+	@Test
 	fun `saving the integration keeps the secret when the browser sends none back`() {
 		settings.saveNotionApp("client-abc", "secret-xyz")
 		// The UI is told a secret exists and never its value, so this is what a second save

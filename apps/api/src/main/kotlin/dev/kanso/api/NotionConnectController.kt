@@ -132,10 +132,15 @@ class NotionConnectController(
 		.toUriString()
 
 	private fun back(key: String, value: String): ResponseEntity<Void> {
+		// `encode()` is not optional. `queryParam` takes the value as given, so every
+		// message with a space in it — which is every message worth reading — built an
+		// illegal URI and came back as a 400 instead of the redirect this method exists to
+		// be. `access_denied` was the one value that worked, because it has no space.
 		val target = ServletUriComponentsBuilder.fromUriString(props.webOrigin)
 			.path("/settings")
 			.queryParam(key, value)
 			.build()
+			.encode()
 			.toUriString()
 		return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(target)).build()
 	}
