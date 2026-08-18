@@ -33,7 +33,13 @@ export function NotionPageField({
   token?: string;
   disabled?: boolean;
 }) {
-  const [rawWanted, setRawWanted] = useState(false);
+  /**
+   * Which field is on screen. `auto` is the answer the search implies; the link sets one
+   * of the other two, and has to be able to override `auto` in both directions — a link
+   * that reads "choose from the list instead" and then leaves the raw field up is a dead
+   * control, and it would be dead in exactly the case the escape hatch was opened for.
+   */
+  const [mode, setMode] = useState<"auto" | "raw" | "list">("auto");
 
   const search = useQuery({
     // Deliberately not keyed on the token: a secret has no business in a cache key, and
@@ -53,13 +59,18 @@ export function NotionPageField({
   });
 
   const chosen = pages.find((page) => sameId(page.id, value));
-  // Shown by hand, or because there is nothing to choose from, or because what is already
-  // saved is not in the list — a select cannot represent a value it has no option for, and
-  // silently showing "choose a page" over a configured instance would be a lie.
-  // `disabled` is the environment-managed case: nothing was searched, so there is no list
-  // to draw and the only honest thing to show is the id the environment set.
+
+  /**
+   * The raw field comes up by itself when there is nothing to choose from, and when what
+   * is already saved is not in the list — a select cannot represent a value it has no
+   * option for, and drawing "choose a page…" over a configured instance would be a lie.
+   * `disabled` is the environment-managed case: nothing was searched, so the only honest
+   * thing to show is the id the environment set.
+   */
   const raw =
-    rawWanted || disabled || (!!search.data && (pages.length === 0 || (value.length > 0 && !chosen)));
+    disabled ||
+    mode === "raw" ||
+    (mode === "auto" && !!search.data && (pages.length === 0 || (value.length > 0 && !chosen)));
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -125,7 +136,7 @@ export function NotionPageField({
             <button
               type="button"
               className="underline text-faint hover:text-foreground"
-              onClick={() => setRawWanted((open) => !open)}
+              onClick={() => setMode(raw ? "list" : "raw")}
             >
               {raw ? "Choose from the list instead" : "Enter a page id instead"}
             </button>
