@@ -53,6 +53,9 @@ class ReloadableNotionClient(
 	override suspend fun searchDatabases(startCursor: String?, pageSize: Int): NotionWorkspaceSearch =
 		active().searchDatabases(startCursor, pageSize)
 
+	override suspend fun searchPages(startCursor: String?, pageSize: Int): NotionPageSearch =
+		active().searchPages(startCursor, pageSize)
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,

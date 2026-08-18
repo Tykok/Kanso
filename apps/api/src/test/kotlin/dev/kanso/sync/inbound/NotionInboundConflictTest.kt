@@ -126,6 +126,8 @@ class NotionInboundConflictTest : PostgresTest() {
 		// other. The sibling poller fakes answer the same way.
 		override suspend fun searchDatabases(startCursor: String?, pageSize: Int) =
 			throw UnsupportedOperationException()
+		override suspend fun searchPages(startCursor: String?, pageSize: Int) =
+			throw UnsupportedOperationException()
 	}
 
 	/**
