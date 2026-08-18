@@ -424,6 +424,17 @@ export const api = {
   saveGoogle: (body: { clientId: string; clientSecret: string }) =>
     request<SetupState>("/api/setup/google", { method: "POST", body: JSON.stringify(body) }),
 
+  /**
+   * Round trip to Google before saving, so a mistyped secret is caught here rather
+   * than at the first attempt to sign in with it. Either field may be omitted to
+   * check what is already stored.
+   */
+  testGoogle: (body: { clientId?: string; clientSecret?: string }) =>
+    request<{ ok: boolean; detail: string }>("/api/setup/google/test", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   completeSetup: () => request<SetupState>("/api/setup/complete", { method: "POST" }),
 
   createInvitation: (body: { email?: string; role?: InstanceRole }) =>

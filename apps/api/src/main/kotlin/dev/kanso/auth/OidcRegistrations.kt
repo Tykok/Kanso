@@ -9,6 +9,25 @@ import org.springframework.stereotype.Component
 /** Only providers with both an id and a secret are offered. */
 object OidcRegistrations {
 
+	/**
+	 * Google's token endpoint, as the sign-in flow itself knows it.
+	 *
+	 * Read off a built registration rather than written out a second time: this is the URL
+	 * `GoogleCredentialProbe` authenticates against, and a copy of it could drift from the
+	 * one [from] hands to Spring Security — at which point a green credential check would
+	 * say nothing about the flow it stands in for. The two placeholders below are never
+	 * sent anywhere; the builder only insists that both fields be present before it will
+	 * hand over the provider details.
+	 */
+	val googleTokenUri: String by lazy {
+		CommonOAuth2Provider.GOOGLE.getBuilder("google")
+			.clientId("unused")
+			.clientSecret("unused")
+			.build()
+			.providerDetails
+			.tokenUri
+	}
+
 	fun from(auth: KansoProperties.Auth): List<ClientRegistration> = buildList {
 		if (auth.google.configured) {
 			add(

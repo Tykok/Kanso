@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { API_URL, api, type SetupState } from "@/lib/api";
+import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
 import { Callout, CopyRow, TextField, messageFor } from "./fields";
 import { FormCard } from "./frame";
 
@@ -28,6 +29,8 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
 
   const [clientId, setClientId] = useState(stored.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
+  /** What the pasted client file said about its own redirect URIs, if it said anything. */
+  const [fileNote, setFileNote] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: api.saveGoogle,
@@ -36,6 +39,26 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
       onState(next);
     },
   });
+
+  const test = useMutation({ mutationFn: api.testGoogle });
+
+  /**
+   * One paste of the downloaded JSON instead of two careful transcriptions.
+   *
+   * Anything that is not a client file falls through unchanged, so typing an id by hand
+   * still works — and the JSON never stays in the id box, because a field holding a whole
+   * file is a field that looks broken.
+   */
+  const takeClientId = (value: string) => {
+    const file = readGoogleClientFile(value);
+    if (!file) {
+      setClientId(value);
+      return;
+    }
+    setClientId(file.clientId);
+    if (file.clientSecret) setClientSecret(file.clientSecret);
+    setFileNote(redirectUriProblem(file, REDIRECT_URI));
+  };
 
   const dirty = clientSecret.trim().length > 0 || clientId.trim() !== (stored.clientId ?? "");
   const settled = managed || (stored.configured && !dirty);
@@ -81,7 +104,12 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
         spellCheck={false}
         value={clientId}
         placeholder={managed ? "Set in the environment" : "…apps.googleusercontent.com"}
-        onChange={(event) => setClientId(event.target.value)}
+        hint={
+          managed
+            ? undefined
+            : "Or paste the whole JSON file Google Cloud downloads for the client — it fills in the secret too."
+        }
+        onChange={(event) => takeClientId(event.target.value)}
       />
 
       <TextField
@@ -101,6 +129,34 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
         }
         onChange={(event) => setClientSecret(event.target.value)}
       />
+
+      {/* The file knows which redirect URIs its client was created with, so a missing one
+          is worth saying at paste time — it is the second most common misconfiguration
+          after a wrong secret, and the credential check below cannot see it. */}
+      {fileNote && <p className="m-0 text-12 text-urgent">{fileNote}</p>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="button"
+          disabled={test.isPending}
+          onClick={() =>
+            test.mutate({
+              clientId: clientId.trim() || undefined,
+              clientSecret: clientSecret.trim() || undefined,
+            })
+          }
+        >
+          {test.isPending ? "Testing…" : "Test connection"}
+        </button>
+
+        {test.data && (
+          <span className={`text-12 ${test.data.ok ? "text-status-done" : "text-urgent"}`}>
+            {test.data.detail}
+          </span>
+        )}
+        {test.error && <span className="text-12 text-urgent">{messageFor(test.error)}</span>}
+      </div>
     </FormCard>
   );
 }

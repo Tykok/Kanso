@@ -5,9 +5,17 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
+import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
 import { keys, useRetryFailedPushes, useSyncStatus } from "@/lib/queries";
 import { NotionConnect } from "@/components/setup/notion-connect";
 import { SettingsInline, SettingsNote } from "./field";
+
+/**
+ * Spring registers Google's callback under a fixed path, so the URI is derivable rather
+ * than configurable — and it has to match Google's entry character for character, which
+ * is why it is both printed to copy and compared against a pasted client file.
+ */
+const GOOGLE_REDIRECT_URI = `${API_URL}/login/oauth2/code/google`;
 
 function message(error: unknown) {
   return error instanceof ApiError ? error.message : (error as Error)?.message ?? "Something went wrong";
@@ -73,6 +81,8 @@ export function ConnectionsSection({
   const [parentPageId, setParentPageId] = useState(state.notion.parentPageId ?? "");
   const [clientId, setClientId] = useState(state.google.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
+  /** What the pasted client file said about its own redirect URIs, if it said anything. */
+  const [googleFileNote, setGoogleFileNote] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
   const test = useMutation({
@@ -98,6 +108,29 @@ export function ConnectionsSection({
       queryClient.invalidateQueries({ queryKey: keys.authMode });
     },
   });
+  const testGoogle = useMutation({
+    mutationFn: () =>
+      api.testGoogle({
+        clientId: clientId.trim() || undefined,
+        clientSecret: clientSecret.trim() || undefined,
+      }),
+  });
+
+  /**
+   * One paste of the JSON Google Cloud downloads instead of two transcriptions. Anything
+   * that is not a client file falls through unchanged, so typing an id still works — and
+   * the JSON never stays in the id box, because a field holding a whole file looks broken.
+   */
+  const takeGoogleClientId = (value: string) => {
+    const file = readGoogleClientFile(value);
+    if (!file) {
+      setClientId(value);
+      return;
+    }
+    setClientId(file.clientId);
+    if (file.clientSecret) setClientSecret(file.clientSecret);
+    setGoogleFileNote(redirectUriProblem(file, GOOGLE_REDIRECT_URI));
+  };
 
   const notionLocked = state.notion.managedByEnvironment || !canConfigure;
   const googleLocked = state.google.managedByEnvironment || !canConfigure;
@@ -278,8 +311,12 @@ export function ConnectionsSection({
               disabled={googleLocked}
               placeholder="Client ID"
               value={clientId}
-              onChange={(event) => setClientId(event.target.value)}
+              onChange={(event) => takeGoogleClientId(event.target.value)}
             />
+            <SettingsNote>
+              Or paste the whole JSON file Google Cloud downloads for the client — it fills
+              in the secret too.
+            </SettingsNote>
             <input
               className="w-full max-w-[380px]"
               type="password"
@@ -291,7 +328,18 @@ export function ConnectionsSection({
               value={clientSecret}
               onChange={(event) => setClientSecret(event.target.value)}
             />
+            {/* The file knows which redirect URIs its client was created with, so a
+                missing one is worth saying at paste time: the credential check speaks to
+                Google's token endpoint, which cannot see it. */}
+            {googleFileNote && <SettingsNote error>{googleFileNote}</SettingsNote>}
             <SettingsInline>
+              <button
+                className="button"
+                disabled={googleLocked || testGoogle.isPending}
+                onClick={() => testGoogle.mutate()}
+              >
+                Test connection
+              </button>
               <button
                 className="button button-primary"
                 disabled={googleLocked || saveGoogle.isPending || !clientId.trim() || !clientSecret}
@@ -303,11 +351,15 @@ export function ConnectionsSection({
                 <SettingsNote>Saved — the button appears without a restart.</SettingsNote>
               )}
             </SettingsInline>
+            {testGoogle.data && (
+              <SettingsNote error={!testGoogle.data.ok}>{testGoogle.data.detail}</SettingsNote>
+            )}
+            {testGoogle.isError && <SettingsNote error>{message(testGoogle.error)}</SettingsNote>}
             {saveGoogle.isError && <SettingsNote error>{message(saveGoogle.error)}</SettingsNote>}
             <SettingsNote>
               Authorised redirect URI to paste into Google Cloud:{" "}
               <code className="rounded-sm bg-accent px-1 py-0.5" style={{ fontFamily: "var(--font-mono)" }}>
-                {API_URL}/login/oauth2/code/google
+                {GOOGLE_REDIRECT_URI}
               </code>
             </SettingsNote>
           </>
