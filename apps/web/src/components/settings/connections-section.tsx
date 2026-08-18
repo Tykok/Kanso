@@ -7,6 +7,7 @@ import { ImportDialog } from "@/components/inbox/import-dialog";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
 import { keys, useRetryFailedPushes, useSyncStatus } from "@/lib/queries";
 import { NotionConnect } from "@/components/setup/notion-connect";
+import { NotionPageField } from "@/components/setup/notion-page-field";
 import { SettingsInline, SettingsNote } from "./field";
 
 function message(error: unknown) {
@@ -147,13 +148,17 @@ export function ConnectionsSection({
               value={token}
               onChange={(event) => setToken(event.target.value)}
             />
-            <input
-              className="w-full max-w-[380px]"
-              disabled={notionLocked}
-              placeholder="Parent page id"
-              value={parentPageId}
-              onChange={(event) => setParentPageId(event.target.value)}
-            />
+            {/* The same block the wizard draws, for the same reason `NotionConnect` is
+                shared: choosing the parent page is one act, whether it is being done during
+                setup or changed a month later. */}
+            <div className="max-w-[380px]">
+              <NotionPageField
+                value={parentPageId}
+                onChange={setParentPageId}
+                token={token}
+                disabled={notionLocked}
+              />
+            </div>
             <SettingsInline>
               <button
                 className="button"

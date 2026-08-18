@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { api, type SetupState } from "@/lib/api";
 import { Callout, Divider, TextField, messageFor } from "./fields";
 import { NotionConnect } from "./notion-connect";
+import { NotionPageField } from "./notion-page-field";
 import { FormCard } from "./frame";
 
 type Props = {
@@ -110,16 +111,15 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
       />
       )}
 
-      <TextField
-        label="Parent page id"
-        readOnly={managed}
-        required={!managed}
-        autoComplete="off"
-        spellCheck={false}
+      {/* Chosen from what the integration can actually see, rather than typed as 32 hex
+          characters — the last manual step of the old setup, and the one that used to fail
+          at bootstrap instead of at save. `token` is whatever is in the field above, so the
+          list works before this step has been saved. */}
+      <NotionPageField
         value={parentPageId}
-        placeholder="32 hex characters from the page URL"
-        hint="The page Kanso creates its databases under."
-        onChange={(event) => setParentPageId(event.target.value)}
+        onChange={setParentPageId}
+        token={token}
+        disabled={managed}
       />
 
       <div className="flex flex-wrap items-center gap-2">
