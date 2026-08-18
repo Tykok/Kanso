@@ -663,3 +663,49 @@ were genuinely red first. Worth knowing which half of that slice the tests actua
   `asChild` that is WCAG 2.5.3 waiting to happen: `pills.tsx` prefixes (`Status: In
   progress`), the bulk strip's Label button now uses the visible word itself, and any future
   `asChild` trigger with text has to do one or the other.
+
+---
+
+# Carried out of the pass that made connecting simpler
+
+## Worth a decision
+
+**Google still needs one trip to the Cloud Console, and always will.** No flow issues an
+OAuth client by consent, so the admin's one-time client creation cannot be replaced by a
+button — which is why that pass made the trip *verifiable* (a probe that tells a wrong secret
+from a wrong code) and *shorter* (the downloaded JSON fills both fields) rather than
+pretending to delete it. If a hosted Kanso ever exists it can register one client and skip
+this; a self-hosted instance cannot, and should not be told otherwise.
+
+**One-click Notion — no integration to create at all — needs a redirect broker somebody
+operates.** Notion requires the redirect URI to be registered on the integration, so an
+instance at an arbitrary hostname cannot borrow a client the project registered unless the
+callback passes through a host the project runs. That is a service to operate and a third
+party in the path, against "hébergeable par n'importe qui, aucune télémétrie". Declined for
+that reason, not for effort.
+
+## Not a defect, but load-bearing to know
+
+**`/api/setup`'s admin guard has no test, on any endpoint.** Nothing in the repository
+exercises it, so the two endpoints added here are consistent with their neighbours rather
+than newly exposed — but "consistent with an untested guard" is what it is. Covering it means
+new `@SpringBootTest` scaffolding for the wizard, which no scenario has needed yet.
+
+**The Notion callback needs forwarded headers behind a reverse proxy.** The redirect URI is
+built from the incoming request so that what Notion was told and what Notion is answered
+cannot drift — which is the right trade, and it moves the failure to a proxy that does not
+forward its host. Recorded in `architecture.md`.
+
+**`conflictExists`-style de-duplication has no equivalent here, and does not need one.** A
+second consent simply replaces the token; re-connecting is idempotent by construction.
+
+## Small and mechanical
+
+- `asText(defaultValue)` is deprecated in Jackson 3 and used at 49 call sites across the
+  API, including the ones added here. Consistent, and a real migration when somebody wants
+  it — not a thing to do half of.
+- The consent flow was written implementation-first and its tests verified by mutation
+  (dropping `owner=user`, dropping the workspace name) rather than by having been red first.
+  The distinction is recorded because it is the discipline this repository otherwise keeps.
+- An untitled Notion page lists as `Untitled page · <8 id chars>`: a page nobody can pick is
+  worse than one with an ugly name.

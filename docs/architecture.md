@@ -87,6 +87,38 @@ reported with its id and its reason rather than filed as another "Untitled".
 | 10 | `Kanso ID` is not unique on Notion's side; a duplicated page produces two rows claiming the same entity. | Reconciliation is by `notion_page_id` first; `Kanso ID` is only a recovery key. |
 | 11 | Notion's self-referencing team relation accepts a cycle. | Acyclicity is enforced in Postgres with `WITH RECURSIVE`, on the way in and on the way back. Team parenting is never accepted from Notion. |
 
+### Connecting Notion
+
+An instance connects through a **public** integration and Notion's own consent screen,
+which is also where the person chooses which pages Kanso may see — so the sharing that
+used to be done by hand from a page's `•••` menu happens there, and the token arrives over
+the wire instead of being transcribed. What no provider will do is issue a client to a host
+it has never heard of, so creating the integration once and pasting its client id and
+secret is the step that survives; it is the same step Google needs, for the same reason.
+
+Three things about the flow are load-bearing:
+
+- `owner=user` in the authorize URL is what makes Notion offer the page picker. Without it
+  the consent screen asks for nothing and grants nothing useful.
+- The client secret authenticates the token exchange over HTTP Basic. It never reaches a
+  browser, which is where a URL parameter would put it — history, proxy logs, `Referer`.
+- The callback is Notion navigating the browser to Kanso's own origin, so that request has
+  to carry the session cookie. `SameSite` is pinned to `lax` in `application.yml` rather
+  than left to the browser default, because `strict` would break connecting silently, on a
+  setting nobody would think to connect to a Notion button. Behind a reverse proxy the
+  forwarded host has to reach the app, or the redirect URI Kanso builds will not match the
+  one registered.
+
+Pasting an integration token still works and is the documented fallback: an instance that
+already has a working internal integration should not have to redo it, and one whose
+browser cannot reach a consent screen has no other way in.
+
+The parent page — the page Kanso creates its four databases under — is chosen from a list
+rather than named by id. One caveat is worth knowing: a search filtered to pages returns
+database *rows*, and every page the mirror writes is one, so the list excludes any page
+whose parent is a database or a data source. That is a rule about shape, not a list of
+Kanso's own ids, so it cannot fall out of date.
+
 ---
 
 ## Mechanisms
