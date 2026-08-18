@@ -98,6 +98,30 @@ class HttpNotionClient(
 		throw lastError ?: NotionApiException(400, "search", "Notion accepted no object filter")
 	}
 
+	/**
+	 * `POST /search`, filtered to pages.
+	 *
+	 * One filter, no fallback: the two spellings [searchDatabases] tries are the
+	 * 2025-09-03 rename of a *container*, and a page has been `page` in every version.
+	 * Copying the fallback here would spend a second request to be told the same thing.
+	 */
+	override suspend fun searchPages(startCursor: String?, pageSize: Int): NotionPageSearch {
+		val payload = buildMap<String, Any?> {
+			put("filter", mapOf("property" to "object", "value" to "page"))
+			put("page_size", pageSize)
+			startCursor?.let { put("start_cursor", it) }
+		}
+		val body = request("POST", "/search", payload)
+			?: return NotionPageSearch(emptyList(), null, false)
+		return NotionPageSearch(
+			pages = body.path("results")
+				.filter { it.path("object").asText("") == "page" }
+				.map(::pageRef),
+			nextCursor = body.path("next_cursor").asText(null),
+			hasMore = body.path("has_more").asBoolean(false),
+		)
+	}
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,
@@ -272,6 +296,27 @@ class HttpNotionClient(
 			else -> null
 		}
 	}
+
+	/**
+	 * A page as a chooser sees it.
+	 *
+	 * The title is whichever property is of type `title` — its name is the database's to
+	 * choose for a row, and `title` for a page that is not one — joined across its
+	 * fragments, the same reading [dev.kanso.sync.importer.NotionPageReader] does of a row.
+	 * Blank becomes null rather than "": an empty string in a list is a row that looks
+	 * like a rendering bug, and the caller has a name for the case.
+	 */
+	private fun pageRef(body: JsonNode) = NotionPageRef(
+		id = body.path("id").asText(),
+		title = body.path("properties").properties()
+			.map { it.value }
+			.firstOrNull { it.has("title") }
+			?.path("title")?.joinToString("") { it.path("plain_text").asText("") }
+			?.takeIf { it.isNotBlank() },
+		url = body.path("url").asText(null),
+		parentType = body.path("parent").path("type").asText(null),
+		archived = body.path("archived").asBoolean(false) || body.path("in_trash").asBoolean(false),
+	)
 
 	private fun page(body: JsonNode) = NotionPage(
 		id = body.path("id").asText(),

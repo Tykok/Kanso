@@ -10,7 +10,10 @@ import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.settings.GoogleSettingsState
 import dev.kanso.settings.InstanceSettingsService
 import dev.kanso.settings.NotionSettingsState
+import dev.kanso.setup.NotionParentPages
+import dev.kanso.setup.ParentPageOptions
 import dev.kanso.sync.notion.HttpNotionClient
+import dev.kanso.sync.notion.NoopNotionClient
 import dev.kanso.sync.notion.NotionApiException
 import dev.kanso.sync.notion.NotionRateLimited
 import dev.kanso.sync.notion.RateLimiter
@@ -21,6 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
@@ -95,16 +99,14 @@ class SetupController(
 	fun testNotion(@RequestBody(required = false) request: NotionTestRequest?): NotionTestResponse {
 		requireInstanceAdmin()
 		val submitted = request ?: NotionTestRequest()
-		val token = submitted.token?.trim()?.takeIf { it.isNotBlank() } ?: settings.notionToken()
+		val token = tokenFrom(submitted.token)
 		if (token.isNullOrBlank()) {
 			return NotionTestResponse(false, "No token to test: none was submitted and none is stored.")
 		}
 		val parentPageId = submitted.parentPageId?.trim()?.takeIf { it.isNotBlank() }
 			?: settings.notionParentPageId()
 
-		// Throwaway client, but the shared limiter: a test is a request to Notion
-		// like any other and counts against the same per-integration budget.
-		val probe = HttpNotionClient(props.notion.copy(token = token), objectMapper, rateLimiter)
+		val probe = probeFor(token)
 		return runBlocking {
 			try {
 				val botId = probe.botUserId()
@@ -129,6 +131,28 @@ class SetupController(
 				NotionTestResponse(false, describe(e))
 			}
 		}
+	}
+
+	/**
+	 * The pages Kanso may create its databases under, for the picker that replaced
+	 * "32 hex characters from the page URL".
+	 *
+	 * Reads the submitted token before the stored one for the reason `/notion/test` does:
+	 * the wizard has to be able to pick a page before it has saved anything. A GET has no
+	 * body to carry that token in, and a query parameter would print the integration
+	 * secret into the access log, the proxy log and the browser history — so it travels as
+	 * a header, and its absence means "use the stored one".
+	 *
+	 * With no token at all the no-op client answers, rather than this method growing a
+	 * second sentence saying what that client already says.
+	 */
+	@GetMapping("/notion/pages")
+	fun notionPages(
+		@RequestHeader(NOTION_TOKEN_HEADER, required = false) submitted: String?,
+	): ParentPageOptions {
+		requireInstanceAdmin()
+		val token = tokenFrom(submitted)
+		return NotionParentPages.list(if (token.isNullOrBlank()) NoopNotionClient() else probeFor(token))
 	}
 
 	@PostMapping("/google")
@@ -225,6 +249,20 @@ class SetupController(
 		.build()
 		.toUriString()
 
+	/**
+	 * Submitted wins over stored. That order is what lets the wizard test a token, and
+	 * pick a page with it, before anything has been saved.
+	 */
+	private fun tokenFrom(submitted: String?): String? =
+		submitted?.trim()?.takeIf { it.isNotBlank() } ?: settings.notionToken()
+
+	/**
+	 * Throwaway client, but the shared limiter: a test or a page search is a request to
+	 * Notion like any other and counts against the same per-integration budget.
+	 */
+	private fun probeFor(token: String) =
+		HttpNotionClient(props.notion.copy(token = token), objectMapper, rateLimiter)
+
 	private fun requireInstanceAdmin() {
 		val role = settings.instanceRoleOf(currentUser.requireId())
 		if (role?.canConfigureInstance != true) {
@@ -240,5 +278,8 @@ class SetupController(
 
 	private companion object {
 		const val MIRRORED_DATABASES = 4
+
+		/** Where a not-yet-saved token travels on a GET. See [notionPages]. */
+		const val NOTION_TOKEN_HEADER = "X-Notion-Token"
 	}
 }

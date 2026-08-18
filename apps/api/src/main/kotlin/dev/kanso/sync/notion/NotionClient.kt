@@ -42,6 +42,36 @@ data class NotionWorkspaceSearch(
 	val unavailable: String? = null,
 )
 
+/**
+ * A page the integration can see, as a chooser needs it.
+ *
+ * Not [NotionPage]: that one is a row of a mirrored database and carries what the poller
+ * reconciles with — the properties blob, the last editor, the archive flags. What names a
+ * page in a list is a title and a link, and what decides whether it can *hold* Kanso's
+ * four databases is [parentType].
+ */
+data class NotionPageRef(
+	val id: String,
+	/** Null when the page has no title. Notion allows it; naming it is the caller's problem. */
+	val title: String?,
+	val url: String?,
+	/**
+	 * Where the page sits: `workspace`, `page_id`, `block_id`, `database_id` or
+	 * `data_source_id`. A search filtered to pages answers database *rows* too — every
+	 * mirrored ticket Kanso ever pushed is one — and only this tells them apart.
+	 */
+	val parentType: String?,
+	val archived: Boolean = false,
+)
+
+/** One page of a page search. [unavailable] means the same thing it does above. */
+data class NotionPageSearch(
+	val pages: List<NotionPageRef>,
+	val nextCursor: String?,
+	val hasMore: Boolean,
+	val unavailable: String? = null,
+)
+
 /** 429. [retryAfter] comes from the header when Notion sends one. */
 class NotionRateLimited(val retryAfter: Duration) :
 	RuntimeException("Notion rate limit hit, retry after ${retryAfter.toSeconds()}s")
@@ -87,6 +117,17 @@ interface NotionClient {
 	 * so the caller decides how much of one it is willing to wait for.
 	 */
 	suspend fun searchDatabases(startCursor: String? = null, pageSize: Int = 100): NotionWorkspaceSearch
+
+	/**
+	 * Every page the token can see, one page of results at a time.
+	 *
+	 * The same `POST /search`, filtered to pages instead of containers, and the answer is
+	 * exactly the set a person picked on Notion's own consent screen — which is what lets
+	 * the parent page be chosen from a list rather than typed as 32 hex characters. No
+	 * spelling fallback here, unlike [searchDatabases]: `data_source` is a 2025-09-03
+	 * rename of `database`, while a page has always been `page`.
+	 */
+	suspend fun searchPages(startCursor: String? = null, pageSize: Int = 100): NotionPageSearch
 
 	suspend fun createDatabase(
 		parentPageId: String,

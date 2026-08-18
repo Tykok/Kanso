@@ -120,6 +120,7 @@ class NotionInboundTicketTest : PostgresTest() {
 			throw UnsupportedOperationException()
 		override suspend fun retrievePage(pageId: String): NotionPage? = throw UnsupportedOperationException()
 		override suspend fun searchDatabases(startCursor: String?, pageSize: Int) = throw UnsupportedOperationException()
+		override suspend fun searchPages(startCursor: String?, pageSize: Int) = throw UnsupportedOperationException()
 	}
 
 	/**

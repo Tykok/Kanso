@@ -3,6 +3,8 @@ package dev.kanso.sync.importer
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionDatabase
 import dev.kanso.sync.notion.NotionPage
+import dev.kanso.sync.notion.NotionPageRef
+import dev.kanso.sync.notion.NotionPageSearch
 import dev.kanso.sync.notion.NotionQueryPage
 import dev.kanso.sync.notion.NotionWorkspaceSearch
 import tools.jackson.databind.ObjectMapper
@@ -24,7 +26,16 @@ import java.util.UUID
  * workspace rather than a passing test. [requests] counts what was asked, which is how
  * a test pins that counting a base does not cost one request per page of one.
  */
-class FakeNotionWorkspace(private val databases: List<FakeDatabase>) : NotionClient {
+class FakeNotionWorkspace(
+	private val databases: List<FakeDatabase> = emptyList(),
+	/**
+	 * Pages that are not rows: what somebody shares with an integration from a page's
+	 * `•••` menu, and what the parent-page picker chooses among. Given rather than derived
+	 * because *where a page sits* is the thing under test there — a page under the
+	 * workspace root can hold Kanso's four databases and a row inside one cannot.
+	 */
+	private val shared: List<NotionPageRef> = emptyList(),
+) : NotionClient {
 
 	var requests: Int = 0
 		private set
@@ -44,6 +55,33 @@ class FakeNotionWorkspace(private val databases: List<FakeDatabase>) : NotionCli
 			hasMore = next < databases.size,
 		)
 	}
+
+	/**
+	 * What `POST /search` filtered to pages answers: the shared pages *and* every row of
+	 * every database, because that is what Notion returns and a caller that forgot to tell
+	 * them apart would offer somebody's ticket as the place to create Kanso's databases.
+	 */
+	override suspend fun searchPages(startCursor: String?, pageSize: Int): NotionPageSearch {
+		requests++
+		val all = shared + databases.flatMap { database -> database.pages.map(::row) }
+		val from = startCursor?.toInt() ?: 0
+		val slice = all.drop(from).take(pageSize)
+		val next = from + slice.size
+		return NotionPageSearch(
+			pages = slice,
+			nextCursor = next.toString().takeIf { next < all.size },
+			hasMore = next < all.size,
+		)
+	}
+
+	/** A database row as search answers it: parented by a data source, titled by its own property. */
+	private fun row(page: NotionPage) = NotionPageRef(
+		id = page.id,
+		title = NotionPageReader.title(page),
+		url = page.url,
+		parentType = "data_source_id",
+		archived = page.archived,
+	)
 
 	override suspend fun queryDataSource(
 		dataSourceId: String,
@@ -87,6 +125,20 @@ class FakeDatabase(
 	val databaseId: String = "db-${UUID.randomUUID()}",
 	val dataSourceId: String = "ds-${UUID.randomUUID()}",
 )
+
+/**
+ * A page shared with the integration — the shape the parent-page picker chooses among.
+ *
+ * `title = null` is a real Notion page: a page created and never named. It is a case with
+ * its own test, so the helper has to be able to make one.
+ */
+fun sharedPage(
+	title: String? = "A page",
+	id: String = "page-${UUID.randomUUID()}",
+	url: String? = "https://notion.so/${id.removePrefix("page-")}",
+	parentType: String = "workspace",
+	archived: Boolean = false,
+): NotionPageRef = NotionPageRef(id = id, title = title, url = url, parentType = parentType, archived = archived)
 
 private val json = ObjectMapper()
 

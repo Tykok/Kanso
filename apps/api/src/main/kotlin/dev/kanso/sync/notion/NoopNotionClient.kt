@@ -36,6 +36,20 @@ class NoopNotionClient : NotionClient {
 			"Add one in the setup wizard, then open this dialog again.",
 	)
 
+	/**
+	 * Same answer, for the same reason: an instance with no token has no workspace to
+	 * search, so the picker prints this rather than an empty list — which here would
+	 * read as "no page is shared with the integration", a diagnosis of a problem this
+	 * instance does not have yet.
+	 */
+	override suspend fun searchPages(startCursor: String?, pageSize: Int) = NotionPageSearch(
+		pages = emptyList(),
+		nextCursor = null,
+		hasMore = false,
+		unavailable = "No Notion token is configured, so Kanso cannot list the pages it may write under. " +
+			"Connect Notion or paste an integration token first, then reload this list.",
+	)
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,

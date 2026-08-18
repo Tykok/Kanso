@@ -291,6 +291,28 @@ export type SetupState = {
   google: IntegrationState & { clientId?: string };
 };
 
+/** One page the integration can write under — what the parent-page picker offers. */
+export type NotionParentPage = {
+  id: string;
+  /** Absent when the page has no title. Notion allows it; `pageLabel` names it. */
+  title?: string;
+  url?: string;
+};
+
+/**
+ * What the picker gets back.
+ *
+ * Three states in one shape, and the step says something different about each:
+ * `available: false` with a `reason` is "no workspace to search yet"; available with no
+ * pages is "the integration exists and nobody has shared a page with it", which is the
+ * silent failure the pasted id used to hide; available with pages is the list.
+ */
+export type NotionParentPages = {
+  available: boolean;
+  reason?: string;
+  pages: NotionParentPage[];
+};
+
 export type InvitationLink = { url: string; expiresAt: string };
 
 export type PendingInvitation = {
@@ -417,6 +439,18 @@ export const api = {
     request<{ ok: boolean; detail: string }>("/api/setup/notion/test", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+
+  /**
+   * The pages the parent page can be picked from, instead of typed.
+   *
+   * The token travels in a header because the picker has to work before anything is
+   * saved — the same reason `testNotion` takes one — and a GET has no body to put it in.
+   * A query parameter would print the secret into every access log there is.
+   */
+  notionPages: ({ token }: { token?: string } = {}) =>
+    request<NotionParentPages>("/api/setup/notion/pages", {
+      headers: token ? { "X-Notion-Token": token } : {},
     }),
 
   bootstrapNotion: () => request<SetupState>("/api/admin/notion/bootstrap", { method: "POST" }),
