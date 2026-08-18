@@ -3,7 +3,9 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { api, type SetupState } from "@/lib/api";
-import { Callout, TextField, messageFor } from "./fields";
+import { Callout, Divider, TextField, messageFor } from "./fields";
+import { NotionConnect } from "./notion-connect";
+import { NotionPageField } from "./notion-page-field";
 import { FormCard } from "./frame";
 
 type Props = {
@@ -20,6 +22,12 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
   const managed = stored.managedByEnvironment;
 
   const [token, setToken] = useState("");
+  /**
+   * The paste is the fallback now, not the way in. Two instances still need it — one that
+   * already has a working internal integration and should not have to redo it, and one
+   * whose browser cannot reach a consent screen at all — so it is kept, and folded away.
+   */
+  const [pasting, setPasting] = useState(false);
   const [parentPageId, setParentPageId] = useState(stored.parentPageId ?? "");
 
   const test = useMutation({ mutationFn: api.testNotion });
@@ -68,6 +76,21 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
         </Callout>
       )}
 
+      <NotionConnect state={state} onState={onState} />
+
+      {!managed && (
+        <Divider>
+          <button
+            type="button"
+            className="underline hover:text-foreground"
+            onClick={() => setPasting((open) => !open)}
+          >
+            {pasting ? "Hide the token field" : "Paste an integration token instead"}
+          </button>
+        </Divider>
+      )}
+
+      {(pasting || managed) && (
       <TextField
         label="Integration token"
         type="password"
@@ -83,20 +106,20 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
               ? "Saved — type a new one to replace it"
               : "secret_…"
         }
-        hint="Create an internal integration in Notion, then share the parent page with it."
+        hint="An internal integration's secret. The page it writes under still has to be shared with it by hand — which is what connecting above avoids."
         onChange={(event) => setToken(event.target.value)}
       />
+      )}
 
-      <TextField
-        label="Parent page id"
-        readOnly={managed}
-        required={!managed}
-        autoComplete="off"
-        spellCheck={false}
+      {/* Chosen from what the integration can actually see, rather than typed as 32 hex
+          characters — the last manual step of the old setup, and the one that used to fail
+          at bootstrap instead of at save. `token` is whatever is in the field above, so the
+          list works before this step has been saved. */}
+      <NotionPageField
         value={parentPageId}
-        placeholder="32 hex characters from the page URL"
-        hint="The page Kanso creates its databases under."
-        onChange={(event) => setParentPageId(event.target.value)}
+        onChange={setParentPageId}
+        token={token}
+        disabled={managed}
       />
 
       <div className="flex flex-wrap items-center gap-2">

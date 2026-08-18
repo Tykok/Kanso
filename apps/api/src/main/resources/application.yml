@@ -29,6 +29,17 @@ spring:
 server:
   port: 8080
   shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        # Stated rather than inherited. Connecting Notion ends with *Notion* navigating
+        # the browser to /api/setup/notion/callback, and that request has to carry this
+        # cookie or the callback cannot know who it is answering. A missing attribute
+        # already behaves as Lax in current browsers, which is why the flow works
+        # without this line — and Strict would break it silently, on a setting nobody
+        # would think to connect to a Notion button. Lax is the weakest value that
+        # allows a top-level GET, which is all the callback is.
+        same-site: lax
 
 management:
   endpoints:

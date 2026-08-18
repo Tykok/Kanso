@@ -40,3 +40,11 @@ apps/web/next-env.d.ts
 # agent scratch (worktrees, plan-execution ledger)
 .claude/worktrees/
 .superpowers/
+
+# Design source material, kept on disk and out of the history. The handoff bundle and
+# the mobile drawings are inputs to the work, not part of the product: 313 KB that every
+# clone of an AGPL repository would carry forever, and they entered once by a `git add -A`
+# during a merge resolution rather than by anyone's decision.
+Kanso - Mobile.dc.html
+*.dc.html
+Kanso Design System*.zip

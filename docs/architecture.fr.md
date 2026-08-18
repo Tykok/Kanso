@@ -91,6 +91,40 @@ sous un « Untitled » de plus.
 | 10 | `Kanso ID` n'est pas unique côté Notion : une page dupliquée produit deux lignes revendiquant la même entité. | La réconciliation se fait d'abord par `notion_page_id` ; `Kanso ID` n'est qu'une clé de récupération. |
 | 11 | La relation d'équipe auto-référencée de Notion accepte un cycle. | L'acyclicité est imposée dans Postgres avec `WITH RECURSIVE`, à l'aller comme au retour. Le parentage d'équipe n'est jamais accepté depuis Notion. |
 
+### Connecter Notion
+
+Une instance se connecte via une intégration **publique** et l'écran de consentement de
+Notion, qui est aussi l'endroit où la personne choisit les pages que Kanso peut voir — donc
+le partage qu'on faisait à la main depuis le menu `•••` d'une page se fait là, et le token
+arrive par le fil au lieu d'être recopié. Ce qu'aucun fournisseur ne fera, c'est émettre un
+client pour un hôte dont il n'a jamais entendu parler : créer l'intégration une fois et
+coller son client id et son secret est donc l'étape qui survit ; c'est la même étape que
+Google demande, pour la même raison.
+
+Trois points du flux sont porteurs :
+
+- `owner=user` dans l'URL d'autorisation est ce qui fait que Notion propose le sélecteur de
+  pages. Sans lui, l'écran de consentement ne demande rien et n'accorde rien d'utile.
+- Le secret du client authentifie l'échange du jeton en HTTP Basic. Il n'atteint jamais un
+  navigateur, ce qu'un paramètre d'URL ferait — historique, logs de proxy, `Referer`.
+- Le retour est Notion qui navigue le navigateur vers l'origine de Kanso, donc cette requête
+  doit porter le cookie de session. `SameSite` est fixé à `lax` dans `application.yml`
+  plutôt que laissé au défaut du navigateur, parce que `strict` casserait la connexion en
+  silence, sur un réglage que personne ne penserait à relier à un bouton Notion. Derrière un
+  reverse proxy, l'hôte transmis doit parvenir à l'application, sinon l'URI de redirection
+  que Kanso construit ne correspondra pas à celle qui est enregistrée.
+
+Coller un jeton d'intégration marche toujours et reste le repli documenté : une instance qui
+a déjà une intégration interne fonctionnelle ne doit pas la refaire, et une instance dont le
+navigateur ne peut pas atteindre un écran de consentement n'a pas d'autre entrée.
+
+La page parente — celle sous laquelle Kanso crée ses quatre bases — se choisit dans une
+liste au lieu de se nommer par identifiant. Une réserve mérite d'être connue : une recherche
+filtrée sur les pages renvoie les *lignes* des bases de données, et chaque page que le
+miroir écrit en est une, donc la liste exclut toute page dont le parent est une base ou une
+source de données. C'est une règle sur la forme, pas une liste des identifiants de Kanso :
+elle ne peut pas se périmer.
+
 ---
 
 ## Mécanismes

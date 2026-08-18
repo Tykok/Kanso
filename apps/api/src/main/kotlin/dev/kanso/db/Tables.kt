@@ -62,6 +62,15 @@ object InstanceSettings : Table("instance_settings") {
 	val notionTokenEnc = binary("notion_token_enc").nullable()
 	val googleClientId = text("google_client_id").nullable()
 	val googleClientSecretEnc = binary("google_client_secret_enc").nullable()
+
+	// The public integration Kanso asks consent through, and what the consent screen
+	// answered. See V14: the client pair is configuration, the workspace and bot are
+	// facts about a connection that happened.
+	val notionClientId = text("notion_client_id").nullable()
+	val notionClientSecretEnc = binary("notion_client_secret_enc").nullable()
+	val notionWorkspaceId = text("notion_workspace_id").nullable()
+	val notionWorkspaceName = text("notion_workspace_name").nullable()
+	val notionBotId = text("notion_bot_id").nullable()
 	val createdAt = timestampWithTimeZone("created_at")
 	val updatedAt = timestampWithTimeZone("updated_at")
 	override val primaryKey = PrimaryKey(id)

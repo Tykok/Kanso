@@ -275,8 +275,42 @@ export type SetupState = {
   /** No owner yet: this instance has never been set up. */
   needsOwner: boolean;
   setupCompletedAt?: string;
-  notion: IntegrationState & { parentPageId?: string; bootstrapped: boolean };
+  notion: IntegrationState & {
+    parentPageId?: string;
+    bootstrapped: boolean;
+    /**
+     * Whether a public integration exists for consent to be asked through — which is a
+     * different question from `configured`. The pair makes the Connect button possible;
+     * a token makes the mirror work. An instance can have either without the other, and
+     * the screen has to tell "nothing set up" from "set up, nobody has consented yet".
+     */
+    appConfigured: boolean;
+    /** The workspace a completed consent named. Absent when the token was pasted. */
+    workspaceName?: string;
+  };
   google: IntegrationState & { clientId?: string };
+};
+
+/** One page the integration can write under — what the parent-page picker offers. */
+export type NotionParentPage = {
+  id: string;
+  /** Absent when the page has no title. Notion allows it; `pageLabel` names it. */
+  title?: string;
+  url?: string;
+};
+
+/**
+ * What the picker gets back.
+ *
+ * Three states in one shape, and the step says something different about each:
+ * `available: false` with a `reason` is "no workspace to search yet"; available with no
+ * pages is "the integration exists and nobody has shared a page with it", which is the
+ * silent failure the pasted id used to hide; available with pages is the list.
+ */
+export type NotionParentPages = {
+  available: boolean;
+  reason?: string;
+  pages: NotionParentPage[];
 };
 
 export type InvitationLink = { url: string; expiresAt: string };
@@ -383,6 +417,20 @@ export const api = {
   createOwner: (body: { email: string; displayName: string; password: string }) =>
     request<Me>("/api/setup/owner", { method: "POST", body: JSON.stringify(body) }),
 
+  /** The public integration's own credentials. Saving them connects nothing. */
+  saveNotionApp: (body: { clientId: string; clientSecret?: string }) =>
+    request<SetupState>("/api/setup/notion/app", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
+   * Answers with the consent URL rather than redirecting to it: a redirect would be
+   * followed by `fetch` and land here as an opaque CORS failure. The caller navigates
+   * the window itself.
+   */
+  startNotionConnect: () =>
+    request<{ url: string; redirectUri: string }>("/api/setup/notion/authorize", {
+      method: "POST",
+    }),
+
   saveNotion: (body: { token?: string; parentPageId: string }) =>
     request<SetupState>("/api/setup/notion", { method: "POST", body: JSON.stringify(body) }),
 
@@ -393,10 +441,33 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /**
+   * The pages the parent page can be picked from, instead of typed.
+   *
+   * The token travels in a header because the picker has to work before anything is
+   * saved — the same reason `testNotion` takes one — and a GET has no body to put it in.
+   * A query parameter would print the secret into every access log there is.
+   */
+  notionPages: ({ token }: { token?: string } = {}) =>
+    request<NotionParentPages>("/api/setup/notion/pages", {
+      headers: token ? { "X-Notion-Token": token } : {},
+    }),
+
   bootstrapNotion: () => request<SetupState>("/api/admin/notion/bootstrap", { method: "POST" }),
 
   saveGoogle: (body: { clientId: string; clientSecret: string }) =>
     request<SetupState>("/api/setup/google", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
+   * Round trip to Google before saving, so a mistyped secret is caught here rather
+   * than at the first attempt to sign in with it. Either field may be omitted to
+   * check what is already stored.
+   */
+  testGoogle: (body: { clientId?: string; clientSecret?: string }) =>
+    request<{ ok: boolean; detail: string }>("/api/setup/google/test", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   completeSetup: () => request<SetupState>("/api/setup/complete", { method: "POST" }),
 

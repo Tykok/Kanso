@@ -1,11 +1,22 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
+import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
 import { keys, useRetryFailedPushes, useSyncStatus } from "@/lib/queries";
+import { NotionConnect } from "@/components/setup/notion-connect";
+import { NotionPageField } from "@/components/setup/notion-page-field";
 import { SettingsInline, SettingsNote } from "./field";
+
+/**
+ * Spring registers Google's callback under a fixed path, so the URI is derivable rather
+ * than configurable — and it has to match Google's entry character for character, which
+ * is why it is both printed to copy and compared against a pasted client file.
+ */
+const GOOGLE_REDIRECT_URI = `${API_URL}/login/oauth2/code/google`;
 
 function message(error: unknown) {
   return error instanceof ApiError ? error.message : (error as Error)?.message ?? "Something went wrong";
@@ -48,10 +59,31 @@ export function ConnectionsSection({
   const queryClient = useQueryClient();
   const refresh = (next: SetupState) => queryClient.setQueryData(keys.setupState, next);
 
+  /**
+   * What the consent screen sent back.
+   *
+   * The callback is a browser redirect, so its answer arrives as a query parameter rather
+   * than as a mutation result — and it has to be *said*. Coming back from Notion to a
+   * screen that looks exactly as it did before is indistinguishable from nothing having
+   * happened, which is the failure mode the button exists to remove. The parameter is
+   * stripped once read so a reload does not re-announce a connection made ten minutes ago.
+   */
+  const params = useSearchParams();
+  const connected = params.get("notion_connected");
+  const connectError = params.get("notion_error");
+
+  useEffect(() => {
+    if (connected === null && connectError === null) return;
+    queryClient.invalidateQueries({ queryKey: keys.setupState });
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [connected, connectError, queryClient]);
+
   const [token, setToken] = useState("");
   const [parentPageId, setParentPageId] = useState(state.notion.parentPageId ?? "");
   const [clientId, setClientId] = useState(state.google.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
+  /** What the pasted client file said about its own redirect URIs, if it said anything. */
+  const [googleFileNote, setGoogleFileNote] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
   const test = useMutation({
@@ -77,6 +109,29 @@ export function ConnectionsSection({
       queryClient.invalidateQueries({ queryKey: keys.authMode });
     },
   });
+  const testGoogle = useMutation({
+    mutationFn: () =>
+      api.testGoogle({
+        clientId: clientId.trim() || undefined,
+        clientSecret: clientSecret.trim() || undefined,
+      }),
+  });
+
+  /**
+   * One paste of the JSON Google Cloud downloads instead of two transcriptions. Anything
+   * that is not a client file falls through unchanged, so typing an id still works — and
+   * the JSON never stays in the id box, because a field holding a whole file looks broken.
+   */
+  const takeGoogleClientId = (value: string) => {
+    const file = readGoogleClientFile(value);
+    if (!file) {
+      setClientId(value);
+      return;
+    }
+    setClientId(file.clientId);
+    if (file.clientSecret) setClientSecret(file.clientSecret);
+    setGoogleFileNote(redirectUriProblem(file, GOOGLE_REDIRECT_URI));
+  };
 
   const notionLocked = state.notion.managedByEnvironment || !canConfigure;
   const googleLocked = state.google.managedByEnvironment || !canConfigure;
@@ -100,6 +155,18 @@ export function ConnectionsSection({
           <ConnectionBadge configured={state.notion.configured} />
         </div>
         <ManagedNote managed={state.notion.managedByEnvironment} />
+
+        {connected !== null && (
+          <SettingsNote>
+            {connected ? `Connected to ${connected}.` : "Notion is connected."}
+          </SettingsNote>
+        )}
+        {connectError !== null && <SettingsNote error>{connectError}</SettingsNote>}
+
+        {/* The same block the wizard draws. Connecting is the same act whether it is
+            being done for the first time or the fourth, so it is the same component. */}
+        {canConfigure && <NotionConnect state={state} onState={refresh} />}
+
         {canConfigure && (
           <>
             <input
@@ -114,13 +181,17 @@ export function ConnectionsSection({
               value={token}
               onChange={(event) => setToken(event.target.value)}
             />
-            <input
-              className="w-full max-w-[380px]"
-              disabled={notionLocked}
-              placeholder="Parent page id"
-              value={parentPageId}
-              onChange={(event) => setParentPageId(event.target.value)}
-            />
+            {/* The same block the wizard draws, for the same reason `NotionConnect` is
+                shared: choosing the parent page is one act, whether it is being done during
+                setup or changed a month later. */}
+            <div className="max-w-[380px]">
+              <NotionPageField
+                value={parentPageId}
+                onChange={setParentPageId}
+                token={token}
+                disabled={notionLocked}
+              />
+            </div>
             <SettingsInline>
               <button
                 className="button"
@@ -245,8 +316,12 @@ export function ConnectionsSection({
               disabled={googleLocked}
               placeholder="Client ID"
               value={clientId}
-              onChange={(event) => setClientId(event.target.value)}
+              onChange={(event) => takeGoogleClientId(event.target.value)}
             />
+            <SettingsNote>
+              Or paste the whole JSON file Google Cloud downloads for the client — it fills
+              in the secret too.
+            </SettingsNote>
             <input
               className="w-full max-w-[380px]"
               type="password"
@@ -258,7 +333,18 @@ export function ConnectionsSection({
               value={clientSecret}
               onChange={(event) => setClientSecret(event.target.value)}
             />
+            {/* The file knows which redirect URIs its client was created with, so a
+                missing one is worth saying at paste time: the credential check speaks to
+                Google's token endpoint, which cannot see it. */}
+            {googleFileNote && <SettingsNote error>{googleFileNote}</SettingsNote>}
             <SettingsInline>
+              <button
+                className="button"
+                disabled={googleLocked || testGoogle.isPending}
+                onClick={() => testGoogle.mutate()}
+              >
+                Test connection
+              </button>
               <button
                 className="button button-primary"
                 disabled={googleLocked || saveGoogle.isPending || !clientId.trim() || !clientSecret}
@@ -270,11 +356,15 @@ export function ConnectionsSection({
                 <SettingsNote>Saved — the button appears without a restart.</SettingsNote>
               )}
             </SettingsInline>
+            {testGoogle.data && (
+              <SettingsNote error={!testGoogle.data.ok}>{testGoogle.data.detail}</SettingsNote>
+            )}
+            {testGoogle.isError && <SettingsNote error>{message(testGoogle.error)}</SettingsNote>}
             {saveGoogle.isError && <SettingsNote error>{message(saveGoogle.error)}</SettingsNote>}
             <SettingsNote>
               Authorised redirect URI to paste into Google Cloud:{" "}
               <code className="rounded-sm bg-accent px-1 py-0.5" style={{ fontFamily: "var(--font-mono)" }}>
-                {API_URL}/login/oauth2/code/google
+                {GOOGLE_REDIRECT_URI}
               </code>
             </SettingsNote>
           </>
