@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
 import { keys, useRetryFailedPushes, useSyncStatus } from "@/lib/queries";
+import { NotionConnect } from "@/components/setup/notion-connect";
 import { SettingsInline, SettingsNote } from "./field";
 
 function message(error: unknown) {
@@ -47,6 +49,25 @@ export function ConnectionsSection({
 }) {
   const queryClient = useQueryClient();
   const refresh = (next: SetupState) => queryClient.setQueryData(keys.setupState, next);
+
+  /**
+   * What the consent screen sent back.
+   *
+   * The callback is a browser redirect, so its answer arrives as a query parameter rather
+   * than as a mutation result — and it has to be *said*. Coming back from Notion to a
+   * screen that looks exactly as it did before is indistinguishable from nothing having
+   * happened, which is the failure mode the button exists to remove. The parameter is
+   * stripped once read so a reload does not re-announce a connection made ten minutes ago.
+   */
+  const params = useSearchParams();
+  const connected = params.get("notion_connected");
+  const connectError = params.get("notion_error");
+
+  useEffect(() => {
+    if (connected === null && connectError === null) return;
+    queryClient.invalidateQueries({ queryKey: keys.setupState });
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [connected, connectError, queryClient]);
 
   const [token, setToken] = useState("");
   const [parentPageId, setParentPageId] = useState(state.notion.parentPageId ?? "");
@@ -100,6 +121,18 @@ export function ConnectionsSection({
           <ConnectionBadge configured={state.notion.configured} />
         </div>
         <ManagedNote managed={state.notion.managedByEnvironment} />
+
+        {connected !== null && (
+          <SettingsNote>
+            {connected ? `Connected to ${connected}.` : "Notion is connected."}
+          </SettingsNote>
+        )}
+        {connectError !== null && <SettingsNote error>{connectError}</SettingsNote>}
+
+        {/* The same block the wizard draws. Connecting is the same act whether it is
+            being done for the first time or the fourth, so it is the same component. */}
+        {canConfigure && <NotionConnect state={state} onState={refresh} />}
+
         {canConfigure && (
           <>
             <input

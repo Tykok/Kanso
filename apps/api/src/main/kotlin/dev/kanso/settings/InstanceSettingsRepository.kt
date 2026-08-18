@@ -19,6 +19,13 @@ class StoredInstanceSettings(
 	val notionTokenEnc: ByteArray?,
 	val googleClientId: String?,
 	val googleClientSecretEnc: ByteArray?,
+	/** The public integration consent is asked through. See `V14`. */
+	val notionClientId: String?,
+	val notionClientSecretEnc: ByteArray?,
+	/** What a completed consent screen answered. Null until one completes. */
+	val notionWorkspaceId: String?,
+	val notionWorkspaceName: String?,
+	val notionBotId: String?,
 )
 
 @Repository
@@ -32,6 +39,11 @@ class InstanceSettingsRepository {
 			notionTokenEnc = it[InstanceSettings.notionTokenEnc],
 			googleClientId = it[InstanceSettings.googleClientId],
 			googleClientSecretEnc = it[InstanceSettings.googleClientSecretEnc],
+			notionClientId = it[InstanceSettings.notionClientId],
+			notionClientSecretEnc = it[InstanceSettings.notionClientSecretEnc],
+			notionWorkspaceId = it[InstanceSettings.notionWorkspaceId],
+			notionWorkspaceName = it[InstanceSettings.notionWorkspaceName],
+			notionBotId = it[InstanceSettings.notionBotId],
 		)
 	}
 
@@ -44,6 +56,39 @@ class InstanceSettingsRepository {
 		InstanceSettings.update({ InstanceSettings.id eq true }) {
 			if (tokenEnc != null) it[notionTokenEnc] = tokenEnc
 			it[notionParentPageId] = parentPageId
+		}
+	}
+
+	/**
+	 * The credentials of the public integration, which are configuration rather than a
+	 * connection: saving them connects nothing, and clearing them does not disconnect
+	 * what a past consent already granted. Same null-means-leave-alone rule as the
+	 * token above, and for the same reason — the wizard never learns a secret's value.
+	 */
+	fun updateNotionApp(clientId: String?, clientSecretEnc: ByteArray?) {
+		InstanceSettings.update({ InstanceSettings.id eq true }) {
+			it[notionClientId] = clientId
+			if (clientSecretEnc != null) it[notionClientSecretEnc] = clientSecretEnc
+		}
+	}
+
+	/**
+	 * What one completed consent screen granted, written together because they are one
+	 * fact: this token, from this workspace, acting as this integration user. Writing
+	 * the token without the workspace would leave the settings screen able to say a
+	 * connection exists and unable to say to what.
+	 */
+	fun updateNotionGrant(
+		tokenEnc: ByteArray,
+		workspaceId: String?,
+		workspaceName: String?,
+		botId: String?,
+	) {
+		InstanceSettings.update({ InstanceSettings.id eq true }) {
+			it[notionTokenEnc] = tokenEnc
+			it[notionWorkspaceId] = workspaceId
+			it[notionWorkspaceName] = workspaceName
+			it[notionBotId] = botId
 		}
 	}
 

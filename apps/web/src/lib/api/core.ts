@@ -275,7 +275,19 @@ export type SetupState = {
   /** No owner yet: this instance has never been set up. */
   needsOwner: boolean;
   setupCompletedAt?: string;
-  notion: IntegrationState & { parentPageId?: string; bootstrapped: boolean };
+  notion: IntegrationState & {
+    parentPageId?: string;
+    bootstrapped: boolean;
+    /**
+     * Whether a public integration exists for consent to be asked through — which is a
+     * different question from `configured`. The pair makes the Connect button possible;
+     * a token makes the mirror work. An instance can have either without the other, and
+     * the screen has to tell "nothing set up" from "set up, nobody has consented yet".
+     */
+    appConfigured: boolean;
+    /** The workspace a completed consent named. Absent when the token was pasted. */
+    workspaceName?: string;
+  };
   google: IntegrationState & { clientId?: string };
 };
 
@@ -382,6 +394,20 @@ export const api = {
   /** Claims the instance. Succeeds exactly once, whatever the client does. */
   createOwner: (body: { email: string; displayName: string; password: string }) =>
     request<Me>("/api/setup/owner", { method: "POST", body: JSON.stringify(body) }),
+
+  /** The public integration's own credentials. Saving them connects nothing. */
+  saveNotionApp: (body: { clientId: string; clientSecret?: string }) =>
+    request<SetupState>("/api/setup/notion/app", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
+   * Answers with the consent URL rather than redirecting to it: a redirect would be
+   * followed by `fetch` and land here as an opaque CORS failure. The caller navigates
+   * the window itself.
+   */
+  startNotionConnect: () =>
+    request<{ url: string; redirectUri: string }>("/api/setup/notion/authorize", {
+      method: "POST",
+    }),
 
   saveNotion: (body: { token?: string; parentPageId: string }) =>
     request<SetupState>("/api/setup/notion", { method: "POST", body: JSON.stringify(body) }),

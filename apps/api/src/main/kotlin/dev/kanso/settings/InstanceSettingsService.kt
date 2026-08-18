@@ -23,16 +23,35 @@ class ResolvedSettings(
 	val googleClientId: String?,
 	val googleClientSecret: String?,
 	val googleManagedByEnvironment: Boolean,
+	/** The public integration consent is asked through, and what one grant answered. */
+	val notionClientId: String?,
+	val notionClientSecret: String?,
+	val notionWorkspaceName: String?,
 ) {
 	/** A stray log line must not print a token. */
 	override fun toString(): String =
-		"ResolvedSettings(notion=${!notionToken.isNullOrBlank()}, google=${!googleClientSecret.isNullOrBlank()})"
+		"ResolvedSettings(notion=${!notionToken.isNullOrBlank()}, " +
+			"notionApp=${!notionClientSecret.isNullOrBlank()}, " +
+			"google=${!googleClientSecret.isNullOrBlank()})"
 }
 
 data class NotionSettingsState(
 	val configured: Boolean,
 	val managedByEnvironment: Boolean,
 	val parentPageId: String?,
+	/**
+	 * Whether an integration exists for consent to be asked through — which is not the
+	 * same question as [configured]. The two are deliberately separate: a client id and
+	 * secret make the Connect button *possible*, a token makes the mirror *work*, and an
+	 * instance can have either without the other. Conflating them would leave the wizard
+	 * unable to tell "nothing is set up" from "set up, nobody has consented yet".
+	 */
+	val appConfigured: Boolean = false,
+	/**
+	 * The workspace a completed consent named. Null when the token was pasted rather than
+	 * granted, because a pasted token names nothing a person recognises.
+	 */
+	val workspaceName: String? = null,
 	/**
 	 * Whether the four mirrored databases exist. Not a setting — the setup API
 	 * fills it in from `notion_databases`, because the wizard shows both on one
@@ -92,6 +111,8 @@ class InstanceSettingsService(
 				configured = !it.notionToken.isNullOrBlank(),
 				managedByEnvironment = it.notionManagedByEnvironment,
 				parentPageId = it.notionParentPageId,
+				appConfigured = !it.notionClientId.isNullOrBlank() && !it.notionClientSecret.isNullOrBlank(),
+				workspaceName = it.notionWorkspaceName,
 			),
 			google = GoogleSettingsState(
 				configured = !it.googleClientId.isNullOrBlank() && !it.googleClientSecret.isNullOrBlank(),
@@ -111,6 +132,38 @@ class InstanceSettingsService(
 		}
 		repo.updateNotion(submitted?.let(secrets::encrypt), parentPageId.trim().takeIf { it.isNotBlank() })
 		invalidate()
+	}
+
+	/**
+	 * The integration's own credentials. Not a token, and not the environment's business:
+	 * `NOTION_TOKEN` set in the environment says which token to *use*, and says nothing
+	 * about whether a browser may ask for another one — so this deliberately does not
+	 * refuse the way [saveNotion] does.
+	 */
+	fun saveNotionApp(clientId: String, clientSecret: String?) {
+		val submittedSecret = clientSecret?.trim()?.takeIf { it.isNotBlank() }
+		repo.updateNotionApp(clientId.trim().takeIf { it.isNotBlank() }, submittedSecret?.let(secrets::encrypt))
+		invalidate()
+	}
+
+	/** Called once per completed consent screen, with what the exchange handed back. */
+	fun saveNotionGrant(token: String, workspaceId: String?, workspaceName: String?, botId: String?) {
+		if (props.notion.token.isNotBlank()) {
+			throw BadRequestException(
+				"NOTION_TOKEN is set in the environment and takes precedence; unset it to connect from here."
+			)
+		}
+		repo.updateNotionGrant(secrets.encrypt(token), workspaceId, workspaceName, botId)
+		invalidate()
+	}
+
+	/** The credentials the authorize URL and the token exchange are built from. */
+	@Transactional(readOnly = true)
+	fun notionApp(): Pair<String, String>? {
+		val resolved = resolved()
+		val id = resolved.notionClientId?.takeIf { it.isNotBlank() } ?: return null
+		val secret = resolved.notionClientSecret?.takeIf { it.isNotBlank() } ?: return null
+		return id to secret
 	}
 
 	fun saveGoogle(clientId: String, clientSecret: String?) {
@@ -171,6 +224,11 @@ class InstanceSettingsService(
 				secrets.decrypt(stored.googleClientSecretEnc)
 			},
 			googleManagedByEnvironment = googleFromEnv,
+			// No environment fallback: an operator who wants to pin the mirror pins
+			// NOTION_TOKEN, which is the answer itself rather than a way of asking for one.
+			notionClientId = stored.notionClientId,
+			notionClientSecret = secrets.decrypt(stored.notionClientSecretEnc),
+			notionWorkspaceName = stored.notionWorkspaceName,
 		)
 	}
 }
