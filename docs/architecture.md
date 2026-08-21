@@ -368,6 +368,6 @@ per-team sequence to keep in step.
 - Inbound sync is scalar-only (see above).
 - Sessions are in memory: more than one API instance needs a shared session store
   (one property with `spring-session-jdbc`).
-- No attachments or sub-tickets. Comments, mentions and labels exist as of `V8`;
-  saved views do not.
+- No attachments or sub-tickets. Comments, mentions and labels exist as of `V8`,
+  saved views and cycles as of `V10`.
 - A full reconcile queues at most 500 tickets per call and says so in the log.

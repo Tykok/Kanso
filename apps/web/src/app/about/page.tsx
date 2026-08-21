@@ -36,7 +36,7 @@ function Hero() {
     <header className="grid border-b border-rule lg:grid-cols-2">
       <div className="flex flex-col gap-6 border-rule px-6 py-16 md:px-10 lg:border-r">
         <span className="font-mono text-11 uppercase tracking-[0.12em] text-faint">
-          Work tracking · living document
+          Whole project · living document
         </span>
         <h1 className="max-w-lg text-30 font-medium leading-tight tracking-[-0.028em] md:text-[52px]">
           The board and the page,
