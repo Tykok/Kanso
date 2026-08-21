@@ -36,7 +36,12 @@ object ImportLinks {
 		 * adopted. Never invented into a link to the nearest thing that happened to resolve.
 		 */
 		val droppedRelations: Int,
-		/** Disagreements between a child's own field and a parent's inverse field, settled by the child. */
+		/**
+		 * Disagreements settled rather than silently picked: a child's own field naming a
+		 * different parent than the one whose inverse field claims it (settled in the
+		 * child's favour), and two parents' inverse fields both claiming the same child
+		 * (settled in the first claim's favour).
+		 */
 		val conflicts: Int,
 	)
 
@@ -87,6 +92,12 @@ object ImportLinks {
 	 * mapping may map neither, either, or both — and whichever side speaks is trusted. Only
 	 * when both speak for the *same* child and disagree does the child's own answer win,
 	 * with the disagreement added to [RelationResult.conflicts].
+	 *
+	 * Two disagreements are possible, and both are counted rather than settled quietly:
+	 * a child naming one parent while a different parent's inverse column also claims it
+	 * (child wins), and two *parents* both claiming the same child through their own
+	 * inverse columns, which is a disagreement of the same kind even though no child field
+	 * is involved at all.
 	 */
 	private fun resolveOneToOne(
 		bases: List<PlannedBase>,
@@ -99,6 +110,7 @@ object ImportLinks {
 		val childAdopted = adopted[childTarget].orEmpty()
 		val parentAdopted = adopted[parentTarget].orEmpty()
 		var dropped = 0
+		var conflicts = 0
 
 		// The child's own column. At most one target is read per page — the field means
 		// "my one parent" — and a page pointing at itself names nothing.
@@ -119,12 +131,28 @@ object ImportLinks {
 			for (page in base.adoptable) {
 				for (target in relationIds(page, property)) {
 					if (target == page.id) continue
-					if (target in childAdopted) fromParent[target] = page.id else dropped++
+					if (target !in childAdopted) {
+						dropped++
+						continue
+					}
+					val claimedBy = fromParent[target]
+					when {
+						claimedBy == null -> fromParent[target] = page.id
+						claimedBy != page.id ->
+							// Two different parent pages both name this child. Neither is
+							// more correct than the other, so this is a disagreement, not
+							// a decision this function gets to make — it is counted, and
+							// the first claim is kept rather than the last: pages arrive
+							// in the order Notion returned them, and "first wins" is at
+							// least stable across two runs of the same import, unlike
+							// "last wins", which would depend on base and page order.
+							conflicts++
+						// else: the same parent named the same child twice in one column — not a disagreement.
+					}
 				}
 			}
 		}
 
-		var conflicts = 0
 		val merged = mutableMapOf<String, String>()
 		for (childId in fromChild.keys + fromParent.keys) {
 			val ownAnswer = fromChild[childId]

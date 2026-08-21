@@ -64,4 +64,48 @@ class ImportLinksTest {
 
 		assertEquals(listOf(PageDependency("page-1", "page-2")), resolved.dependencies)
 	}
+
+	@Test
+	fun `a relation naming a page outside every planned base is dropped and counted`() {
+		val ship = fakePage("Ship it", mapOf("Project" to notionRelation("page-nowhere")))
+		val tasks = FakeDatabase("Tasks", listOf(ship))
+
+		val resolved = ImportLinks.resolve(
+			listOf(planned(tasks, ImportTarget.TICKETS, ColumnMapping(mapOf(ImportField.PROJECT to "Project"))))
+		)
+
+		assertEquals(null, resolved.projectOfTicket[ship.id])
+		assertEquals(1, resolved.droppedRelations)
+	}
+
+	@Test
+	fun `a page blocked by itself is not a dependency, and the self-reference is not dropped`() {
+		val ship = fakePage("Ship it", mapOf("Blocked by" to notionRelation("page-1")), id = "page-1")
+		val tasks = FakeDatabase("Tasks", listOf(ship))
+
+		val resolved = ImportLinks.resolve(
+			listOf(planned(tasks, ImportTarget.TICKETS, ColumnMapping(mapOf(ImportField.BLOCKED_BY to "Blocked by"))))
+		)
+
+		assertEquals(emptyList<PageDependency>(), resolved.dependencies)
+		assertEquals(0, resolved.droppedRelations)
+	}
+
+	@Test
+	fun `a blocked-by relation naming a page that became documents is dropped and counted`() {
+		val doc = fakePage("A doc", id = "page-doc")
+		val docs = FakeDatabase("Docs", listOf(doc))
+		val ticket = fakePage("Ticket", mapOf("Blocked by" to notionRelation(doc.id)), id = "page-ticket")
+		val tasks = FakeDatabase("Tasks", listOf(ticket))
+
+		val resolved = ImportLinks.resolve(
+			listOf(
+				planned(tasks, ImportTarget.TICKETS, ColumnMapping(mapOf(ImportField.BLOCKED_BY to "Blocked by"))),
+				planned(docs, ImportTarget.DOCUMENTS, ColumnMapping()),
+			)
+		)
+
+		assertEquals(emptyList<PageDependency>(), resolved.dependencies)
+		assertEquals(1, resolved.droppedRelations)
+	}
 }
