@@ -1,0 +1,93 @@
+# Publishes the static site in `site/` to GitHub Pages. It does not test.
+#
+# One manual step is required once, by hand, and no workflow can do it for itself:
+# Settings → Pages → Build and deployment → Source must be set to **GitHub Actions**.
+# Left on the branch default, the first run fails at `deploy-pages` with an error that
+# names a token rather than the setting, which is a confusing place to start.
+#
+# This is the repository's first workflow, and `docs/follow-ups.md` records that there
+# is no CI: Vitest and Playwright run when someone remembers. That stays true here on
+# purpose. A publishing workflow that also tested could be reddened by a flaky stack,
+# and a red badge on the site pipeline would say nothing about the site. Adding
+# typecheck, lint, Vitest or Playwright is a separate decision.
+
+name: Pages
+
+# Manual only, for now, and that is a decision rather than an omission. The repository
+# is private and `has_pages` is false, so every run would fail at `configure-pages` —
+# and a workflow that goes red on every push to `site/` teaches the owner to ignore the
+# only automation in the repository. When Pages is enabled, restore the push trigger
+# commented out below; it is written and only wants uncommenting.
+#
+#  push:
+#    branches: [main]
+#    # The site is built from `site/` alone, so nothing else can change its output.
+#    # Narrowing the trigger keeps every push to `apps/` from queueing a deploy that
+#    # would republish byte-identical files.
+#    paths:
+#      - "site/**"
+#      - ".github/workflows/pages.yml"
+on:
+  workflow_dispatch:
+
+# `deploy-pages` mints an OIDC token to claim the Pages deployment, which needs
+# `id-token: write`; `pages: write` is the deployment itself. Everything else is
+# read-only because nothing here writes to the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages keeps one live deployment. Two pushes landing close together would otherwise
+# race, and the loser could be the newer commit. `cancel-in-progress: false` because
+# an interrupted deploy is worse than a redundant one: the queued run publishes the
+# newer tree anyway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Each action is pinned to a major tag rather than left floating. This workflow
+      # is the only automation in the repository, so a breaking change inside an
+      # action is a break the owner discovers as a failed publish with no local
+      # reproduction. A major tag still receives fixes, and it will not move under us
+      # on a v5 rewrite.
+      - uses: actions/checkout@v4
+
+      # Node 22 named explicitly: the runner image's default Node moves on its own
+      # schedule, and `site/build.mjs` should be run by the version the author runs.
+      # No `cache:` — the build has no dependencies, and there is no lockfile at the
+      # root covering `site/` (the root `package.json` is the e2e suite and says of
+      # itself that it is not a workspace root). Caching nothing costs a restore step
+      # and a cache miss warning.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No install step, deliberately. The build reads the template, the two
+      # dictionaries and `media.json`, copies `tokens.css`, and writes `dist/`. It
+      # performs no network access, so an unreachable media host cannot redden this
+      # workflow — that check is the local opt-in `--check`.
+      - name: Build the site
+        run: node site/build.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # The environment is what carries the published URL back to the Actions run, and
+    # what Pages checks the OIDC token against.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
