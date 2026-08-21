@@ -1,0 +1,206 @@
+<!doctype html>
+<!--
+  The one template, rendered once per language. Every double-brace placeholder below is
+  read from site/i18n/<lang>.json, or from the values build.mjs computes per page — the
+  page.*, repo.* and media.* families. This note carries none itself, since anything
+  matching the pattern here would be substituted too.
+
+  Two hand-written HTML files would reintroduce the divergence this file exists to
+  prevent, and swapping the text in JavaScript would hide the French from crawlers, make
+  `lang` lie until the script runs, and show the reader English first.
+-->
+<html lang="{{page.lang}}" data-accent="indigo">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{meta.title}}</title>
+    <meta name="description" content="{{meta.description}}" />
+    <link rel="canonical" href="{{page.canonical}}" />
+    <!-- A page has to name itself among its own alternates, or a crawler reading only
+         the French one learns that English exists and not that French does. -->
+    <link rel="alternate" hreflang="{{page.lang}}" href="{{page.self.href}}" />
+    <link rel="alternate" hreflang="{{page.other.lang}}" href="{{page.other.href}}" />
+    <link rel="alternate" hreflang="x-default" href="{{page.default.href}}" />
+    <link rel="stylesheet" href="{{page.rel}}tokens.css" />
+    <link rel="stylesheet" href="{{page.rel}}style.css" />
+    <script>
+      /* The app selects its dark palette with a stored preference; the site has nothing to
+         store and no toggle, so it follows the system, in the head, before first paint. */
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches)
+        document.documentElement.classList.add("dark");
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#walk">{{skip}}</a>
+
+    <header class="topbar">
+      <span class="brand">Kanso</span>
+      <span class="topbar-note">{{nav.tagline}}</span>
+      <nav class="langs" aria-label="{{nav.language}}">{{page.switch}}</nav>
+    </header>
+
+    <main>
+      <!-- 1. Hero -->
+      <section class="band hero">
+        <p class="eyebrow">{{hero.eyebrow}}</p>
+        <h1>{{hero.title}}</h1>
+        <p class="lead">{{hero.lead}}</p>
+        <div class="actions">
+          <code class="cmd">{{run.command}}</code>
+          <a class="cta" href="{{repo.url}}">{{hero.repo}}</a>
+          <span class="meta">{{hero.ports}}</span>
+        </div>
+        <div class="statuses" aria-hidden="true">
+          <span class="s-backlog"></span><span class="s-todo"></span><span class="s-progress"></span
+          ><span class="s-review"></span><span class="s-done"></span><span class="s-canceled"></span>
+        </div>
+        <p class="meta">{{hero.statuses}}</p>
+      </section>
+
+      <!-- 2. The walk-through -->
+      <section class="band" id="walk">
+        <p class="eyebrow">{{walk.eyebrow}}</p>
+        <h2>{{walk.title}}</h2>
+        <p class="lead narrow">{{walk.lead}}</p>
+        <ol class="steps">
+          <li class="step">
+            <p class="step-n">01</p>
+            <h3>{{step.project.title}}</h3>
+            <div class="shot-box">{{media.step.project}}</div>
+            <p class="caption">{{step.project.caption}}</p>
+          </li>
+          <li class="step">
+            <p class="step-n">02</p>
+            <h3>{{step.ticket.title}}</h3>
+            <div class="shot-box">{{media.step.ticket}}</div>
+            <p class="caption">{{step.ticket.caption}}</p>
+          </li>
+          <li class="step">
+            <p class="step-n">03</p>
+            <h3>{{step.timeline.title}}</h3>
+            <div class="shot-box">{{media.step.timeline}}</div>
+            <p class="caption">{{step.timeline.caption}}</p>
+          </li>
+          <li class="step">
+            <p class="step-n">04</p>
+            <h3>{{step.board.title}}</h3>
+            <div class="shot-box">{{media.step.board}}</div>
+            <p class="caption">{{step.board.caption}}</p>
+          </li>
+          <li class="step">
+            <p class="step-n">05</p>
+            <h3>{{step.assigned.title}}</h3>
+            <div class="shot-box">{{media.step.assigned}}</div>
+            <p class="caption">{{step.assigned.caption}}</p>
+          </li>
+        </ol>
+      </section>
+
+      <!-- 3. The four pillars -->
+      <section class="band">
+        <p class="eyebrow">{{pillars.eyebrow}}</p>
+        <h2>{{pillars.title}}</h2>
+        <div class="cols four">
+          <div class="col">
+            <h3>{{pillar.project.title}}</h3>
+            <p>{{pillar.project.body}}</p>
+          </div>
+          <div class="col">
+            <h3>{{pillar.document.title}}</h3>
+            <p>{{pillar.document.body}}</p>
+          </div>
+          <div class="col">
+            <h3>{{pillar.keyboard.title}}</h3>
+            <p>{{pillar.keyboard.body}}</p>
+          </div>
+          <div class="col">
+            <h3>{{pillar.readers.title}}</h3>
+            <p>{{pillar.readers.body}}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Notion, both directions -->
+      <section class="band">
+        <p class="eyebrow">{{notion.eyebrow}}</p>
+        <h2>{{notion.title}}</h2>
+        <div class="cols two">
+          <div class="col">
+            <h3>{{notion.out.title}}</h3>
+            <p>{{notion.out.body}}</p>
+            <ul class="dbs">
+              <li>Kanso · Teams</li>
+              <li>Kanso · Projects</li>
+              <li>Kanso · Tickets</li>
+              <li>Kanso · Docs</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>{{notion.in.title}}</h3>
+            <p>{{notion.in.body}}</p>
+          </div>
+        </div>
+        <p class="landing">{{notion.landing}}</p>
+      </section>
+
+      <!-- 5. Run it -->
+      <section class="band">
+        <p class="eyebrow">{{run.eyebrow}}</p>
+        <h2>{{run.title}}</h2>
+        <div class="cols two">
+          <div class="col">
+            <pre class="block"><code>{{run.env}}
+{{run.command}}</code></pre>
+            <ul class="ports">
+              <li>{{run.web}}</li>
+              <li>{{run.api}}</li>
+              <li>{{run.health}}</li>
+            </ul>
+          </div>
+          <div class="col">
+            <p>{{run.wizard}}</p>
+            <p>{{run.optional}}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Open source -->
+      <section class="band">
+        <p class="eyebrow">{{oss.eyebrow}}</p>
+        <h2>{{oss.title}}</h2>
+        <div class="cols two">
+          <div class="col">
+            <p>{{oss.licence}}</p>
+            <p class="promise">{{oss.review}}</p>
+            <a class="cta" href="{{repo.url}}">{{oss.repo}}</a>
+          </div>
+          <div class="col soft">
+            <h3>{{oss.start.title}}</h3>
+            <ol class="checklist">
+              <li>{{oss.start.1}} <code>{{oss.start.1.code}}</code></li>
+              <li><a href="{{repo.contributing}}">{{oss.start.2}}</a></li>
+              <li><a href="{{repo.discussions}}">{{oss.start.3}}</a></li>
+              <li>{{oss.start.4}}</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. Closing -->
+      <section class="band closing">
+        <h2>{{closing.title}}</h2>
+        <p class="lead narrow">{{closing.body}}</p>
+        <div class="actions">
+          <code class="cmd">{{run.command}}</code>
+          <a class="cta" href="{{repo.url}}">{{closing.cta}}</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="topbar footer">
+      <span class="meta">{{footer.licence}}</span>
+      <a class="meta" href="{{repo.url}}">{{footer.repo}}</a>
+      <span class="meta captures">{{footer.captures}}</span>
+    </footer>
+  </body>
+</html>

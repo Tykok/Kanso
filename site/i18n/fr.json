@@ -1,0 +1,88 @@
+{
+  "meta.title": "Kanso — un projet de bout en bout, mis en miroir dans Notion",
+  "meta.description": "Kanso mène un projet de bout en bout — équipes, projets, tickets, cycles, une feuille de route, un planning avec ses dépendances, la charge par personne — et garde à côté les documents qui l'expliquent. Auto-hébergé, AGPL-3.0.",
+  "skip": "Aller au déroulé",
+
+  "nav.tagline": "Gestion de projet auto-hébergée",
+  "nav.language": "Langue",
+
+  "hero.eyebrow": "Gestion de projet · documents vivants",
+  "hero.title": "Kanso mène un projet de bout en bout — équipes, projets, tickets, cycles, une feuille de route, un planning avec ses dépendances, la charge par personne — et garde à côté les documents qui l'expliquent.",
+  "hero.lead": "Tous ceux qui ne l'ouvrent pas lisent les mêmes données dans Notion.",
+  "hero.repo": "Le code sur GitHub",
+  "hero.ports": "Web sur :3000, API sur :8080.",
+  "hero.statuses": "Six statuts, de backlog à annulé, une touche chacun. Les mêmes six dans la liste, le tableau et le planning.",
+
+  "walk.eyebrow": "Le déroulé",
+  "walk.title": "Cinq écrans, dans l'ordre où on les rencontre",
+  "walk.lead": "Un projet, un ticket, puis les mêmes tickets lus de trois façons.",
+
+  "step.project.title": "Créer un projet",
+  "step.project.caption": "Une équipe possède ses tickets ; un projet les regroupe au travers de l'équipe et porte un responsable, un statut et des dates. Les cycles et la feuille de route lisent les mêmes lignes.",
+  "step.project.alt": "Un projet dans Kanso, avec son responsable, son statut et ses dates.",
+
+  "step.ticket.title": "Créer un ticket",
+  "step.ticket.caption": "<code>c</code> depuis n'importe où, <code>e</code> pour renommer sur place, <code>1</code>–<code>6</code> pour le statut. Le ticket reçoit un identifiant court propre à l'équipe — KAN-1, puis KAN-2 — attribué à l'intérieur de l'insertion.",
+  "step.ticket.alt": "Un ticket dans Kanso, avec son identifiant, son statut et son assigné.",
+
+  "step.timeline.title": "Le lire comme un planning",
+  "step.timeline.caption": "Des barres, les dépendances entre elles, et un avertissement quand deux se chevauchent. Une seule requête, dessinée dans le temps.",
+  "step.timeline.alt": "Le planning de Kanso : des barres sur les semaines, avec des flèches entre les tickets dépendants.",
+
+  "step.board.title": "Le lire comme un tableau",
+  "step.board.caption": "La même requête, dessinée en six colonnes. Déplacer une carte change le statut, et rien d'autre.",
+  "step.board.alt": "Le tableau de Kanso : six colonnes de statut et des cartes de tickets.",
+
+  "step.assigned.title": "Le lire comme la liste d'une personne",
+  "step.assigned.caption": "La même requête encore, filtrée sur un assigné et conservée comme vue enregistrée. Liste, tableau et planning sont trois dispositions d'une même requête, pas trois fonctionnalités à maintenir en phase — c'est aussi pourquoi la charge par personne est une lecture des mêmes lignes et non un rapport.",
+  "step.assigned.alt": "La liste de Kanso filtrée sur un assigné, groupée par statut.",
+
+  "pillars.eyebrow": "Ce que c'est",
+  "pillars.title": "Quatre choses, dans cet ordre",
+  "pillar.project.title": "Un projet entier, pas une liste de tâches.",
+  "pillar.project.body": "Des cycles, une feuille de route, un planning qui connaît ses dépendances et signale les chevauchements, la charge par personne.",
+  "pillar.document.title": "Le document est à côté du travail.",
+  "pillar.document.body": "Les pages Notion sont référencées par les projets et par les tickets, plusieurs-à-plusieurs des deux côtés. La page qui explique une décision est rattachée au travail qu'elle a décidé, au lieu d'être classée dans un second outil.",
+  "pillar.keyboard.title": "Au clavier.",
+  "pillar.keyboard.body": "<code>j</code>/<code>k</code> pour se déplacer, <code>1</code>–<code>6</code> pour le statut, <code>⌘K</code> pour la palette, <code>/</code> pour filtrer. Les mêmes touches dans les trois vues.",
+  "pillar.readers.title": "Personne d'autre n'a à apprendre Kanso.",
+  "pillar.readers.body": "Connectez Notion et Kanso alimente quatre bases. Ceux qui ont seulement besoin de suivre y construisent leurs propres vues et n'ouvrent jamais Kanso.",
+
+  "notion.eyebrow": "Notion",
+  "notion.title": "Deux directions, dont une seule est une boucle",
+  "notion.out.title": "Sortant, en continu",
+  "notion.out.body": "Chaque écriture met un travail en file dans la même transaction, et un worker le pousse dans quatre bases. Les lecteurs y filtrent, groupent et représentent les données comme ils le font déjà, et n'ouvrent jamais Kanso. Postgres reste la source de vérité ; Notion rattrape son retard, et Kanso reste utilisable pendant qu'il est injoignable.",
+  "notion.in.title": "Entrant, une fois",
+  "notion.in.body": "Vous arrivez avec six mois de tickets déjà dans Notion et l'import les adopte : il liste les bases qu'il voit, vous dites quelle équipe chacune devient, et il y copie les pages. Une fois. Ensuite les tickets se créent dans Kanso — une page créée plus tard dans Notion est journalisée et laissée où elle est, et le poller ne ramène que des champs scalaires : titre, statut, priorité, dates, archivage. Les assignés et les relations restent ceux de Kanso.",
+  "notion.landing": "Une porte pour emménager, une seule source de vérité pour y vivre.",
+
+  "run.eyebrow": "Le lancer",
+  "run.title": "Deux commandes, sur votre machine",
+  "run.env": "cp .env.example .env      # renseignez les identifiants OIDC, ou posez KANSO_AUTH_MODE=dev",
+  "run.command": "docker compose up",
+  "run.web": "Web — localhost:3000",
+  "run.api": "API — localhost:8080",
+  "run.health": "Santé — localhost:8080/actuator/health",
+  "run.wizard": "Le premier lancement ouvre un assistant d'installation. Vous créez le compte propriétaire avec une adresse et un mot de passe, puis — si vous le voulez — liez Notion, activez la connexion Google et choisissez un thème. Chaque étape après le compte est passable et réouvrable depuis les réglages, de sorte qu'on peut saisir des tickets en moins d'une minute.",
+  "run.optional": "Notion est optionnel. Sans jeton, chaque écriture met quand même un travail de synchronisation en file et un client neutre le termine : la file et le mécanisme de reprise tournent, et rien ne quitte la machine.",
+
+  "oss.eyebrow": "Code ouvert",
+  "oss.title": "AGPL-3.0, et hébergeable par vous",
+  "oss.licence": "AGPL-3.0. Pas d'édition payante, aucune fonctionnalité gardée derrière un mur.",
+  "oss.review": "Relu en moins d'une semaine. Aucun CLA à signer.",
+  "oss.repo": "Lire le code",
+  "oss.start.title": "Avant de commencer",
+  "oss.start.1": "Clonez-le et lancez",
+  "oss.start.1.code": "docker compose up kanso",
+  "oss.start.2": "Lisez le guide de contribution (5 min)",
+  "oss.start.3": "Dites bonjour dans la discussion du ticket",
+  "oss.start.4": "Ouvrez une pull request, même incomplète",
+
+  "closing.title": "Il mène le projet. Tous les autres le lisent dans Notion.",
+  "closing.body": "Une instance, votre Postgres, votre jeton Notion ou aucun. Rien à quoi s'inscrire et rien à nous envoyer : il n'y a pas de télémétrie à désactiver.",
+  "closing.cta": "Le dépôt",
+
+  "footer.licence": "AGPL-3.0 · Kanso",
+  "footer.repo": "github.com/Tykok/Kanso",
+  "footer.captures": "Les captures restent en anglais : l'application n'est pas traduite. Cette page porte donc des légendes françaises sur des écrans anglais, ce qui est visible et préférable à traduire l'application pour sa vitrine."
+}

@@ -48,3 +48,13 @@ apps/web/next-env.d.ts
 Kanso - Mobile.dc.html
 *.dc.html
 Kanso Design System*.zip
+
+# The published site. `node site/build.mjs` rebuilds it from site/ in seconds, and the
+# workflow that deploys it does exactly that, so a committed copy could only ever be a
+# stale second answer to what the page says.
+dist/
+
+# Capture placeholders, on their way to the host that serves them. The reason above
+# applies at twenty times the scale here: five @2x PNGs are 1-2 MB and a clip is 5-30 MB
+# per revision, so a clip retouched three times is three clips in the history forever.
+site/media/
