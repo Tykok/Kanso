@@ -37,15 +37,10 @@ object ImportPlanner {
 			.map { (name, _) -> name }
 			.distinct()
 			.sorted(),
-		// A page already imported is already in Kanso; what Notion currently thinks of it —
-		// archived, untitled, whatever — is irrelevant to what *this* import will do, so it
-		// is counted as already-imported and nowhere else. `skipped` therefore excludes
-		// those pages explicitly rather than deriving from `pages.size - adoptable.size`,
-		// which would count a page in both buckets and make the totals not add up to the
-		// base's page count.
-		skipped = bases.sumOf { base ->
-			base.pages.count { it.id !in base.alreadyImported && NotionPageReader.refusal(it) != null }
-		},
+		// `PlannedBase.skippedPages` already excludes pages already imported — see it for
+		// why. The writer counts the same list for the same reason, from the same property,
+		// so the two can no longer drift into counting one page in both buckets.
+		skipped = bases.sumOf { it.skippedPages.size },
 		alreadyImported = bases.sumOf { it.alreadyImported.size },
 	)
 
@@ -118,5 +113,20 @@ class PlannedBase(
 	/** The pages that can become rows, in the order Notion returned them. */
 	val adoptable: List<NotionPage> by lazy {
 		pages.filter { NotionPageReader.refusal(it) == null && it.id !in alreadyImported }
+	}
+
+	/**
+	 * Pages that are neither adoptable nor already imported — refused by
+	 * [NotionPageReader.refusal], and the only pages that end up in a [SkippedPage].
+	 *
+	 * A page already imported is already-imported *only*: what Notion currently says about
+	 * it — archived, untitled, whatever — is beside the point of what this import will do,
+	 * so [alreadyImported] is excluded here, the same exclusion [adoptable] makes. Both the
+	 * preview and the writer count this one property instead of each writing their own copy
+	 * of the exclusion, which is how a page already imported and now untitled once ended up
+	 * counted as both skipped and already-imported in the same run.
+	 */
+	val skippedPages: List<NotionPage> by lazy {
+		pages.filter { it.id !in alreadyImported && NotionPageReader.refusal(it) != null }
 	}
 }

@@ -78,6 +78,36 @@ class ImportOriginTest : ImportTestBase() {
 	}
 
 	@Test
+	fun `the outcome keeps the same buckets apart, not only the preview`() {
+		// Same fixture shape as the preview's version of this test, but read through
+		// `perform` — the number the reader sees *after* pressing import, and the one
+		// `ImportWriter.write` builds its own `skipped` list for rather than reusing
+		// `ImportPlanner`'s arithmetic.
+		val dataSourceId = "ds-tasks-outcome"
+		val first = FakeDatabase("Tasks", listOf(fakePage("Ship it", id = "page-imported")), dataSourceId = dataSourceId)
+		importerFor(first).perform(admin, team.id, plan(first to ImportTarget.TICKETS))
+
+		val second = FakeDatabase(
+			"Tasks",
+			listOf(
+				untitledPage("page-imported"),
+				fakePage("Add tests", id = "page-new"),
+				untitledPage("page-never-imported"),
+			),
+			dataSourceId = dataSourceId,
+		)
+		val outcome = importerFor(second).perform(admin, team.id, plan(second to ImportTarget.TICKETS))
+
+		assertEquals(1, outcome.alreadyImported, "the now-untitled page is already imported; that does not change")
+		assertEquals(
+			listOf("page-never-imported"),
+			outcome.skipped.map { it.pageId },
+			"the already-imported page is not reported a second time as skipped",
+		)
+		assertEquals(1, outcome.tickets, "only the brand new page becomes a ticket this run")
+	}
+
+	@Test
 	fun `an origin names the row it created`() {
 		val page = fakePage("Ship it")
 		val tasks = FakeDatabase("Tasks", listOf(page))

@@ -68,8 +68,12 @@ class ImportWriter(
 		var folderCount = 0
 
 		for (base in bases) {
-			base.pages.forEach { page ->
-				NotionPageReader.refusal(page)?.let { skipped += SkippedPage(base.base.name, page.id, it) }
+			// `base.skippedPages` already excludes pages already imported — a page already
+			// in Kanso is reported as already-imported only, never also as skipped, which is
+			// the same rule [ImportPlanner.preview] applies from the same property.
+			base.skippedPages.forEach { page ->
+				val reason = requireNotNull(NotionPageReader.refusal(page)) { "skippedPages only holds refused pages" }
+				skipped += SkippedPage(base.base.name, page.id, reason)
 			}
 
 			when (base.target) {
