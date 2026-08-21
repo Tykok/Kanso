@@ -56,6 +56,25 @@ The HTML report from the last run:
 pnpm exec playwright show-report
 ```
 
+## The captures, which are not a scenario
+
+`shots.spec.ts` writes the five PNGs the public site's walk-through shows, into
+`site/media/`. It is tagged `@shots` and `playwright.config.ts` keeps it out of every
+other run, because it writes files and because it needs a database no `Atlas` has been
+created in — ticket identifiers come off a counter on the team row, and a picture
+captioned `KAN-1` has to show `KAN-1`. It refuses to run otherwise rather than
+photographing `KAN-47`.
+
+```bash
+docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wait
+pnpm shots
+```
+
+The files are never committed: they are uploaded to the host named in `site/media.json`.
+Its dates are absolute, in September 2026, and the run goes red once they are past —
+deliberately, so the site is never handed a walk-through of missed deadlines. Move
+`PLAN` forward when that happens.
+
 ## Identities
 
 Two accounts, created on the spot by `dev` mode:
