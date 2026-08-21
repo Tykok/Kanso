@@ -73,6 +73,19 @@ data class ImportPreview(
 	 * and a second run of the same import would leave them alone rather than refuse them.
 	 */
 	val alreadyImported: Int,
+	/**
+	 * Rows a relation placed, per [ImportLinks]. Always 0 here: nothing yet calls
+	 * [ImportLinks.resolve] from this preview — the task that wires `ImportPlanner.preview`
+	 * to it fills this in.
+	 */
+	val linkedByRelation: Int = 0,
+	/**
+	 * Rows [ImportLinks] alone cannot place, and so would land in a [Fallback] the writer
+	 * chooses. Always 0 here, and always will be from this file alone: knowing a base's own
+	 * [Fallback] is the writer's knowledge, not this preview's — the task that wires
+	 * `Fallback` into the writer fills this in.
+	 */
+	val fellBack: Int = 0,
 )
 
 data class PreviewGroup(val name: String, val pages: Int)
@@ -104,4 +117,11 @@ data class ImportOutcome(
 	 * second run says how much it skipped instead of silently doing nothing.
 	 */
 	val alreadyImported: Int,
+	/**
+	 * Disagreements [ImportLinks] settled by letting the child win — see [ImportLinks.Resolved.conflicts].
+	 * Always 0 here: the writer still resolves relations through [ImportPlanner.dependencies],
+	 * which has no notion of a two-sided disagreement; the task that switches it to
+	 * [ImportLinks] threads this count through.
+	 */
+	val linkConflicts: Int = 0,
 )

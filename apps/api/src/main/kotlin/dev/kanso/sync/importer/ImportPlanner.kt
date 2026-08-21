@@ -109,6 +109,8 @@ class PlannedBase(
 	val pages: List<NotionPage>,
 	/** Pages this instance has already imported, by id. Skipped, and counted. */
 	val alreadyImported: Set<String> = emptySet(),
+	/** Which columns of this base answer which fields — see [ImportLinks] for the relations. */
+	val mapping: ColumnMapping = ColumnMapping(),
 ) {
 	/** The pages that can become rows, in the order Notion returned them. */
 	val adoptable: List<NotionPage> by lazy {
