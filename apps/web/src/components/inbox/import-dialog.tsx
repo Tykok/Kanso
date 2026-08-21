@@ -61,7 +61,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   });
 
   const cycle = (source: NotionImportSource) => {
-    const order: ImportTarget[] = ["project", "documents", "ignore"];
+    const order: ImportTarget[] = ["teams", "projects", "tickets", "documents", "ignore"];
     const next = order[(order.indexOf(targetOf(mapping, source)) + 1) % order.length];
     setMapping((current) => ({ ...current, [source.id]: next }));
   };

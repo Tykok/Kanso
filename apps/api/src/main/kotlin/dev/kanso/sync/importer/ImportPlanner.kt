@@ -25,7 +25,9 @@ data class PageDependency(val predecessorPageId: String, val successorPageId: St
 object ImportPlanner {
 
 	fun preview(bases: List<PlannedBase>): ImportPreview = ImportPreview(
-		projects = bases.filter { it.target == ImportTarget.PROJECT }
+		teams = bases.filter { it.target == ImportTarget.TEAMS }
+			.map { PreviewGroup(it.base.name, it.adoptable.size) },
+		projects = bases.filter { it.target == ImportTarget.TICKETS }
 			.map { PreviewGroup(it.base.name, it.adoptable.size) },
 		folders = bases.filter { it.target == ImportTarget.DOCUMENTS }
 			.map { PreviewGroup(it.base.name, it.adoptable.size) },
@@ -47,7 +49,7 @@ object ImportPlanner {
 	 * [dependencies]); it just says nothing about which bases are linked.
 	 */
 	private fun linkedBases(bases: List<PlannedBase>): Set<String> {
-		val ticketable = bases.filter { it.target == ImportTarget.PROJECT }
+		val ticketable = bases.filter { it.target == ImportTarget.TICKETS }
 		val owner = ticketable.flatMap { base -> base.adoptable.map { it.id to base.base.dataSourceId } }.toMap()
 
 		val linked = mutableSetOf<String>()
@@ -74,7 +76,7 @@ object ImportPlanner {
 	 * that happened to resolve.
 	 */
 	fun dependencies(bases: List<PlannedBase>): DependencyPlan {
-		val ticketable = bases.filter { it.target == ImportTarget.PROJECT }
+		val ticketable = bases.filter { it.target == ImportTarget.TICKETS }
 		val adoptedIds = ticketable.flatMapTo(mutableSetOf()) { base -> base.adoptable.map { it.id } }
 
 		val edges = mutableListOf<PageDependency>()

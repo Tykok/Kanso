@@ -45,7 +45,10 @@ export function StepThree({
     <>
       <div className="flex flex-col gap-1.5">
         <span className="text-15 font-medium">
-          {counts.projects} {counts.projects === 1 ? "project" : "projects"}, {counts.folders}{" "}
+          {/* "tickets", not "projects": a base mapped to tickets is what still becomes one
+           * project full of tickets. `counts.projects` counts the other shape, refused at
+           * the writer until it exists. */}
+          {counts.tickets} {counts.tickets === 1 ? "project" : "projects"}, {counts.folders}{" "}
           {counts.folders === 1 ? "folder" : "folders"}
           {teamName ? ` in ${teamName}` : ""}
         </span>

@@ -4,15 +4,19 @@ import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
 
 /**
- * What a Notion base becomes. There is no third answer and no `IGNORE`.
+ * What a Notion base becomes. There is no `IGNORE`: an ignored base is *absent* from the
+ * plan rather than present with a target meaning "do nothing" — `import-map.ts` builds the
+ * request that way on purpose, and an instruction listing things not to do is one more
+ * thing this service would have to be trusted to read correctly.
  *
- * Screen 24 has three choices, but an ignored base is *absent* from the plan rather than
- * present with a target that means "do nothing" — `import-map.ts` builds the request that
- * way on purpose, and an instruction listing things not to do is one more thing this
- * service would have to be trusted to read correctly.
+ * `PROJECT` used to mean "this base becomes *one* project whose pages are tickets", which
+ * described the container rather than the base. `TICKETS` is that behaviour under a name
+ * that says it, and `PROJECTS` is the other shape: a base whose pages *are* projects.
  */
 enum class ImportTarget(override val wire: String) : Wire {
-	PROJECT("project"),
+	TEAMS("teams"),
+	PROJECTS("projects"),
+	TICKETS("tickets"),
 	DOCUMENTS("documents");
 
 	companion object {
@@ -53,6 +57,8 @@ data class ImportSources(
 
 /** What would happen. Nothing in producing this writes a row. */
 data class ImportPreview(
+	/** Bases becoming teams. Empty until Task 3's writer exists to make the group mean something. */
+	val teams: List<PreviewGroup>,
 	val projects: List<PreviewGroup>,
 	val folders: List<PreviewGroup>,
 	/** Bases holding a relation into another chosen base; those relations become dependencies. */

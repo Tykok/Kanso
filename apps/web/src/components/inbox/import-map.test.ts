@@ -16,7 +16,7 @@ const SOURCES: NotionSource[] = [
 ];
 
 const DRAWN: ImportMapping = {
-  eng: "project",
+  eng: "tickets",
   design: "documents",
   meetings: "documents",
   archive: "ignore",
@@ -27,7 +27,9 @@ describe("what the mapping adds up to", () => {
     expect(importCounts(SOURCES, DRAWN)).toEqual({
       kept: 396,
       total: 1287,
-      projects: 1,
+      teams: 0,
+      projects: 0,
+      tickets: 1,
       folders: 2,
       ignored: 1,
     });
@@ -47,7 +49,9 @@ describe("what the mapping adds up to", () => {
     expect(importCounts(SOURCES, {})).toEqual({
       kept: 0,
       total: 1287,
+      teams: 0,
       projects: 0,
+      tickets: 0,
       folders: 0,
       ignored: 4,
     });
@@ -57,7 +61,9 @@ describe("what the mapping adds up to", () => {
     expect(importCounts([], {})).toEqual({
       kept: 0,
       total: 0,
+      teams: 0,
       projects: 0,
+      tickets: 0,
       folders: 0,
       ignored: 0,
     });
@@ -66,15 +72,33 @@ describe("what the mapping adds up to", () => {
   it("drops a mapping for a database that is no longer there", () => {
     // The list is re-searched between step 1 and step 3; a stale id in the mapping
     // must not be counted as a database to import.
-    const counts = importCounts(SOURCES, { ...DRAWN, gone: "project" });
-    expect(counts.projects).toBe(1);
+    const counts = importCounts(SOURCES, { ...DRAWN, gone: "tickets" });
+    expect(counts.tickets).toBe(1);
+  });
+
+  it("counts the four kinds separately, because the screen names them separately", () => {
+    const counts = importCounts(SOURCES, {
+      eng: "tickets",
+      design: "documents",
+      meetings: "projects",
+      archive: "teams",
+    });
+    expect(counts).toEqual({
+      kept: 1287,
+      total: 1287,
+      teams: 1,
+      projects: 1,
+      tickets: 1,
+      folders: 1,
+      ignored: 0,
+    });
   });
 });
 
 describe("the plan that is sent once the preview is confirmed", () => {
   it("names only what is being written, and what each thing becomes", () => {
     expect(importPlan(SOURCES, DRAWN)).toEqual([
-      { sourceId: "eng", name: "Engineering tasks", target: "project", pages: 248 },
+      { sourceId: "eng", name: "Engineering tasks", target: "tickets", pages: 248 },
       { sourceId: "design", name: "Design docs", target: "documents", pages: 36 },
       { sourceId: "meetings", name: "Meeting notes", target: "documents", pages: 112 },
     ]);

@@ -7,6 +7,8 @@ import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.service.BadRequestException
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.transaction.annotation.Transactional
@@ -63,8 +65,8 @@ class NotionImportTest : ImportTestBase() {
 	private fun importer() = importerFor(engineering, specs, design, archive)
 
 	private fun drawnPlan() = plan(
-		engineering to ImportTarget.PROJECT,
-		specs to ImportTarget.PROJECT,
+		engineering to ImportTarget.TICKETS,
+		specs to ImportTarget.TICKETS,
 		design to ImportTarget.DOCUMENTS,
 	)
 
@@ -164,7 +166,7 @@ class NotionImportTest : ImportTestBase() {
 		val outcome = importer().perform(
 			admin,
 			team.id,
-			plan(engineering to ImportTarget.PROJECT, design to ImportTarget.DOCUMENTS),
+			plan(engineering to ImportTarget.TICKETS, design to ImportTarget.DOCUMENTS),
 		)
 
 		assertEquals(0, outcome.dependencies)
@@ -177,7 +179,7 @@ class NotionImportTest : ImportTestBase() {
 			"Field notes",
 			pages = listOf(fakePage("Readable", id = "page-ok"), untitledPage("page-nameless")),
 		)
-		val outcome = importerFor(awkward).perform(admin, team.id, plan(awkward to ImportTarget.PROJECT))
+		val outcome = importerFor(awkward).perform(admin, team.id, plan(awkward to ImportTarget.TICKETS))
 
 		assertEquals(1, outcome.tickets)
 		val skipped = outcome.skipped.single()
@@ -206,5 +208,17 @@ class NotionImportTest : ImportTestBase() {
 		val text = blockRows.findByPage(page.id).joinToString("\n") { it.content["text"]?.toString().orEmpty() }
 		assertTrue(text.contains("Imported from Notion"), text)
 		assertTrue(text.contains("Owner: M. Rey"), text)
+	}
+
+	@Test
+	fun `a teams base is refused until the writer can write one`() {
+		val teams = FakeDatabase("Teams", listOf(fakePage("Platform")))
+		val importer = importerFor(teams)
+
+		val failure = assertThrows<BadRequestException> {
+			importer.perform(admin, team.id, plan(teams to ImportTarget.TEAMS))
+		}
+
+		assertTrue(failure.message!!.contains("teams"), "the sentence names what it cannot write yet")
 	}
 }

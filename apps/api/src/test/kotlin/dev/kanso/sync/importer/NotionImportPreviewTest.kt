@@ -52,9 +52,9 @@ class NotionImportPreviewTest : ImportTestBase() {
 	private fun importer() = importerFor(engineering, specs, meetings, design, archive)
 
 	private fun drawnPlan() = plan(
-		engineering to ImportTarget.PROJECT,
-		specs to ImportTarget.PROJECT,
-		meetings to ImportTarget.PROJECT,
+		engineering to ImportTarget.TICKETS,
+		specs to ImportTarget.TICKETS,
+		meetings to ImportTarget.TICKETS,
 		design to ImportTarget.DOCUMENTS,
 	)
 
@@ -92,7 +92,7 @@ class NotionImportPreviewTest : ImportTestBase() {
 	fun `does not count a relation that leaves what is being imported`() {
 		// Engineering keeps pointing at Product specs, but Product specs is not in the plan
 		// now, so there is no second end for a dependency to land on.
-		val preview = importer().preview(plan(engineering to ImportTarget.PROJECT))
+		val preview = importer().preview(plan(engineering to ImportTarget.TICKETS))
 
 		assertEquals(0, preview.linkedSources)
 	}
@@ -113,7 +113,7 @@ class NotionImportPreviewTest : ImportTestBase() {
 			"Field notes",
 			pages = listOf(fakePage("Readable", id = "page-ok"), untitledPage("page-nameless")),
 		)
-		val preview = importerFor(awkward).preview(plan(awkward to ImportTarget.PROJECT))
+		val preview = importerFor(awkward).preview(plan(awkward to ImportTarget.TICKETS))
 
 		assertEquals(1, preview.skipped, "a page with no title has nothing to make a row out of")
 		assertEquals(listOf("Field notes" to 1), preview.projects.map { it.name to it.pages })
@@ -125,7 +125,7 @@ class NotionImportPreviewTest : ImportTestBase() {
 		// that has since been deleted. Counting it would put a number on step 3 with
 		// nothing behind it — `import-map.ts` refuses the same thing on its own side.
 		val preview = importer().preview(
-			drawnPlan() + ImportPlanEntry("ds-deleted-yesterday", ImportTarget.PROJECT)
+			drawnPlan() + ImportPlanEntry("ds-deleted-yesterday", ImportTarget.TICKETS)
 		)
 
 		assertEquals(3, preview.projects.size)

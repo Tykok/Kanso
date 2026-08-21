@@ -146,7 +146,7 @@ export type NotionImportSources = {
 };
 
 /** One row of the mapping. An ignored base is absent, never `target: "ignore"`. */
-export type NotionImportPlanRow = { sourceId: string; target: "project" | "documents" };
+export type NotionImportPlanRow = { sourceId: string; target: "teams" | "projects" | "tickets" | "documents" };
 
 /** What step 3 sends, and what it gets back before anything is written. */
 export type NotionImportPreview = {

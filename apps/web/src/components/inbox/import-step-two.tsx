@@ -52,8 +52,8 @@ export function StepTwo({
       <div className="flex flex-col gap-1.5">
         <span className="text-15 font-medium">Choose what becomes what</span>
         <span className="text-12 text-muted-foreground">
-          Each Notion database becomes a project or a folder of documents. Nothing is written
-          before you confirm.
+          Each Notion database becomes a team, a set of projects, a set of tickets, or a folder
+          of documents. Nothing is written before you confirm.
         </span>
       </div>
 

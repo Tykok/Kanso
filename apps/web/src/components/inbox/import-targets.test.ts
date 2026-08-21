@@ -15,7 +15,13 @@ describe("how a page count is printed", () => {
   });
 
   it("has a word for every answer the mapping can take", () => {
-    expect(Object.keys(TARGET_LABELS).sort()).toEqual(["documents", "ignore", "project"]);
+    expect(Object.keys(TARGET_LABELS).sort()).toEqual([
+      "documents",
+      "ignore",
+      "projects",
+      "teams",
+      "tickets",
+    ]);
     expect(TARGET_LABELS[DEFAULT_TARGET]).toBe("Ignore");
   });
 });

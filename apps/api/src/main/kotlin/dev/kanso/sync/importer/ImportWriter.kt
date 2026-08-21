@@ -8,6 +8,7 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
 import dev.kanso.service.ProjectService
 import dev.kanso.service.ScheduleService
@@ -61,7 +62,7 @@ class ImportWriter(
 			}
 
 			when (base.target) {
-				ImportTarget.PROJECT -> {
+				ImportTarget.TICKETS -> {
 					val project = createProject(base, teamId)
 					projectCount++
 					for (page in base.adoptable) {
@@ -78,6 +79,11 @@ class ImportWriter(
 						docCount++
 					}
 				}
+
+				ImportTarget.TEAMS, ImportTarget.PROJECTS ->
+					throw BadRequestException(
+						"Importing a base as ${base.target.wire} is not wired up yet."
+					)
 			}
 		}
 
