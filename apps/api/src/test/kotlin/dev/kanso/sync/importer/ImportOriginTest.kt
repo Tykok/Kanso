@@ -42,7 +42,39 @@ class ImportOriginTest : ImportTestBase() {
 		val steps = plan(tasks to ImportTarget.TICKETS)
 		importer.perform(admin, team.id, steps)
 
-		assertEquals(1, importer.preview(steps).alreadyImported)
+		val before = rowCounts()
+		val preview = importer.preview(steps)
+
+		assertEquals(1, preview.alreadyImported)
+		assertEquals(before, rowCounts(), "a preview counts what it saw; it never records it")
+	}
+
+	@Test
+	fun `a page already imported keeps its bucket no matter what Notion says about it now`() {
+		// The base as it was on the first run: one page, imported clean.
+		val dataSourceId = "ds-tasks"
+		val first = FakeDatabase("Tasks", listOf(fakePage("Ship it", id = "page-imported")), dataSourceId = dataSourceId)
+		importerFor(first).perform(admin, team.id, plan(first to ImportTarget.TICKETS))
+
+		// The base as it is now: the imported page has since lost its title in Notion — a
+		// non-archived page discovery still returns — a brand new page has appeared, and a
+		// page nobody ever imported has no title either. Only the last of those is
+		// "unadoptable": the first is already in Kanso, and what Notion currently says about
+		// it (untitled, archived, whatever) is beside the point.
+		val second = FakeDatabase(
+			"Tasks",
+			listOf(
+				untitledPage("page-imported"),
+				fakePage("Add tests", id = "page-new"),
+				untitledPage("page-never-imported"),
+			),
+			dataSourceId = dataSourceId,
+		)
+		val preview = importerFor(second).preview(plan(second to ImportTarget.TICKETS))
+
+		assertEquals(1, preview.alreadyImported, "the now-untitled page is already imported; that does not change")
+		assertEquals(1, preview.skipped, "only the untitled page nobody imported is unadoptable")
+		assertEquals(listOf("Tasks" to 1), preview.projects.map { it.name to it.pages }, "the new page is neither")
 	}
 
 	@Test

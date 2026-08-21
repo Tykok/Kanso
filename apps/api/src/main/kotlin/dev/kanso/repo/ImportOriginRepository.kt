@@ -40,11 +40,6 @@ class ImportOriginRepository {
 			.associate { it[NotionImportOrigins.notionPageId] to it.toOrigin() }
 	}
 
-	fun countBySource(dataSourceId: String): Int =
-		NotionImportOrigins.selectAll()
-			.where { NotionImportOrigins.dataSourceId eq dataSourceId }
-			.count().toInt()
-
 	fun record(origin: ImportOrigin) {
 		NotionImportOrigins.insert {
 			it[notionPageId] = origin.notionPageId

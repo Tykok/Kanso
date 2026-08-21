@@ -37,12 +37,15 @@ object ImportPlanner {
 			.map { (name, _) -> name }
 			.distinct()
 			.sorted(),
-		// Counted straight from the refusal, not from `pages.size - adoptable.size`: that
-		// difference now also contains pages already imported, and those are not
-		// "unadoptable" — they have a title and a status just fine, there is simply already
-		// a row for them. The two counts stay apart so the screen can say "two skipped, one
-		// already imported" instead of one number that means either.
-		skipped = bases.sumOf { base -> base.pages.count { NotionPageReader.refusal(it) != null } },
+		// A page already imported is already in Kanso; what Notion currently thinks of it —
+		// archived, untitled, whatever — is irrelevant to what *this* import will do, so it
+		// is counted as already-imported and nowhere else. `skipped` therefore excludes
+		// those pages explicitly rather than deriving from `pages.size - adoptable.size`,
+		// which would count a page in both buckets and make the totals not add up to the
+		// base's page count.
+		skipped = bases.sumOf { base ->
+			base.pages.count { it.id !in base.alreadyImported && NotionPageReader.refusal(it) != null }
+		},
 		alreadyImported = bases.sumOf { it.alreadyImported.size },
 	)
 
