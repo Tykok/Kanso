@@ -351,3 +351,10 @@ from the mirror's `notion_page_id`; the lossy-mapping table gains the import dir
 - **No continuous inbound read.** Unchanged from `architecture.md`.
 - **No cleanup of origin rows whose entity was deleted.** A stale row resolves to
   nothing and falls back; a line in `follow-ups.md` says so.
+- **Importing documentation properly is its own subject, deliberately left out.** The
+  `documents` target keeps exactly today's behaviour: a folder per base, a page per row,
+  and the unmapped properties in a callout. What a real documentation import would be —
+  a page's *blocks* rather than its title, nested pages rather than a flat folder, and
+  the many-to-many references to projects and tickets that `notion_docs` was built for —
+  is a design of its own, and it gets its own spec. Nothing here forecloses it: the
+  origin table already keys documents by `entity_type = 'doc'`.
