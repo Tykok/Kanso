@@ -83,6 +83,33 @@ published and no plan is persisted, so there is no compatibility to keep.
 | `tickets` | a ticket | to a `projects` base → its project; inside the base → a dependency |
 | `documents` | a document page inside a folder | none (unchanged) |
 
+A base of projects on its own, linked to tasks living in a second base, is the shape
+this is for: two bases, `projects` and `tickets`, and the relation between them says
+which ticket belongs to which project.
+
+### Relations are read in both directions
+
+A Notion relation created `single_property` exists on **one side only** — `NotionSchema`
+relies on that for `Blocked by` and for the teams' parent relation. So a workspace can
+carry the project link on the tasks base as a `Projet` column, or on the projects base
+as a `Tâches` column, and neither is more correct than the other. Reading only the
+child's side would leave the second workspace with every ticket in the fallback
+project.
+
+So each target also has *inverse* fields, mapped on the parent's own screen section:
+
+| Target | Inverse field | What it says |
+|---|---|---|
+| `projects` | `tickets` | the task pages belonging to this project |
+| `teams` | `projects` | the project pages belonging to this team |
+| `teams` | `subTeams` | the team pages under this one |
+
+**The child's side wins.** A `two_property` relation is declared on both sides and can
+disagree — a ticket naming project B while project A claims to hold it. The row being
+written is the one that names its own parent, so the ticket goes to B, and the
+disagreement is counted in the outcome rather than resolved silently. An inverse field
+is a source of last resort, consulted only where the child said nothing.
+
 Each target is importable on its own. Teams first, then projects, then tickets is the
 path the screen suggests, because it is the order in which links resolve without a
 fallback — but it is a suggestion. Somebody importing only a task database gets the
@@ -261,8 +288,9 @@ PUT /api/notion/people                     → { notionPersonId: userId? }
 
 A relation's meaning needs no shape of its own: `team`, `parentTeam`, `project` and
 `blockedBy` are fields of their target like `status` is, so declaring what a relation
-means is one entry in `columns`. That is what makes the interpretation and the pre-fill
-one mechanism rather than two.
+means is one entry in `columns`. The inverse fields — `tickets` on a `projects` base,
+`projects` and `subTeams` on a `teams` base — are entries in the same map. That is what
+makes the interpretation and the pre-fill one mechanism rather than two.
 
 An ignored base stays absent from `plan` rather than present with a target meaning "do
 nothing", exactly as today: the request is the instruction, and an instruction listing
@@ -296,7 +324,8 @@ TDD, purest first, because the pure parts are where the decisions live:
 - `MappedPageReader` — one case per Notion type it claims to read, plus a mapped column
   that is absent from the page, plus an option outside the vocabulary.
 - `ImportPlanner` — counts across four targets, already-imported pages, relations
-  resolved and dropped.
+  resolved and dropped, a link found only on the parent's side, and a `two_property`
+  relation whose two sides disagree.
 - `import-columns.ts` and `import-map.ts` — vitest, the same arithmetic the screens show.
 
 Then the integrations: one plan holding teams, projects and tickets written in the
