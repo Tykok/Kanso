@@ -24,8 +24,19 @@ enum class ImportTarget(override val wire: String) : Wire {
 	}
 }
 
-/** One row of screen 24's second step, as it arrives. */
-data class ImportPlanEntry(val sourceId: String, val target: ImportTarget)
+/**
+ * One row of screen 24's second step, as it arrives.
+ *
+ * [mapping] is the row's own answer to "which of this base's columns answer which field".
+ * It has no wire form yet — the controller still builds an empty one — but it reaches
+ * [PlannedBase] from here, so the writer reads a base's relations through the same mapping
+ * the request will carry once the columns screen sends it.
+ */
+data class ImportPlanEntry(
+	val sourceId: String,
+	val target: ImportTarget,
+	val mapping: ColumnMapping = ColumnMapping(),
+)
 
 /**
  * A base the workspace search found.
@@ -57,8 +68,13 @@ data class ImportSources(
 
 /** What would happen. Nothing in producing this writes a row. */
 data class ImportPreview(
-	/** Bases becoming teams. Empty until Task 3's writer exists to make the group mean something. */
+	/** Bases becoming teams: one group per base, counting the pages that become teams. */
 	val teams: List<PreviewGroup>,
+	/**
+	 * Bases becoming projects, either shape: a base whose pages *are* projects, and a base
+	 * whose pages are tickets in one project named after it. The count is pages either way,
+	 * which is what the screen prints under the base's name.
+	 */
 	val projects: List<PreviewGroup>,
 	val folders: List<PreviewGroup>,
 	/**
@@ -106,6 +122,8 @@ data class SkippedPage(val source: String, val pageId: String, val reason: Strin
 /** What the import did. [started] is what the client's typed shape asks for. */
 data class ImportOutcome(
 	val started: Boolean,
+	/** Teams created from a base whose pages *are* teams. Their parents are set in a second pass. */
+	val teams: Int,
 	val tickets: Int,
 	val docs: Int,
 	val projects: Int,

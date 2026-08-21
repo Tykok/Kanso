@@ -52,9 +52,15 @@ object ImportLinks {
 		// Which pages can be the *target* end of a relation, per target kind — a page that
 		// is not adoptable, or sits in a base the plan does not carry at all, is exactly
 		// the shape of page a relation end can name and never resolve.
+		//
+		// A page already imported counts: the row it became still exists, the writer finds
+		// it in `notion_import_origin`, and a second import of a base with one new page
+		// whose relations all named pages from the first run would otherwise resolve none
+		// of them. Only as a *target* — the child side reads `adoptable`, because a page
+		// already imported is not written again and so has no link to place.
 		val adopted: Map<ImportTarget, Set<String>> = ImportTarget.entries.associateWith { target ->
 			bases.filter { it.target == target }
-				.flatMapTo(mutableSetOf()) { base -> base.adoptable.map { it.id } }
+				.flatMapTo(mutableSetOf()) { base -> base.adoptable.map { it.id } + base.alreadyImported }
 		}
 
 		val parentOfTeam = resolveOneToOne(

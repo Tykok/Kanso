@@ -94,4 +94,18 @@ abstract class ImportTestBase : PostgresTest() {
 
 	protected fun plan(vararg rows: Pair<FakeDatabase, ImportTarget>) =
 		rows.map { (database, target) -> ImportPlanEntry(database.dataSourceId, target) }
+
+	/**
+	 * One plan row carrying the mapping the request would carry for it.
+	 *
+	 * Separate from [plan] because most tests need no mapping at all, and a helper that
+	 * took one would put an empty `ColumnMapping()` on every call site that does not care.
+	 * Only the columns, never the values: a test about which column answers which field
+	 * has nothing to say about what its options mean.
+	 */
+	protected fun mapped(
+		base: FakeDatabase,
+		target: ImportTarget,
+		vararg columns: Pair<ImportField, String>,
+	) = ImportPlanEntry(base.dataSourceId, target, ColumnMapping(columns = columns.toMap()))
 }

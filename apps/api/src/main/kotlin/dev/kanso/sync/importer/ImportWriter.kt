@@ -1,22 +1,9 @@
 package dev.kanso.sync.importer
 
-import dev.kanso.docs.DocBlockKind
-import dev.kanso.docs.DocBlockRepository
-import dev.kanso.docs.DocService
-import dev.kanso.domain.Project
-import dev.kanso.domain.ProjectStatus
-import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
-import dev.kanso.service.BadRequestException
-import dev.kanso.service.ConflictException
-import dev.kanso.service.ProjectService
-import dev.kanso.service.ScheduleService
-import dev.kanso.service.TicketService
-import dev.kanso.sync.notion.NotionPage
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -29,106 +16,112 @@ import java.util.UUID
  * one transaction, and a transaction that waits on a network call between two inserts
  * holds a connection and a team's counter lock for as long as Notion feels like taking.
  *
- * Everything goes through the same services the interface uses — `ProjectService`,
- * `TicketService`, `DocService` — rather than the repositories underneath them. A ticket
- * created here therefore gets its number from its team's counter, its activity row, and
- * its place in the outbox, exactly like one created by pressing `c`. The outbox part is
- * deliberate and worth being explicit about: the mirror will create *its own* page for
- * each imported ticket in `Kanso · Tickets`. It does not adopt the page the ticket came
- * from — writing to somebody's own database would make Kanso's "Kanso wins" rule overwrite
- * the workspace they just imported, and screen 24 promises nothing in Notion is changed at
- * any step.
+ * What is left here is the *order*, and the order is the whole point. A relation resolves
+ * only once the row it names exists, so teams are written before the projects that name
+ * them and projects before the tickets that name them — whatever order the plan happened
+ * to list the bases in. Asking the reader to sequence their own plan would be asking them
+ * to know that, so the sequence is the server's: this file decides it, and each of the
+ * four writers only knows how to write one kind of row.
  *
- * That is also why every row created from a page is followed by an [ImportOriginRepository.record]
- * for it: the row this instance created and the page it came from are the two ends of the
- * one fact `notion_import_origin` exists to hold, and recording it here, next to the insert
- * it belongs to, is what lets a second import of the same base skip rather than duplicate.
- * The project a `TICKETS` base gets as a container is not recorded — it did not come from
- * a page, so there is nothing to key an origin on.
+ * Everything goes through the same services the interface uses — `ProjectService`,
+ * `TicketService`, `DocService`, `TeamService` — rather than the repositories underneath
+ * them. A ticket created here therefore gets its number from its team's counter, its
+ * activity row, and its place in the outbox, exactly like one created by pressing `c`. The
+ * outbox part is deliberate and worth being explicit about: the mirror will create *its
+ * own* page for each imported ticket in `Kanso · Tickets`. It does not adopt the page the
+ * ticket came from — writing to somebody's own database would make Kanso's "Kanso wins"
+ * rule overwrite the workspace they just imported, and screen 24 promises nothing in
+ * Notion is changed at any step.
+ *
+ * The [ImportOriginRepository.record] calls are not here but in the four writers, each next
+ * to the insert it belongs to: the row a writer created and the page it came from are the
+ * two ends of the one fact `notion_import_origin` exists to hold, and a central pass that
+ * recorded them afterwards would have to be told again which base each page came from. What
+ * this file keeps of the table is the *read* — one query for the whole plan, before the
+ * first pass, which is what makes a page imported last month resolve like one imported a
+ * second ago.
  */
 @Service
 class ImportWriter(
-	private val projects: ProjectService,
-	private val tickets: TicketService,
-	private val docs: DocService,
-	private val blocks: DocBlockRepository,
-	private val schedule: ScheduleService,
+	private val teams: TeamImport,
+	private val projects: ProjectImport,
+	private val tickets: TicketImport,
+	private val documents: DocumentImport,
 	private val origins: ImportOriginRepository,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
 
 	@Transactional
-	fun write(actor: User, teamId: UUID, bases: List<PlannedBase>): ImportOutcome {
-		val ticketByPage = mutableMapOf<String, UUID>()
-		val skipped = mutableListOf<SkippedPage>()
-		var ticketCount = 0
-		var docCount = 0
-		var projectCount = 0
-		var folderCount = 0
+	fun write(actor: User, fallbackTeam: UUID, bases: List<PlannedBase>): ImportOutcome {
+		val rows = ImportedRows(origins.byPageIds(seedKeys(bases)))
+		val links = ImportLinks.resolve(bases)
 
-		for (base in bases) {
+		val teamBases = bases.filter { it.target == ImportTarget.TEAMS }
+		var teamCount = 0
+		// Two loops over the same bases rather than one: a parent can be listed after its
+		// child, and can even live in another teams base of the same plan.
+		for (base in teamBases) teamCount += teams.write(actor, base, rows)
+		for (base in teamBases) teams.settleParents(actor, base, links, rows)
+
+		var projectCount = 0
+		for (base in bases.filter { it.target == ImportTarget.PROJECTS }) {
+			projectCount += projects.write(actor, base, fallbackTeam, links, rows)
+		}
+
+		var ticketCount = 0
+		for (base in bases.filter { it.target == ImportTarget.TICKETS }) {
+			val written = tickets.write(actor, base, fallbackTeam, links, rows)
+			ticketCount += written.tickets
+			// A container project is still a project the reader will see on the list.
+			projectCount += written.projects
+		}
+		// After every tickets base, not inside one: an arrow can cross from one base into
+		// another, and half the tickets it points at do not exist yet in the middle of the
+		// pass that creates them.
+		val dependencies = tickets.settleDependencies(actor, links, rows)
+
+		var docCount = 0
+		var folderCount = 0
+		for (base in bases.filter { it.target == ImportTarget.DOCUMENTS }) {
+			val written = documents.write(actor, base, fallbackTeam)
+			docCount += written.docs
+			folderCount += written.folders
+		}
+
+		val skipped = bases.flatMap { base ->
 			// `base.skippedPages` already excludes pages already imported — a page already
 			// in Kanso is reported as already-imported only, never also as skipped, which is
 			// the same rule [ImportPlanner.preview] applies from the same property.
-			base.skippedPages.forEach { page ->
+			base.skippedPages.map { page ->
 				val reason = requireNotNull(base.reader.refusal(page)) { "skippedPages only holds refused pages" }
-				skipped += SkippedPage(base.base.name, page.id, reason)
-			}
-
-			when (base.target) {
-				// The `isNotEmpty()` guard is what makes a second import of an unchanged base
-				// write nothing at all: without it, a base whose every page already has an
-				// origin would still get a fresh, empty container on every press.
-				ImportTarget.TICKETS -> if (base.adoptable.isNotEmpty()) {
-					val project = createProject(base, teamId)
-					projectCount++
-					for (page in base.adoptable) {
-						val ticketId = createTicket(actor, teamId, project, base.reader, page)
-						ticketByPage[page.id] = ticketId
-						origins.record(ImportOrigin(page.id, OriginKind.TICKET, ticketId, base.base.dataSourceId))
-						ticketCount++
-					}
-				}
-
-				ImportTarget.DOCUMENTS -> if (base.adoptable.isNotEmpty()) {
-					val folder = docs.createFolder(actor, teamId, null, base.base.name)
-					folderCount++
-					for (page in base.adoptable) {
-						val docId = createDocument(actor, teamId, folder.id, base.reader, page)
-						origins.record(ImportOrigin(page.id, OriginKind.DOC, docId, base.base.dataSourceId))
-						docCount++
-					}
-				}
-
-				ImportTarget.TEAMS, ImportTarget.PROJECTS ->
-					throw BadRequestException(
-						"Importing a base as ${base.target.wire} is not wired up yet."
-					)
+				SkippedPage(base.base.name, page.id, reason)
 			}
 		}
-
-		val links = link(actor, bases, ticketByPage)
-		// Read off the plan rather than counted alongside the loop above: `PlannedBase`
-		// already excludes these pages from `adoptable`, so nothing in the loop ever touches
+		// Read off the plan rather than counted alongside the passes above: `PlannedBase`
+		// already excludes these pages from `adoptable`, so nothing above ever touches
 		// them — the count exists only so the caller is told, not silently left to notice.
 		val alreadyImportedCount = bases.sumOf { it.alreadyImported.size }
 
 		log.info(
-			"Imported {} ticket(s) and {} document(s) into team {}; {} dependency/ies, {} relation(s) dropped, " +
-				"{} link disagreement(s), {} page(s) skipped, {} already imported",
-			ticketCount, docCount, teamId, links.created, links.dropped, links.conflicts,
-			skipped.size, alreadyImportedCount,
+			"Imported {} team(s), {} project(s), {} ticket(s) and {} document(s) into team {}; {} dependency/ies, " +
+				"{} relation(s) dropped, {} link disagreement(s), {} page(s) skipped, {} already imported",
+			teamCount, projectCount, ticketCount, docCount, fallbackTeam, dependencies.created,
+			links.droppedRelations + dependencies.dropped, links.conflicts, skipped.size, alreadyImportedCount,
 		)
 
 		return ImportOutcome(
 			started = true,
+			teams = teamCount,
 			tickets = ticketCount,
 			docs = docCount,
 			projects = projectCount,
 			folders = folderCount,
-			dependencies = links.created,
-			droppedRelations = links.dropped,
+			dependencies = dependencies.created,
+			// Relation ends that resolved to nothing are already counted by the resolver,
+			// over every relation the mapping named rather than only the dependencies; what
+			// the dependency pass adds is the arrows it could not draw.
+			droppedRelations = links.droppedRelations + dependencies.dropped,
 			skipped = skipped,
 			alreadyImported = alreadyImportedCount,
 			linkConflicts = links.conflicts,
@@ -136,133 +129,39 @@ class ImportWriter(
 	}
 
 	/**
-	 * In progress, not planned: the pages being imported are work somebody has already
-	 * been doing somewhere else, and a project full of half-finished tickets that calls
-	 * itself planned is wrong on the one screen that reads project status.
-	 */
-	private fun createProject(base: PlannedBase, teamId: UUID) = projects.create(
-		name = base.base.name,
-		status = ProjectStatus.IN_PROGRESS,
-		start = null,
-		end = null,
-		leadUserId = null,
-		teamId = teamId,
-		docIds = emptyList(),
-	).project
-
-	private fun createTicket(
-		actor: User,
-		teamId: UUID,
-		project: Project,
-		reader: MappedPageReader,
-		page: NotionPage,
-	): UUID =
-		tickets.create(
-			actor = actor,
-			teamId = teamId,
-			title = requireNotNull(reader.title(page)) { "an unadoptable page reached the writer" },
-			description = describe(reader, page),
-			// A status or priority the mapping did not place inside Kanso's vocabulary is not
-			// adopted — the vocabulary is closed in Kotlin and by a CHECK, and "Blocked"
-			// becoming "Todo" is better than a seventh status nothing else understands. The
-			// default belongs here rather than in the reader: null means "nobody said", and
-			// only the thing writing the row gets to decide what to write instead.
-			status = reader.status(page) ?: TicketStatus.TODO,
-			priority = reader.priority(page) ?: TicketPriority.NONE,
-			start = reader.start(page),
-			due = reader.due(page),
-			projectId = project.id,
-			// Notion `people` name workspace members, and matching them to Kanso accounts
-			// is the mapping `users.notion_person_id` exists for — it points the other way
-			// and only for people who have already been linked. Guessing an assignee from a
-			// display name is how work lands on the wrong person.
-			assigneeIds = emptyList(),
-			docIds = emptyList(),
-		).ticket.id
-
-	private fun createDocument(
-		actor: User,
-		teamId: UUID,
-		folderId: UUID,
-		reader: MappedPageReader,
-		page: NotionPage,
-	): UUID {
-		val created = docs.createPage(
-			actor = actor,
-			teamId = teamId,
-			folderId = folderId,
-			title = requireNotNull(reader.title(page)) { "an unadoptable page reached the writer" },
-			templateSlug = null,
-		)
-		// A callout, which is the block screen 07 draws for "read this bit": the properties
-		// Kanso has no column for are the part of the page nothing else here explains.
-		provenance(reader, page)?.let { blocks.insert(created.page.id, 0, DocBlockKind.CALLOUT, mapOf("text" to it)) }
-		return created.page.id
-	}
-
-	/**
-	 * The description, with the "imported from Notion" section the drawing promises.
+	 * Everything `notion_import_origin` might already hold about this plan, in one query.
 	 *
-	 * It goes in the description rather than a column of its own because a column of its
-	 * own would be a migration, and this is not worth one: the properties are already text
-	 * by the time anybody reads them, the description is where a ticket's prose lives, and
-	 * the section is what makes them readable rather than merely stored.
+	 * Every page of every base, plus every base's own data source id: that is the key a
+	 * tickets base's container project is recorded under, and looking it up here rather
+	 * than once per base keeps an import of four hundred pages at one round trip for the
+	 * lot — see [TicketImport] for why the container is keyed by the base at all.
 	 */
-	private fun describe(reader: MappedPageReader, page: NotionPage): String? {
-		val body = reader.description(page)
-		val section = provenance(reader, page)
-		return listOfNotNull(body, section).takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+	private fun seedKeys(bases: List<PlannedBase>): List<String> =
+		bases.flatMap { base -> base.pages.map { it.id } + base.base.dataSourceId }
+}
+
+/**
+ * Page id → the row it became, across the four passes.
+ *
+ * Seeded from `notion_import_origin` before the first pass, so a relation pointing at a
+ * page imported *last month* resolves exactly like one imported a second ago. That is the
+ * whole reason the table exists: without the seed, a second import of a base with one new
+ * page would leave that page's every relation unresolved and land it in a fallback.
+ */
+class ImportedRows(seed: Map<String, ImportOrigin> = emptyMap()) {
+
+	private val byKind: Map<OriginKind, MutableMap<String, UUID>> =
+		OriginKind.entries.associateWith { mutableMapOf() }
+
+	init {
+		seed.forEach { (pageId, origin) -> byKind.getValue(origin.kind)[pageId] = origin.entityId }
 	}
 
-	/** The section itself: the heading, one line per unmapped property, then where it came from. */
-	private fun provenance(reader: MappedPageReader, page: NotionPage): String? {
-		val lines = reader.unmapped(page).map { (name, value) -> "$name: $value" }
-		if (lines.isEmpty() && page.url == null) return null
-		return (listOf(SECTION) + lines + listOfNotNull(page.url)).joinToString("\n")
+	fun put(kind: OriginKind, pageId: String, id: UUID) {
+		byKind.getValue(kind)[pageId] = id
 	}
 
-	/**
-	 * Turns the relations [ImportLinks] resolved into dependencies, one at a time.
-	 *
-	 * A dependency is exactly what the mapping called a dependency — the column somebody
-	 * pointed at `Blocked by` — and no longer every relation the page happens to hold: a
-	 * `Related` column is a link between two pages, not an order to do them in, and turning
-	 * one into an arrow put work in a queue nobody asked for.
-	 *
-	 * Through [ScheduleService.link] rather than the repository, so an imported arrow is
-	 * settled by the same engine as a drawn one and a cycle is refused rather than stored.
-	 * A refusal drops that one arrow and counts it: a workspace whose relations happen to
-	 * form a loop is not a reason to fail an import of four hundred pages, and the count is
-	 * what tells the reader it happened.
-	 */
-	private fun link(actor: User, bases: List<PlannedBase>, ticketByPage: Map<String, UUID>): Linked {
-		val resolved = ImportLinks.resolve(bases)
-		var created = 0
-		// Relation ends that resolved to nothing are already counted there, over every
-		// relation the mapping named rather than only the dependencies.
-		var dropped = resolved.droppedRelations
-
-		for (edge in resolved.dependencies) {
-			val predecessor = ticketByPage[edge.predecessorPageId]
-			val successor = ticketByPage[edge.successorPageId]
-			if (predecessor == null || successor == null) {
-				dropped++
-				continue
-			}
-			try {
-				schedule.link(actor, predecessor, successor)
-				created++
-			} catch (e: ConflictException) {
-				log.info("Dropped an imported relation: {}", e.message)
-				dropped++
-			}
-		}
-		return Linked(created, dropped, resolved.conflicts)
-	}
-
-	private data class Linked(val created: Int, val dropped: Int, val conflicts: Int)
-
-	private companion object {
-		const val SECTION = "Imported from Notion"
-	}
+	fun team(pageId: String): UUID? = byKind.getValue(OriginKind.TEAM)[pageId]
+	fun project(pageId: String): UUID? = byKind.getValue(OriginKind.PROJECT)[pageId]
+	fun ticket(pageId: String): UUID? = byKind.getValue(OriginKind.TICKET)[pageId]
 }

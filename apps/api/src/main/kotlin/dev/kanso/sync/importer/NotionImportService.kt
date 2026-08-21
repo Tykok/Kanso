@@ -87,9 +87,11 @@ class NotionImportService(
 	 * The team is checked first, before a single page is read: an import is a write and a
 	 * large one, and the refusal belongs in front of the work rather than after four
 	 * hundred inserts have to be rolled back. [teamId] is also *where the team comes from*
-	 * — `architecture.md` says a Notion-authored page can supply neither a team nor a
-	 * per-team number, and this is the request where somebody is present to answer the
-	 * first, which lets `TicketService` answer the second from the team's own counter.
+	 * when nothing else answers — `architecture.md` says a Notion-authored page can supply
+	 * neither a team nor a per-team number, and this is the request where somebody is
+	 * present to answer the first, which lets `TicketService` answer the second from the
+	 * team's own counter. A base of projects that resolved a team of its own uses that one,
+	 * and its tickets follow their project; this is the answer for everything left over.
 	 */
 	fun perform(actor: User, teamId: UUID, plan: List<ImportPlanEntry>): ImportOutcome {
 		// Directly, not inside `tx`: `TicketAccess.requireTeam` is transactional itself, and
@@ -123,7 +125,7 @@ class NotionImportService(
 					log.info("Ignoring plan row for {}: the workspace no longer holds it", entry.sourceId)
 					null
 				} else {
-					ResolvedBase(base, entry.target, discovery.pages(base.dataSourceId))
+					ResolvedBase(base, entry, discovery.pages(base.dataSourceId))
 				}
 			}
 		}
@@ -136,11 +138,11 @@ class NotionImportService(
 
 		return resolved.map { r ->
 			val already = r.pages.mapNotNullTo(mutableSetOf()) { page -> page.id.takeIf { it in existing } }
-			PlannedBase(r.base, r.target, r.pages, alreadyImported = already)
+			PlannedBase(r.base, r.entry.target, r.pages, alreadyImported = already, mapping = r.entry.mapping)
 		}
 	}
 
-	private data class ResolvedBase(val base: WorkspaceBase, val target: ImportTarget, val pages: List<NotionPage>)
+	private data class ResolvedBase(val base: WorkspaceBase, val entry: ImportPlanEntry, val pages: List<NotionPage>)
 
 	/**
 	 * Kanso's own four databases, by both ids.

@@ -81,6 +81,26 @@ class NotionImportPreviewTest : ImportTestBase() {
 	}
 
 	@Test
+	fun `a base of teams and a base of projects each get a group of their own`() {
+		val teams = FakeDatabase("Squads", listOf(fakePage("Platform")))
+		val projects = FakeDatabase("Roadmaps", listOf(fakePage("Q4"), fakePage("Q1")))
+		val preview = importerFor(teams, projects, engineering).preview(
+			plan(
+				teams to ImportTarget.TEAMS,
+				projects to ImportTarget.PROJECTS,
+				engineering to ImportTarget.TICKETS,
+			)
+		)
+
+		assertEquals(listOf("Squads" to 1), preview.teams.map { it.name to it.pages })
+		assertEquals(
+			listOf("Roadmaps" to 2, "Engineering tasks" to 2),
+			preview.projects.map { it.name to it.pages },
+			"both shapes produce projects: pages that are projects, and pages in one project",
+		)
+	}
+
+	@Test
 	fun `a relation nobody mapped links nothing`() {
 		// Engineering and Meeting notes both point into Product specs, and all three bases
 		// are kept — but the request carries no mapping, so no column has been named as a

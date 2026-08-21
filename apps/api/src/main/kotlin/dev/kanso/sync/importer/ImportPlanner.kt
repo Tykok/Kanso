@@ -29,7 +29,11 @@ object ImportPlanner {
 		return ImportPreview(
 			teams = bases.filter { it.target == ImportTarget.TEAMS }
 				.map { PreviewGroup(it.base.name, it.adoptable.size) },
-			projects = bases.filter { it.target == ImportTarget.TICKETS }
+			// Both shapes, because both produce projects: a base whose pages *are* projects,
+			// and a base whose pages are tickets in one project named after it. A group is
+			// "this base, and how many of its pages come over", which is what the screen
+			// draws — the same reading `folders` has, where one base becomes one folder.
+			projects = bases.filter { it.target == ImportTarget.PROJECTS || it.target == ImportTarget.TICKETS }
 				.map { PreviewGroup(it.base.name, it.adoptable.size) },
 			folders = bases.filter { it.target == ImportTarget.DOCUMENTS }
 				.map { PreviewGroup(it.base.name, it.adoptable.size) },
@@ -86,6 +90,13 @@ class PlannedBase(
 	val alreadyImported: Set<String> = emptySet(),
 	/** Which columns of this base answer which fields — see [ImportLinks] for the relations. */
 	val mapping: ColumnMapping = ColumnMapping(),
+	/**
+	 * Where this base's rows land when no relation answers. Read by every writer and
+	 * filled by nothing yet: the task that makes the request's destination team optional
+	 * is what carries a [Fallback] from the wire to here, and a writer that read the
+	 * request's destination directly would have to be rewritten when it does.
+	 */
+	val fallback: Fallback = Fallback(),
 ) {
 	/**
 	 * How this base's pages are read. The only way anything reaches a [MappedPageReader]:
