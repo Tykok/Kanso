@@ -3,6 +3,7 @@ package dev.kanso.sync.importer
 import dev.kanso.docs.DocBlockRepository
 import dev.kanso.docs.DocService
 import dev.kanso.domain.User
+import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ProjectService
@@ -10,6 +11,7 @@ import dev.kanso.service.ScheduleService
 import dev.kanso.service.TicketAccess
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionApiException
+import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionRateLimited
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -29,6 +31,7 @@ import java.util.UUID
 class NotionImportService(
 	private val discovery: NotionDiscovery,
 	private val meta: NotionMetaRepository,
+	private val originRows: ImportOriginRepository,
 	private val access: TicketAccess,
 	private val writer: ImportWriter,
 	private val tx: TransactionTemplate,
@@ -109,7 +112,7 @@ class NotionImportService(
 		if (plan.isEmpty()) return emptyList()
 		val excluded = tx.execute { mirrorIds() }.orEmpty()
 
-		return runBlocking {
+		val resolved = runBlocking {
 			val found = discovery.search(excluded)
 			found.unavailable?.let { throw BadRequestException(it) }
 			val byId = found.bases.associateBy { it.dataSourceId }
@@ -120,11 +123,24 @@ class NotionImportService(
 					log.info("Ignoring plan row for {}: the workspace no longer holds it", entry.sourceId)
 					null
 				} else {
-					PlannedBase(base, entry.target, discovery.pages(base.dataSourceId))
+					ResolvedBase(base, entry.target, discovery.pages(base.dataSourceId))
 				}
 			}
 		}
+
+		// One query for the whole plan, not one per base and not one per page: a base of
+		// four hundred pages must not cost four hundred round trips inside the transaction
+		// that holds a team's ticket counter.
+		val allPageIds = resolved.flatMap { it.pages }.map { it.id }
+		val existing = tx.execute { originRows.byPageIds(allPageIds) }.orEmpty()
+
+		return resolved.map { r ->
+			val already = r.pages.mapNotNullTo(mutableSetOf()) { page -> page.id.takeIf { it in existing } }
+			PlannedBase(r.base, r.target, r.pages, alreadyImported = already)
+		}
 	}
+
+	private data class ResolvedBase(val base: WorkspaceBase, val target: ImportTarget, val pages: List<NotionPage>)
 
 	/**
 	 * Kanso's own four databases, by both ids.

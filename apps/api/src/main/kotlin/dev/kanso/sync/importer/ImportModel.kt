@@ -67,6 +67,12 @@ data class ImportPreview(
 	val unmappedProperties: List<String>,
 	/** Pages that would be reported rather than adopted — see [SkippedPage]. */
 	val skipped: Int,
+	/**
+	 * Pages a row already exists for, per `notion_import_origin`. Distinct from [skipped]:
+	 * these pages are perfectly adoptable, there is simply already a Kanso row for them,
+	 * and a second run of the same import would leave them alone rather than refuse them.
+	 */
+	val alreadyImported: Int,
 )
 
 data class PreviewGroup(val name: String, val pages: Int)
@@ -92,4 +98,10 @@ data class ImportOutcome(
 	/** Relations with an end that resolved to nothing. Counted, never guessed at. */
 	val droppedRelations: Int,
 	val skipped: List<SkippedPage>,
+	/**
+	 * Pages this run left untouched because `notion_import_origin` already had a row for
+	 * them. What makes pressing the same import twice safe rather than merely harmless: the
+	 * second run says how much it skipped instead of silently doing nothing.
+	 */
+	val alreadyImported: Int,
 )

@@ -8,6 +8,9 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.repo.ImportOrigin
+import dev.kanso.repo.ImportOriginRepository
+import dev.kanso.repo.OriginKind
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
 import dev.kanso.service.ProjectService
@@ -35,6 +38,13 @@ import java.util.UUID
  * from — writing to somebody's own database would make Kanso's "Kanso wins" rule overwrite
  * the workspace they just imported, and screen 24 promises nothing in Notion is changed at
  * any step.
+ *
+ * That is also why every row created from a page is followed by an [ImportOriginRepository.record]
+ * for it: the row this instance created and the page it came from are the two ends of the
+ * one fact `notion_import_origin` exists to hold, and recording it here, next to the insert
+ * it belongs to, is what lets a second import of the same base skip rather than duplicate.
+ * The project a `TICKETS` base gets as a container is not recorded — it did not come from
+ * a page, so there is nothing to key an origin on.
  */
 @Service
 class ImportWriter(
@@ -43,6 +53,7 @@ class ImportWriter(
 	private val docs: DocService,
 	private val blocks: DocBlockRepository,
 	private val schedule: ScheduleService,
+	private val origins: ImportOriginRepository,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -62,20 +73,26 @@ class ImportWriter(
 			}
 
 			when (base.target) {
-				ImportTarget.TICKETS -> {
+				// The `isNotEmpty()` guard is what makes a second import of an unchanged base
+				// write nothing at all: without it, a base whose every page already has an
+				// origin would still get a fresh, empty container on every press.
+				ImportTarget.TICKETS -> if (base.adoptable.isNotEmpty()) {
 					val project = createProject(base, teamId)
 					projectCount++
 					for (page in base.adoptable) {
-						ticketByPage[page.id] = createTicket(actor, teamId, project, page)
+						val ticketId = createTicket(actor, teamId, project, page)
+						ticketByPage[page.id] = ticketId
+						origins.record(ImportOrigin(page.id, OriginKind.TICKET, ticketId, base.base.dataSourceId))
 						ticketCount++
 					}
 				}
 
-				ImportTarget.DOCUMENTS -> {
+				ImportTarget.DOCUMENTS -> if (base.adoptable.isNotEmpty()) {
 					val folder = docs.createFolder(actor, teamId, null, base.base.name)
 					folderCount++
 					for (page in base.adoptable) {
-						createDocument(actor, teamId, folder.id, page)
+						val docId = createDocument(actor, teamId, folder.id, page)
+						origins.record(ImportOrigin(page.id, OriginKind.DOC, docId, base.base.dataSourceId))
 						docCount++
 					}
 				}
@@ -88,10 +105,15 @@ class ImportWriter(
 		}
 
 		val dependencies = link(actor, bases, ticketByPage)
+		// Read off the plan rather than counted alongside the loop above: `PlannedBase`
+		// already excludes these pages from `adoptable`, so nothing in the loop ever touches
+		// them — the count exists only so the caller is told, not silently left to notice.
+		val alreadyImportedCount = bases.sumOf { it.alreadyImported.size }
 
 		log.info(
-			"Imported {} ticket(s) and {} document(s) into team {}; {} dependency/ies, {} relation(s) dropped, {} page(s) skipped",
-			ticketCount, docCount, teamId, dependencies.created, dependencies.dropped, skipped.size,
+			"Imported {} ticket(s) and {} document(s) into team {}; {} dependency/ies, {} relation(s) dropped, " +
+				"{} page(s) skipped, {} already imported",
+			ticketCount, docCount, teamId, dependencies.created, dependencies.dropped, skipped.size, alreadyImportedCount,
 		)
 
 		return ImportOutcome(
@@ -103,6 +125,7 @@ class ImportWriter(
 			dependencies = dependencies.created,
 			droppedRelations = dependencies.dropped,
 			skipped = skipped,
+			alreadyImported = alreadyImportedCount,
 		)
 	}
 
@@ -143,7 +166,7 @@ class ImportWriter(
 			docIds = emptyList(),
 		).ticket.id
 
-	private fun createDocument(actor: User, teamId: UUID, folderId: UUID, page: NotionPage) {
+	private fun createDocument(actor: User, teamId: UUID, folderId: UUID, page: NotionPage): UUID {
 		val created = docs.createPage(
 			actor = actor,
 			teamId = teamId,
@@ -154,6 +177,7 @@ class ImportWriter(
 		// A callout, which is the block screen 07 draws for "read this bit": the properties
 		// Kanso has no column for are the part of the page nothing else here explains.
 		provenance(page)?.let { blocks.insert(created.page.id, 0, DocBlockKind.CALLOUT, mapOf("text" to it)) }
+		return created.page.id
 	}
 
 	/**

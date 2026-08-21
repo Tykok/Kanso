@@ -37,7 +37,13 @@ object ImportPlanner {
 			.map { (name, _) -> name }
 			.distinct()
 			.sorted(),
-		skipped = bases.sumOf { it.pages.size - it.adoptable.size },
+		// Counted straight from the refusal, not from `pages.size - adoptable.size`: that
+		// difference now also contains pages already imported, and those are not
+		// "unadoptable" — they have a title and a status just fine, there is simply already
+		// a row for them. The two counts stay apart so the screen can say "two skipped, one
+		// already imported" instead of one number that means either.
+		skipped = bases.sumOf { base -> base.pages.count { NotionPageReader.refusal(it) != null } },
+		alreadyImported = bases.sumOf { it.alreadyImported.size },
 	)
 
 	/**
@@ -103,7 +109,11 @@ class PlannedBase(
 	val base: WorkspaceBase,
 	val target: ImportTarget,
 	val pages: List<NotionPage>,
+	/** Pages this instance has already imported, by id. Skipped, and counted. */
+	val alreadyImported: Set<String> = emptySet(),
 ) {
 	/** The pages that can become rows, in the order Notion returned them. */
-	val adoptable: List<NotionPage> by lazy { pages.filter { NotionPageReader.refusal(it) == null } }
+	val adoptable: List<NotionPage> by lazy {
+		pages.filter { NotionPageReader.refusal(it) == null && it.id !in alreadyImported }
+	}
 }

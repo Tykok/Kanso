@@ -8,6 +8,7 @@ import dev.kanso.domain.Team
 import dev.kanso.domain.User
 import dev.kanso.docs.DocFolderRepository
 import dev.kanso.docs.DocPageRepository
+import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TicketRepository
@@ -31,6 +32,7 @@ import java.util.UUID
 abstract class ImportTestBase : PostgresTest() {
 
 	@Autowired protected lateinit var meta: NotionMetaRepository
+	@Autowired protected lateinit var originRows: ImportOriginRepository
 	@Autowired protected lateinit var ticketRows: TicketRepository
 	@Autowired protected lateinit var projectRows: ProjectRepository
 	@Autowired protected lateinit var pageRows: DocPageRepository
@@ -65,6 +67,7 @@ abstract class ImportTestBase : PostgresTest() {
 			client = client,
 		),
 		meta = meta,
+		originRows = originRows,
 		access = access,
 		writer = writer,
 		tx = tx,
