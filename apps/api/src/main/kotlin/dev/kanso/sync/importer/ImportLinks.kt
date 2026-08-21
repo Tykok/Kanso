@@ -1,7 +1,5 @@
 package dev.kanso.sync.importer
 
-import dev.kanso.sync.notion.NotionPage
-
 /**
  * Resolves the relations a mapping names, whichever side of the workspace declares them.
  *
@@ -18,6 +16,11 @@ import dev.kanso.sync.notion.NotionPage
  * disagreement is [Resolved.conflicts], counted rather than settled quietly. `Blocked by`
  * has no inverse column to read: the mirror only ever writes it on one side, so a
  * dependency here is exactly what the reader mapped as one, on the page that names it.
+ *
+ * Every relation is read through the base's own [PlannedBase.reader], so how a relation is
+ * read — which column, and what "unmapped" means — is one class's knowledge rather than
+ * two. A field no mapping named reads as no relation at all, which is why nothing here has
+ * to ask whether a base mapped one.
  *
  * Pure: nothing here reads or writes anything beyond the [PlannedBase] list it is handed.
  * Turning a Notion page id into a Kanso [java.util.UUID] is the writer's job, done by
@@ -116,9 +119,8 @@ object ImportLinks {
 		// "my one parent" — and a page pointing at itself names nothing.
 		val fromChild = mutableMapOf<String, String>()
 		for (base in bases.filter { it.target == childTarget }) {
-			val property = base.mapping.property(childField) ?: continue
 			for (page in base.adoptable) {
-				val target = relationIds(page, property).firstOrNull { it != page.id } ?: continue
+				val target = base.reader.relations(page, childField).firstOrNull { it != page.id } ?: continue
 				if (target in parentAdopted) fromChild[page.id] = target else dropped++
 			}
 		}
@@ -127,9 +129,8 @@ object ImportLinks {
 		// so every named id is read, not just the first.
 		val fromParent = mutableMapOf<String, String>()
 		for (base in bases.filter { it.target == parentTarget }) {
-			val property = base.mapping.property(inverseField) ?: continue
 			for (page in base.adoptable) {
-				for (target in relationIds(page, property)) {
+				for (target in base.reader.relations(page, inverseField)) {
 					if (target == page.id) continue
 					if (target !in childAdopted) {
 						dropped++
@@ -181,9 +182,8 @@ object ImportLinks {
 		var dropped = 0
 
 		for (base in bases.filter { it.target == ImportTarget.TICKETS }) {
-			val property = base.mapping.property(ImportField.BLOCKED_BY) ?: continue
 			for (page in base.adoptable) {
-				for (target in relationIds(page, property)) {
+				for (target in base.reader.relations(page, ImportField.BLOCKED_BY)) {
 					if (target == page.id) continue
 					if (target in ticketIds) edges += PageDependency(predecessorPageId = target, successorPageId = page.id)
 					else dropped++
@@ -192,10 +192,4 @@ object ImportLinks {
 		}
 		return DependencyResult(edges, dropped)
 	}
-
-	/** Every page id one named relation column points at, read straight off the page's own JSON. */
-	private fun relationIds(page: NotionPage, property: String): List<String> = page.properties?.properties()
-		?.firstOrNull { it.key.equals(property, ignoreCase = true) }
-		?.value?.path("relation")?.mapNotNull { it.path("id").asText(null) }
-		.orEmpty()
 }

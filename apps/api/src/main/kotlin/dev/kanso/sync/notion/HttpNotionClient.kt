@@ -302,7 +302,7 @@ class HttpNotionClient(
 	 *
 	 * The title is whichever property is of type `title` — its name is the database's to
 	 * choose for a row, and `title` for a page that is not one — joined across its
-	 * fragments, the same reading [dev.kanso.sync.importer.NotionPageReader] does of a row.
+	 * fragments, the same reading [dev.kanso.sync.importer.MappedPageReader] does of a row.
 	 * Blank becomes null rather than "": an empty string in a list is a row that looks
 	 * like a rendering bug, and the caller has a name for the case.
 	 */

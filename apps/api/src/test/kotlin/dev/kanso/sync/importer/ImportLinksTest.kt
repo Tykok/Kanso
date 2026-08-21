@@ -5,14 +5,6 @@ import org.junit.jupiter.api.Test
 
 class ImportLinksTest {
 
-	private fun planned(base: FakeDatabase, target: ImportTarget, mapping: ColumnMapping) =
-		PlannedBase(
-			base = WorkspaceBase(base.dataSourceId, base.databaseId, base.name),
-			target = target,
-			pages = base.pages,
-			mapping = mapping,
-		)
-
 	@Test
 	fun `a link declared only on the parent's side is read backwards`() {
 		val ship = fakePage("Ship it")

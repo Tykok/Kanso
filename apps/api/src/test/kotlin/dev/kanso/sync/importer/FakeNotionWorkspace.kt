@@ -77,7 +77,8 @@ class FakeNotionWorkspace(
 	/** A database row as search answers it: parented by a data source, titled by its own property. */
 	private fun row(page: NotionPage) = NotionPageRef(
 		id = page.id,
-		title = NotionPageReader.title(page),
+		// An empty mapping still finds the title: it is the one thing found by type.
+		title = MappedPageReader(ColumnMapping()).title(page),
 		url = page.url,
 		parentType = "data_source_id",
 		archived = page.archived,
@@ -180,6 +181,27 @@ fun notionNumber(value: Number): Map<String, Any?> = mapOf("type" to "number", "
 
 fun notionRelation(vararg pageIds: String): Map<String, Any?> =
 	mapOf("type" to "relation", "relation" to pageIds.map { mapOf("id" to it) })
+
+fun notionPeople(vararg people: Pair<String, String?>): Map<String, Any?> = mapOf(
+	"type" to "people",
+	"people" to people.map { (id, name) -> mapOf("object" to "user", "id" to id, "name" to name) },
+)
+
+/**
+ * A base as the plan resolves it: what it becomes, and which of its columns answer which
+ * field. The mapping is the request's own answer, so a test that cares about a link or a
+ * status has to give one.
+ */
+fun planned(
+	base: FakeDatabase,
+	target: ImportTarget,
+	mapping: ColumnMapping = ColumnMapping(),
+): PlannedBase = PlannedBase(
+	base = WorkspaceBase(base.dataSourceId, base.databaseId, base.name),
+	target = target,
+	pages = base.pages,
+	mapping = mapping,
+)
 
 /** A page with no title at all — the shape Kanso cannot adopt. */
 fun untitledPage(id: String = "page-${UUID.randomUUID()}"): NotionPage = NotionPage(

@@ -61,7 +61,10 @@ data class ImportPreview(
 	val teams: List<PreviewGroup>,
 	val projects: List<PreviewGroup>,
 	val folders: List<PreviewGroup>,
-	/** Bases holding a relation into another chosen base; those relations become dependencies. */
+	/**
+	 * Bases taking part in a mapped link that crosses into another kept base — bases, not
+	 * arrows, because a hundred relations between two databases is still two databases.
+	 */
 	val linkedSources: Int,
 	/** Property names Kanso has no column for. They land in an "imported from Notion" section. */
 	val unmappedProperties: List<String>,
@@ -74,9 +77,9 @@ data class ImportPreview(
 	 */
 	val alreadyImported: Int,
 	/**
-	 * Rows a relation placed, per [ImportLinks]. Always 0 here: nothing yet calls
-	 * [ImportLinks.resolve] from this preview — the task that wires `ImportPlanner.preview`
-	 * to it fills this in.
+	 * Rows a relation placed, per [ImportLinks] — one per child page whose parent was found.
+	 * A dependency is not one of them: it draws an arrow between two rows, it does not
+	 * decide where either of them lands.
 	 */
 	val linkedByRelation: Int = 0,
 	/**
@@ -118,10 +121,10 @@ data class ImportOutcome(
 	 */
 	val alreadyImported: Int,
 	/**
-	 * Disagreements [ImportLinks] settled by letting the child win — see [ImportLinks.Resolved.conflicts].
-	 * Always 0 here: the writer still resolves relations through [ImportPlanner.dependencies],
-	 * which has no notion of a two-sided disagreement; the task that switches it to
-	 * [ImportLinks] threads this count through.
+	 * Disagreements [ImportLinks] settled by letting the child win — see
+	 * [ImportLinks.Resolved.conflicts]. Reported rather than repaired: a workspace whose two
+	 * sides of a relation contradict each other is a fact about the workspace, and the
+	 * number is how somebody finds out.
 	 */
 	val linkConflicts: Int = 0,
 )

@@ -81,30 +81,26 @@ class NotionImportPreviewTest : ImportTestBase() {
 	}
 
 	@Test
-	fun `counts the bases whose relations would become dependencies`() {
-		// The drawing's own sentence: "trois bases liées entre elles". Engineering and
-		// Meeting notes both point into Product specs, so all three are linked; Design docs
-		// becomes documents and holds no relation, and the archive is not being imported.
-		assertEquals(3, importer().preview(drawnPlan()).linkedSources)
-	}
-
-	@Test
-	fun `does not count a relation that leaves what is being imported`() {
-		// Engineering keeps pointing at Product specs, but Product specs is not in the plan
-		// now, so there is no second end for a dependency to land on.
-		val preview = importer().preview(plan(engineering to ImportTarget.TICKETS))
-
-		assertEquals(0, preview.linkedSources)
-	}
-
-	@Test
-	fun `names the properties Kanso has no column for, and only those`() {
+	fun `a relation nobody mapped links nothing`() {
+		// Engineering and Meeting notes both point into Product specs, and all three bases
+		// are kept — but the request carries no mapping, so no column has been named as a
+		// link and there is nothing to cross between bases. The counted-links case is
+		// [ImportPlannerTest], which can give a mapping by hand.
 		val preview = importer().preview(drawnPlan())
 
-		// Status, Priority and Due have columns. `Spec` is a relation and becomes a
-		// dependency, so it is not lost either. What is left is what the "imported from
-		// Notion" section exists for.
-		assertEquals(listOf("Sprint", "Squad"), preview.unmappedProperties)
+		assertEquals(0, preview.linkedSources)
+		assertEquals(0, preview.linkedByRelation)
+	}
+
+	@Test
+	fun `names the properties nothing claimed, which without a mapping is all of them`() {
+		val preview = importer().preview(drawnPlan())
+
+		// Nothing here mapped a column, so nothing has a column of its own and everything
+		// readable is preserved verbatim — which is the honest answer for a base whose
+		// meaning nobody has stated yet. `Spec` is absent because it is a relation: it holds
+		// page ids, which are not content anybody can read.
+		assertEquals(listOf("Due", "Priority", "Sprint", "Squad", "Status"), preview.unmappedProperties)
 	}
 
 	@Test

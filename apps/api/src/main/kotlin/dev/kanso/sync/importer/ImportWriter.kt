@@ -72,7 +72,7 @@ class ImportWriter(
 			// in Kanso is reported as already-imported only, never also as skipped, which is
 			// the same rule [ImportPlanner.preview] applies from the same property.
 			base.skippedPages.forEach { page ->
-				val reason = requireNotNull(NotionPageReader.refusal(page)) { "skippedPages only holds refused pages" }
+				val reason = requireNotNull(base.reader.refusal(page)) { "skippedPages only holds refused pages" }
 				skipped += SkippedPage(base.base.name, page.id, reason)
 			}
 
@@ -84,7 +84,7 @@ class ImportWriter(
 					val project = createProject(base, teamId)
 					projectCount++
 					for (page in base.adoptable) {
-						val ticketId = createTicket(actor, teamId, project, page)
+						val ticketId = createTicket(actor, teamId, project, base.reader, page)
 						ticketByPage[page.id] = ticketId
 						origins.record(ImportOrigin(page.id, OriginKind.TICKET, ticketId, base.base.dataSourceId))
 						ticketCount++
@@ -95,7 +95,7 @@ class ImportWriter(
 					val folder = docs.createFolder(actor, teamId, null, base.base.name)
 					folderCount++
 					for (page in base.adoptable) {
-						val docId = createDocument(actor, teamId, folder.id, page)
+						val docId = createDocument(actor, teamId, folder.id, base.reader, page)
 						origins.record(ImportOrigin(page.id, OriginKind.DOC, docId, base.base.dataSourceId))
 						docCount++
 					}
@@ -108,7 +108,7 @@ class ImportWriter(
 			}
 		}
 
-		val dependencies = link(actor, bases, ticketByPage)
+		val links = link(actor, bases, ticketByPage)
 		// Read off the plan rather than counted alongside the loop above: `PlannedBase`
 		// already excludes these pages from `adoptable`, so nothing in the loop ever touches
 		// them — the count exists only so the caller is told, not silently left to notice.
@@ -116,8 +116,9 @@ class ImportWriter(
 
 		log.info(
 			"Imported {} ticket(s) and {} document(s) into team {}; {} dependency/ies, {} relation(s) dropped, " +
-				"{} page(s) skipped, {} already imported",
-			ticketCount, docCount, teamId, dependencies.created, dependencies.dropped, skipped.size, alreadyImportedCount,
+				"{} link disagreement(s), {} page(s) skipped, {} already imported",
+			ticketCount, docCount, teamId, links.created, links.dropped, links.conflicts,
+			skipped.size, alreadyImportedCount,
 		)
 
 		return ImportOutcome(
@@ -126,10 +127,11 @@ class ImportWriter(
 			docs = docCount,
 			projects = projectCount,
 			folders = folderCount,
-			dependencies = dependencies.created,
-			droppedRelations = dependencies.dropped,
+			dependencies = links.created,
+			droppedRelations = links.dropped,
 			skipped = skipped,
 			alreadyImported = alreadyImportedCount,
+			linkConflicts = links.conflicts,
 		)
 	}
 
@@ -148,19 +150,27 @@ class ImportWriter(
 		docIds = emptyList(),
 	).project
 
-	private fun createTicket(actor: User, teamId: UUID, project: Project, page: NotionPage): UUID =
+	private fun createTicket(
+		actor: User,
+		teamId: UUID,
+		project: Project,
+		reader: MappedPageReader,
+		page: NotionPage,
+	): UUID =
 		tickets.create(
 			actor = actor,
 			teamId = teamId,
-			title = requireNotNull(NotionPageReader.title(page)) { "an unadoptable page reached the writer" },
-			description = describe(page),
-			// A status or priority whose label is outside Kanso's vocabulary is not adopted
-			// — the vocabulary is closed in Kotlin and by a CHECK, and "Blocked" becoming
-			// "Todo" is better than it becoming a seventh status nothing else understands.
-			status = NotionPageReader.status(page) ?: TicketStatus.TODO,
-			priority = NotionPageReader.priority(page) ?: TicketPriority.NONE,
-			start = NotionPageReader.start(page),
-			due = NotionPageReader.due(page),
+			title = requireNotNull(reader.title(page)) { "an unadoptable page reached the writer" },
+			description = describe(reader, page),
+			// A status or priority the mapping did not place inside Kanso's vocabulary is not
+			// adopted — the vocabulary is closed in Kotlin and by a CHECK, and "Blocked"
+			// becoming "Todo" is better than a seventh status nothing else understands. The
+			// default belongs here rather than in the reader: null means "nobody said", and
+			// only the thing writing the row gets to decide what to write instead.
+			status = reader.status(page) ?: TicketStatus.TODO,
+			priority = reader.priority(page) ?: TicketPriority.NONE,
+			start = reader.start(page),
+			due = reader.due(page),
 			projectId = project.id,
 			// Notion `people` name workspace members, and matching them to Kanso accounts
 			// is the mapping `users.notion_person_id` exists for — it points the other way
@@ -170,17 +180,23 @@ class ImportWriter(
 			docIds = emptyList(),
 		).ticket.id
 
-	private fun createDocument(actor: User, teamId: UUID, folderId: UUID, page: NotionPage): UUID {
+	private fun createDocument(
+		actor: User,
+		teamId: UUID,
+		folderId: UUID,
+		reader: MappedPageReader,
+		page: NotionPage,
+	): UUID {
 		val created = docs.createPage(
 			actor = actor,
 			teamId = teamId,
 			folderId = folderId,
-			title = requireNotNull(NotionPageReader.title(page)) { "an unadoptable page reached the writer" },
+			title = requireNotNull(reader.title(page)) { "an unadoptable page reached the writer" },
 			templateSlug = null,
 		)
 		// A callout, which is the block screen 07 draws for "read this bit": the properties
 		// Kanso has no column for are the part of the page nothing else here explains.
-		provenance(page)?.let { blocks.insert(created.page.id, 0, DocBlockKind.CALLOUT, mapOf("text" to it)) }
+		provenance(reader, page)?.let { blocks.insert(created.page.id, 0, DocBlockKind.CALLOUT, mapOf("text" to it)) }
 		return created.page.id
 	}
 
@@ -192,21 +208,26 @@ class ImportWriter(
 	 * by the time anybody reads them, the description is where a ticket's prose lives, and
 	 * the section is what makes them readable rather than merely stored.
 	 */
-	private fun describe(page: NotionPage): String? {
-		val body = NotionPageReader.description(page)
-		val section = provenance(page)
+	private fun describe(reader: MappedPageReader, page: NotionPage): String? {
+		val body = reader.description(page)
+		val section = provenance(reader, page)
 		return listOfNotNull(body, section).takeIf { it.isNotEmpty() }?.joinToString("\n\n")
 	}
 
 	/** The section itself: the heading, one line per unmapped property, then where it came from. */
-	private fun provenance(page: NotionPage): String? {
-		val lines = NotionPageReader.unmapped(page).map { (name, value) -> "$name: $value" }
+	private fun provenance(reader: MappedPageReader, page: NotionPage): String? {
+		val lines = reader.unmapped(page).map { (name, value) -> "$name: $value" }
 		if (lines.isEmpty() && page.url == null) return null
 		return (listOf(SECTION) + lines + listOfNotNull(page.url)).joinToString("\n")
 	}
 
 	/**
-	 * Turns the resolved relations into dependencies, one at a time.
+	 * Turns the relations [ImportLinks] resolved into dependencies, one at a time.
+	 *
+	 * A dependency is exactly what the mapping called a dependency — the column somebody
+	 * pointed at `Blocked by` — and no longer every relation the page happens to hold: a
+	 * `Related` column is a link between two pages, not an order to do them in, and turning
+	 * one into an arrow put work in a queue nobody asked for.
 	 *
 	 * Through [ScheduleService.link] rather than the repository, so an imported arrow is
 	 * settled by the same engine as a drawn one and a cycle is refused rather than stored.
@@ -215,11 +236,13 @@ class ImportWriter(
 	 * what tells the reader it happened.
 	 */
 	private fun link(actor: User, bases: List<PlannedBase>, ticketByPage: Map<String, UUID>): Linked {
-		val plan = ImportPlanner.dependencies(bases)
+		val resolved = ImportLinks.resolve(bases)
 		var created = 0
-		var dropped = plan.dropped
+		// Relation ends that resolved to nothing are already counted there, over every
+		// relation the mapping named rather than only the dependencies.
+		var dropped = resolved.droppedRelations
 
-		for (edge in plan.edges) {
+		for (edge in resolved.dependencies) {
 			val predecessor = ticketByPage[edge.predecessorPageId]
 			val successor = ticketByPage[edge.successorPageId]
 			if (predecessor == null || successor == null) {
@@ -234,10 +257,10 @@ class ImportWriter(
 				dropped++
 			}
 		}
-		return Linked(created, dropped)
+		return Linked(created, dropped, resolved.conflicts)
 	}
 
-	private data class Linked(val created: Int, val dropped: Int)
+	private data class Linked(val created: Int, val dropped: Int, val conflicts: Int)
 
 	private companion object {
 		const val SECTION = "Imported from Notion"
