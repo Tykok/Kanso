@@ -130,7 +130,10 @@ class TicketImport(
 			docIds = emptyList(),
 		).project
 		rows.put(OriginKind.PROJECT, base.base.dataSourceId, project.id)
-		origins.record(
+		// [ImportOriginRepository.recordContainer] rather than `record`: this base may already
+		// have a row here, naming a container somebody has since deleted, and it has to end up
+		// naming this one or the run after would create a third.
+		origins.recordContainer(
 			ImportOrigin(base.base.dataSourceId, OriginKind.PROJECT, project.id, base.base.dataSourceId)
 		)
 		return project.id

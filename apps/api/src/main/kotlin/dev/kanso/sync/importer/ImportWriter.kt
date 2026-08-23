@@ -54,7 +54,10 @@ class ImportWriter(
 
 	@Transactional
 	fun write(actor: User, fallbackTeam: UUID, bases: List<PlannedBase>): ImportOutcome {
-		val rows = ImportedRows(origins.byPageIds(seedKeys(bases)))
+		// Filtered to the origins whose entity still exists: the table deliberately carries no
+		// foreign key, so the *reader* of the seed is what has to be careful — see
+		// [ImportOriginRepository.live].
+		val rows = ImportedRows(origins.live(origins.byPageIds(seedKeys(bases))))
 		val links = ImportLinks.resolve(bases)
 
 		val teamBases = bases.filter { it.target == ImportTarget.TEAMS }
@@ -147,6 +150,10 @@ class ImportWriter(
  * page imported *last month* resolves exactly like one imported a second ago. That is the
  * whole reason the table exists: without the seed, a second import of a base with one new
  * page would leave that page's every relation unresolved and land it in a fallback.
+ *
+ * Every id in the seed is one the writers hand to a service as if they had just created the
+ * row themselves, so the seed has to hold only rows that exist — [ImportOriginRepository.live]
+ * is what makes that true, and every `?:` chain reading this class depends on it.
  */
 class ImportedRows(seed: Map<String, ImportOrigin> = emptyMap()) {
 

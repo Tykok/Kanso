@@ -133,6 +133,11 @@ class NotionImportService(
 		// One query for the whole plan, not one per base and not one per page: a base of
 		// four hundred pages must not cost four hundred round trips inside the transaction
 		// that holds a team's ticket counter.
+		//
+		// Unfiltered, unlike the writer's own seed — [ImportOriginRepository.live] — and
+		// deliberately: "already imported" is a fact about this page having been imported,
+		// and a page whose row somebody has since deleted is not a page to import again.
+		// Resurrecting a team a reader chose to remove is the louder mistake.
 		val allPageIds = resolved.flatMap { it.pages }.map { it.id }
 		val existing = tx.execute { originRows.byPageIds(allPageIds) }.orEmpty()
 
