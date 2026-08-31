@@ -55,16 +55,41 @@ export function StepThree({
   // and `import-map.ts` is arithmetic against the drawing — not the place to widen.
   const exact = new Map(sources.map((source) => [source.id, source.pagesExact]));
   const allExact = sources.every((source) => source.pagesExact);
+  const plan = importPlan(sources, mapping);
+
+  /**
+   * What will exist afterwards — and no single source can say it.
+   *
+   * `ImportPreview.projects` deliberately merges the two shapes that produce a project: a
+   * base whose pages *are* projects, and a base of tickets that becomes one project named
+   * after it. Summing its pages would report a base of three hundred tickets as three
+   * hundred projects, so the shapes are counted apart here, from the plan.
+   *
+   * Teams do come from the preview: one page becomes one team, and the preview counts the
+   * pages that actually come over — adoptable ones, after the read — where the plan only
+   * has the discovery count, which may still be a bound.
+   */
+  const teams = preview
+    ? preview.teams.reduce((all, group) => all + group.pages, 0)
+    : plan.reduce((all, entry) => all + (entry.target === "teams" ? entry.pages : 0), 0);
+  const projects = plan.reduce(
+    (all, entry) =>
+      all + (entry.target === "projects" ? entry.pages : entry.target === "tickets" ? 1 : 0),
+    0,
+  );
+  /** A base of projects whose own count stopped at the discovery bound makes this a floor. */
+  const projectsBounded = plan.some(
+    (entry) => entry.target === "projects" && !(exact.get(entry.sourceId) ?? true),
+  );
 
   return (
     <>
       <div className="flex flex-col gap-1.5">
         <span className="text-15 font-medium">
-          {/* "tickets", not "projects": a base mapped to tickets is what still becomes one
-           * project full of tickets. `counts.projects` counts the other shape, refused at
-           * the writer until it exists. */}
-          {counts.tickets} {counts.tickets === 1 ? "project" : "projects"}, {counts.folders}{" "}
-          {counts.folders === 1 ? "folder" : "folders"}
+          {teams > 0 ? `${teams} ${teams === 1 ? "team" : "teams"}, ` : ""}
+          {projects}
+          {projectsBounded ? "+" : ""} {projects === 1 ? "project" : "projects"},{" "}
+          {counts.folders} {counts.folders === 1 ? "folder" : "folders"}
           {teamName ? ` in ${teamName}` : ""}
         </span>
         <span className="text-12 text-muted-foreground">
@@ -74,7 +99,7 @@ export function StepThree({
       </div>
 
       <div className="flex flex-col gap-0.5 text-12">
-        {importPlan(sources, mapping).map((entry) => (
+        {plan.map((entry) => (
           <div
             key={entry.sourceId}
             className={cn("grid h-[30px] items-center gap-3 rounded-sm bg-background px-3", ROW_GRID)}

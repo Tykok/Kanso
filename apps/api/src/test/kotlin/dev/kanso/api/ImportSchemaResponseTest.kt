@@ -7,8 +7,10 @@ import dev.kanso.sync.importer.ImportSchemaView
 import dev.kanso.sync.importer.ImportTarget
 import dev.kanso.sync.importer.SchemaColumn
 import tools.jackson.databind.json.JsonMapper
+import kotlin.reflect.full.memberFunctions
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**
@@ -48,5 +50,24 @@ class ImportSchemaResponseTest {
 		// as a null one.
 		assertContains(json, """"defaults":{"status":"todo"}""")
 		assertFalse(json.contains("STATUS"), "an enum name on the wire is a 400 when it comes back")
+	}
+
+	/**
+	 * The loop the test above cannot close on its own: it serializes
+	 * [ImportSchemaResponse.of], so a regression handing the raw [ImportSchemaView] back to
+	 * the browser again — the exact defect this fixed — would leave it green while the
+	 * endpoint went back to writing `"STATUS"`. This asserts what the endpoint itself
+	 * returns, which is the only thing the screen ever sees.
+	 */
+	@Test
+	fun `the endpoint hands back the wire-shaped response, not the view`() {
+		val schema = NotionImportController::class.memberFunctions.single { it.name == "schema" }
+
+		assertEquals(
+			ImportSchemaResponse::class.qualifiedName,
+			(schema.returnType.classifier as? kotlin.reflect.KClass<*>)?.qualifiedName,
+			"GET /api/notion/import/schema must return the wire-shaped response: an enum " +
+				"serialized as its own name is a 400 when the plan sends it back",
+		)
 	}
 }

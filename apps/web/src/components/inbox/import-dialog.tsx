@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notionImportApi, type NotionImportRequest, type NotionImportSource } from "@/lib/api";
 import { useProjects, useTeams } from "@/lib/queries";
 import { actionErrorMessage } from "@/lib/errors";
@@ -125,8 +125,22 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
    * The write, and the one call here that makes one. It does not close the dialog: the
    * outcome is the only report the import produces — what it dropped, what it left alone
    * because it had imported it before — and closing on success would throw it away.
+   *
+   * It does invalidate, though, on every entity an import can create: the reader is left
+   * on a screen saying four teams and three hundred tickets were written, and the lists
+   * behind it would otherwise still be the ones from before they opened the dialog. By
+   * prefix, the way `core.ts`'s own mutations do, so a scope or an archived flag in the
+   * key cannot leave one variant stale.
    */
-  const confirm = useMutation({ mutationFn: () => notionImportApi.confirm(request) });
+  const client = useQueryClient();
+  const confirm = useMutation({
+    mutationFn: () => notionImportApi.confirm(request),
+    onSuccess: () => {
+      for (const entity of ["teams", "projects", "tickets", "docs", "timeline"]) {
+        client.invalidateQueries({ queryKey: [entity] });
+      }
+    },
+  });
 
   /**
    * Changing what a base becomes drops what was said about its columns.

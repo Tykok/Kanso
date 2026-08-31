@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { useQueries, type UseQueryResult } from "@tanstack/react-query";
 import { type Project, type Team } from "@/lib/api";
-import { useImportSchema } from "@/lib/queries";
+import { importSchemaQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/errors";
 import {
@@ -14,6 +15,7 @@ import {
   unmappedOptions,
   type BaseMapping,
   type Fallback,
+  type MappedBase,
   type NotionImportSchema,
 } from "./import-columns";
 import type { ImportMapping, ImportPlanEntry } from "./import-map";
@@ -66,6 +68,30 @@ export function StepColumns({
   pending: boolean;
   error?: string;
 }) {
+  /**
+   * Every kept base's schema, asked for here rather than inside each section.
+   *
+   * Two things need the whole set. The button below has to stay dead while any of them is
+   * in flight: the seed only happens when a schema arrives, so leaving early would send
+   * `columns: {}` for that base and throw away the server's pre-fill — silently, and with
+   * `hasPeople` false, skipping step 4 as well. And `openFallbacks` reads the sibling
+   * mappings, because a `single_property` relation can live on the parent's base alone.
+   *
+   * `useQueries`, so a base whose schema Notion refuses still fails alone: each entry keeps
+   * its own status, and the section below draws it.
+   */
+  const schemas = useQueries({
+    queries: bases.map((base) => importSchemaQuery(base.sourceId, base.target)),
+  });
+
+  const loading = schemas.some((schema) => schema.isPending);
+
+  /** The bases whose schema has arrived, with what has been said about each. */
+  const mapped: MappedBase[] = bases.flatMap((base, index) => {
+    const schema = schemas[index].data;
+    return schema ? [{ schema, mapping: mappings[base.sourceId] ?? schema.suggestion }] : [];
+  });
+
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -77,11 +103,13 @@ export function StepColumns({
       </div>
 
       <div className="flex flex-col gap-3">
-        {bases.map((base) => (
+        {bases.map((base, index) => (
           <BaseSection
             key={base.sourceId}
             base={base}
+            schema={schemas[index]}
             kept={kept}
+            mapped={mapped}
             mapping={mappings[base.sourceId]}
             fallback={fallbacks[base.sourceId] ?? {}}
             teams={teams}
@@ -100,12 +128,17 @@ export function StepColumns({
       )}
 
       <div className="flex items-center gap-2.5">
-        <Button disabled={pending} onClick={onNext}>
+        <Button disabled={pending || loading} onClick={onNext}>
           {hasPeople ? "Match the people" : "Preview the import"}
         </Button>
         <Button variant="outline" onClick={onBack}>
           Back
         </Button>
+        {loading && (
+          <span className="text-11 text-faint">
+            Waiting for the columns, so nothing is mapped by accident.
+          </span>
+        )}
       </div>
 
       {error && <span className="text-12 text-urgent">{error}</span>}
@@ -114,16 +147,18 @@ export function StepColumns({
 }
 
 /**
- * One base, and its own request for its own schema.
+ * One base, drawn from its own entry in the parent's [useQueries].
  *
- * A query per section rather than one for all of them: the schemas are read from Notion one
+ * One query per base rather than one for all of them: the schemas are read from Notion one
  * data source at a time, and a workspace where a single base has been unshared would
  * otherwise blank the whole screen. Here that base says so and the rest stay usable — its
  * pages still import, with nothing mapped.
  */
 function BaseSection({
   base,
+  schema,
   kept,
+  mapped,
   mapping,
   fallback,
   teams,
@@ -133,7 +168,10 @@ function BaseSection({
   onFallback,
 }: {
   base: ImportPlanEntry;
+  schema: UseQueryResult<NotionImportSchema>;
   kept: ImportMapping;
+  /** Every base whose schema has arrived — `openFallbacks` reads both ends of a link. */
+  mapped: MappedBase[];
   /** Undefined until the suggestion has seeded it — which is what `seeded` reads. */
   mapping?: BaseMapping;
   fallback: Fallback;
@@ -143,8 +181,6 @@ function BaseSection({
   onSeed: (sourceId: string, seed: BaseMapping) => void;
   onFallback: (sourceId: string, fallback: Fallback) => void;
 }) {
-  const schema = useImportSchema(base.sourceId, base.target);
-
   /**
    * The suggestion seeds this base's mapping once, on first arrival, and the reader's
    * edits win from then on: `mapping` is undefined only before the seed, and every edit
@@ -220,7 +256,7 @@ function BaseSection({
       ))}
 
       {view &&
-        openFallbacks(view, current, kept).map((key) => (
+        openFallbacks({ schema: view, mapping: current }, kept, mapped).map((key) => (
           <label key={key} className="grid grid-cols-[170px_1fr] items-center gap-3 text-12">
             <span className="text-muted-foreground">{FALLBACK_LABELS[key]}</span>
             <select

@@ -124,10 +124,18 @@ export function useRetryFailedPushes() {
  * open, and every miss is a call to Notion. `retry: false` for the same reason step 1 has
  * it: a workspace that refuses is a sentence to print, not something to ask again about.
  */
+export const importSchemaQuery = (sourceId: string, target: NotionImportPlanRow["target"]) => ({
+  queryKey: ["notion-import-schema", sourceId, target] as const,
+  queryFn: () => notionImportApi.schema(sourceId, target),
+  retry: false,
+  staleTime: Infinity,
+});
+
+/**
+ * The options as well as the hook, because step 3 asks for every kept base at once —
+ * `useQueries`, since a hook cannot be called in a loop, and because that step has to know
+ * whether *any* of them is still in flight before it lets the reader leave it. One
+ * definition either way: the two steps cannot ask for the same schema on different terms.
+ */
 export const useImportSchema = (sourceId: string, target: NotionImportPlanRow["target"]) =>
-  useQuery({
-    queryKey: ["notion-import-schema", sourceId, target],
-    queryFn: () => notionImportApi.schema(sourceId, target),
-    retry: false,
-    staleTime: Infinity,
-  });
+  useQuery(importSchemaQuery(sourceId, target));

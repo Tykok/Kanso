@@ -70,12 +70,17 @@ export function unmappedOptions(
 }
 
 /**
- * The target implied by a relation field, which is what makes "import the base this points
- * at" a suggestion rather than a question.
+ * The target a relation's other end has to be kept as for that relation to resolve.
  *
- * `blockedBy` points at the base's own kind and `projects`/`subTeams`/`tickets` read the
- * parent's own column naming its children — the direction differs, the target does not.
- * A field absent from here has no relation to follow.
+ * `ImportLinks` keys the ends of a link by target — `adopted[parentTarget]` for a child's
+ * own column, `adopted[childTarget]` for a parent's inverse one — so "is that base being
+ * imported" is the wrong question and "is it being imported as *this*" is the right one. A
+ * `project` relation pointing at a base kept as tickets resolves to nothing and is counted
+ * as dropped, exactly as one pointing at an ignored base is.
+ *
+ * `blockedBy` points at the base's own kind, and `projects`/`subTeams`/`tickets` are the
+ * parent's own column naming its children — the direction differs, the answer to "kept as
+ * what" does not. A field absent from here has no relation to follow.
  */
 const RELATION_TARGET: Record<string, Exclude<ImportTarget, "ignore">> = {
   project: "projects",
@@ -87,20 +92,41 @@ const RELATION_TARGET: Record<string, Exclude<ImportTarget, "ignore">> = {
   blockedBy: "tickets",
 };
 
-const isKept = (kept: ImportMapping, sourceId: string) =>
-  kept[sourceId] !== undefined && kept[sourceId] !== "ignore";
+/**
+ * The three one-to-one links, each named from the child's side, with the parent's inverse
+ * column beside it — the same six lines `ImportLinks.resolve` is built out of.
+ *
+ * `blockedBy` is not here: it has no inverse column (the mirror only ever writes one side)
+ * and it places no row, so no fallback exists for it to be the question about.
+ */
+const LINK: Partial<
+  Record<ImportTarget, { childField: string; parentTarget: ImportTarget; inverseField: string }>
+> = {
+  teams: { childField: "parentTeam", parentTarget: "teams", inverseField: "subTeams" },
+  projects: { childField: "team", parentTarget: "teams", inverseField: "projects" },
+  tickets: { childField: "project", parentTarget: "projects", inverseField: "tickets" },
+};
+
+/** One kept base as the screen holds it: what its columns are, and what has been said about them. */
+export type MappedBase = { schema: NotionImportSchema; mapping: BaseMapping };
+
+/** Which data source [field]'s mapped column points at, or undefined if nothing is mapped. */
+const pointsAt = (base: MappedBase, field: string): string | undefined => {
+  const property = base.mapping.columns[field];
+  return base.schema.columns.find((column) => column.name === property)?.relationTo;
+};
 
 /**
- * The bases a mapped relation points at that nobody is importing — step 2's suggestion,
- * and the warning beside it.
+ * The bases a mapped relation points at that nothing is importing as the kind that
+ * relation needs — step 2's suggestion, and the warning beside it.
  *
  * Read from [NotionImportSchema.suggestion], because on the step where this is drawn the
  * server's guess is the only mapping there is; a caller that already has the reader's own
  * mapping substitutes it there, and gets the answer for what the reader actually said.
  *
- * It never blocks. A relation into an ignored base is a fact about the plan, not a
- * mistake: the import proceeds, the row lands in its fallback, and the relation is counted
- * as dropped.
+ * It never blocks. A relation whose other end is not being imported as the right kind is a
+ * fact about the plan, not a mistake: the import proceeds, the row lands in its fallback,
+ * and the relation is counted as dropped.
  */
 export function suggestionsFrom(
   schema: NotionImportSchema,
@@ -112,7 +138,7 @@ export function suggestionsFrom(
     const target = RELATION_TARGET[field];
     const sourceId = schema.columns.find((column) => column.name === property)?.relationTo;
     if (!target || !sourceId) continue;
-    if (isKept(kept, sourceId)) continue;
+    if (kept[sourceId] === target) continue;
     if (suggestions.some((suggestion) => suggestion.sourceId === sourceId)) continue;
     suggestions.push({ sourceId, target });
   }
@@ -123,32 +149,50 @@ export function suggestionsFrom(
 /**
  * Which of the three fallbacks this base still owes an answer for.
  *
- * A link is resolvable when its column is mapped *and* points at a base being imported:
- * a relation into an ignored base resolves to nothing, which is the case the fallback
- * exists for. Read from the writers rather than from a spec — `TeamImport` reads
- * `parentTeamId`, `ProjectImport` reads `teamId`, `TicketImport` reads `projectId` and
- * then `teamId` for a ticket whose project answered nothing, and `DocumentImport` reads
- * `teamId` with no relation to try first.
+ * A link resolves when *either* end names the other, because that is what
+ * `ImportLinks.resolveOneToOne` reads: the child's own column, and the parent's inverse
+ * column naming it back. A Notion relation created `single_property` exists on one side
+ * only, so a workspace carrying the project link as a `Tâches` column on the projects base
+ * and nothing on the tasks base resolves perfectly well — which is why this needs [bases],
+ * the sibling mappings, and cannot answer from one base alone.
+ *
+ * Which fallback belongs to which target is read from the writers: `TeamImport` reads
+ * `parentTeamId`, `ProjectImport` reads `teamId`, `TicketImport` reads `projectId` and then
+ * `teamId` for a ticket whose project answered nothing, and `DocumentImport` reads `teamId`
+ * with no relation to try first.
+ *
+ * It answers per base, not per page: a mapped column that is empty on some page still
+ * leaves that row for the fallback, and no schema can say which pages those are. So this is
+ * "can this link resolve at all", which is the question the screen is asking.
  */
 export function openFallbacks(
-  schema: NotionImportSchema,
-  mapping: BaseMapping,
+  base: MappedBase,
   kept: ImportMapping,
+  bases: MappedBase[],
 ): (keyof Fallback)[] {
-  const resolves = (field: string) => {
-    const property = mapping.columns[field];
-    const relationTo = schema.columns.find((column) => column.name === property)?.relationTo;
-    return relationTo !== undefined && isKept(kept, relationTo);
+  const link = LINK[base.schema.target];
+
+  const resolves = (): boolean => {
+    if (!link) return false;
+    // The child's own column, pointing at a base kept as the parent kind.
+    const childEnd = pointsAt(base, link.childField);
+    if (childEnd !== undefined && kept[childEnd] === link.parentTarget) return true;
+    // Or a parent's inverse column, pointing back at this base.
+    return bases.some(
+      (other) =>
+        kept[other.schema.sourceId] === link.parentTarget &&
+        pointsAt(other, link.inverseField) === base.schema.sourceId,
+    );
   };
 
-  switch (schema.target) {
+  switch (base.schema.target) {
     case "teams":
-      return resolves("parentTeam") ? [] : ["parentTeamId"];
+      return resolves() ? [] : ["parentTeamId"];
     case "projects":
-      return resolves("team") ? [] : ["teamId"];
+      return resolves() ? [] : ["teamId"];
     case "tickets":
       // The ticket's team follows its project, so an unanswered project leaves both open.
-      return resolves("project") ? [] : ["projectId", "teamId"];
+      return resolves() ? [] : ["projectId", "teamId"];
     default:
       return ["teamId"];
   }

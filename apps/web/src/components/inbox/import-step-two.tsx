@@ -221,11 +221,19 @@ function RelationHint({
 
   return suggestions.map(({ sourceId, target }) => {
     const pointed = sources.find((source) => source.id === sourceId);
+    // Kept as the wrong kind is not the same sentence as kept by nobody: `ImportLinks`
+    // looks for the pointed-at page among the bases of *that* target, so a Projets base
+    // imported as tickets leaves this relation with nothing to resolve to either way — and
+    // the reader who chose that target is owed the accurate reason.
+    const otherwise = kept[sourceId];
     return (
       <span key={sourceId} className="flex items-center gap-2.5 text-11 text-faint">
         <span>
-          {base.name} is related to {pointed ? pointed.name : "a database Kanso cannot see"}, which
-          nothing is importing. Those relations will be dropped.
+          {base.name} is related to {pointed ? pointed.name : "a database Kanso cannot see"},{" "}
+          {otherwise && otherwise !== "ignore"
+            ? `which is being imported as ${TARGET_LABELS[otherwise].toLowerCase()}, not as ${TARGET_LABELS[target].toLowerCase()}`
+            : "which nothing is importing"}
+          . Those relations will be dropped.
         </span>
         {pointed && (
           <button
