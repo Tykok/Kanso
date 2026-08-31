@@ -141,6 +141,11 @@ class HttpNotionClient(
 	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? =
 		request("GET", "/databases/$databaseId", null)?.let(::database)
 
+	override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? =
+		request("GET", "/data_sources/$dataSourceId", null)?.let {
+			NotionDataSource(it.path("id").asText(dataSourceId), plainTitle(it.path("title")), it.path("properties"))
+		}
+
 	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) {
 		request("PATCH", "/data_sources/$dataSourceId", mapOf("properties" to properties))
 	}
@@ -317,6 +322,14 @@ class HttpNotionClient(
 		parentType = body.path("parent").path("type").asText(null),
 		archived = body.path("archived").asBoolean(false) || body.path("in_trash").asBoolean(false),
 	)
+
+	/**
+	 * A title's fragments, joined the same way every other title read here is. [NotionDataSource.name]
+	 * is non-nullable, unlike [NotionDatabase.title] — a schema screen has nothing sensible
+	 * to print for a base with no name at all, so blank becomes "Untitled" rather than null.
+	 */
+	private fun plainTitle(title: JsonNode): String =
+		title.joinToString("") { it.path("plain_text").asText("") }.ifBlank { "Untitled" }
 
 	private fun page(body: JsonNode) = NotionPage(
 		id = body.path("id").asText(),

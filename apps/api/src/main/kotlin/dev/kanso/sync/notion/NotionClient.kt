@@ -28,6 +28,16 @@ data class NotionQueryPage(
 )
 
 /**
+ * A data source's own schema, as opposed to any row in it.
+ *
+ * The import needs this and the pages [NotionClient.queryDataSource] returns are not
+ * enough: a column left empty on every page is invisible in the pages and present here,
+ * a select's options have to be listed even when no page uses one, and a relation's
+ * target data source exists nowhere else at all.
+ */
+data class NotionDataSource(val id: String, val name: String, val properties: JsonNode?)
+
+/**
  * One page of a workspace search.
  *
  * [unavailable] is a first-class answer rather than an exception: an instance with no
@@ -136,6 +146,15 @@ interface NotionClient {
 	): NotionDatabase
 
 	suspend fun retrieveDatabase(databaseId: String): NotionDatabase?
+
+	/**
+	 * A data source's own schema.
+	 *
+	 * The import needs this and the pages are not enough: a column empty on every page read
+	 * is invisible in the pages and present here, a select's options must be listed even
+	 * when no page uses them, and a relation's target data source exists nowhere else.
+	 */
+	suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource?
 
 	/** Adds or changes properties on an existing data source — used to wire relations after creation. */
 	suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>)

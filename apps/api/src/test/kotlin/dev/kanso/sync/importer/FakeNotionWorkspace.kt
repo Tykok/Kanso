@@ -2,6 +2,7 @@ package dev.kanso.sync.importer
 
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionDatabase
+import dev.kanso.sync.notion.NotionDataSource
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionPageRef
 import dev.kanso.sync.notion.NotionPageSearch
@@ -110,6 +111,17 @@ class FakeNotionWorkspace(
 	override suspend fun createDatabase(parentPageId: String, title: String, properties: Map<String, Any?>): NotionDatabase =
 		throw UnsupportedOperationException()
 	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? = throw UnsupportedOperationException()
+
+	/**
+	 * The one read the schema screen needs that a row search never answers: what
+	 * [FakeDatabase.properties] says the base's columns are, keyed by data source id since
+	 * that is the only id the schema call ever carries.
+	 */
+	override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? {
+		requests++
+		val base = databases.firstOrNull { it.dataSourceId == dataSourceId } ?: return null
+		return NotionDataSource(base.dataSourceId, base.name, json.valueToTree(base.properties))
+	}
 	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) =
 		throw UnsupportedOperationException()
 	override suspend fun createPage(dataSourceId: String, properties: Map<String, Any?>): NotionPage =
@@ -119,12 +131,19 @@ class FakeNotionWorkspace(
 	override suspend fun retrievePage(pageId: String): NotionPage? = throw UnsupportedOperationException()
 }
 
-/** One base in the fake workspace. Ids are given so a relation can name a page. */
+/**
+ * One base in the fake workspace. Ids are given so a relation can name a page.
+ *
+ * [properties] is the schema [retrieveDataSource] answers with — Notion's own shape, the
+ * same one [fakePage] uses for a row — defaulted to a lone `title` property called `Name`
+ * so every fake built before the schema screen existed still describes a valid base.
+ */
 class FakeDatabase(
 	val name: String,
 	val pages: List<NotionPage> = emptyList(),
 	val databaseId: String = "db-${UUID.randomUUID()}",
 	val dataSourceId: String = "ds-${UUID.randomUUID()}",
+	val properties: Map<String, Any?> = mapOf("Name" to mapOf("type" to "title")),
 )
 
 /**

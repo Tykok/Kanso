@@ -5,6 +5,7 @@ import dev.kanso.sync.importer.Fallback
 import dev.kanso.sync.importer.ImportOutcome
 import dev.kanso.sync.importer.ImportPlanEntry
 import dev.kanso.sync.importer.ImportPreview
+import dev.kanso.sync.importer.ImportSchemaView
 import dev.kanso.sync.importer.ImportSources
 import dev.kanso.sync.importer.ImportTarget
 import dev.kanso.sync.importer.NotionImportService
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -62,6 +64,11 @@ class NotionImportController(
 	 */
 	@GetMapping("/sources")
 	fun sources(): ImportSources = imports.sources()
+
+	/** Not `@Transactional`, for the same reason as [sources]: this walks the network too. */
+	@GetMapping("/schema")
+	fun schema(@RequestParam sourceId: String, @RequestParam target: String): ImportSchemaView =
+		imports.schema(sourceId, ImportTarget.from(target))
 
 	@PostMapping("/preview")
 	fun preview(@RequestBody request: ImportPreviewRequest): ImportPreview =

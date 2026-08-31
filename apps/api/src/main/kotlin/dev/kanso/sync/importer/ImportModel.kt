@@ -19,6 +19,26 @@ enum class ImportTarget(override val wire: String) : Wire {
 	TICKETS("tickets"),
 	DOCUMENTS("documents");
 
+	/**
+	 * Which fields of a row this target's pages read from a mapped column.
+	 *
+	 * The schema screen uses this to know which fields to offer a column against at all —
+	 * a base of documents has no field to map, and a base of tickets has no use for
+	 * `subTeams`, which exists only to read a teams base's own column naming its children.
+	 */
+	val fields: Set<ImportField> get() = when (this) {
+		TEAMS -> setOf(ImportField.PARENT_TEAM, ImportField.PROJECTS, ImportField.SUB_TEAMS)
+		PROJECTS -> setOf(
+			ImportField.STATUS, ImportField.START, ImportField.END, ImportField.LEAD,
+			ImportField.TEAM, ImportField.TICKETS,
+		)
+		TICKETS -> setOf(
+			ImportField.STATUS, ImportField.PRIORITY, ImportField.DESCRIPTION, ImportField.START,
+			ImportField.DUE, ImportField.ASSIGNEES, ImportField.PROJECT, ImportField.BLOCKED_BY,
+		)
+		DOCUMENTS -> emptySet()
+	}
+
 	companion object {
 		fun from(raw: String): ImportTarget = parse(entries.toTypedArray(), raw)
 	}

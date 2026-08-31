@@ -65,6 +65,9 @@ class ReloadableNotionClient(
 	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? =
 		active().retrieveDatabase(databaseId)
 
+	override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? =
+		active().retrieveDataSource(dataSourceId)
+
 	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) =
 		active().updateDataSourceSchema(dataSourceId, properties)
 

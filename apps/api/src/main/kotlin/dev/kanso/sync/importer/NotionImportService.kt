@@ -71,6 +71,25 @@ class NotionImportService(
 	}
 
 	/**
+	 * The columns a base offers, which fields each could fill, and the mapping Kanso
+	 * suggests before the request overrides any of it — see [ImportSchema] for the rule.
+	 * The read is [NotionDiscovery]'s, same as everywhere else in this file; refused with
+	 * the same two sentences [sources] uses, because the workspace can be unreachable here
+	 * exactly as it can there.
+	 */
+	fun schema(sourceId: String, target: ImportTarget): ImportSchemaView = try {
+		runBlocking {
+			val source = discovery.schema(sourceId)
+				?: throw BadRequestException("Notion no longer has a data source with that id.")
+			ImportSchema.of(source, target)
+		}
+	} catch (e: NotionRateLimited) {
+		throw BadRequestException("Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
+	} catch (e: NotionApiException) {
+		throw BadRequestException("Notion refused the request: ${e.message}")
+	}
+
+	/**
 	 * Step 2 → 3, and the screen's central promise: this answers what *would* happen and
 	 * writes nothing.
 	 *

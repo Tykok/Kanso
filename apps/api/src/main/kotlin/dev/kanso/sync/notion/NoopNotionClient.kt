@@ -61,6 +61,8 @@ class NoopNotionClient : NotionClient {
 
 	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? = null
 
+	override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? = null
+
 	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) {
 		log.debug("[noop] would add {} properties to data source {}", properties.size, dataSourceId)
 	}

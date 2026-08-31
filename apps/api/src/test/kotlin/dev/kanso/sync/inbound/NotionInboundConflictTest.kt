@@ -20,6 +20,7 @@ import dev.kanso.service.TeamService
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionDatabase
+import dev.kanso.sync.notion.NotionDataSource
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionQueryPage
 import org.springframework.beans.factory.annotation.Autowired
@@ -112,6 +113,7 @@ class NotionInboundConflictTest : PostgresTest() {
 		override suspend fun createDatabase(parentPageId: String, title: String, properties: Map<String, Any?>): NotionDatabase =
 			throw UnsupportedOperationException()
 		override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? = throw UnsupportedOperationException()
+		override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? = throw UnsupportedOperationException()
 		override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) =
 			throw UnsupportedOperationException()
 		override suspend fun createPage(dataSourceId: String, properties: Map<String, Any?>): NotionPage =
