@@ -86,6 +86,11 @@ kanso:
     # so the queue is exercised without any network call.
     token: ${NOTION_TOKEN:}
     parent-page-id: ${NOTION_PARENT_PAGE_ID:}
+    # The public integration, so a fresh database offers the Connect button instead of
+    # asking for these two again. Not a token: nothing is connected until somebody consents.
+    app:
+      client-id: ${NOTION_CLIENT_ID:}
+      client-secret: ${NOTION_CLIENT_SECRET:}
     api-version: ${NOTION_API_VERSION:2025-09-03}
     base-url: ${NOTION_BASE_URL:https://api.notion.com/v1}
     request-timeout: 20s

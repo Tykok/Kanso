@@ -26,6 +26,7 @@ class ResolvedSettings(
 	/** The public integration consent is asked through, and what one grant answered. */
 	val notionClientId: String?,
 	val notionClientSecret: String?,
+	val notionAppManagedByEnvironment: Boolean,
 	val notionWorkspaceName: String?,
 ) {
 	/** A stray log line must not print a token. */
@@ -47,6 +48,14 @@ data class NotionSettingsState(
 	 * unable to tell "nothing is set up" from "set up, nobody has consented yet".
 	 */
 	val appConfigured: Boolean = false,
+	/**
+	 * Whether the integration comes from `NOTION_CLIENT_ID` / `NOTION_CLIENT_SECRET`.
+	 *
+	 * Separate from [managedByEnvironment], which is about the *token*, and the two lead
+	 * to opposite screens: a pinned token means there is nothing to connect, a pinned
+	 * integration means there is nothing to *type* — the button is exactly what stays.
+	 */
+	val appManagedByEnvironment: Boolean = false,
 	/**
 	 * The workspace a completed consent named. Null when the token was pasted rather than
 	 * granted, because a pasted token names nothing a person recognises.
@@ -112,6 +121,7 @@ class InstanceSettingsService(
 				managedByEnvironment = it.notionManagedByEnvironment,
 				parentPageId = it.notionParentPageId,
 				appConfigured = !it.notionClientId.isNullOrBlank() && !it.notionClientSecret.isNullOrBlank(),
+				appManagedByEnvironment = it.notionAppManagedByEnvironment,
 				workspaceName = it.notionWorkspaceName,
 			),
 			google = GoogleSettingsState(
@@ -135,12 +145,20 @@ class InstanceSettingsService(
 	}
 
 	/**
-	 * The integration's own credentials. Not a token, and not the environment's business:
-	 * `NOTION_TOKEN` set in the environment says which token to *use*, and says nothing
-	 * about whether a browser may ask for another one — so this deliberately does not
-	 * refuse the way [saveNotion] does.
+	 * The integration's own credentials.
+	 *
+	 * `NOTION_TOKEN` is deliberately *not* what refuses here — it says which token to use
+	 * and nothing about whether a browser may ask for another one. `NOTION_CLIENT_ID` and
+	 * `NOTION_CLIENT_SECRET` are, for the usual reason: two places writing the same
+	 * setting means one of them silently loses.
 	 */
 	fun saveNotionApp(clientId: String, clientSecret: String?) {
+		if (props.notion.app.configured) {
+			throw BadRequestException(
+				"NOTION_CLIENT_ID and NOTION_CLIENT_SECRET are set in the environment and take precedence; " +
+					"unset them to manage the integration here."
+			)
+		}
 		val submittedSecret = clientSecret?.trim()?.takeIf { it.isNotBlank() }
 		repo.updateNotionApp(clientId.trim().takeIf { it.isNotBlank() }, submittedSecret?.let(secrets::encrypt))
 		invalidate()
@@ -208,6 +226,7 @@ class InstanceSettingsService(
 		val stored = repo.read()
 
 		val notionFromEnv = props.notion.token.isNotBlank()
+		val notionAppFromEnv = props.notion.app.configured
 		val googleFromEnv = props.auth.google.configured
 
 		return ResolvedSettings(
@@ -224,10 +243,16 @@ class InstanceSettingsService(
 				secrets.decrypt(stored.googleClientSecretEnc)
 			},
 			googleManagedByEnvironment = googleFromEnv,
-			// No environment fallback: an operator who wants to pin the mirror pins
-			// NOTION_TOKEN, which is the answer itself rather than a way of asking for one.
-			notionClientId = stored.notionClientId,
-			notionClientSecret = secrets.decrypt(stored.notionClientSecretEnc),
+			// Pinned as a pair or not at all — half an OAuth client cannot ask for consent,
+			// and an id from the environment married to a secret from the database is the
+			// kind of mix nobody can debug from either side.
+			notionClientId = if (notionAppFromEnv) props.notion.app.clientId else stored.notionClientId,
+			notionClientSecret = if (notionAppFromEnv) {
+				props.notion.app.clientSecret
+			} else {
+				secrets.decrypt(stored.notionClientSecretEnc)
+			},
+			notionAppManagedByEnvironment = notionAppFromEnv,
 			notionWorkspaceName = stored.notionWorkspaceName,
 		)
 	}

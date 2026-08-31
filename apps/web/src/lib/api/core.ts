@@ -294,6 +294,13 @@ export type SetupState = {
      * the screen has to tell "nothing set up" from "set up, nobody has consented yet".
      */
     appConfigured: boolean;
+    /**
+     * The integration comes from `NOTION_CLIENT_ID` / `NOTION_CLIENT_SECRET` rather than
+     * from this screen. The opposite of `managedByEnvironment` in what it hides: a pinned
+     * token leaves nothing to connect, a pinned integration leaves nothing to type — the
+     * button is precisely what remains.
+     */
+    appManagedByEnvironment: boolean;
     /** The workspace a completed consent named. Absent when the token was pasted. */
     workspaceName?: string;
   };

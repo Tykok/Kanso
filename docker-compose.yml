@@ -43,6 +43,8 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       NOTION_TOKEN: ${NOTION_TOKEN:-}
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
       NOTION_PARENT_PAGE_ID: ${NOTION_PARENT_PAGE_ID:-}
       NOTION_API_VERSION: ${NOTION_API_VERSION:-2025-09-03}
       # Where Notion is. Overridden by one thing only: `e2e/import.spec.ts`, which

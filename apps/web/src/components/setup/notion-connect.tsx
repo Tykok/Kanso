@@ -33,10 +33,12 @@ export function NotionConnect({
 }) {
   const stored = state.notion;
   const managed = stored.managedByEnvironment;
+  /** Pinned in the environment: nothing to type here, and the button is the whole step. */
+  const appManaged = stored.appManagedByEnvironment;
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
-  const [editingApp, setEditingApp] = useState(!stored.appConfigured);
+  const [editingApp, setEditingApp] = useState(!stored.appConfigured && !appManaged);
   /** What the pasted blob said about the redirect URI it was registered with. */
   const [pasteNote, setPasteNote] = useState<string | null>(null);
 
@@ -119,13 +121,20 @@ export function NotionConnect({
           <p className="m-0 text-11 text-faint">
             Notion asks which pages Kanso may see. Nothing is shared until you choose it
             there — and nothing else has to be shared by hand afterwards.{" "}
-            <button
-              type="button"
-              className="underline hover:text-foreground"
-              onClick={() => setEditingApp(true)}
-            >
-              Change the integration
-            </button>
+            {appManaged ? (
+              <span>
+                The integration itself comes from the environment, so this instance never
+                asks for it.
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="underline hover:text-foreground"
+                onClick={() => setEditingApp(true)}
+              >
+                Change the integration
+              </button>
+            )}
           </p>
 
           {connect.error && (

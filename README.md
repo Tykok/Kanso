@@ -83,6 +83,11 @@ where you pick which pages Kanso may see, so nothing has to be shared by hand fr
 `•••` menu. "Create the databases" then builds the four mirrored databases and queues
 everything already in Postgres.
 
+Set `NOTION_CLIENT_ID` and `NOTION_CLIENT_SECRET` in the environment and the paste is
+gone for good: every instance you bring up afterwards — a fresh database, a test stack,
+a second deployment — shows only the button. They pin the *door*, not the connection;
+nothing is mirrored until somebody consents.
+
 Pasting an internal integration token still works, folded away behind "Paste an
 integration token instead" — for an instance that already has one, and for one whose
 browser cannot reach a consent screen at all.
