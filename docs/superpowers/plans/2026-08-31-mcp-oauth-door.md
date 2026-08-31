@@ -10,6 +10,22 @@
 
 **Spec:** [`docs/superpowers/specs/2026-08-31-mcp-server-design.md`](../specs/2026-08-31-mcp-server-design.md) — read it first. This plan implements **Part one** only.
 
+## Rulings applied before execution
+
+A pre-flight scan of this plan found three defects in it. The corrections are already
+written into the tasks below; the reasoning is in
+`.superpowers/sdd/2026-08-31-mcp-oauth-door/progress.md`.
+
+1. **Tasks 3, 4 and 5 are one dispatch.** `applyDefaultSecurity` cannot start without the
+   beans Task 5 supplies, so none of the three leaves the suite green alone. Three commits,
+   one task.
+2. **The OAuth beans are never gated on auth mode — only the filter chain is.** Gating the
+   whole configuration removes `OAuth2AuthorizationService` from the test profile and makes
+   `McpBearerFilter` unconstructable, taking every test with it.
+3. **The consent page is server-rendered by the API.** Web (:3000) and API (:8080) are
+   different origins and the session cookie is `SameSite=Lax`, so a cross-origin decision
+   POST would arrive with no session. Task 9 is rewritten; the spec is amended to match.
+
 ## Global Constraints
 
 - **Migration is `V16__oauth_server.sql`.** `V15` belongs to the unmerged `notion-import` branch. Flyway's default rejects out-of-order migrations, so **this branch must merge after `notion-import`**, or be renumbered before merging. Do not renumber to `V15`.
@@ -81,7 +97,9 @@ Expected three: `oauth2-registered-client-schema.sql`, `oauth2-authorization-sch
 
 - [ ] **Step 4: Answer the RFC 8707 question**
 
-Stand up the smallest possible working server: a throwaway `@Configuration` applying default security, one `RegisteredClient` registered in memory with redirect URI `http://127.0.0.1:9999/callback`, scopes `kanso:read kanso:write`, `requireProofKey(true)`. Run `bootRun` against `docker compose up -d db`.
+Stand up the smallest possible working server: a throwaway `@Configuration` applying default security, one `RegisteredClient` registered in memory with redirect URI `http://127.0.0.1:9999/callback`, scopes `kanso:read kanso:write`, `requireProofKey(true)` and — **Ruling P5** — `ClientSettings.builder().requireAuthorizationConsent(false)`. Run `bootRun` against `docker compose up -d db`.
+
+Consent off, deliberately: the consent page does not exist until Task 9, and this spike is asking what the *token* records, not what the screen says. With consent off the whole authorisation is scriptable — get a session cookie from `POST /api/auth/login`, then curl the two endpoints. Task 11 walks the browser path by hand once it exists.
 
 Drive one authorisation by hand, **with a `resource` parameter**:
 
@@ -266,7 +284,14 @@ git commit -m "feat(oauth): add the authorization server's schema, and provenanc
 
 ---
 
-### Task 3: Two filter chains, in the right order
+### Task 3: The authorisation server, standing up
+
+**One dispatch, covering Tasks 3, 4 and 5** (Ruling P1). Do all three in order, with a
+separate commit each. The suite is only expected green at the end of Task 5's steps —
+the intermediate "run the whole API suite" gates in Tasks 3 and 4 are replaced by
+`./gradlew compileKotlin compileTestKotlin`.
+
+#### Part A — two filter chains, in the right order
 
 The most dangerous edit in this plan. `SecurityConfig` currently declares one `SecurityFilterChain` bean with no `securityMatcher`, so it answers every request; the library needs its own chain ahead of it.
 
@@ -460,10 +485,16 @@ Then, inside `authorizeHttpRequests`, immediately after the existing `PublicRout
 					.requestMatchers(HttpMethod.POST, *OAuthRoutes.OPEN_POST).permitAll()
 ```
 
-- [ ] **Step 7: Run the whole API suite**
+- [ ] **Step 7: Compile only — the suite cannot be green yet**
 
-Run: `cd apps/api && ./gradlew test`
-Expected: BUILD SUCCESSFUL. `SecurityBootstrapTest` and `PublicRoutesTest` must both still pass — they are the reason this task is separate from every other one.
+Run: `cd apps/api && ./gradlew compileKotlin compileTestKotlin`
+Expected: BUILD SUCCESSFUL.
+
+Do **not** run `./gradlew test` here. `applyDefaultSecurity` needs a
+`RegisteredClientRepository` and a `JWKSource` to start a context, and Part C supplies
+them — the suite is expected to fail between here and there. `SecurityBootstrapTest` and
+`PublicRoutesTest` are the gate at the end of Part C, and they are why this part gets its
+own commit even though it is not independently green.
 
 - [ ] **Step 8: Commit**
 
@@ -474,7 +505,7 @@ git commit -m "feat(oauth): put the authorization server's chain ahead of Kanso'
 
 ---
 
-### Task 4: Dev mode issues no tokens
+#### Part B — dev mode issues no tokens
 
 **Files:**
 - Modify: `apps/api/src/main/kotlin/dev/kanso/oauth/AuthorizationServerConfig.kt`
@@ -515,8 +546,17 @@ class DevModeRefusalTest : PostgresTest() {
 	fun `the authorization server's chain is absent in dev mode`() {
 		assertFalse(
 			context.containsBean("authorizationServerChain"),
-			"the bean is absent rather than guarded, so there is no endpoint to reach at all",
+			"no chain means no authorize and no token endpoint — nothing to reach at all",
 		)
+	}
+
+	@Test
+	fun `the services behind it are still present, so the bearer filter can refuse`() {
+		// Gating the whole configuration instead of the chain would remove these, and
+		// `McpBearerFilter` needs the authorization service to exist in order to look a
+		// token up and reject it. A refusal path that cannot be constructed is not a
+		// refusal path.
+		assertTrue(context.containsBean("authorizationService"))
 	}
 
 	@Test
@@ -550,13 +590,23 @@ const val DEV_MODE_REFUSAL: String =
 		"issue durable tokens to anyone who can reach it. Switch to oidc to enable it."
 ```
 
-Annotate the class so the bean is absent rather than guarded — the idiom `TrashSweeper` sets, for the same reason:
+Annotate **the chain bean**, not the class (Ruling P2):
 
 ```kotlin
-@Configuration
-@ConditionalOnProperty(name = ["kanso.auth.mode"], havingValue = "oidc", matchIfMissing = true)
-class AuthorizationServerConfig {
+	@Bean
+	@Order(Ordered.HIGHEST_PRECEDENCE)
+	@ConditionalOnProperty(name = ["kanso.auth.mode"], havingValue = "oidc", matchIfMissing = true)
+	fun authorizationServerChain(http: HttpSecurity): SecurityFilterChain {
 ```
+
+The class stays unconditional, and this is the correction the pre-flight scan forced.
+Gating the whole configuration would take `OAuth2AuthorizationService` with it, and
+`McpBearerFilter` — which needs that bean to exist in order to refuse anything — would
+become unconstructable, failing every test in the suite rather than only the OAuth ones.
+
+The spec's requirement is unaffected: with no chain there is no `/oauth2/authorize` and no
+`/oauth2/token`, so a dev-mode instance issues nothing. The beans are inert plumbing with
+no endpoint in front of them, and `/api/mcp` answers `DEV_MODE_REFUSAL`.
 
 And in the bean, before returning, log that it is on:
 
@@ -578,7 +628,7 @@ git commit -m "feat(oauth): refuse to be an authorization server in dev mode"
 
 ---
 
-### Task 5: Clients, scopes and reference tokens
+#### Part C — clients, scopes and reference tokens
 
 **Files:**
 - Create: `apps/api/src/main/kotlin/dev/kanso/oauth/OAuthScopes.kt`
@@ -754,7 +804,7 @@ git commit -m "feat(oauth): two scopes with prose, persisted clients, reference 
 - Create: `apps/api/src/test/kotlin/dev/kanso/oauth/ProtectedResourceTest.kt`
 
 **Interfaces:**
-- Consumes: `KansoProperties` for the instance's own base URL; `OAuthScopes.ALL`.
+- Consumes: `OAuthScopes.ALL`. Every URL is derived from the request, so nothing is injected (Ruling P6).
 - Produces: `ProtectedResourceMetadata` (data class: `resource`, `authorizationServers`, `scopesSupported`, `bearerMethodsSupported`); `McpChallenge.header(scopes: List<String>): String`.
 
 - [ ] **Step 1: Write the failing test**
@@ -854,7 +904,6 @@ object McpChallenge {
 package dev.kanso.oauth
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import dev.kanso.config.KansoProperties
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
@@ -884,7 +933,7 @@ data class ProtectedResourceMetadata(
  * telling clients to go somewhere that does not answer.
  */
 @RestController
-class ProtectedResourceController(private val props: KansoProperties) {
+class ProtectedResourceController {
 
 	@GetMapping(McpChallengePaths.RESOURCE_METADATA)
 	fun metadata(): ProtectedResourceMetadata {
@@ -1363,6 +1412,13 @@ class AgentRightsTest : PostgresTest() {
 
 	private fun key() = "R${UUID.randomUUID().toString().take(4).uppercase()}"
 
+	/** Acts as the member themselves — `TeamControllerTest`'s helper, copied. */
+	private fun actAs(actor: User) {
+		val principal = KansoLocalUser(actor.id, actor.email, actor.displayName)
+		SecurityContextHolder.getContext().authentication =
+			UsernamePasswordAuthenticationToken(principal, null, principal.authorities)
+	}
+
 	/** Acts as the member's *agent* rather than as the member. */
 	private fun actAsAgent(actor: User, scopes: Set<String>) {
 		val principal = KansoAgentUser(actor.id, actor.email, actor.displayName, "claude-code", scopes)
@@ -1407,7 +1463,9 @@ class AgentRightsTest : PostgresTest() {
 		actAsAgent(admin, setOf(OAuthScopes.READ))
 		val asAgent = tickets.search(teamId = team.id).map { it.title }
 
-		SecurityContextHolder.clearContext()
+		// As the member themselves, not as nobody: the question is whether the agent sees
+		// what its owner sees, and an unauthenticated read is a third, different answer.
+		actAs(admin)
 		val asMember = tickets.search(teamId = team.id).map { it.title }
 
 		assertEquals(asMember, asAgent, "reads are the member's reads — no widening, no narrowing")
@@ -1431,204 +1489,324 @@ git commit -m "test(mcp): pin that an agent carries its owner's rights and no ot
 
 ---
 
-### Task 9: The consent screen
+### Task 9: The consent screen, served where the cookie lives
+
+**Rewritten by Ruling P3.** The spec put this in `apps/web`; that cannot work. Web runs on
+:3000 and the API on :8080, `application.yml` sets the session cookie `SameSite=Lax`, and
+Lax sends no cookie on a cross-site POST — so the decision would reach `/oauth2/authorize`
+with no session and the library would have nobody to record consent for. `fetch` does not
+rescue it: CORS forbids reading `Location` off the 302, which is the exact trap
+`api/core.ts:424` already documents for the Notion flow.
+
+The browser is **already on the API origin** when it lands on `/oauth2/authorize`. Serving
+the page there makes it same-origin, first-party, and a plain form post. One page loses the
+shadcn design system and gets a self-contained stylesheet built from Kanso's own custom
+properties instead.
 
 **Files:**
+- Create: `apps/api/src/main/kotlin/dev/kanso/oauth/ConsentPage.kt`
 - Create: `apps/api/src/main/kotlin/dev/kanso/oauth/ConsentController.kt`
+- Create: `apps/api/src/test/kotlin/dev/kanso/oauth/ConsentPageTest.kt`
 - Create: `apps/api/src/test/kotlin/dev/kanso/oauth/ConsentControllerTest.kt`
-- Create: `apps/web/src/lib/api/oauth.ts`
-- Create: `apps/web/src/lib/queries/oauth.ts`
-- Create: `apps/web/src/components/oauth/consent-copy.ts`
-- Create: `apps/web/src/components/oauth/consent-copy.test.ts`
-- Create: `apps/web/src/components/oauth/consent.tsx`
-- Create: `apps/web/src/app/oauth/consent/page.tsx`
-- Modify: `apps/web/src/lib/api/index.ts`, `apps/web/src/lib/queries/index.ts`
+- Modify: `apps/api/src/main/kotlin/dev/kanso/auth/SecurityConfig.kt`
 - Modify: `apps/web/src/app/login/page.tsx`
+- Create: `apps/web/src/lib/next-url.ts`, `apps/web/src/lib/next-url.test.ts`
 
 **Interfaces:**
-- Consumes: `OAuthScopes.prose`, `OAuth2AuthorizationConsentService`, `RegisteredClientRepository`, `CurrentUser`.
-- Produces: `GET /api/oauth/consent/request?client_id&scope&state` → `ConsentRequest(clientName, scopes: List<ConsentScope>, state)`; web route `/oauth/consent`; `returnTo(search: string): string` in `consent-copy.ts`.
+- Consumes: `OAuthScopes.prose`, `RegisteredClientRepository`, `CurrentUser`, `KansoProperties.webOrigin`.
+- Produces: `ConsentPage.render(clientName, email, scopes, clientId, state): String`; `GET /oauth/consent` (text/html); `safeNext(raw, apiOrigin): string` in `apps/web/src/lib/next-url.ts`.
 
-- [ ] **Step 1: Write the failing API test**
+- [ ] **Step 1: Write the failing page test**
+
+`apps/api/src/test/kotlin/dev/kanso/oauth/ConsentPageTest.kt`. A plain test, no Spring: the
+page is a pure function of five values, and what matters about it is what it says and what
+it refuses to say.
 
 ```kotlin
 package dev.kanso.oauth
 
-import dev.kanso.PostgresTest
-// … usual imports, plus KansoLocalUser / actAs as in TeamControllerTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * What the consent screen is allowed to know.
+ * The one screen in Kanso a person reads before handing an agent their work.
  *
- * The screen renders whatever this returns, next to an Authorise button, so the refusals
- * matter more than the happy path: an unknown scope must never reach the page, and an
- * unregistered client must not be able to make Kanso say its name.
+ * Tested as a string because it is one — a pure render, so every assertion here is about
+ * copy and escaping rather than about a servlet. The escaping tests are the point: a
+ * client chooses its own name, and this page puts that name in Kanso's voice next to an
+ * Authorise button.
  */
-@Transactional
-class ConsentControllerTest : PostgresTest() {
+class ConsentPageTest {
 
-	@Autowired lateinit var controller: ConsentController
-	// … autowire RegisteredClientRepository, UserRepository, PasswordEncoder
+	private fun page(
+		clientName: String = "Claude Code",
+		email: String = "elie@example.com",
+		scopes: List<String> = OAuthScopes.ALL,
+	) = ConsentPage.render(clientName, email, scopes, clientId = "claude-code", state = "st4te")
 
 	@Test
-	fun `it describes a registered client and its scopes in prose`() {
-		val member = member()
-		register(clientId = "claude-code", name = "Claude Code")
-		actAs(member)
-
-		val request = controller.describe(clientId = "claude-code", scope = "kanso:read kanso:write", state = "s")
-
-		assertEquals("Claude Code", request.clientName)
-		assertEquals(2, request.scopes.size)
-		assertTrue(request.scopes.all { it.sentence.length > 20 }, "the screen shows sentences, not identifiers")
+	fun `it names the client and the member, because approving the wrong one is the failure`() {
+		val html = page()
+		assertTrue(html.contains("Claude Code"))
+		assertTrue(html.contains("elie@example.com"))
 	}
 
 	@Test
-	fun `an unknown client is a bad request, not a page with a blank name`() {
-		actAs(member())
-		assertFailsWith<BadRequestException> {
-			controller.describe(clientId = "not-registered", scope = "kanso:read", state = "s")
-		}
+	fun `it shows each scope as a sentence, not as an identifier`() {
+		val html = page()
+		for (scope in OAuthScopes.ALL) assertTrue(html.contains(OAuthScopes.prose(scope)))
 	}
 
 	@Test
-	fun `an unknown scope is refused rather than rendered`() {
-		val member = member()
-		register(clientId = "claude-code", name = "Claude Code")
-		actAs(member)
-		assertFailsWith<BadRequestException> {
-			controller.describe(clientId = "claude-code", scope = "kanso:read kanso:everything", state = "s")
-		}
+	fun `it says the grant is revocable, beside the button that gives it`() {
+		assertTrue(page().contains("Settings"), "a grant nobody knows how to undo is not consent")
 	}
 
 	@Test
-	fun `it refuses without a session, because consent is a member's answer`() {
-		register(clientId = "claude-code", name = "Claude Code")
-		SecurityContextHolder.clearContext()
-		assertFailsWith<AccessDeniedException> {
-			controller.describe(clientId = "claude-code", scope = "kanso:read", state = "s")
-		}
+	fun `it posts to the library's endpoint, carrying the state it was given`() {
+		val html = page()
+		assertTrue(html.contains("action=\"/oauth2/authorize\""))
+		assertTrue(html.contains("method=\"post\""))
+		assertTrue(html.contains("value=\"st4te\""))
+	}
+
+	@Test
+	fun `a client name containing markup is escaped, not rendered`() {
+		// A client registers itself, unauthenticated, and picks its own name. Rendering
+		// that verbatim would let it write the page it is asking to be approved on.
+		val html = page(clientName = "<script>alert(1)</script>")
+		assertFalse(html.contains("<script>alert"))
+		assertTrue(html.contains("&lt;script&gt;"))
+	}
+
+	@Test
+	fun `a state containing a quote cannot break out of its attribute`() {
+		val html = ConsentPage.render("C", "e@x.test", OAuthScopes.ALL, "c", "\" onload=\"x")
+		assertFalse(html.contains("onload=\"x\""))
+	}
+
+	@Test
+	fun `it renders in both themes, because it borrows no stylesheet`() {
+		assertTrue(
+			page().contains("prefers-color-scheme: dark"),
+			"served from the API, it has no app CSS to inherit",
+		)
 	}
 }
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.ConsentControllerTest"`
-Expected: FAIL — `Unresolved reference: ConsentController`.
+Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.ConsentPageTest"`
+Expected: FAIL — `Unresolved reference: ConsentPage`.
 
-- [ ] **Step 3: Write the controller**
+- [ ] **Step 3: Write `ConsentPage`**
 
-`ConsentController` at `GET /api/oauth/consent/request`, returning:
+An `object` with one `render` function returning a complete HTML document. Requirements the
+tests pin, plus these:
+
+- Escape **every** interpolated value with a private `esc()` doing the five XML entities
+  (`&`, `<`, `>`, `"`, `'`). The client name and the state both arrive from outside.
+- One `<form method="post" action="/oauth2/authorize">` with hidden `client_id`, `state`,
+  and one hidden `scope` input per requested scope; a submit named per the library's
+  consent contract — confirm the exact field names from Task 1's notes, using the
+  library's own default consent page as the reference.
+- Deny is a second submit, or a link back to the client's callback with
+  `error=access_denied` — whichever the library's contract specifies. Declining must not
+  dead-end.
+- An inline `<style>` using literal colour values copied from
+  `apps/web/src/app/globals.css` for both `:root` and its dark block, wrapped in a
+  `@media (prefers-color-scheme: dark)`. Self-contained: this page is served by the API
+  and can load nothing from the web app.
+- A KDoc saying why the page lives here rather than in `apps/web` — Ruling P3's reasoning
+  in three sentences, so the next reader does not "fix" it back.
+
+- [ ] **Step 4: Run the page test to verify it passes**
+
+Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.ConsentPageTest"`
+Expected: PASS, 7 tests.
+
+- [ ] **Step 5: Write the failing controller test**
+
+`ConsentControllerTest`, `@Transactional`, extending `PostgresTest`, autowiring the
+controller, `RegisteredClientRepository`, `UserRepository`, `PasswordEncoder` and
+`KansoProperties`. Copy `TeamControllerTest`'s `actAs` and `clearSecurityContext` helpers
+verbatim, and add a `member()` factory and a `register(clientId, name)` helper that saves a
+`RegisteredClient` through the repository. Four tests:
 
 ```kotlin
-data class ConsentScope(val scope: String, val sentence: String)
+	@Test
+	fun `a signed-in member gets the page, naming the client`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
 
-data class ConsentRequest(
-	val clientName: String,
-	val scopes: List<ConsentScope>,
-	val state: String,
-	/** Where the screen posts the decision — the library's endpoint, not ours. */
-	val submitTo: String = "/oauth2/authorize",
-)
-```
+		val response = controller.consent(
+			clientId = "claude-code", scope = "kanso:read kanso:write", state = "s",
+		)
 
-It calls `currentUser.require()` (so no session throws `AccessDeniedException`), looks the client up through `RegisteredClientRepository.findByClientId`, throws `BadRequestException` when absent, and maps each requested scope through `OAuthScopes.prose` — letting its `IllegalArgumentException` surface, which `ApiExceptionHandler` already turns into a 400.
+		assertEquals(HttpStatus.OK, response.statusCode)
+		assertTrue(response.body!!.contains("Claude Code"))
+		assertTrue(response.headers.contentType!!.toString().startsWith("text/html"))
+	}
 
-- [ ] **Step 4: Run the API test to verify it passes**
+	@Test
+	fun `no session sends the member to log in, and back here afterwards`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
 
-Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.ConsentControllerTest"`
-Expected: PASS, 4 tests.
+		val response = controller.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
 
-- [ ] **Step 5: Write the failing web test**
+		assertEquals(HttpStatus.FOUND, response.statusCode)
+		val location = response.headers.location!!.toString()
+		assertTrue(location.startsWith(props.webOrigin), "login lives in the app, not on the API")
+		assertTrue(location.contains("next="), "dropping the request lands them on an empty screen")
+		assertTrue(location.contains("consent"), "the round trip comes back to this page")
+	}
 
-`apps/web/src/components/oauth/consent-copy.test.ts`. Copy and the return-URL rule live in a `.ts` module because vitest here cannot render JSX — the convention `components/trash/copy.ts` already sets.
+	@Test
+	fun `an unknown client is refused rather than shown with a blank name`() {
+		actAs(member())
+		assertFailsWith<BadRequestException> {
+			controller.consent(clientId = "not-registered", scope = "kanso:read", state = "s")
+		}
+	}
 
-```ts
-import { describe, expect, it } from "vitest";
-import { CONSENT_COPY, returnTo } from "./consent-copy";
-
-describe("returnTo", () => {
-  it("sends an unauthenticated visitor to login, and back to the consent screen after", () => {
-    // The consent request's parameters are the whole request. Dropping them to sign in
-    // would land the member on an empty consent screen with nothing to approve, which
-    // reads as a broken client rather than as a lost session.
-    expect(returnTo("?client_id=claude-code&scope=kanso%3Aread&state=abc")).toBe(
-      "/login?next=%2Foauth%2Fconsent%3Fclient_id%3Dclaude-code%26scope%3Dkanso%253Aread%26state%3Dabc",
-    );
-  });
-
-  it("survives no parameters at all rather than producing a broken URL", () => {
-    expect(returnTo("")).toBe("/login?next=%2Foauth%2Fconsent");
-  });
-
-  it("never returns an absolute URL, whatever it is handed", () => {
-    // `next` is reflected into a redirect. An absolute value would make this an open
-    // redirector living on the one page a member is trained to trust.
-    expect(returnTo("?next=https://evil.example.com")).not.toContain("evil.example.com");
-  });
-});
-
-describe("CONSENT_COPY", () => {
-  it("names the member and the client, because approving the wrong one is the failure", () => {
-    expect(CONSENT_COPY.title("Claude Code")).toContain("Claude Code");
-    expect(CONSENT_COPY.actingAs("elie@example.com")).toContain("elie@example.com");
-  });
-
-  it("says the grant is revocable, next to the button that gives it", () => {
-    expect(CONSENT_COPY.revocable.toLowerCase()).toContain("settings");
-  });
-});
+	@Test
+	fun `an unknown scope is refused rather than rendered`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+		assertFailsWith<IllegalArgumentException> {
+			controller.consent(clientId = "claude-code", scope = "kanso:read kanso:everything", state = "s")
+		}
+	}
 ```
 
 - [ ] **Step 6: Run it to verify it fails**
 
-Run: `cd apps/web && pnpm vitest run src/components/oauth/consent-copy.test.ts`
-Expected: FAIL — cannot resolve `./consent-copy`.
+Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.ConsentControllerTest"`
+Expected: FAIL — `Unresolved reference: ConsentController`.
 
-- [ ] **Step 7: Write the copy module, then the screen**
+- [ ] **Step 7: Write the controller**
 
-`consent-copy.ts` exports `CONSENT_COPY` (`title(client)`, `actingAs(email)`, `revocable`, `deny`, `approve`) and `returnTo(search)`. `returnTo` builds `/login?next=` from `/oauth/consent` plus the given search string, `encodeURIComponent`-ing the whole relative path and **never** accepting an absolute URL — strip anything matching `/^https?:/` or starting `//`.
+`@GetMapping("/oauth/consent", produces = ["text/html"])` returning
+`ResponseEntity<String>`. It:
 
-Then `consent.tsx` (a `"use client"` component) and `app/oauth/consent/page.tsx` wrapping it in `<Suspense>`, following `app/login/page.tsx`'s pattern exactly — reading search params opts the tree out of prerendering, and the boundary keeps that to the form.
+- reads `currentUser.principalOrNull()` — **not** `require()`, because no session here is a
+  redirect rather than a 403;
+- looks the client up through `RegisteredClientRepository.findByClientId` and throws
+  `BadRequestException` when it is absent;
+- maps each requested scope through `OAuthScopes.prose`, letting its
+  `IllegalArgumentException` surface to `ApiExceptionHandler`, which already turns it into
+  a 400;
+- renders through `ConsentPage`.
 
-The screen: `useMe()`; on a 401 `router.replace(returnTo(window.location.search))`; otherwise fetch `api.consentRequest(...)`, render client name, `actingAs`, one row per scope sentence, `revocable`, and a form that **POSTs to `${API_URL}/oauth2/authorize`** with the library's expected fields — a real form post, not a `fetch`, because the response is a redirect to the client's callback and `fetch` would follow it into an opaque CORS failure. `api/core.ts:424`'s comment on `startNotionConnect` records that lesson.
+The no-session branch redirects to
+`${props.webOrigin}/login?next=<the absolute URL of this request>`, built with
+`ServletUriComponentsBuilder.fromCurrentRequest()` and `.encode()` —
+`NotionConnectController.back()` records in a comment what happens without that `encode()`
+call, and this URL carries several parameters.
 
-- [ ] **Step 8: Teach `/login` to come back**
+`/oauth/consent` must be reachable without a session, or `anyRequest().authenticated()`
+answers 401 before the controller can redirect. Add exactly this one rule to
+`SecurityConfig`, beside the OAuth ones:
 
-In `app/login/page.tsx`, read `next` beside the existing `invite` param and use it in the success handler:
+```kotlin
+					// Reachable without a session precisely so it can redirect to one:
+					// the controller reads the principal itself and sends an anonymous
+					// visitor to the app's login screen with a return URL.
+					.requestMatchers(HttpMethod.GET, "/oauth/consent").permitAll()
+```
+
+Inline rather than in `OAuthRoutes`, and the two facts do not contradict: `OAuthRoutesTest`
+asserts that nothing in that list mentions consent, because that list is for endpoints a
+machine calls with no session at all, and this is a page a person is about to sign in to.
+
+- [ ] **Step 8: Run the controller test to verify it passes**
+
+Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.ConsentControllerTest"`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 9: Write the failing web test**
+
+`apps/web/src/lib/next-url.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { safeNext } from "./next-url";
+
+const API = "http://localhost:8080";
+
+describe("safeNext", () => {
+  it("keeps a relative path", () => {
+    expect(safeNext("/settings", API)).toBe("/settings");
+  });
+
+  it("keeps an absolute URL on the API's own origin, which is where consent lives", () => {
+    const consent = `${API}/oauth/consent?client_id=claude-code&state=abc`;
+    expect(safeNext(consent, API)).toBe(consent);
+  });
+
+  it("refuses any other origin", () => {
+    // `next` is reflected into a redirect on the one page a member is trained to trust.
+    expect(safeNext("https://evil.example.com/", API)).toBe("/");
+    expect(safeNext("//evil.example.com/", API)).toBe("/");
+    // A prefix check passes this one; an origin comparison does not.
+    expect(safeNext("http://localhost:8080.evil.example.com/", API)).toBe("/");
+  });
+
+  it("refuses a scheme that is not http", () => {
+    expect(safeNext("javascript:alert(1)", API)).toBe("/");
+  });
+
+  it("falls back to the root for nothing at all", () => {
+    expect(safeNext(null, API)).toBe("/");
+    expect(safeNext("", API)).toBe("/");
+  });
+});
+```
+
+- [ ] **Step 10: Run it to verify it fails**
+
+Run: `cd apps/web && pnpm vitest run src/lib/next-url.test.ts`
+Expected: FAIL — cannot resolve `./next-url`.
+
+- [ ] **Step 11: Write `safeNext` and use it in `/login`**
+
+`safeNext(raw: string | null, apiOrigin: string): string` returns `"/"` unless `raw` starts
+with a single `/` (never `//`), or parses as a URL whose `origin` **exactly equals**
+`new URL(apiOrigin).origin`. Compare parsed origins, never string prefixes — the third
+refusal in the test is precisely what a prefix check lets through. Wrap the parse in
+`try`/`catch`: an unparseable value is a refusal, not a crash.
+
+In `app/login/page.tsx`, read `next` beside the existing `invite` param and use it in the
+success handler:
 
 ```tsx
   const next = useSearchParams().get("next");
 ```
+
 ```tsx
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keys.me });
-      // Only a relative path is ever followed: `next` arrives in a URL anyone can
-      // construct, and this is the redirect a member is most likely to trust.
-      router.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
+      const target = safeNext(next, API_URL);
+      // An absolute target is the consent page on the API origin, which is a real
+      // navigation rather than a route change.
+      if (target.startsWith("http")) window.location.assign(target);
+      else router.replace(target);
     },
 ```
 
-- [ ] **Step 9: Wire the client and the barrels**
+- [ ] **Step 12: Run the web tests**
 
-Add to `apps/web/src/lib/api/oauth.ts` a `consentRequest` using the shared `request` helper and `query` from `./core`; re-export from `lib/api/index.ts`. Add `oauthKeys` and `useConsentRequest` in `lib/queries/oauth.ts`, keyed under `["oauth", …]`, and re-export from `lib/queries/index.ts` — one line each, as that file's doc comment instructs.
+Run: `cd apps/web && pnpm test --run && pnpm typecheck && pnpm lint`
+Expected: green, with 5 new tests.
 
-- [ ] **Step 10: Run the web tests**
+- [ ] **Step 13: Commit**
 
-Run: `cd apps/web && pnpm test --run` and `pnpm typecheck`
-Expected: all green; the new file adds 6 tests.
-
-- [ ] **Step 11: Commit**
-
-```bash
-git add apps/api/src/main/kotlin/dev/kanso/oauth/ConsentController.kt apps/api/src/test/kotlin/dev/kanso/oauth/ConsentControllerTest.kt apps/web/src
-git commit -m "feat(oauth): ask the member, in Kanso's own screen"
-```
+Stage `apps/api/src/main/kotlin/dev/kanso/oauth`, `apps/api/src/test/kotlin/dev/kanso/oauth`,
+`apps/api/src/main/kotlin/dev/kanso/auth/SecurityConfig.kt` and `apps/web/src`, then commit
+with the message `feat(oauth): ask the member, on the origin where their session lives`.
 
 ---
 
