@@ -148,6 +148,39 @@ class ImportFallbackTest : ImportTestBase() {
 		assertEquals(before, rowCounts(), "and nothing was written on the way to the refusal")
 	}
 
+	@Test
+	fun `a fallback parent team the actor may not write to is refused, and nothing is written`() {
+		// Named on a `TICKETS` row rather than a `TEAMS` one on purpose: importing a `TEAMS`
+		// base at all requires `TeamService`'s own instance-configurator gate, which would
+		// deny `outsider` regardless of this check and prove nothing about it. A `TICKETS`
+		// row has no such gate — `TicketService.create` only asks `TicketAccess` — so this is
+		// the shape that isolates `fallback.parentTeamId`'s own access check: destination
+		// opened to `outsider` directly, `other` closed to them, and nothing about tickets
+		// ever reads `parentTeamId` at all, which is exactly why only the access pass in
+		// `perform` can be the thing that refuses this request.
+		teamRows.addMember(team.id, admin.id, MemberRole.MEMBER)
+		teamRows.addMember(team.id, outsider.id, MemberRole.MEMBER)
+		val other = teamService.create(admin, "Other", "OTH", null)
+		teamRows.addMember(other.id, admin.id, MemberRole.MEMBER)
+
+		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it")))
+		val before = rowCounts()
+
+		assertThrows<AccessDeniedException> {
+			importerFor(tasks).perform(
+				outsider, team.id,
+				listOf(
+					ImportPlanEntry(
+						sourceId = tasks.dataSourceId,
+						target = ImportTarget.TICKETS,
+						fallback = Fallback(parentTeamId = other.id),
+					),
+				),
+			)
+		}
+		assertEquals(before, rowCounts(), "and nothing was written on the way to the refusal")
+	}
+
 	private val outsider by lazy {
 		users.createLocalUser(
 			email = "outsider-${UUID.randomUUID()}@kanso.test",

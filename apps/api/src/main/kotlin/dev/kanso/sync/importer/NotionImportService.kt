@@ -91,13 +91,14 @@ class NotionImportService(
 	 * the work rather than after four hundred inserts have to be rolled back.
 	 *
 	 * Once a destination is settled, every team the request names is access-checked, not
-	 * only [teamId]: a fallback is as much a place to write as the destination is, and a
-	 * reader who may not write to a team must not be able to reach it by naming it in a
-	 * fallback instead. `architecture.md` says a Notion-authored page can supply neither a
-	 * team nor a per-team number, and this is the request where somebody is present to
-	 * answer the first, which lets `TicketService` answer the second from the team's own
-	 * counter. A base that resolved a team of its own — through a relation or its own
-	 * fallback — uses that one; [teamId] is the answer for everything left over.
+	 * only [teamId]: both [Fallback.teamId] and [Fallback.parentTeamId] are places a row can
+	 * land — the second by `TeamImport.settleParents` moving an imported team under it — and
+	 * a reader who may not write to a team must not be able to reach it by naming it in
+	 * either fallback field instead. `architecture.md` says a Notion-authored page can
+	 * supply neither a team nor a per-team number, and this is the request where somebody
+	 * is present to answer the first, which lets `TicketService` answer the second from the
+	 * team's own counter. A base that resolved a team of its own — through a relation or its
+	 * own fallback — uses that one; [teamId] is the answer for everything left over.
 	 */
 	fun perform(actor: User, teamId: UUID?, plan: List<ImportPlanEntry>): ImportOutcome {
 		val needsDestination = plan.any { it.target != ImportTarget.TEAMS && it.fallback.teamId == null }
@@ -110,7 +111,12 @@ class NotionImportService(
 		// a refusal raised inside a template here would also mark the caller's transaction
 		// rollback-only on its way out — a 403 that poisons whatever else the request was in.
 		teamId?.let { access.requireTeam(actor, it) }
-		plan.mapNotNull { it.fallback.teamId }.distinct().forEach { access.requireTeam(actor, it) }
+		// [Fallback.parentTeamId] alongside [Fallback.teamId]: `TeamImport.settleParents`
+		// moves an imported team under it, which is a write into that team's tree just as
+		// much as landing a ticket in it is — the same door, one more name for it.
+		plan.flatMap { listOfNotNull(it.fallback.teamId, it.fallback.parentTeamId) }
+			.distinct()
+			.forEach { access.requireTeam(actor, it) }
 		return writer.write(actor, teamId, read(plan))
 	}
 
