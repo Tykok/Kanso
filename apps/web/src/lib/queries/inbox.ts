@@ -1,7 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { inboxApi, type Inbox, type InboxTab } from "@/lib/api";
+import {
+  inboxApi,
+  notionImportApi,
+  type Inbox,
+  type InboxTab,
+  type NotionImportPlanRow,
+} from "@/lib/api";
 import { withOfflineFallback } from "@/store/offline";
 
 /**
@@ -104,3 +110,24 @@ export function useRetryFailedPushes() {
     },
   });
 }
+
+/**
+ * One base's columns, and Kanso's guess at how to map them.
+ *
+ * Keyed by the base *and* its target, because the fields a base is asked about are the
+ * target's — the same data source read as teams and read as tickets is two different
+ * questions. Two steps use it: the third to make the mapping, the second to notice that a
+ * mapped relation points at a base nobody is importing. One hook so they cannot ask for it
+ * on different terms.
+ *
+ * `staleTime: Infinity` because a data source's schema does not change while a dialog is
+ * open, and every miss is a call to Notion. `retry: false` for the same reason step 1 has
+ * it: a workspace that refuses is a sentence to print, not something to ask again about.
+ */
+export const useImportSchema = (sourceId: string, target: NotionImportPlanRow["target"]) =>
+  useQuery({
+    queryKey: ["notion-import-schema", sourceId, target],
+    queryFn: () => notionImportApi.schema(sourceId, target),
+    retry: false,
+    staleTime: Infinity,
+  });

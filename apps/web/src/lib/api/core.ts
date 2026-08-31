@@ -16,8 +16,17 @@ export const TICKET_STATUSES = [
 
 export const TICKET_PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
 
+/**
+ * `ProjectStatus`, server side (`domain/Model.kt`). Here rather than in the project
+ * dialog, which used to hold it: the Notion import's columns step offers the same choice
+ * when it maps a base of projects, and two copies of a closed vocabulary are two things
+ * to keep in step with one enum.
+ */
+export const PROJECT_STATUSES = ["planned", "in_progress", "paused", "completed", "canceled"] as const;
+
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type SyncState = "pending" | "synced" | "failed" | "disabled";
 
 export type Mirror = {
