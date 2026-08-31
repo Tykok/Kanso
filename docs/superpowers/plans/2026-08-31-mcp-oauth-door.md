@@ -16,7 +16,8 @@ A pre-flight scan of this plan found three defects in it. The corrections are al
 written into the tasks below; the reasoning is in
 `.superpowers/sdd/2026-08-31-mcp-oauth-door/progress.md`.
 
-1. **Tasks 3, 4 and 5 are one dispatch.** `applyDefaultSecurity` cannot start without the
+1. **Tasks 3, 4 and 5 are one dispatch.** *(Premise superseded by ruling 4 — the fold
+   stands, the reason changed.)* `applyDefaultSecurity` cannot start without the
    beans Task 5 supplies, so none of the three leaves the suite green alone. Three commits,
    one task.
 2. **The OAuth beans are never gated on auth mode — only the filter chain is.** Gating the
@@ -25,6 +26,28 @@ written into the tasks below; the reasoning is in
 3. **The consent page is server-rendered by the API.** Web (:3000) and API (:8080) are
    different origins and the session cookie is `SameSite=Lax`, so a cross-origin decision
    POST would arrive with no session. Task 9 is rewritten; the spec is amended to match.
+
+Task 1 then ran, and its notes — `2026-08-31-mcp-oauth-door-spike.md`, **binding wherever
+they disagree with this plan** — forced five more. They are already written into the tasks:
+
+4. **`applyDefaultSecurity` no longer exists** (Spring Security 7.1). The chain is built
+   from `OAuth2AuthorizationServerConfigurer` by hand, and `AuthorizationServerSettings`
+   then has no default at all — which is the real reason Tasks 3/4/5 cannot be separated.
+   Ruling P1's fold stands; its premise is replaced.
+5. **The authorisation-server chain sees only the Kanso user id.** Kanso's principals
+   cannot survive `JdbcOAuth2AuthorizationService` — Jackson 3 denies
+   `dev.kanso.auth.KansoDevUser` on read, so the row saves and the token exchange then
+   fails on an empty body, invisibly while the store is in-memory. Task 3 adds the filter;
+   Task 7 reads `principalName` as a `UUID`.
+6. **Task 9's audience check reads an attribute rather than one we wrote.** `resource` is
+   already on `OAuth2AuthorizationRequest.additionalParameters`, persisted and readable. No
+   token customiser. Two enforcement points instead, one at authorise time.
+7. **`iss` moves into Task 3.** The library does not implement RFC 9207 at all.
+8. **Registration is ours, and open.** The library's DCR demands a single-use initial
+   access token no MCP client has. New **Task 6b**, between Tasks 6 and 7.
+9. **The registered client must declare `REFRESH_TOKEN`.** The spike declared only
+   `AUTHORIZATION_CODE` and no refresh token was issued, which would have left the spec's
+   refresh-rotation MUST with nothing to rotate. Task 6b.
 
 ## Global Constraints
 
@@ -42,6 +65,11 @@ written into the tasks below; the reasoning is in
 ---
 
 ### Task 1: Spike — stand the library up and answer two questions
+
+**Done** — commit `fc55eed`. Findings in
+[`2026-08-31-mcp-oauth-door-spike.md`](2026-08-31-mcp-oauth-door-spike.md), which is
+binding wherever it disagrees with the steps below. It forced rulings 4-9 above; the steps
+are kept unedited as the record of what was asked.
 
 Not TDD. A spike whose output is a written finding plus two follow-on facts every later task needs. Timebox: one working session. **Nothing from this task is kept except the notes file and the dependency line.**
 
@@ -429,7 +457,8 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
-import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration
+import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.security.web.SecurityFilterChain
 
 /**
@@ -438,15 +467,21 @@ import org.springframework.security.web.SecurityFilterChain
  * Two chains rather than one set of rules, because they answer to different callers:
  * this one serves a machine that has no session and is holding a code or a token, and
  * `SecurityConfig`'s serves a browser holding a cookie. Ordered rather than merged —
- * `applyDefaultSecurity` installs a dozen filters of its own, and interleaving them
- * with `oauth2Login`'s would be a chain nobody can read.
+ * the configurer installs a dozen filters of its own, and interleaving them with
+ * `oauth2Login`'s would be a chain nobody can read.
  *
  * `securityMatcher` is what keeps them apart, and it is the load-bearing line in this
  * file: Kanso already serves `/oauth2/authorization/{provider}` for signing *in* with
  * Google, and this chain serves `/oauth2/authorize` for signing *out* to an agent.
- * Adjacent prefixes, opposite directions. `applyDefaultSecurity` sets the matcher from
- * the library's own endpoint settings, which is exactly right and exactly why we do not
- * write a prefix here by hand.
+ * Adjacent prefixes, opposite directions. `configurer.endpointsMatcher` derives the
+ * matcher from the library's own endpoint settings, which is exactly right and exactly
+ * why we do not write a prefix here by hand.
+ *
+ * `AuthorizationServerSettings` is declared because nothing else declares it. The
+ * library's default came from `OAuth2AuthorizationServerConfiguration`, which we do not
+ * import, and Boot's autoconfiguration is gated on
+ * `spring.security.oauth2.authorizationserver.client.*` properties Kanso does not set —
+ * so without this bean the context does not start.
  */
 @Configuration
 class AuthorizationServerConfig {
@@ -454,11 +489,82 @@ class AuthorizationServerConfig {
 	@Bean
 	@Order(Ordered.HIGHEST_PRECEDENCE)
 	fun authorizationServerChain(http: HttpSecurity): SecurityFilterChain {
-		OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http)
+		val configurer = OAuth2AuthorizationServerConfigurer()
+		http
+			.securityMatcher(configurer.endpointsMatcher)
+			.with(configurer) { }
+			.csrf { it.disable() }
+			.authorizeHttpRequests { it.anyRequest().authenticated() }
 		return http.build()
+	}
+
+	@Bean
+	fun authorizationServerSettings(): AuthorizationServerSettings =
+		AuthorizationServerSettings.builder().build()
+}
+```
+
+**Ruling 4.** `OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(HttpSecurity)`
+is **gone** in Spring Security 7.1 — the class survives at
+`org.springframework.security.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration`,
+in `spring-security-config`, as a plain `@Configuration` with no static helper. The
+configurer is the entry point, and it was driven end to end in the spike: authorize
+returned a code, token returned a token.
+
+CSRF is disabled on this chain for the same bounded reason `SecurityConfig` gives, and
+because `POST /oauth2/token` is a machine call carrying no cookie at all.
+
+**Ruling 5 — this chain sees only the Kanso user id.** Add one filter to it, and a test
+that pins why:
+
+```kotlin
+/**
+ * The authorisation endpoint records whatever `Authentication` it finds, and the library
+ * persists that record as JSON. Kanso's own principals cannot make that round trip:
+ * Jackson 3's `PolymorphicTypeValidator` refuses `dev.kanso.auth.KansoDevUser` on the way
+ * back, so the row saves and the *next* request — the code exchange — fails with an empty
+ * body. Invisible with an in-memory store, which is why this is a filter and not a
+ * comment.
+ *
+ * Leaving only the user id also fixes a second thing. Every Kanso principal implements
+ * `getName()` as the display name (`Principals.kt`), so `principal_name` would hold
+ * "Elie" — neither unique nor stable, and it is the key `McpBearerFilter` maps a token
+ * back through.
+ *
+ * The alternative was a Jackson mixin per principal class, which would make a persisted
+ * format out of three internal classes and require keeping them in step forever.
+ */
+class AgentPrincipalFilter : OncePerRequestFilter() {
+	override fun doFilterInternal(
+		request: HttpServletRequest,
+		response: HttpServletResponse,
+		chain: FilterChain,
+	) {
+		val context = SecurityContextHolder.getContext()
+		val principal = context.authentication?.principal
+		if (principal is KansoAuthenticatedUser) {
+			context.authentication = UsernamePasswordAuthenticationToken(
+				principal.kansoUserId.toString(),
+				null,
+				context.authentication!!.authorities,
+			)
+		}
+		chain.doFilter(request, response)
 	}
 }
 ```
+
+Registered on this chain only — Kanso's own chain must keep its rich principal, because
+`CurrentUser` reads `kansoEmail` and the display name off it:
+
+```kotlin
+			.addFilterBefore(AgentPrincipalFilter(), AbstractPreAuthenticatedProcessingFilter::class.java)
+```
+
+The test belongs with Part C's, where a real grant exists: drive one authorisation, then
+assert `oauth2_authorization.principal_name` parses as a `UUID` and equals the member's id.
+Asserting the *shape* is not enough — a display name that happens to look like a UUID would
+pass, and the point is the identity.
 
 - [ ] **Step 6: Give Kanso's chain an explicit order and open the discovery routes**
 
@@ -490,9 +596,12 @@ Then, inside `authorizeHttpRequests`, immediately after the existing `PublicRout
 Run: `cd apps/api && ./gradlew compileKotlin compileTestKotlin`
 Expected: BUILD SUCCESSFUL.
 
-Do **not** run `./gradlew test` here. `applyDefaultSecurity` needs a
-`RegisteredClientRepository` and a `JWKSource` to start a context, and Part C supplies
-them — the suite is expected to fail between here and there. `SecurityBootstrapTest` and
+Do **not** run `./gradlew test` here. The configurer needs a `RegisteredClientRepository`
+to start a context, and Part C supplies it — the suite is expected to fail between here and
+there. (A `JWKSource` is *not* needed: Boot's
+`OAuth2AuthorizationServerJwtAutoConfiguration` supplies one, generating an RSA key in
+memory at every startup. Harmless while tokens are opaque; it must be persisted before
+Kanso ever issues a JWT.) `SecurityBootstrapTest` and
 `PublicRoutesTest` are the gate at the end of Part C, and they are why this part gets its
 own commit even though it is not independently green.
 
@@ -764,20 +873,71 @@ In `AuthorizationServerConfig.kt`, add these beans. Use the exact constructor si
 	): OAuth2AuthorizationConsentService = JdbcOAuth2AuthorizationConsentService(jdbc, clients)
 ```
 
-Then, in `authorizationServerChain`, after `applyDefaultSecurity`, point the authorisation endpoint at our consent page (Task 8 builds it) — the method name comes from Task 1's notes:
+Then point the authorisation endpoint at our consent page (Task 9 builds it), and give it
+the `iss` handler. Both go inside the `.with(configurer) { … }` block written in Part A,
+which is the only place the configurer is reachable:
 
 ```kotlin
-		http.getConfigurer(OAuth2AuthorizationServerConfigurer::class.java)
-			.authorizationEndpoint { it.consentPage(CONSENT_PAGE) }
+			.with(configurer) { it.authorizationEndpoint { endpoint ->
+				endpoint.consentPage(CONSENT_PAGE)
+				endpoint.authorizationResponseHandler(IssuerAppendingResponseHandler(settings))
+			} }
 ```
+
+**Ruling 7 — `iss` is ours.** SAS 7.1.0 does not implement RFC 9207: no builder method on
+`AuthorizationServerSettings`, no name in `ConfigurationSettingNames`, no `iss` on the 302,
+and no `authorization_response_iss_parameter_supported` in the metadata document — all four
+checked. So `IssuerAppendingResponseHandler` is a small `AuthenticationSuccessHandler` that
+takes the redirect the library built, appends `iss=<issuer>`, and sends it; the failure
+handler does the same for error responses, which the spec's MUST includes. Advertise the
+claim by customising the metadata endpoint
+(`OAuth2AuthorizationServerMetadataEndpointConfigurer`) in the same step, or a client cannot
+know to check what we now send.
+
+Before writing the page, look at `web.DefaultConsentPage` in the library jar: it now ships a
+consent page of its own, and whatever field names it posts are the contract
+`OAuth2AuthorizationConsentAuthenticationConverter` expects. Ours must post the same ones.
+
+**Ruling 6, first enforcement point — refuse a bad `resource` at authorise time.** The
+library carries the parameter and validates nothing, so a client can ask for a token bound
+to someone else's resource and get one. In the same `.with(configurer) { … }` block:
+
+```kotlin
+			.with(configurer) { it.authorizationEndpoint { endpoint ->
+				endpoint.authenticationProviders { providers ->
+					providers.forEach { provider ->
+						if (provider is OAuth2AuthorizationCodeRequestAuthenticationProvider) {
+							provider.setAuthenticationValidator(
+								ResourceValidator(default = OAuth2AuthorizationCodeRequestAuthenticationValidator.DEFAULT_REDIRECT_URI_VALIDATOR),
+							)
+						}
+					}
+				}
+			} }
+```
+
+`ResourceValidator` refuses anything but this server's canonical MCP resource URI — the
+same string `ProtectedResourceMetadata.resource` publishes (Task 6), read from one place so
+the two cannot drift. A **missing** `resource` is also a refusal: a token with no recorded
+audience is a token good everywhere, and treating absence as permission is how the
+confused-deputy shape gets built back in.
+
+Refusing here rather than only at `/api/mcp` matters because the member is still on the
+screen: they find out before consenting, not after their agent has a token that never
+works.
+
+Both halves get a test. The `/api/mcp` half is Task 7's `a token issued for another
+resource is refused`; this half asserts `/oauth2/authorize?...&resource=<someone else's>`
+never reaches the consent page.
 
 and add the constant beside `DEV_MODE_REFUSAL`:
 
 ```kotlin
 /**
- * Where the library sends the browser to ask the question. A path on the API, proxied
- * to the web app's route of the same name — the consent screen has to render Kanso's
- * design system, and the API serves JSON.
+ * Where the library sends the browser to ask the question — a page served by the API
+ * itself, not by `apps/web` (Ruling P3). The browser is already on the API origin when it
+ * reaches `/oauth2/authorize`, so the decision posts back same-origin with the session
+ * cookie attached, which a `SameSite=Lax` cookie will not do cross-site.
  */
 const val CONSENT_PAGE: String = "/oauth/consent"
 ```
@@ -976,6 +1136,107 @@ git commit -m "feat(oauth): publish the protected-resource document, and the cha
 
 ---
 
+### Task 6b: Registration, open and small
+
+**Ruling 8.** The library's `POST /connect/register` answers 404 until enabled, and once
+enabled `OAuth2ClientRegistrationAuthenticationProvider` demands a single-use initial access
+token bearing scope `client.create`, which it then invalidates. No MCP client presents one,
+and there is nobody to give it one — so the plan's goal sentence is unreachable through the
+library's DCR. The spec is amended ("Registration is ours"); this task writes it.
+
+The endpoint is deliberately the smallest thing that reaches the goal: accept a `POST`,
+validate, write one `RegisteredClient`, answer. **No** initial access token, **no**
+registration access token, **no** update or delete — a client that cannot be edited cannot
+be edited by an attacker either.
+
+**Files:**
+- Create: `apps/api/src/main/kotlin/dev/kanso/oauth/ClientRegistrationController.kt`
+- Create: `apps/api/src/main/kotlin/dev/kanso/oauth/RedirectUriPolicy.kt`
+- Create: `apps/api/src/main/kotlin/dev/kanso/oauth/ClientRegistrationService.kt`
+- Create: `apps/api/src/test/kotlin/dev/kanso/oauth/RedirectUriPolicyTest.kt`
+- Create: `apps/api/src/test/kotlin/dev/kanso/oauth/ClientRegistrationServiceTest.kt`
+
+**Interfaces:**
+- Consumes: `RegisteredClientRepository` (Task 3 Part C), `KansoProperties`.
+- Produces: `RedirectUriPolicy.isAllowed(uri: String): Boolean`; `ClientRegistrationService.register(request): RegistrationResponse`.
+
+- [ ] **Step 1: Write `RedirectUriPolicyTest` first**
+
+This file is the security of the endpoint, so it is the first thing written and the thing
+reviewed hardest. A registration is only ever as dangerous as where it can send a code.
+
+Assert, at minimum: loopback on any port is allowed (`http://127.0.0.1:9999/callback`,
+`http://localhost:1234/cb`); the two Claude origins are allowed over https only; a
+lookalike host is refused (`http://127.0.0.1.evil.com/cb`,
+`https://claude.ai.evil.com/cb`); a userinfo trick is refused
+(`https://claude.ai@evil.com/cb`); `javascript:` and `data:` are refused; a non-loopback
+`http` origin is refused; and — the one a prefix comparison gets wrong — a path that merely
+*starts with* an allowed origin's string is not thereby allowed.
+
+Compare **parsed** `URI` components, never string prefixes. Host equality is exact, or a
+single explicit suffix rule with the leading dot included; scheme is checked; port is only
+free for loopback.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `cd apps/api && ./gradlew test --tests "dev.kanso.oauth.RedirectUriPolicyTest"`
+Expected: FAIL — unresolved reference.
+
+- [ ] **Step 3: Write `RedirectUriPolicy`, then make the test pass**
+
+- [ ] **Step 4: Write `ClientRegistrationServiceTest`, then the service**
+
+What the tests pin, beyond the happy path:
+
+- **Every registration comes out a public client.** `ClientAuthenticationMethod.NONE`,
+  `ClientSettings.requireProofKey(true)`, `requireAuthorizationConsent(true)`. The request
+  does not get to ask otherwise — a field asking for a confidential client is ignored, not
+  honoured.
+- **Grants are fixed:** `AUTHORIZATION_CODE` and — **Ruling 9** — `REFRESH_TOKEN`. The
+  spike issued no refresh token precisely because its client declared only the first, which
+  would have left the spec's refresh-rotation MUST with nothing to rotate.
+- **Scopes are fixed** to `OAuthScopes.ALL`. A request naming a scope outside it is refused
+  rather than silently narrowed, so a client learns now instead of at the first 403.
+- **No secret is issued**, and the response contains none. A leaked registration response is
+  worth nothing on its own: the client still has to get a member through the consent screen.
+- **At least one `redirect_uris` entry**, every one of them allowed by `RedirectUriPolicy`.
+  One bad entry refuses the whole request — a partial registration is a client that works
+  until it does not.
+- **The total cap is a refusal, not a prune.** When the table is full, answer 429/403 and
+  keep what is there. Deleting a stranger's client to make room for another stranger's is
+  worse than saying no.
+
+- [ ] **Step 5: The controller, and the rate limit**
+
+Validate, delegate, format — no logic here, per the plan's global constraints. RFC 7591
+shapes: 201 with the registration response on success, 400 with
+`invalid_redirect_uri` / `invalid_client_metadata` on refusal.
+
+Rate limit per IP. `/connect/register` is already in `OAuthRoutes.OPEN_POST` (Task 3), and
+its comment there already names it as the most abusable surface this branch adds — so the
+limit belongs here, in the same commit, not as a follow-up.
+
+- [ ] **Step 6: Advertise it**
+
+Add `registration_endpoint` to the metadata document. The library's default metadata omits
+it — verified on the running server — because the library's own endpoint is disabled, so
+this goes in the same `OAuth2AuthorizationServerMetadataEndpointConfigurer` customisation
+Task 3 added for `authorization_response_iss_parameter_supported`. A client that cannot
+discover the endpoint will not use it.
+
+- [ ] **Step 7: Run the whole API suite**
+
+Run: `cd apps/api && ./gradlew test`
+Expected: BUILD SUCCESSFUL.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git commit -m "feat(oauth): register an agent's client without a credential to paste"
+```
+
+---
+
 ### Task 7: A bearer becomes a User
 
 The task the whole branch exists for, and the one the spec calls the place this feature actually integrates.
@@ -986,7 +1247,16 @@ The task the whole branch exists for, and the one the spec calls the place this 
 - Create: `apps/api/src/test/kotlin/dev/kanso/mcp/McpBearerFilterTest.kt`
 
 **Interfaces:**
-- Consumes: `OAuth2AuthorizationService` (Task 5), `UserRepository`, `OAuthScopes`, `McpChallenge`, the audience mechanism decided in Task 1 Step 4.
+- Consumes: `OAuth2AuthorizationService` (Task 3 Part C), `UserRepository`, `OAuthScopes`, `McpChallenge`.
+- **Ruling 5.** The token maps back through `principalName`, which Task 3's
+  `AgentPrincipalFilter` guarantees is the Kanso user id: `UUID.fromString(principalName)`,
+  then `UserRepository`. A `principalName` that does not parse is a refusal, not a lookup —
+  it means a grant was written by something other than that chain.
+- **Ruling 6.** The audience is read, not reconstructed:
+  `authorization.getAttribute<OAuth2AuthorizationRequest>(OAuth2AuthorizationRequest::class.java.name)?.additionalParameters?.get("resource")`.
+  One value is a `String`, repeated ones an `Array<String>` — handle both, and treat a
+  *missing* `resource` as a refusal rather than as permission, or a client that simply
+  omits it gets a token good everywhere.
 - Produces: `KansoAgentUser(kansoUserId, kansoEmail, displayName, clientId, scopes)` implementing `KansoAuthenticatedUser`; `McpBearerFilter`.
 
 - [ ] **Step 1: Add the principal**
