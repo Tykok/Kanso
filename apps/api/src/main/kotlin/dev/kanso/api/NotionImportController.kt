@@ -1,7 +1,9 @@
 package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.sync.importer.ColumnMapping
 import dev.kanso.sync.importer.Fallback
+import dev.kanso.sync.importer.ImportField
 import dev.kanso.sync.importer.ImportOutcome
 import dev.kanso.sync.importer.ImportPlanEntry
 import dev.kanso.sync.importer.ImportPreview
@@ -20,11 +22,13 @@ import java.util.UUID
 /**
  * One row of screen 24's mapping. An ignored base is absent, never `target: "ignore"`.
  *
- * [columns] and [values] are carried here already, defaulted to empty, but [entry] does not
- * read either yet — the task that defines how a column screen maps onto [ImportField] and
- * its option table is the one that gives them a shape worth reading. [fallback] is read: a
- * base whose team cannot be resolved may want a different destination from its neighbour,
- * and screen 24 decides that per base.
+ * [columns] says which of this base's Notion properties answers which [ImportField];
+ * [values] says, per field, what each of that column's own options means in Kanso's
+ * vocabulary. Both are keyed by the field's wire string here, same as everywhere else a
+ * field crosses the wire, and [entry] turns both maps into [ColumnMapping] by parsing that
+ * key through [ImportField.from]. [fallback] is read the same way it always was: a base
+ * whose team cannot be resolved may want a different destination from its neighbour, and
+ * screen 24 decides that per base.
  */
 data class ImportPlanRow(
 	val sourceId: String,
@@ -78,7 +82,19 @@ class NotionImportController(
 	fun confirm(@RequestBody request: ImportRequest): ImportOutcome =
 		imports.perform(currentUser.require(), request.teamId, request.plan.map(::entry))
 
-	/** An unknown target is a 400 through [ApiExceptionHandler], the same as an unknown status. */
-	private fun entry(row: ImportPlanRow) =
-		ImportPlanEntry(row.sourceId, ImportTarget.from(row.target), fallback = row.fallback)
+	/**
+	 * An unknown target, field name, or mapped option is a 400 through [ApiExceptionHandler],
+	 * the same as an unknown status: [ImportTarget.from] and [ImportField.from] both raise
+	 * `IllegalArgumentException` for a wire string outside their vocabulary, and nothing here
+	 * catches it — the vocabulary is closed on both sides of the wire or it is not closed.
+	 */
+	private fun entry(row: ImportPlanRow) = ImportPlanEntry(
+		sourceId = row.sourceId,
+		target = ImportTarget.from(row.target),
+		mapping = ColumnMapping(
+			columns = row.columns.mapKeys { (field, _) -> ImportField.from(field) },
+			values = row.values.mapKeys { (field, _) -> ImportField.from(field) },
+		),
+		fallback = row.fallback,
+	)
 }
