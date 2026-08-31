@@ -272,6 +272,47 @@ export const notionImportApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /**
+   * The people a plan's mapped columns would meet, before step 4 asks who any of them are
+   * in Kanso. Reads, writes nothing — `perform` is still the only call that does, and only
+   * once the import itself is confirmed.
+   */
+  peopleSeen: (plan: NotionImportPlanRow[]) =>
+    request<NotionPersonSeen[]>("/api/notion/import/people-seen", {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    }),
+};
+
+/** A Notion person `notionImportApi.peopleSeen` found on a plan's mapped people columns. */
+export type NotionPersonSeen = { id: string; name?: string };
+
+// --- the person correspondence -----------------------------------------------
+//
+// Standing, not scoped to one import: `users.notion_person_id` outlives whichever import
+// last touched it, which is why this lives beside screen 24 rather than inside it. Step 4
+// reads it to pre-fill a suggestion for the people its own mapped columns met;
+// `settings/notion-people-section.tsx` is where the rest of the workspace gets matched, and
+// the only screen that calls `link` directly — step 4's own map reaches the server through
+// `notionImportApi.confirm`'s `people` field instead, applied by `perform`, never by a PUT
+// from here.
+
+/**
+ * `available: false` is a first-class answer here too: an integration without the
+ * "read user information" capability cannot list members, and `reason` is the sentence
+ * saying where to tick it.
+ */
+export type NotionPeopleView = {
+  available: boolean;
+  reason?: string;
+  people: { notion: { id: string; name?: string; email?: string }; userId?: string; suggestedUserId?: string }[];
+};
+
+export const notionPeopleApi = {
+  view: () => request<NotionPeopleView>("/api/notion/people"),
+  link: (assignments: Record<string, string | null>) =>
+    request<NotionPeopleView>("/api/notion/people", { method: "PUT", body: JSON.stringify(assignments) }),
 };
 
 /**

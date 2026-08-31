@@ -6,7 +6,6 @@ import { notionImportApi, type NotionImportRequest, type NotionImportSource } fr
 import { useProjects, useTeams } from "@/lib/queries";
 import { actionErrorMessage } from "@/lib/errors";
 import { Backdrop } from "@/components/overlays";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { importCounts, importPlan, targetOf, type ImportMapping, type ImportTarget } from "./import-map";
 import { type BaseMapping, type Fallback } from "./import-columns";
@@ -14,6 +13,7 @@ import { PEOPLE_FIELDS } from "./import-targets";
 import { StepOne } from "./import-step-one";
 import { StepTwo } from "./import-step-two";
 import { StepColumns } from "./import-step-columns";
+import { StepPeople } from "./import-step-people";
 import { StepThree } from "./import-step-three";
 
 /**
@@ -50,11 +50,11 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   const [fallbacks, setFallbacks] = useState<Record<string, Fallback>>({});
   /**
    * The person correspondence, kept here because the request carries it and step 4 is the
-   * screen that fills it. No setter yet: the rows that match a Notion person to a Kanso
-   * account are step 4's own, and an empty map is what the request means by "nobody has
-   * said" — every mapped person's rows land unassigned rather than guessed at.
+   * screen that fills it — `import-step-people.tsx`. An empty map is what the request
+   * means by "nobody has said": every mapped person's rows land unassigned rather than
+   * guessed at.
    */
-  const [people] = useState<Record<string, string | null>>({});
+  const [people, setPeople] = useState<Record<string, string | null>>({});
 
   const discovered = useQuery({
     queryKey: ["notion-import-sources"],
@@ -267,34 +267,16 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
             />
           )}
 
-          {/*
-           * Step 4, the people the mapped columns name. The rows that match them to Kanso
-           * accounts are the next task's; what is here is the step itself, so the skip in
-           * both directions is real and testable — and so that a reader who mapped an
-           * assignee column is told, before the preview, that the question exists.
-           */}
           {step === 4 && (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-15 font-medium">Who these people are</span>
-                <span className="text-12 text-muted-foreground">
-                  The columns you mapped name people in Notion. Matching each of them to a Kanso
-                  account is filled in once and holds for every later import; anyone left
-                  unmatched leaves their rows unassigned rather than guessed at.
-                </span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <Button disabled={preview.isPending} onClick={toPreview}>
-                  Preview the import
-                </Button>
-                <Button variant="outline" onClick={() => setStep(3)}>
-                  Back
-                </Button>
-              </div>
-              {preview.isError && (
-                <span className="text-12 text-urgent">{actionErrorMessage(preview.error)}</span>
-              )}
-            </>
+            <StepPeople
+              plan={plan}
+              people={people}
+              onPeople={setPeople}
+              onNext={toPreview}
+              onBack={() => setStep(3)}
+              pending={preview.isPending}
+              error={preview.isError ? actionErrorMessage(preview.error) : undefined}
+            />
           )}
 
           {step === 5 && (
