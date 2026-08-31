@@ -62,11 +62,9 @@ class NotionImportService(
 				)
 			}
 		} catch (e: NotionRateLimited) {
-			// Not a 500: the workspace is readable, just not this second, and "try again in
-			// twelve seconds" is a sentence somebody can act on.
-			unavailable("Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
+			unavailable(refusal(e))
 		} catch (e: NotionApiException) {
-			unavailable("Notion refused the request: ${e.message}")
+			unavailable(refusal(e))
 		}
 	}
 
@@ -84,9 +82,9 @@ class NotionImportService(
 			ImportSchema.of(source, target)
 		}
 	} catch (e: NotionRateLimited) {
-		throw BadRequestException("Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
+		throw BadRequestException(refusal(e))
 	} catch (e: NotionApiException) {
-		throw BadRequestException("Notion refused the request: ${e.message}")
+		throw BadRequestException(refusal(e))
 	}
 
 	/**
@@ -203,5 +201,19 @@ class NotionImportService(
 	private fun unavailable(reason: String): ImportSources {
 		log.info("Notion import discovery unavailable: {}", reason)
 		return ImportSources(available = false, reason = reason, sources = emptyList())
+	}
+
+	/**
+	 * The one sentence for whichever way Notion itself refuses a request — [sources] and
+	 * [schema] both hit this, and before this existed each had its own copy of both
+	 * strings. One function, so a doc comment claiming "the same sentence" is something the
+	 * code enforces rather than something somebody has to keep true by hand.
+	 */
+	private fun refusal(e: Exception): String = when (e) {
+		// Not a 500: the workspace is readable, just not this second, and "try again in
+		// twelve seconds" is a sentence somebody can act on.
+		is NotionRateLimited -> "Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s."
+		is NotionApiException -> "Notion refused the request: ${e.message}"
+		else -> throw e
 	}
 }
