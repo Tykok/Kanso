@@ -7,39 +7,33 @@ import dev.kanso.domain.User
 import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
-import dev.kanso.service.ConflictException
 import dev.kanso.service.ProjectService
-import dev.kanso.service.ScheduleService
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionPage
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
 
 /** What one tickets base wrote: its pages, and the container project it needed, if any. */
 data class TicketsWritten(val tickets: Int, val projects: Int)
 
-/** What the dependency pass drew, and what it could not. */
-data class Dependencies(val created: Int, val dropped: Int)
-
 /**
- * A base whose pages are tickets, and the arrows between them.
+ * A base whose pages are tickets.
  *
  * A ticket needs a project only as far as the reader is concerned; what it cannot do
  * without is a team, because that is where its number comes from. So the project is
  * resolved first and the team follows it: [TicketService] refuses a ticket whose project
  * belongs to another team, and rightly — a ticket in `Roadmap` that says it belongs to
  * `Import` would be filed under a team that cannot see its own project.
+ *
+ * The arrows between tickets — `Blocked by` — are [TicketLinks]' job, drawn once per base
+ * after every tickets base here has been written, not once per page here.
  */
 @Service
 class TicketImport(
 	private val tickets: TicketService,
 	private val projects: ProjectService,
-	private val schedule: ScheduleService,
 	private val origins: ImportOriginRepository,
 ) {
-
-	private val log = LoggerFactory.getLogger(javaClass)
 
 	fun write(
 		actor: User,
@@ -69,41 +63,6 @@ class TicketImport(
 			written++
 		}
 		return TicketsWritten(written, containers)
-	}
-
-	/**
-	 * Turns the relations [ImportLinks] resolved into dependencies, once for every base.
-	 *
-	 * A dependency is exactly what the mapping called a dependency — the column somebody
-	 * pointed at `Blocked by` — and not every relation the page happens to hold: a
-	 * `Related` column is a link between two pages, not an order to do them in, and turning
-	 * one into an arrow put work in a queue nobody asked for.
-	 *
-	 * Through [ScheduleService.link] rather than the repository, so an imported arrow is
-	 * settled by the same engine as a drawn one and a cycle is refused rather than stored.
-	 * A refusal drops that one arrow and counts it: a workspace whose relations happen to
-	 * form a loop is not a reason to fail an import of four hundred pages, and the count is
-	 * what tells the reader it happened.
-	 */
-	fun settleDependencies(actor: User, links: ImportLinks.Resolved, rows: ImportedRows): Dependencies {
-		var created = 0
-		var dropped = 0
-		for (edge in links.dependencies) {
-			val predecessor = rows.ticket(edge.predecessorPageId)
-			val successor = rows.ticket(edge.successorPageId)
-			if (predecessor == null || successor == null) {
-				dropped++
-				continue
-			}
-			try {
-				schedule.link(actor, predecessor, successor)
-				created++
-			} catch (e: ConflictException) {
-				log.info("Dropped an imported relation: {}", e.message)
-				dropped++
-			}
-		}
-		return Dependencies(created, dropped)
 	}
 
 	/**

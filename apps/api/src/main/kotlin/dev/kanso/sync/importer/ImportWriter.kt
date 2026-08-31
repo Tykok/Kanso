@@ -46,6 +46,7 @@ class ImportWriter(
 	private val teams: TeamImport,
 	private val projects: ProjectImport,
 	private val tickets: TicketImport,
+	private val ticketLinks: TicketLinks,
 	private val documents: DocumentImport,
 	private val origins: ImportOriginRepository,
 ) {
@@ -82,7 +83,7 @@ class ImportWriter(
 		// After every tickets base, not inside one: an arrow can cross from one base into
 		// another, and half the tickets it points at do not exist yet in the middle of the
 		// pass that creates them.
-		val dependencies = tickets.settleDependencies(actor, links, rows)
+		val dependencies = ticketLinks.settle(actor, links, rows)
 
 		var docCount = 0
 		var folderCount = 0
