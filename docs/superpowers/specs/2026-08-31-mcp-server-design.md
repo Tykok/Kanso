@@ -108,53 +108,97 @@ own, authenticated by Kanso's own login.
 2. Kanso answers `401` with
    `WWW-Authenticate: Bearer resource_metadata="https://kanso.example.com/.well-known/oauth-protected-resource", scope="kanso:read kanso:write"`.
 3. The client reads that document, finds the authorisation server, and reads its metadata.
-4. The client registers itself (`POST /oauth/register`) or presents a `client_id` it
+4. The client registers itself (`POST /connect/register`) or presents a `client_id` it
    already holds.
-5. The client opens the authorisation endpoint — a web route, not an API one — with PKCE
-   `code_challenge`, `resource`, and the scopes from the challenge. **No Kanso session →
-   the existing login.** Session → the consent screen.
-6. The member authorises. Kanso redirects to the client's callback with a single-use code
-   and `iss`.
-7. `POST /oauth/token` with the `code_verifier` and the same `resource` returns an access
+5. The client opens `GET /oauth2/authorize` with PKCE `code_challenge`, `resource`, and the
+   scopes from the challenge. **No Kanso session → the existing login, then back here.**
+   Session → a redirect to `/oauth/consent`, the screen.
+6. The member authorises; the screen posts the decision back to `POST /oauth2/authorize`.
+   Kanso redirects to the client's callback with a single-use code and `iss`.
+7. `POST /oauth2/token` with the `code_verifier` and the same `resource` returns an access
    token and a refresh token.
 8. Every subsequent MCP request carries `Authorization: Bearer …`.
 
+## The library owns the dangerous half
+
+**Amended after the design was approved.** This section replaced a hand-written
+authorisation server, and the correction is worth recording rather than quietly
+absorbing: the first draft specified four tables, `/authorize`, `/token`, PKCE and
+refresh rotation, all written here. `spring-boot-starter-oauth2-authorization-server`
+resolves on Boot 4.1 through the BOM — `spring-security-oauth2-authorization-server:7.1.0`
+— and implements every one of them. Kanso is maintained by one person and has no CI;
+security-critical code written once and trusted for years is exactly what belongs to a
+maintained library. The paragraph above about MUSTs being "a way to ship something that
+looks like it works" argues against writing them by hand, including when this document
+was the thing proposing it.
+
+What the library owns: authorisation code issuance and single use, PKCE, the token
+endpoint, refresh rotation and reuse detection, RFC 8414 metadata, dynamic client
+registration, exact redirect-URI matching, and the persistence for all of it.
+
+What is still written here, because the library does not claim it:
+
+- **`/.well-known/oauth-protected-resource`** (RFC 9728) — a resource-server document, out
+  of an authorisation server's scope by definition. Twenty lines of static JSON.
+- **The consent screen**, which the library supports as a first-class custom page but does
+  not draw.
+- **Audience binding to this resource** (RFC 8707) — the one MUST whose library support is
+  unverified, and therefore the first task of plan one. See "The unverified MUST".
+- **The MCP bearer filter**, which turns a token into a `User` the existing services accept.
+- **Connected applications**, the screen and the grant queries behind it.
+
 ## Endpoints
 
-| Endpoint | Standard | Why it exists |
+Library defaults are kept rather than renamed: a client discovers every one of these from
+the metadata documents, so the paths are not a product decision, and renaming them would
+be configuration that can drift from what the library actually serves.
+
+| Endpoint | Who | Why it exists |
 |---|---|---|
-| `GET /.well-known/oauth-protected-resource` | RFC 9728 | **MUST** for a protected MCP server. Names the canonical resource URI, the authorisation server, and `scopes_supported`. |
-| `GET /.well-known/oauth-authorization-server` | RFC 8414 | **MUST** publish this or OIDC Discovery. Endpoints, `code_challenge_methods_supported: ["S256"]`, `grant_types_supported: ["authorization_code", "refresh_token"]`, `authorization_response_iss_parameter_supported: true`. |
-| `GET /oauth/authorize` (web) | OAuth 2.1 | The one endpoint a browser lands on. Requires a session, renders consent. |
-| `GET /api/oauth/authorize/request` | — | Validates the query and describes it for the screen: client name, scopes, and why it would be refused. |
-| `POST /api/oauth/authorize` | OAuth 2.1 | The decision. Issues the code, or redirects with `access_denied`. |
-| `POST /api/oauth/token` | OAuth 2.1 + RFC 8707 | `authorization_code` with PKCE, and `refresh_token` with rotation. |
-| `POST /api/oauth/register` | RFC 7591 | Dynamic client registration. Deprecated in the current draft in favour of Client ID Metadata Documents, and implemented anyway because it is what today's clients actually do. |
-| `POST /api/oauth/revoke` | RFC 7009 | Lets a client hand a token back. Cheap, and the polite half of the revocation story. |
+| `GET /.well-known/oauth-protected-resource` | **ours** | RFC 9728, a **MUST** for a protected MCP server. Names the canonical resource URI, the authorisation server, and `scopes_supported`. |
+| `GET /.well-known/oauth-authorization-server` | library | RFC 8414 metadata. |
+| `GET /oauth2/authorize` | library | Where the browser lands. Validates, then redirects to our consent page. |
+| `GET /oauth/consent` (web) | **ours** | The consent screen, reached by that redirect. Requires a Kanso session. |
+| `POST /oauth2/authorize` | library | The decision our screen posts back. Issues the code. |
+| `POST /oauth2/token` | library | `authorization_code` with PKCE, and `refresh_token` with rotation. |
+| `POST /connect/register` | library | Dynamic client registration. |
+| `POST /oauth2/revoke` | library | Lets a client hand a token back. |
+| `GET /api/oauth/consent/request` | **ours** | Describes the pending consent for the screen: client name, scopes in prose, and why it would be refused. |
+| `GET`/`DELETE /api/oauth/grants` | **ours** | The connected-applications list, and revoking one. |
 
-**The authorisation endpoint is the one piece that lives in `apps/web`.** It is the only
-OAuth endpoint a human looks at, so it has to render Kanso's design system and reuse
-Kanso's login redirect — which the API, serving JSON to a browserless client, does neither
-of. So `authorization_endpoint` in the metadata is
-`https://kanso.example.com/oauth/authorize`, a web route that asks the API to validate the
-request, draws the consent screen, and posts the decision back. Every other endpoint is
-JSON under `/api/oauth/`, where the rest of the API lives. The metadata documents are the
-single source of these URLs — no client ever constructs one.
+**The consent screen is the one piece in `apps/web`.** It is the only OAuth surface a
+human looks at, so it has to render Kanso's design system and reuse Kanso's login
+redirect — which the API, serving JSON to a browserless client, does neither of.
 
-The three unauthenticated ones — `token`, `register`, `revoke` — plus both well-known
-documents join `PublicRoutes` and are rate-limited per IP. `/api/oauth/register` in
-particular is an unauthenticated row-creating endpoint, the single most abusable surface
-this spec adds.
+Two integration facts that are easy to discover too late:
+
+- **Kanso already serves `/oauth2/authorization/{provider}`** for signing *in* with Google.
+  The library serves `/oauth2/authorize` for signing *out* to an agent. Different paths,
+  adjacent prefixes, opposite directions. They must not be matched by one rule.
+- **`SecurityConfig` has a single filter chain with no `securityMatcher`.** The library
+  needs its own chain ahead of it. Kanso's existing chain becomes the second, and that
+  reordering is a change to the most dangerous file in the application — it gets its own
+  task and its own test.
+
+The unauthenticated endpoints — `token`, `register`, `revoke`, both well-known documents —
+must be opened in `SecurityConfig`. They cannot go in `PublicRoutes`: `PublicRoutesTest`
+asserts every pattern begins with `/api/public/` and that there are exactly three. They
+get a sibling list with a guard test of its own rather than a weakened existing one.
+`/connect/register` in particular is an unauthenticated row-creating endpoint, the single
+most abusable surface this spec adds, and it is rate-limited per IP.
 
 ## The rules that are not optional
 
 Each of these is a **MUST** in the specification, and each one is a way to build a
-plausible-looking OAuth server that is broken:
+plausible-looking OAuth server that is broken. The library enforces the first six; they
+are listed anyway, because a rule nobody can name is a rule nobody can test, and plan one
+asserts each of them against the running server rather than trusting a changelog:
 
 - **Audience binding.** A token records the `resource` it was issued for, and every MCP
   request validates that it names *this* server. A token that does not is rejected with
   401 even if it is otherwise valid. Without this, a token minted for another resource by
-  the same authorisation server is a free pass — the confused-deputy shape.
+  the same authorisation server is a free pass — the confused-deputy shape. **This is the
+  one the library does not claim** — see below.
 - **PKCE S256, always.** Clients here are public — no secret survives on a laptop — so
   the code challenge is what stops an intercepted code from being redeemable. No `plain`.
 - **Exact redirect-URI matching.** String equality against the registered set. No prefix
@@ -170,6 +214,24 @@ plausible-looking OAuth server that is broken:
 - **`403` with `error="insufficient_scope"` and a `scope` parameter** when a read-only
   grant reaches a writing tool, so the client can run a step-up flow instead of failing.
 
+## The unverified MUST
+
+RFC 8707 resource indicators are what make audience binding possible: the client sends
+`resource` on the authorisation and token requests, and the server records it on the token
+and checks it on every use. The library's documentation does not list RFC 8707 among the
+specifications it implements, and the jar was not in the Gradle cache to inspect — so this
+is an open question, not a known gap.
+
+**Plan one's first task settles it**, and it is cheap: stand the library up, run one
+authorisation with a `resource` parameter, and look at what the token row records.
+
+- **If supported** — configure it, and assert it.
+- **If not** — the `resource` is carried in the scope set or in a token customiser, and the
+  bearer filter enforces the check. That code is ours either way; only its input changes.
+
+Either outcome is a task, not a redesign. This is written down so the answer is a finding
+rather than a surprise.
+
 ## Opaque tokens, not JWTs
 
 Kanso is both the authorisation server and the resource server, over one Postgres. A
@@ -177,84 +239,54 @@ signed JWT would buy stateless validation Kanso does not need, and cost either a
 that stays valid after revocation until it expires, or an introspection call that is the
 database lookup the JWT was supposed to avoid.
 
-So: 32 random bytes, base64url, prefixed `kat_` and `krt_`. **Stored hashed** —
-SHA-256, not bcrypt: the token is 256 bits of `SecureRandom`, there is no dictionary to
-slow an attacker down through, and a work factor would be paid on every single tool call.
-Revocation is a column, and it takes effect on the next request.
+The library offers both, per client, and the choice is one line:
+`TokenSettings.accessTokenFormat(OAuth2TokenFormat.REFERENCE)`. Reference tokens are
+opaque and stored, so the bearer filter resolves one through `OAuth2AuthorizationService`
+— an in-process lookup against the same Postgres, no introspection round trip — and
+revoking a grant takes effect on the next request with no window.
 
 Access tokens live one hour, refresh tokens sixty days.
 
 ## Schema
 
-`V16__oauth_server.sql` — four tables, because there are four distinct concepts and
-folding any two of them together makes revocation ambiguous.
+`V16__oauth_server.sql`. **`V16`, not `V15`, and not by accident:** `V15` is taken by the
+Notion-import branch, which is unmerged and 25 commits ahead of `main`. Flyway tolerates a
+gap in the numbering and rejects the same version twice, so leaving `V15` alone is what
+lets the two branches merge in either order — but only in one order safely. Flyway's
+default refuses an out-of-order migration, so **this branch must merge after the import
+branch**, or be renumbered before it merges. That constraint belongs to whoever merges,
+which is why it is written here and not only in a commit message.
+
+The library ships its own schema as classpath resources —
+`oauth2-registered-client-schema.sql`, `oauth2-authorization-schema.sql`,
+`oauth2-authorization-consent-schema.sql`. They are copied into the migration **verbatim**,
+under a header saying where they came from and that they are not to be hand-edited: they
+are the library's contract with its own `Jdbc*` implementations, and an improvement to a
+column here is a runtime failure there. This is the one place in Kanso where a migration is
+not argued from first principles, and the header says so.
+
+That gives `oauth2_registered_client` (clients, including those that registered
+themselves), `oauth2_authorization` (codes, access tokens, refresh tokens — one row per
+authorisation, which is why there is no separate token table) and
+`oauth2_authorization_consent` (what a member granted which client — the row the
+connected-applications screen lists).
+
+What the migration adds beyond the copied files:
 
 ```sql
--- A client that registered itself. Public clients only: no secret is stored,
--- because no secret survives on the machine these clients run on.
-CREATE TABLE oauth_clients (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id         TEXT NOT NULL UNIQUE,
-  client_name       TEXT NOT NULL,
-  redirect_uris     TEXT[] NOT NULL,
-  scopes            TEXT NOT NULL,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT oauth_clients_redirects_chk CHECK (cardinality(redirect_uris) > 0)
-);
-
--- One row per (member, client) consent. This is the unit the member sees and
--- revokes, and the reason tokens do not carry the user directly: revoking a
--- grant must kill every token under it without a scan.
-CREATE TABLE oauth_grants (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  client_id  UUID NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
-  scopes     TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  revoked_at TIMESTAMPTZ
-);
-
--- One *live* grant per pair, not one ever. Revoking and authorising again is
--- normal, and the revoked row is the history saying the member did both.
-CREATE UNIQUE INDEX oauth_grants_live_idx
-  ON oauth_grants (user_id, client_id) WHERE revoked_at IS NULL;
-
-CREATE TABLE oauth_codes (
-  code_hash      TEXT PRIMARY KEY,
-  grant_id       UUID NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,
-  redirect_uri   TEXT NOT NULL,
-  code_challenge TEXT NOT NULL,
-  resource       TEXT NOT NULL,
-  scopes         TEXT NOT NULL,
-  expires_at     TIMESTAMPTZ NOT NULL,
-  consumed_at    TIMESTAMPTZ
-);
-
-CREATE TABLE oauth_tokens (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  grant_id     UUID NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,
-  kind         TEXT NOT NULL,
-  token_hash   TEXT NOT NULL UNIQUE,
-  resource     TEXT NOT NULL,
-  scopes       TEXT NOT NULL,
-  expires_at   TIMESTAMPTZ NOT NULL,
-  last_used_at TIMESTAMPTZ,
-  revoked_at   TIMESTAMPTZ,
-  rotated_to   UUID REFERENCES oauth_tokens(id) ON DELETE SET NULL,
-  CONSTRAINT oauth_tokens_kind_chk CHECK (kind IN ('access', 'refresh'))
-);
-
-CREATE INDEX oauth_tokens_grant_idx ON oauth_tokens (grant_id);
-CREATE INDEX oauth_grants_user_idx  ON oauth_grants (user_id, created_at DESC);
-
 -- Provenance, not accountability. The member owns what their agent did; this
--- says which application typed it.
+-- says which application typed it. TEXT, not UUID: the library's client id is a
+-- varchar of its own choosing, and this column follows it rather than the house
+-- convention — a foreign key that has to convert is a foreign key that will not.
 ALTER TABLE activity
-  ADD COLUMN via_client_id UUID REFERENCES oauth_clients(id) ON DELETE SET NULL;
+  ADD COLUMN via_client_id TEXT REFERENCES oauth2_registered_client(id) ON DELETE SET NULL;
 ```
 
-A `TokenSweeper` in the shape of the existing `TrashSweeper` deletes expired codes and
-tokens. Without it these tables only grow.
+No sweeper is written. The library's `JdbcOAuth2AuthorizationService` keeps one row per
+authorisation and rewrites it as tokens rotate, so the table does not grow per refresh the
+way a hand-rolled token table would. Whether expired rows are removed at all is a question
+for after the first deployment, with a real row count to look at — inventing a retention
+policy now would be inventing a number.
 
 ## Two scopes
 
@@ -268,17 +300,20 @@ first is the exact failure this document opens with. A read-only grant exists be
 
 ## Becoming a User
 
-`McpBearerFilter` runs on `/api/mcp/**` only. It hashes the bearer, loads the token, and
-refuses — 401, with the `WWW-Authenticate` challenge that starts the flow again — if the
-token is unknown, expired, revoked, under a revoked grant, or issued for another resource.
-Otherwise it puts the same `Principals` type into the security context that a session
-would.
+`McpBearerFilter` runs on `/api/mcp/**` only. It resolves the bearer through the library's
+`OAuth2AuthorizationService` and refuses — 401, with the `WWW-Authenticate` challenge that
+starts the flow again — if the token is unknown, expired, revoked, or issued for another
+resource. Otherwise it reads the member id off the authorisation and puts the same
+`Principals` type into the security context that a session would.
+
+Its own class rather than Spring's `oauth2ResourceServer`: the built-in support ends at an
+`Authentication` holding scopes, and every Kanso service takes a `dev.kanso.domain.User`.
+The translation is where this feature actually integrates, and it is four lines that belong
+somewhere a reader can find them.
 
 That last clause is the whole design. Downstream, `CurrentUser` resolves as always and
 every service sees a `User`, so `TicketAccess`, `TeamService` and the admin checks are
-untouched, and the MCP surface **cannot** be more permissive than the UI. `last_used_at`
-is written outside the request transaction, so a rolled-back plan still records that the
-token was used.
+untouched, and the MCP surface **cannot** be more permissive than the UI.
 
 Scope enforcement lives in one place: a tool declared as writing refuses a `kanso:read`
 grant before doing anything, as a 403 carrying `scope="kanso:write"` so the client can
@@ -305,8 +340,9 @@ them"), Authorise and Deny. Existing design system, no new patterns. Denying red
 `access_denied` rather than dead-ending.
 
 **Connected applications** — one settings section: client name, scopes, when it was
-granted, when it was last used, and Revoke. Revoking sets `oauth_grants.revoked_at`, and
-every token under it stops working on its next request.
+granted and Revoke. Revoking deletes the consent row and every authorisation under it,
+so the client's tokens stop working on their next request — no window, because the bearer
+filter resolves each token against the same table.
 
 There is nothing in the setup wizard. Connecting an agent is something a member does when
 they want one, not a step between an empty instance and a first ticket.
@@ -412,14 +448,12 @@ mcp/
   tools/                 SearchTool, ContextTool, PlanTool, UpdateTool,
                          OrganiseTool, CommentTool — one file each
 oauth/
-  OAuthMetadataController.kt   the two well-known documents
-  AuthorizeController.kt       validate a request, and take the decision
-  TokenController.kt           /oauth/token, /oauth/revoke
-  RegistrationController.kt    /oauth/register
-  OAuthService.kt              codes, tokens, rotation, revocation
-  OAuthClientService.kt        registration and redirect-URI validation
-  Pkce.kt                      S256 verification
-  TokenSweeper.kt              expiry
+  AuthorizationServerConfig.kt   the library's filter chain, settings, token format
+  ProtectedResourceController.kt /.well-known/oauth-protected-resource  (RFC 9728)
+  ConsentController.kt           describe a pending consent for the screen
+  GrantsController.kt            list and revoke connected applications
+  GrantService.kt                the queries behind those two
+  ScopeCopy.kt                   a scope's name in prose, shared with the screen
 service/PlanService.kt
 ```
 
@@ -475,10 +509,25 @@ first three are the ones to write first:
    revokes its grant. The two audience-and-replay rules, asserted rather than assumed.
 5. **A revoked grant stops working on the next request** — no window.
 
-Beyond those: PKCE verification (S256 pass, wrong verifier, `plain` refused), exact
-redirect-URI matching, refresh rotation and reuse detection, `McpBearerFilter` over
-unknown/expired/revoked/malformed tokens, a `MockMvc` test per tool, and `PlanService`
-tests for the 50-ticket bound, dependency cycles and local-reference resolution.
+Beyond those: `McpBearerFilter` over unknown, expired, revoked and malformed tokens; the
+consent screen's copy and parameter validation as a `.ts` module, because `vitest` runs
+under `environment: "node"` here and cannot reach JSX; and `PlanService` tests for the
+50-ticket bound, dependency cycles and local-reference resolution.
+
+**The library's rules are tested at the boundary, not reimplemented.** PKCE (S256 accepted,
+wrong verifier refused, `plain` refused), exact redirect-URI matching, refresh rotation and
+code replay are asserted by driving the real endpoints once each. Six short tests against a
+running server, not a second implementation of the specification to keep in step — but not
+nothing either: a version bump that changed one of them silently is exactly what these
+catch.
+
+One convention note, because it shapes the tests more than any decision above: this suite
+has **no MockMvc habit** — `PostgresTest` is `WebEnvironment.NONE`, and controller tests
+autowire the controller and call its methods, authenticating with a hand-built
+`KansoLocalUser` pushed into `SecurityContextHolder`. `MeVersionTest` is the single MockMvc
+test and stands up its own context, which `SecurityBootstrapTest` warns against
+multiplying. The filter and the six boundary tests need a real request, so they reuse
+`MeVersionTest`'s pattern — one added context configuration, shared, not one per class.
 
 **There is no CI** (`docs/follow-ups.md`), so the suite runs when somebody remembers. An
 OAuth authorisation server whose tests run on memory is the wrong trade at any speed, and
@@ -493,12 +542,12 @@ omission.
 This is one design and two implementation plans, because the halves have different failure
 modes and the first has a milestone worth stopping at.
 
-**Plan one — the door.** The two well-known documents, registration, authorize and consent,
-token and refresh, revocation, `McpBearerFilter`, the connected-applications screen, the
-dev-mode refusal, the sweeper. Its deliverable is small and completely convincing:
-`claude mcp add` opens a browser, the member authorises, and `tools/list` returns an empty
-list over an authenticated session. Everything hard about auth is proven before a single
-tool exists.
+**Plan one — the door.** The RFC 8707 spike, the library's filter chain composed with the
+existing one, the migration, the protected-resource document, the consent screen and its
+login round trip, `McpBearerFilter`, the connected-applications screen, the dev-mode
+refusal. Its deliverable is small and completely convincing: `claude mcp add` opens a
+browser, the member authorises, and `tools/list` returns an empty list over an
+authenticated session. Everything hard about auth is proven before a single tool exists.
 
 **Plan two — the tools.** The starter spike, the six tools, `PlanService`, the
 document-to-ticket linkage, the provenance rendering in the activity feed.
@@ -506,17 +555,24 @@ document-to-ticket linkage, the provenance rendering in the activity feed.
 ## Risks, stated plainly
 
 **An authorisation server is security-critical code written once and trusted for years.**
-Every MUST in "The rules that are not optional" is a way to ship something that looks like
-it works. This is the part to review adversarially, and a `/security-review` pass on plan
-one is not optional.
+Handing it to the library removes most of that exposure and moves the rest: what remains
+ours is the filter chain composition, the audience check, and the bearer-to-`User`
+translation — three small things, each of which can be wrong in a way that opens
+everything. A `/security-review` pass on plan one is not optional, and its focus is those
+three rather than the protocol.
 
 **The blast radius is Notion.** An agent's write publishes to the four mirrored databases
 that everyone who does not open Kanso reads. `dry_run` by default, the 50-ticket bound and
 the trash are the three things between a bad plan and a mess in somebody else's tool —
 defence in depth against an *implausible* plan. None of them stops a plausible bad one.
 
-**`/oauth/register` is an unauthenticated endpoint that creates rows.** Rate-limited, and
+**`/connect/register` is an unauthenticated endpoint that creates rows.** Rate-limited, and
 worth watching once deployed.
+
+**The library is a dependency with opinions.** Its schema is copied rather than designed,
+its endpoint paths are kept rather than chosen, and a major version will eventually ask for
+work that a hand-written server would not have. That is the price, and it is the right one
+here — but it is a price, not a free lunch.
 
 **Tool descriptions are load-bearing prose.** Six well-described tools beat forty, but only
 if the descriptions are written as carefully as the code. They will need revision after the
