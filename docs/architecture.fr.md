@@ -165,20 +165,37 @@ CREATE TABLE notion_import_origin (
   imported_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (entity_type, entity_id)
 );
+
+CREATE INDEX notion_import_origin_source_idx ON notion_import_origin (data_source_id);
 ```
 
 `notion_page_id` est la clé primaire parce qu'une page Notion devient au plus une ligne
 Kanso : la contrainte *est* la règle « importé une seule fois », imposée par Postgres plutôt
 que par le fait de penser à vérifier — c'est ce qui rend l'import sûr à presser deux fois.
 `entity_type` est le même vocabulaire fermé que celui du fil, tenu fermé ici par un `CHECK`.
-`data_source_id` est ce qui permet à un import ultérieur de dire « cette base a déjà été
-ramenée, 396 de ses 400 pages sont là ».
 
-Deux usages, et deux seulement : résoudre une relation vers une ligne importée lors d'une
-session **antérieure**, et reconnaître une page pour qu'un second import la laisse
-tranquille. Cela ne devient jamais un chemin entrant — relire Notion dans une ligne
-existante est ce que « Notion est en lecture seule dans les faits » refuse, et cela
-écraserait tout ce qui a été fait dans Kanso depuis.
+Trois choses lisent cette table, et trois seulement :
+
+1. **Résoudre une relation** vers une ligne importée lors d'une session **antérieure**, pour
+   qu'un lien dont l'autre bout est arrivé le mois dernier reste silencieux au lieu de
+   devenir une question.
+2. **Reconnaître une page**, pour qu'un second import la laisse tranquille.
+3. **Retrouver le projet conteneur d'une base de tâches** — celui que `TicketImport` nomme
+   d'après la base, pour les tickets dont la relation n'a rien répondu. Cette ligne est
+   clefée par l'id de *data source* de la base là où toutes les autres le sont par un id de
+   page, et c'est le seul endroit où cette table est écrite deux fois : un conteneur que
+   quelqu'un a supprimé depuis doit être remplacé par le nouveau, sinon la fois suivante on
+   retrouverait l'id mort et on créerait un troisième conteneur.
+
+`data_source_id` est écrit sur chaque ligne et, aujourd'hui, **lu par rien**. C'est ce dont un
+import ultérieur aurait besoin pour dire « cette base a déjà été ramenée, 396 de ses 400
+pages sont là », et `notion_import_origin_source_idx` est l'index que cette requête
+utiliserait ; aucun écran ne la demande encore, et `follow-ups.md` le dit plutôt que de
+laisser la colonne passer pour porteuse.
+
+Aucun des trois n'est un chemin entrant. Relire Notion dans une ligne existante est ce que
+« Notion est en lecture seule dans les faits » refuse, et cela écraserait tout ce qui a été
+fait dans Kanso depuis.
 
 Il n'y a pas de clé étrangère, délibérément : la référence est polymorphe, et l'alternative
 serait quatre colonnes nullables et un `CHECK` disant qu'une seule est remplie. Le prix est

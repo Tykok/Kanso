@@ -834,6 +834,15 @@ as one — but it reads like a headcount and is not one.
 not counted.** Only the dependency pass counts its own drops, so the outcome can report zero
 dropped relations for an import where a link genuinely went nowhere.
 
+**`notion_import_origin.data_source_id` is written on every row and read by nothing.** It is
+the column that would let a later run report "this base was already brought over, 396 of its
+400 pages are here", and `notion_import_origin_source_idx` is the index that query would
+use — but no screen asks for it, and `ImportOriginRepository.countBySource` was removed as
+dead code during the branch on the understanding that whichever task needed it would bring it
+back with a test. None did. Nothing is broken; what is misleading is that the spec describes
+the report as though it exists, so `architecture.md` now says plainly that the column is
+recorded and unread.
+
 ## Test shape, not test count
 
 **The browser pass walks the five screens once, along the path a reader takes.** What it
@@ -910,3 +919,19 @@ verified by reading `NoopNotionClient.enabled = false`.
   comment explains `useQueries`, so it reads slightly out of place.
 - `notion-people-section.tsx` invalidates `keys.people` on a Notion-link save with no stated
   reason: comment it or drop it.
+- Three tests in `NotionImportTest` repeat the same four-line `perform(admin, team.id,
+  listOf(ImportPlanEntry(engineering.dataSourceId, ImportTarget.TICKETS, engineeringMapping)))`
+  verbatim. They are the cases Task 8 moved back onto `perform` from the writer, and a
+  one-line private helper would say it once without reintroducing the shortcut that made
+  them worth moving.
+- `docker-compose.yml`'s `api` service carries `extra_hosts: host.docker.internal:host-gateway`,
+  and that line exists for the e2e suite alone: it is what lets a `NOTION_BASE_URL` naming the
+  host reach the machine running Playwright on Linux, where Docker Desktop's own alias does
+  not exist. On Docker Desktop it is redundant, and in production it is inert — nothing reads
+  that hostname unless `NOTION_BASE_URL` names it. So it is one line in a shipped file that
+  only tests need, which is a small untidiness rather than a risk. The clean fix is a
+  `docker-compose.e2e.yml` override holding it and the two Notion variables together; it was
+  not done that way because the override would then have to be threaded through every
+  documented command — including the three in `e2e/README.md` that predate the import — and
+  one line that is inert unless `NOTION_BASE_URL` names that host did not seem to earn a
+  second compose file.

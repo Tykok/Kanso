@@ -94,8 +94,11 @@ KANSO_AUTH_MODE=dev NOTION_TOKEN=e2e-stub-token \
   NOTION_BASE_URL=http://host.docker.internal:8099/v1 \
   docker compose up -d --build --wait
 
-pnpm exec playwright test e2e/import.spec.ts
+KANSO_NOTION_STUB=1 pnpm exec playwright test e2e/import.spec.ts
 ```
+
+Two variables on the stack, one on the runner, and they are not interchangeable: the first
+two are read when the container boots, and `KANSO_NOTION_STUB` is read by Playwright.
 
 `host.docker.internal` is the machine running the suite, seen from inside the container;
 `docker-compose.yml` maps it with `extra_hosts` so this holds on Linux as well as on Docker
@@ -103,13 +106,19 @@ Desktop. The port is fixed because `NOTION_BASE_URL` is read when the container 
 the server starts when the spec does — override both together with
 `KANSO_NOTION_STUB_PORT`.
 
-Against a stack without those two variables the scenario **skips**, with the command above
-in the skip's message, rather than failing on an empty workspace. So a default
-`pnpm test:e2e` stays green and says plainly that one scenario did not run. Nothing else in
-the suite minds a configured token: the mirror has no databases to push to, so the outbound
-worker fails its jobs against `NotBootstrapped` and reaches no network at all — which the
-import spec also asserts, by recording every write its workspace was asked for and expecting
-none.
+Without `KANSO_NOTION_STUB=1` the scenario **skips**, with the command above in the skip's
+message, so a default `pnpm test:e2e` stays green and says plainly that one scenario did not
+run. That flag is the *whole* decision, on purpose. The tempting guard — ask the API whether
+the three bases are there and skip if they are not — makes the precondition the feature under
+test: break discovery and the scenario would skip on a correctly configured stack, and a
+green suite with one skip looks exactly like "nobody set a workspace up". With the flag set,
+the source list is an `expect` at the top of the test and an unreachable or incomplete
+workspace fails loudly, naming the command it needs.
+
+Nothing else in the suite minds a configured token: the mirror has no databases to push to,
+so the outbound worker fails its jobs against `NotBootstrapped` and reaches no network at
+all — which the import spec also asserts, by recording every write its workspace was asked
+for and expecting none.
 
 It is re-runnable against a long-lived database: a page is imported exactly once —
 `notion_import_origin` has the Notion page id as its primary key — so every id and title

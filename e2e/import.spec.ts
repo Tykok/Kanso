@@ -22,9 +22,18 @@ import { STUB_BASE_URL, startNotionWorkspace, type NotionWorkspaceStub } from ".
  * a fake in the production source set to make an e2e possible, which is the one thing this
  * was not allowed to cost.
  *
- * It needs a stack told where that workspace is, which the default one is not, so this
- * scenario skips rather than fails when the environment does not carry it — the command is
- * in the skip's own message and in `e2e/README.md`.
+ * It needs a stack told where that workspace is, which the default one is not. So the
+ * runner opts in explicitly, with `KANSO_NOTION_STUB=1`, and that variable is the **only**
+ * thing that decides whether this scenario runs.
+ *
+ * That distinction matters more than it looks. The obvious guard — ask
+ * `GET /api/notion/import/sources` whether the three bases are there, and skip if they are
+ * not — makes the precondition *the feature under test*: `NotionDiscovery` over
+ * `HttpNotionClient.searchDatabases`, filter fallback and all. Break discovery and the
+ * scenario would skip on a correctly configured stack, leaving a green suite and one skip
+ * indistinguishable from "nobody configured a workspace". A net that disarms itself when the
+ * thing regresses is not a net. So configuration decides run-versus-skip, and the source
+ * list is an `expect` inside the test that fails loudly.
  *
  * ## What it asserts, beyond clicking through
  *
@@ -46,30 +55,26 @@ import { STUB_BASE_URL, startNotionWorkspace, type NotionWorkspaceStub } from ".
  * write it was asked for, and the assertion is that it was asked for none.
  */
 
+/**
+ * The runner's own opt-in, and the whole of the run-versus-skip decision.
+ *
+ * A configuration flag rather than a probe, for the reason the file comment gives: anything
+ * derived from the API's answers would let a broken import silence its own scenario. Read
+ * once, here, so there is one definition of "this stack was set up for the import".
+ */
+const OPTED_IN = process.env.KANSO_NOTION_STUB === "1";
+
+/** The command that turns this scenario on, quoted wherever it is refused or fails. */
+const HOW = `Bring the stack up with NOTION_TOKEN=e2e-stub-token NOTION_BASE_URL=${STUB_BASE_URL}, then run the suite with KANSO_NOTION_STUB=1 — see e2e/README.md.`;
+
 let stub: NotionWorkspaceStub;
-/** Whether the API under test is actually pointed at [stub]; see the skip below. */
-let reachable = false;
 
 test.beforeAll(async () => {
+  // Nothing at all when the runner did not opt in — not even a listening socket. A default
+  // `pnpm test:e2e` should not bind a port for a scenario it is about to skip.
+  if (!OPTED_IN) return;
   await seedInstance();
   stub = await startNotionWorkspace();
-
-  // Asked of the API rather than of the environment: `NOTION_BASE_URL` is read when the
-  // container boots, so what the suite's own env says about it proves nothing. Three
-  // bases coming back is the only evidence that the two halves are talking.
-  const api = await apiAs(ADMIN);
-  try {
-    const response = await api.get("/api/notion/import/sources");
-    if (response.ok()) {
-      const body = (await response.json()) as { sources: { id: string }[] };
-      const ids = new Set(body.sources.map((source) => source.id));
-      reachable = [stub.workspace.teams, stub.workspace.projects, stub.workspace.tickets].every((base) =>
-        ids.has(base.dataSourceId),
-      );
-    }
-  } finally {
-    await api.dispose();
-  }
 });
 
 test.afterAll(async () => {
@@ -77,11 +82,7 @@ test.afterAll(async () => {
 });
 
 test("scenario 23 — the five screens of the Notion import, end to end", async ({ browser }) => {
-  test.skip(
-    !reachable,
-    `The API is not pointed at this suite's own Notion workspace. Bring the stack up with ` +
-      `NOTION_TOKEN=e2e-stub-token NOTION_BASE_URL=${STUB_BASE_URL} — see e2e/README.md.`,
-  );
+  test.skip(!OPTED_IN, `KANSO_NOTION_STUB is not set. ${HOW}`);
 
   const { teams, projects, tickets, person, teamTitle, projectTitle } = stub.workspace;
 
@@ -92,6 +93,32 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
   const api = await apiAs(ADMIN);
   const me = (await (await api.get("/api/me")).json()) as { user: { id: string; displayName: string } };
   const destination = await seedTeam(api, { name: unique("Destination"), key: uniqueKey() });
+
+  /*
+   * The two halves are talking — asserted, never used to decide whether to run.
+   *
+   * This is the first thing the dialog will ask for, and asking it here rather than through
+   * the browser is what makes a wiring failure read as "the workspace search answered
+   * without these three bases" instead of as a locator timing out on step 1. It is also the
+   * assertion that goes red if discovery, the `data_source` → `database` filter fallback, or
+   * the base-URL wiring breaks — which is why it is an `expect` and not the skip condition:
+   * see the file comment.
+   */
+  const discovered = await api.get("/api/notion/import/sources");
+  expect(discovered.ok(), `GET /api/notion/import/sources answered ${discovered.status()}. ${HOW}`).toBeTruthy();
+  const sources = (await discovered.json()) as {
+    available: boolean;
+    reason: string | null;
+    sources: { id: string }[];
+  };
+  expect(sources.available, `The workspace search refused: ${sources.reason ?? "no reason given"}. ${HOW}`)
+    .toBeTruthy();
+  const found = sources.sources.map((source) => source.id);
+  for (const base of [teams, projects, tickets]) {
+    expect(found, `${base.name} (${base.dataSourceId}) is not among the bases discovery found. ${HOW}`)
+      .toContain(base.dataSourceId);
+  }
+
   await api.dispose();
 
   const page = await openAs(browser, ADMIN);

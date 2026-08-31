@@ -158,18 +158,33 @@ CREATE TABLE notion_import_origin (
   imported_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (entity_type, entity_id)
 );
+
+CREATE INDEX notion_import_origin_source_idx ON notion_import_origin (data_source_id);
 ```
 
 `notion_page_id` is the primary key because one Notion page becomes at most one Kanso row:
 the constraint *is* the "import once" rule, enforced by Postgres rather than by remembering
 to check, which is what makes the import safe to press twice. `entity_type` is the same
-closed vocabulary the wire uses, held closed here by a `CHECK`. `data_source_id` is what
-lets a later run say "this base was already brought over, 396 of its 400 pages are here".
+closed vocabulary the wire uses, held closed here by a `CHECK`.
 
-Two uses, and only two: resolving a relation onto a row imported in an **earlier** session,
-and recognising a page so a second import leaves it alone. It never becomes an inbound
-path — re-reading Notion into an existing row is what "Notion is read-only in practice"
-refuses, and would overwrite whatever has been done in Kanso since.
+Three things read this table, and only three:
+
+1. **Resolving a relation** onto a row imported in an **earlier** session, so a link whose
+   other end came over last month is silent rather than a question.
+2. **Recognising a page**, so a second import leaves it alone.
+3. **Finding a tickets base's container project** — the one `TicketImport` names after the
+   base for tickets whose own relation answered nothing. That row is keyed by the base's
+   *data source* id where every other row is keyed by a page id, which is the one place this
+   table is written twice: a container somebody has since deleted has to be replaced by the
+   new one, or the run after would find the dead id and make a third.
+
+`data_source_id` is recorded on every row and, today, **read by nothing**. It is what a later
+run would need to report "this base was already brought over, 396 of its 400 pages are here",
+and `notion_import_origin_source_idx` is the index that query would use; no screen asks for
+it yet, and `follow-ups.md` says so rather than leaving the column looking load-bearing.
+
+None of the three is an inbound path. Re-reading Notion into an existing row is what "Notion
+is read-only in practice" refuses, and would overwrite whatever has been done in Kanso since.
 
 There is no foreign key, deliberately: the reference is polymorphic, and the alternative is
 four nullable columns and a `CHECK` that exactly one is set. The cost is that deleting an
