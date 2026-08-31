@@ -83,16 +83,23 @@ class ImportPeopleTest : ImportTestBase() {
 	 * `people` names that `users` no longer holds, because the account was deleted between
 	 * the people-matching step and this run. A workspace of four hundred pages is not made
 	 * safe by letting the one page naming a ghost id take the other three hundred ninety-
-	 * nine down with it — the page is still imported, just unassigned.
+	 * nine down with it — the page is still imported, with the ghost dropped and the real
+	 * assignee kept, which is also what shows the correspondence for the one that survives
+	 * still outlives the import even though the same run dropped somebody else on the very
+	 * same page.
 	 */
 	@Test
 	fun `a mapped person whose account no longer exists is dropped, counted, and does not fail the import`() {
 		val ghost = UUID.randomUUID()
-		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-2" to "Gone")))))
+		val rey = users.createLocalUser("rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
+		val tasks = FakeDatabase(
+			"Tasks",
+			listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-1" to "M. Rey", "u-2" to "Gone")))),
+		)
 
 		val outcome = importerFor(tasks).perform(
 			admin, team.id,
-			people = mapOf("u-2" to ghost),
+			people = mapOf("u-1" to rey.id, "u-2" to ghost),
 			plan = listOf(
 				ImportPlanEntry(
 					tasks.dataSourceId, ImportTarget.TICKETS,
@@ -104,17 +111,30 @@ class ImportPeopleTest : ImportTestBase() {
 		assertEquals(1, outcome.tickets, "the page itself is still imported")
 		assertEquals(1, outcome.droppedAssignees)
 		val ticket = ticketRows.search(includeArchived = false, limit = 50).single()
-		assertTrue(ticketRows.assigneeIds(ticket.id).isEmpty())
+		assertEquals(listOf(rey.id), ticketRows.assigneeIds(ticket.id), "the ghost is dropped, the real assignee is kept")
+		assertEquals(
+			"u-1", users.findById(rey.id)!!.notionPersonId,
+			"the mapping still outlives the import, even alongside a drop on the same page",
+		)
 	}
 
 	/**
 	 * `LEAD` can name several people the way `ASSIGNEES` can, but a project has one lead —
-	 * the first *resolved* candidate wins, not the first one Notion happened to list, and
-	 * [NotionImportService.peopleSeen] answers for the whole column before either name has
-	 * been matched to anything.
+	 * the first *resolved and still-existing* candidate wins, not the first one Notion
+	 * happened to list, and [NotionImportService.peopleSeen] answers for the whole column
+	 * before either name has been matched to anything.
+	 *
+	 * `u-9` is mapped to a ghost id on purpose, not left unmapped: `firstNotNullOfOrNull`
+	 * over `people[id]` alone — the shape this resolved to before `LEAD` was made to go
+	 * through the same existence filter as `ASSIGNEES` — would treat a ghost id as a
+	 * perfectly good non-null answer and hand it straight to `ProjectService.create`,
+	 * which would raise and roll back the whole base. Only the existence check standing
+	 * between resolution and `leadUserId` is what makes this page fall through to `u-1`
+	 * instead.
 	 */
 	@Test
 	fun `LEAD takes the first resolved person, and peopleSeen lists everyone the column names`() {
+		val ghost = UUID.randomUUID()
 		val rey = users.createLocalUser("rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
 		val projects = FakeDatabase(
 			"Projects",
@@ -134,9 +154,12 @@ class ImportPeopleTest : ImportTestBase() {
 			"peopleSeen reads LEAD too, both names, before either has been matched to anything",
 		)
 
-		importer.perform(admin, team.id, people = mapOf("u-1" to rey.id), plan = plan)
+		importer.perform(admin, team.id, people = mapOf("u-9" to ghost, "u-1" to rey.id), plan = plan)
 
 		val created = projectRows.search(teamIds = null, includeArchived = true).single { it.name == "Roadmap" }
-		assertEquals(rey.id, created.leadUserId, "u-9 is listed first but nobody mapped it; u-1 is the first that resolves")
+		assertEquals(
+			rey.id, created.leadUserId,
+			"u-9 is listed first and is mapped, but to an account that no longer exists; u-1 is the first that resolves and still exists",
+		)
 	}
 }

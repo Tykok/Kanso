@@ -2,6 +2,7 @@ package dev.kanso.sync.importer
 
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
+import dev.kanso.repo.UserRepository
 import java.util.UUID
 
 /** A field of a Kanso row that a Notion column can fill. */
@@ -55,3 +56,24 @@ data class Fallback(
 	val parentTeamId: UUID? = null,
 	val projectId: UUID? = null,
 )
+
+/**
+ * Every id `people` could name across one base's column for [field], checked against
+ * `users` once for the whole base rather than once per page — an account either exists or
+ * it doesn't, independent of which page or team the row asking about it belongs to, so
+ * there is nothing finer to key a cache by.
+ *
+ * Shared by `TicketImport` (`ASSIGNEES`) and `ProjectImport` (`LEAD`): same shape, same
+ * field-shaped difference, so it lives with the field rather than being written twice.
+ */
+internal fun existingAccounts(
+	users: UserRepository,
+	base: PlannedBase,
+	field: ImportField,
+	people: Map<String, UUID?>,
+): Set<UUID> {
+	val candidates = base.adoptable.flatMap { page ->
+		base.reader.people(page, field).mapNotNull { people[it.id] }
+	}.distinct()
+	return users.findAllById(candidates).mapTo(mutableSetOf()) { it.id }
+}

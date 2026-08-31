@@ -53,10 +53,10 @@ class TicketImport(
 		var containers = 0
 		var droppedAssignees = 0
 		val teamOfProject = mutableMapOf<UUID, UUID?>()
-		// One query for the whole base, not one per ticket: existing accounts do not
-		// depend on which team a ticket lands in, so unlike [teamOf] there is nothing to
-		// key a per-ticket cache by — read the whole base's candidates once instead.
-		val existingAccounts = existingAccounts(base, people)
+		// One query for the whole base, not one per ticket: unlike [teamOf], existing
+		// accounts do not depend on which team a ticket lands in, so there is nothing to
+		// key a per-ticket cache by — see [existingAccounts] for the shared lookup itself.
+		val existingAccounts = existingAccounts(users, base, ImportField.ASSIGNEES, people)
 
 		for (page in base.adoptable) {
 			val projectId = links.projectOfTicket[page.id]?.let(rows::project)
@@ -121,24 +121,6 @@ class TicketImport(
 	}
 
 	/**
-	 * Every id `people` could name across this base's `ASSIGNEES` column, checked against
-	 * `users` once for the whole base.
-	 *
-	 * Kanso itself does not require an assignee to be a member of the ticket's team —
-	 * `TicketService.create` calls `requireUsers`, which raises on an id it cannot find
-	 * and checks nothing else, and `setAssignees` is no stricter. An import must not be
-	 * stricter than the app it imports into, so the only id [resolveAssignees] ever has
-	 * to drop is one `users` no longer holds at all: an account deleted between the
-	 * people-matching step and this run.
-	 */
-	private fun existingAccounts(base: PlannedBase, people: Map<String, UUID?>): Set<UUID> {
-		val candidates = base.adoptable.flatMap { page ->
-			base.reader.people(page, ImportField.ASSIGNEES).mapNotNull { people[it.id] }
-		}.distinct()
-		return users.findAllById(candidates).mapTo(mutableSetOf()) { it.id }
-	}
-
-	/**
 	 * The mapped `ASSIGNEES` column's people, resolved through the request's own
 	 * correspondence.
 	 *
@@ -148,6 +130,11 @@ class TicketImport(
 	 * id [existingAccounts] did not find: the one case that would otherwise raise out of
 	 * `TicketService.create` and roll back the other three hundred ninety-nine tickets in
 	 * the same base over one stale mapping.
+	 *
+	 * Kanso itself does not require an assignee to be a member of the ticket's team —
+	 * `TicketService.create` calls `requireUsers`, which raises on an id it cannot find
+	 * and checks nothing else, and `setAssignees` is no stricter. An import must not be
+	 * stricter than the app it imports into, so existence is the only thing checked here.
 	 */
 	private fun resolveAssignees(
 		base: PlannedBase,

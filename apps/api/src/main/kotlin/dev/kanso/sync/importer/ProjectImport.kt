@@ -8,6 +8,7 @@ import dev.kanso.repo.OriginKind
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.ProjectService
 import dev.kanso.sync.notion.NotionPage
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -27,6 +28,7 @@ class ProjectImport(
 	private val users: UserRepository,
 	private val origins: ImportOriginRepository,
 ) {
+	private val log = LoggerFactory.getLogger(javaClass)
 
 	fun write(
 		actor: User,
@@ -37,11 +39,11 @@ class ProjectImport(
 		people: Map<String, UUID?>,
 	): Int {
 		var created = 0
-		// One query for the whole base, not one per project: see `TicketImport.existingAccounts`
-		// for why this checks existence and nothing else — `ProjectService.create` refuses a
+		// One query for the whole base, not one per project — see [existingAccounts] for why
+		// this checks existence and nothing else: `ProjectService.create` refuses a
 		// `leadUserId` `users` cannot find, but Kanso itself has no team-membership rule for a
 		// lead to be held to either.
-		val existingAccounts = existingAccounts(base, people)
+		val existingAccounts = existingAccounts(users, base, ImportField.LEAD, people)
 		for (page in base.adoptable) {
 			// The team its own relation named, else the base's own answer, else the
 			// request's — one of which `NotionImportService.perform` guarantees is present
@@ -66,13 +68,6 @@ class ProjectImport(
 		return created
 	}
 
-	private fun existingAccounts(base: PlannedBase, people: Map<String, UUID?>): Set<UUID> {
-		val candidates = base.adoptable.flatMap { page ->
-			base.reader.people(page, ImportField.LEAD).mapNotNull { people[it.id] }
-		}.distinct()
-		return users.findAllById(candidates).mapTo(mutableSetOf()) { it.id }
-	}
-
 	/**
 	 * A Notion `people` column names workspace members, and matching one to a Kanso
 	 * account is what `people` is: the request's own answer to that match, one Notion id
@@ -82,13 +77,23 @@ class ProjectImport(
 	 * one listed: skipping past a name nobody matched, or one matched to an account since
 	 * deleted, to the next candidate is what keeps a stale mapping from silently emptying
 	 * the field instead of finding the next best answer already on the page.
+	 *
+	 * Nothing counts a dropped lead the way [TicketsWritten.droppedAssignees] counts a
+	 * dropped assignee — `ImportOutcome` has no field for it, and a `LEAD` column names at
+	 * most one winner, not four hundred, so a count would only ever say 0 or 1 per project.
+	 * It is still worth a trace: a project silently losing the lead it was mapped to is
+	 * not nothing, so it is logged the way [TicketLinks] logs a dropped relation.
 	 */
 	private fun resolveLead(
 		base: PlannedBase,
 		page: NotionPage,
 		people: Map<String, UUID?>,
 		existingAccounts: Set<UUID>,
-	): UUID? = base.reader.people(page, ImportField.LEAD)
-		.mapNotNull { people[it.id] }
-		.firstOrNull { it in existingAccounts }
+	): UUID? {
+		val resolved = base.reader.people(page, ImportField.LEAD).mapNotNull { people[it.id] }
+		resolved.filterNot { it in existingAccounts }.forEach {
+			log.info("Dropped an imported project lead on {}: account {} no longer exists", page.id, it)
+		}
+		return resolved.firstOrNull { it in existingAccounts }
+	}
 }

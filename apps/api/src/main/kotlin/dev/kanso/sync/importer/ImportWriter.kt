@@ -31,10 +31,9 @@ import java.util.UUID
  * here therefore gets its number from its team's counter, its activity row, and its place
  * in the outbox, exactly like one created by pressing `c`. The outbox part is deliberate
  * and worth being explicit about: the mirror will create *its own* page for each imported
- * ticket in `Kanso · Tickets`. It does not adopt the page the
- * ticket came from — writing to somebody's own database would make Kanso's "Kanso wins"
- * rule overwrite the workspace they just imported, and screen 24 promises nothing in
- * Notion is changed at any step.
+ * ticket in `Kanso · Tickets`. It does not adopt the page the ticket came from — writing
+ * to somebody's own database would make Kanso's "Kanso wins" rule overwrite the workspace
+ * they just imported, and screen 24 promises nothing in Notion is changed at any step.
  *
  * The [ImportOriginRepository.record] calls are not here but in the four writers, each next
  * to the insert it belongs to: the row a writer created and the page it came from are the
