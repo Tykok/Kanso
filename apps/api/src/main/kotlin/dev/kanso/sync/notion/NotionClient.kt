@@ -82,6 +82,15 @@ data class NotionPageSearch(
 	val unavailable: String? = null,
 )
 
+/**
+ * A workspace member, as [NotionPeople] needs one to match it against a Kanso account.
+ *
+ * Not every member is a person — a bot integration shows up in the same list — which
+ * is why [NotionClient.listUsers] keeps only `type == "person"` entries; a bot has no
+ * [email] and nothing in this file would ever match one to an account by name either.
+ */
+data class NotionMember(val id: String, val name: String?, val email: String?)
+
 /** 429. [retryAfter] comes from the header when Notion sends one. */
 class NotionRateLimited(val retryAfter: Duration) :
 	RuntimeException("Notion rate limit hit, retry after ${retryAfter.toSeconds()}s")
@@ -138,6 +147,19 @@ interface NotionClient {
 	 * rename of `database`, while a page has always been `page`.
 	 */
 	suspend fun searchPages(startCursor: String? = null, pageSize: Int = 100): NotionPageSearch
+
+	/**
+	 * Every member of the workspace, walked to the end rather than one page at a time
+	 * like [searchDatabases] and [searchPages]: a member list is invited people, not
+	 * database rows, so it stays small enough that the caller never needs to see a
+	 * cursor of its own.
+	 *
+	 * `GET /users` needs a capability ("read user information") that is off by
+	 * default on a Notion integration, so a 403 here is an expected answer rather
+	 * than a bug — it arrives as [NotionApiException], unswallowed, for [NotionPeople]
+	 * to turn into a sentence naming the box to tick.
+	 */
+	suspend fun listUsers(): List<NotionMember>
 
 	suspend fun createDatabase(
 		parentPageId: String,

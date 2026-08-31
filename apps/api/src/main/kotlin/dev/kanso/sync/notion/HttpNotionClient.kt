@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -120,6 +121,34 @@ class HttpNotionClient(
 			nextCursor = body.path("next_cursor").asText(null),
 			hasMore = body.path("has_more").asBoolean(false),
 		)
+	}
+
+	/**
+	 * `GET /users`, cursor-driven like the two searches above but walked to
+	 * completion here rather than left to the caller: [NotionPeople] needs the whole
+	 * roster to match against, not a page of it, and a workspace's membership is
+	 * small enough that this never costs more than a handful of requests.
+	 *
+	 * Only `type == "person"` survives — a bot integration is `type == "bot"` and
+	 * carries no email — and `person.email` is read where it is there, which is not
+	 * always: a guest can be invited without one.
+	 */
+	override suspend fun listUsers(): List<NotionMember> {
+		val members = mutableListOf<NotionMember>()
+		var cursor: String? = null
+		while (true) {
+			val query = buildString {
+				append("?page_size=100")
+				cursor?.let { append("&start_cursor=").append(URLEncoder.encode(it, Charsets.UTF_8)) }
+			}
+			val body = request("GET", "/users$query", null) ?: break
+			body.path("results")
+				.filter { it.path("type").asText("") == "person" }
+				.mapTo(members, ::member)
+			cursor = body.path("next_cursor").asText(null)
+			if (cursor == null || !body.path("has_more").asBoolean(false)) break
+		}
+		return members
 	}
 
 	override suspend fun createDatabase(
@@ -330,6 +359,12 @@ class HttpNotionClient(
 	 */
 	private fun plainTitle(title: JsonNode): String =
 		title.joinToString("") { it.path("plain_text").asText("") }.ifBlank { "Untitled" }
+
+	private fun member(body: JsonNode) = NotionMember(
+		id = body.path("id").asText(),
+		name = body.path("name").asText(null),
+		email = body.path("person").path("email").asText(null),
+	)
 
 	private fun page(body: JsonNode) = NotionPage(
 		id = body.path("id").asText(),

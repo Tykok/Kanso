@@ -56,6 +56,8 @@ class ReloadableNotionClient(
 	override suspend fun searchPages(startCursor: String?, pageSize: Int): NotionPageSearch =
 		active().searchPages(startCursor, pageSize)
 
+	override suspend fun listUsers(): List<NotionMember> = active().listUsers()
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,

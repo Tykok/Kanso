@@ -23,6 +23,7 @@ import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionDatabase
 import dev.kanso.sync.notion.NotionDataSource
+import dev.kanso.sync.notion.NotionMember
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionQueryPage
 import org.springframework.beans.factory.annotation.Autowired
@@ -123,6 +124,7 @@ class NotionInboundTicketTest : PostgresTest() {
 		override suspend fun retrievePage(pageId: String): NotionPage? = throw UnsupportedOperationException()
 		override suspend fun searchDatabases(startCursor: String?, pageSize: Int) = throw UnsupportedOperationException()
 		override suspend fun searchPages(startCursor: String?, pageSize: Int) = throw UnsupportedOperationException()
+		override suspend fun listUsers(): List<NotionMember> = throw UnsupportedOperationException()
 	}
 
 	/**

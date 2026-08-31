@@ -50,6 +50,14 @@ class NoopNotionClient : NotionClient {
 			"Connect Notion or paste an integration token first, then reload this list.",
 	)
 
+	/**
+	 * Empty, not a refusal: there is no workspace to have members in yet. Unlike
+	 * [searchDatabases] and [searchPages], [NotionMember] has nowhere to carry an
+	 * "unavailable" sentence of its own, so [NotionPeople] tells "no token" from "no
+	 * capability" by checking [enabled] before it ever calls this.
+	 */
+	override suspend fun listUsers(): List<NotionMember> = emptyList()
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,
