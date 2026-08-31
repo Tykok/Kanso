@@ -25,10 +25,13 @@ import java.util.UUID
  *
  * Everything goes through the same services the interface uses — `ProjectService`,
  * `TicketService`, `DocService`, `TeamService` — rather than the repositories underneath
- * them. A ticket created here therefore gets its number from its team's counter, its
- * activity row, and its place in the outbox, exactly like one created by pressing `c`. The
- * outbox part is deliberate and worth being explicit about: the mirror will create *its
- * own* page for each imported ticket in `Kanso · Tickets`. It does not adopt the page the
+ * them, with one exception: `TicketImport` and `ProjectImport` read `UserRepository`
+ * directly to ask whether a mapped account still exists, because neither service exposes
+ * that as anything but a private check that throws instead of answering. A ticket created
+ * here therefore gets its number from its team's counter, its activity row, and its place
+ * in the outbox, exactly like one created by pressing `c`. The outbox part is deliberate
+ * and worth being explicit about: the mirror will create *its own* page for each imported
+ * ticket in `Kanso · Tickets`. It does not adopt the page the
  * ticket came from — writing to somebody's own database would make Kanso's "Kanso wins"
  * rule overwrite the workspace they just imported, and screen 24 promises nothing in
  * Notion is changed at any step.

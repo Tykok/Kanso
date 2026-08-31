@@ -2,8 +2,8 @@ package dev.kanso.sync.importer
 
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
-import dev.kanso.domain.MemberRole
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -18,8 +18,11 @@ class ImportPeopleTest : ImportTestBase() {
 
 	@Test
 	fun `a mapped person becomes the assignee, and the link is remembered`() {
+		// No `teamService.addMember` here, on purpose: Kanso itself does not require an
+		// assignee to be a member of the ticket's team, so neither does the import — this
+		// is also the shape of the importer matching their *own* Notion person to their
+		// own account, who is very often not yet a member of every team they import into.
 		val rey = users.createLocalUser("rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
-		teamService.addMember(admin, team.id, rey.id, MemberRole.MEMBER)
 		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-1" to "M. Rey")))))
 
 		importerFor(tasks).perform(
@@ -76,21 +79,20 @@ class ImportPeopleTest : ImportTestBase() {
 	}
 
 	/**
-	 * `TicketService.create` will not put someone outside the destination team on a
-	 * ticket, and rightly — but a workspace of four hundred pages is not made safe by
-	 * letting the one page naming an outsider take the other three hundred ninety-nine
-	 * down with it. The mapping still gets remembered; only the assignment is dropped.
+	 * The one thing that can still make `TicketService.create` refuse an assignee: an id
+	 * `people` names that `users` no longer holds, because the account was deleted between
+	 * the people-matching step and this run. A workspace of four hundred pages is not made
+	 * safe by letting the one page naming a ghost id take the other three hundred ninety-
+	 * nine down with it — the page is still imported, just unassigned.
 	 */
 	@Test
-	fun `a mapped person outside the destination team is dropped, counted, and does not fail the import`() {
-		val stranger = users.createLocalUser(
-			"stranger@kanso.test", "Stranger", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER,
-		)
-		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-2" to "Stranger")))))
+	fun `a mapped person whose account no longer exists is dropped, counted, and does not fail the import`() {
+		val ghost = UUID.randomUUID()
+		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-2" to "Gone")))))
 
 		val outcome = importerFor(tasks).perform(
 			admin, team.id,
-			people = mapOf("u-2" to stranger.id),
+			people = mapOf("u-2" to ghost),
 			plan = listOf(
 				ImportPlanEntry(
 					tasks.dataSourceId, ImportTarget.TICKETS,
@@ -103,6 +105,38 @@ class ImportPeopleTest : ImportTestBase() {
 		assertEquals(1, outcome.droppedAssignees)
 		val ticket = ticketRows.search(includeArchived = false, limit = 50).single()
 		assertTrue(ticketRows.assigneeIds(ticket.id).isEmpty())
-		assertEquals("u-2", users.findById(stranger.id)!!.notionPersonId, "the mapping still outlives the import")
+	}
+
+	/**
+	 * `LEAD` can name several people the way `ASSIGNEES` can, but a project has one lead —
+	 * the first *resolved* candidate wins, not the first one Notion happened to list, and
+	 * [NotionImportService.peopleSeen] answers for the whole column before either name has
+	 * been matched to anything.
+	 */
+	@Test
+	fun `LEAD takes the first resolved person, and peopleSeen lists everyone the column names`() {
+		val rey = users.createLocalUser("rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
+		val projects = FakeDatabase(
+			"Projects",
+			listOf(fakePage("Roadmap", mapOf("Qui" to notionPeople("u-9" to "Someone", "u-1" to "M. Rey")))),
+		)
+		val plan = listOf(
+			ImportPlanEntry(
+				projects.dataSourceId, ImportTarget.PROJECTS,
+				mapping = ColumnMapping(columns = mapOf(ImportField.LEAD to "Qui")),
+			)
+		)
+		val importer = importerFor(projects)
+
+		assertEquals(
+			listOf(NotionPerson("u-9", "Someone"), NotionPerson("u-1", "M. Rey")),
+			importer.peopleSeen(plan),
+			"peopleSeen reads LEAD too, both names, before either has been matched to anything",
+		)
+
+		importer.perform(admin, team.id, people = mapOf("u-1" to rey.id), plan = plan)
+
+		val created = projectRows.search(teamIds = null, includeArchived = true).single { it.name == "Roadmap" }
+		assertEquals(rey.id, created.leadUserId, "u-9 is listed first but nobody mapped it; u-1 is the first that resolves")
 	}
 }

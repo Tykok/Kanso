@@ -171,11 +171,17 @@ data class ImportOutcome(
 	 */
 	val linkConflicts: Int = 0,
 	/**
-	 * A mapped `ASSIGNEES` person who resolved to a real account, but not one the
-	 * destination team holds — `TicketService.create` will not put them on the ticket, so
-	 * the ticket is written unassigned instead, and this is how the reader finds out. A
-	 * Notion person nobody mapped at all is not one of these: that ticket is unassigned
-	 * too, but nothing was dropped, because nothing was ever named.
+	 * A mapped `ASSIGNEES` person whose Kanso account no longer exists — deleted, say,
+	 * between the people-matching step and this run. `TicketService.create` would
+	 * otherwise raise on the id and roll back the whole base over one stale mapping, so
+	 * the ticket is written unassigned instead, and this is how the reader finds out.
+	 *
+	 * Nothing here is about team membership: Kanso does not require an assignee to
+	 * belong to the ticket's team — `TicketService.create` only calls `requireUsers`,
+	 * which checks that the id exists and nothing more — and an import must not be
+	 * stricter than the app it imports into. A Notion person nobody mapped at all is not
+	 * one of these either: that ticket is unassigned too, but nothing was dropped,
+	 * because nothing was ever named.
 	 */
 	val droppedAssignees: Int = 0,
 )

@@ -5,7 +5,9 @@ import dev.kanso.domain.User
 import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
+import dev.kanso.repo.UserRepository
 import dev.kanso.service.ProjectService
+import dev.kanso.sync.notion.NotionPage
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -22,6 +24,7 @@ import java.util.UUID
 @Service
 class ProjectImport(
 	private val projects: ProjectService,
+	private val users: UserRepository,
 	private val origins: ImportOriginRepository,
 ) {
 
@@ -34,6 +37,11 @@ class ProjectImport(
 		people: Map<String, UUID?>,
 	): Int {
 		var created = 0
+		// One query for the whole base, not one per project: see `TicketImport.existingAccounts`
+		// for why this checks existence and nothing else — `ProjectService.create` refuses a
+		// `leadUserId` `users` cannot find, but Kanso itself has no team-membership rule for a
+		// lead to be held to either.
+		val existingAccounts = existingAccounts(base, people)
 		for (page in base.adoptable) {
 			// The team its own relation named, else the base's own answer, else the
 			// request's — one of which `NotionImportService.perform` guarantees is present
@@ -47,14 +55,7 @@ class ProjectImport(
 				status = base.reader.projectStatus(page) ?: ProjectStatus.IN_PROGRESS,
 				start = base.reader.start(page),
 				end = base.reader.end(page),
-				// A Notion `people` column names workspace members, and matching one to a
-				// Kanso account is what `people` is: the request's own answer to that match,
-				// one Notion id to at most one Kanso account. `LEAD` can hold several names —
-				// Notion does not stop somebody from naming two — but a project has one lead
-				// the way a ticket has many assignees, so the first one that resolves wins.
-				// Unlike `TicketImport.resolveAssignees`, nothing here checks team
-				// membership: `ProjectService.create` asks only that the account exist.
-				leadUserId = base.reader.people(page, ImportField.LEAD).firstNotNullOfOrNull { people[it.id] },
+				leadUserId = resolveLead(base, page, people, existingAccounts),
 				teamId = teamId,
 				docIds = emptyList(),
 			).project
@@ -64,4 +65,30 @@ class ProjectImport(
 		}
 		return created
 	}
+
+	private fun existingAccounts(base: PlannedBase, people: Map<String, UUID?>): Set<UUID> {
+		val candidates = base.adoptable.flatMap { page ->
+			base.reader.people(page, ImportField.LEAD).mapNotNull { people[it.id] }
+		}.distinct()
+		return users.findAllById(candidates).mapTo(mutableSetOf()) { it.id }
+	}
+
+	/**
+	 * A Notion `people` column names workspace members, and matching one to a Kanso
+	 * account is what `people` is: the request's own answer to that match, one Notion id
+	 * to at most one Kanso account. `LEAD` can hold several names — Notion does not stop
+	 * somebody from naming two — but a project has one lead the way a ticket has many
+	 * assignees, so the first *resolved and still-existing* one wins, not just the first
+	 * one listed: skipping past a name nobody matched, or one matched to an account since
+	 * deleted, to the next candidate is what keeps a stale mapping from silently emptying
+	 * the field instead of finding the next best answer already on the page.
+	 */
+	private fun resolveLead(
+		base: PlannedBase,
+		page: NotionPage,
+		people: Map<String, UUID?>,
+		existingAccounts: Set<UUID>,
+	): UUID? = base.reader.people(page, ImportField.LEAD)
+		.mapNotNull { people[it.id] }
+		.firstOrNull { it in existingAccounts }
 }

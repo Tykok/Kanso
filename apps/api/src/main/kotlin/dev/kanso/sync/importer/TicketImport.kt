@@ -7,8 +7,8 @@ import dev.kanso.domain.User
 import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
+import dev.kanso.repo.UserRepository
 import dev.kanso.service.ProjectService
-import dev.kanso.service.TeamService
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionPage
 import org.springframework.stereotype.Service
@@ -16,8 +16,8 @@ import java.util.UUID
 
 /**
  * What one tickets base wrote: its pages, the container project it needed, if any, and the
- * assignees it could not keep — see [TicketImport.resolveAssignees] for why a mapped person
- * is dropped rather than left to fail the whole base.
+ * assignees it could not keep — see [TicketImport.resolveAssignees] for the one thing that
+ * drops one: an id `people` names that no account answers to any more.
  */
 data class TicketsWritten(val tickets: Int, val projects: Int, val droppedAssignees: Int)
 
@@ -37,7 +37,7 @@ data class TicketsWritten(val tickets: Int, val projects: Int, val droppedAssign
 class TicketImport(
 	private val tickets: TicketService,
 	private val projects: ProjectService,
-	private val teams: TeamService,
+	private val users: UserRepository,
 	private val origins: ImportOriginRepository,
 ) {
 
@@ -53,10 +53,10 @@ class TicketImport(
 		var containers = 0
 		var droppedAssignees = 0
 		val teamOfProject = mutableMapOf<UUID, UUID?>()
-		// Read once per team rather than once per ticket, for the same reason [teamOf]
-		// caches its own lookup: a base of four hundred tickets against one team is one
-		// membership query, not four hundred.
-		val membersOfTeam = mutableMapOf<UUID, Set<UUID>>()
+		// One query for the whole base, not one per ticket: existing accounts do not
+		// depend on which team a ticket lands in, so unlike [teamOf] there is nothing to
+		// key a per-ticket cache by — read the whole base's candidates once instead.
+		val existingAccounts = existingAccounts(base, people)
 
 		for (page in base.adoptable) {
 			val projectId = links.projectOfTicket[page.id]?.let(rows::project)
@@ -69,7 +69,7 @@ class TicketImport(
 			// `!!`: unlike a project, a ticket must have a team, and `perform` already
 			// refused before a page was read unless the request or this base supplies one.
 			val teamId = teamOf(projectId, teamOfProject) ?: base.fallback.teamId ?: fallbackTeam!!
-			val (assigneeIds, dropped) = resolveAssignees(base, page, teamId, people, membersOfTeam)
+			val (assigneeIds, dropped) = resolveAssignees(base, page, people, existingAccounts)
 			droppedAssignees += dropped
 			val ticketId = createTicket(actor, teamId, projectId, base, page, assigneeIds)
 			rows.put(OriginKind.TICKET, page.id, ticketId)
@@ -121,28 +121,42 @@ class TicketImport(
 	}
 
 	/**
+	 * Every id `people` could name across this base's `ASSIGNEES` column, checked against
+	 * `users` once for the whole base.
+	 *
+	 * Kanso itself does not require an assignee to be a member of the ticket's team —
+	 * `TicketService.create` calls `requireUsers`, which raises on an id it cannot find
+	 * and checks nothing else, and `setAssignees` is no stricter. An import must not be
+	 * stricter than the app it imports into, so the only id [resolveAssignees] ever has
+	 * to drop is one `users` no longer holds at all: an account deleted between the
+	 * people-matching step and this run.
+	 */
+	private fun existingAccounts(base: PlannedBase, people: Map<String, UUID?>): Set<UUID> {
+		val candidates = base.adoptable.flatMap { page ->
+			base.reader.people(page, ImportField.ASSIGNEES).mapNotNull { people[it.id] }
+		}.distinct()
+		return users.findAllById(candidates).mapTo(mutableSetOf()) { it.id }
+	}
+
+	/**
 	 * The mapped `ASSIGNEES` column's people, resolved through the request's own
-	 * correspondence and narrowed to who can actually hold this ticket.
+	 * correspondence.
 	 *
 	 * A Notion person nobody mapped resolves to nothing through `people[id]` and is
-	 * dropped silently by `mapNotNull` — that is an unmapped person, not a failed
-	 * assignment, and it is not what [TicketsWritten.droppedAssignees] counts. A person
-	 * who *is* mapped but is not a member of this ticket's team is different: `people`
-	 * names a real account, `TicketService.create` will not put it on a ticket outside
-	 * its team, and leaving the ticket unassigned instead of failing the whole base is
-	 * the reason this is checked here rather than left to that refusal — one page must
-	 * not roll back the other three hundred ninety-nine.
+	 * dropped silently by `mapNotNull` — an unmapped person, not a failed assignment, and
+	 * not what [TicketsWritten.droppedAssignees] counts. What *is* counted is a resolved
+	 * id [existingAccounts] did not find: the one case that would otherwise raise out of
+	 * `TicketService.create` and roll back the other three hundred ninety-nine tickets in
+	 * the same base over one stale mapping.
 	 */
 	private fun resolveAssignees(
 		base: PlannedBase,
 		page: NotionPage,
-		teamId: UUID,
 		people: Map<String, UUID?>,
-		membersOfTeam: MutableMap<UUID, Set<UUID>>,
+		existingAccounts: Set<UUID>,
 	): Pair<List<UUID>, Int> {
 		val resolved = base.reader.people(page, ImportField.ASSIGNEES).mapNotNull { people[it.id] }.distinct()
-		val members = membersOfTeam.getOrPut(teamId) { teams.members(teamId).map { it.user.id }.toSet() }
-		val (kept, dropped) = resolved.partition { it in members }
+		val (kept, dropped) = resolved.partition { it in existingAccounts }
 		return kept to dropped.size
 	}
 

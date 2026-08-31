@@ -57,7 +57,7 @@ data class ImportPreviewRequest(val plan: List<ImportPlanRow> = emptyList())
  * answered and valued by the Kanso account the reader chose for it, or `null` for one they
  * chose to leave unmatched. `NotionImportService.perform` writes it through
  * `NotionPeople.link` before anything else, so the correspondence holds even for a page
- * whose assignee is not a member of [teamId].
+ * whose assignee is dropped for naming an account that no longer exists.
  */
 data class ImportRequest(
 	val teamId: UUID?,
