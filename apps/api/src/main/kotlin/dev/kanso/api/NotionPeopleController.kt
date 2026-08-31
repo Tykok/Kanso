@@ -24,11 +24,9 @@ class NotionPeopleController(private val people: NotionPeople, private val curre
 
 	@GetMapping fun view(): PeopleView = people.view()
 
-	/** Configuring the instance's identities is a configurator's job, like the connection itself. */
 	@PutMapping
 	fun link(@RequestBody assignments: Map<String, UUID?>): PeopleView {
-		people.requireConfigurator(currentUser.require())
-		people.link(assignments)
+		people.link(currentUser.require(), assignments)
 		return people.view()
 	}
 }

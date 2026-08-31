@@ -63,25 +63,42 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	}
 
 	/**
-	 * Writes `users.notion_person_id`, one Notion id at a time. A `null` value
-	 * clears; a non-null one first clears whoever else currently holds that Notion
-	 * id — the column carries no unique constraint, but two accounts claiming one
-	 * Notion person is exactly how the mirror ends up writing the wrong `people`
-	 * value, so this keeps the correspondence one-to-one even though the schema
-	 * does not enforce it.
+	 * Writes `users.notion_person_id` for a whole batch in one call — a screen
+	 * resends its whole table, not one row, and [Map] already makes that first
+	 * class. The guard lives here, not beside the caller: a private check the
+	 * controller remembers to call is a check a second caller can forget, so
+	 * nothing reaches [UserRepository.setNotionPersonId] without going through
+	 * [requireConfigurator] first, on the same stack, in the same call.
+	 *
+	 * Two passes over one read, not one pass that re-reads as it goes: clearing
+	 * one entry and then re-querying "who holds what" for the next would see the
+	 * batch's own prior write and could undo it — a swap, or "move this account's
+	 * link and clear that one" in the same body, is exactly the shape that loses a
+	 * link this way. So every account this batch must clear is worked out first,
+	 * against the table as it was before any of this call's writes, and only then
+	 * are the new links applied — a clear can never run after, and so never
+	 * undo, a set made earlier in the same call.
+	 *
+	 * A `null` value clears; a non-null one first clears whoever else currently
+	 * holds that Notion id — the column carries no unique constraint, but two
+	 * accounts claiming one Notion person is exactly how the mirror ends up
+	 * writing the wrong `people` value, so this keeps the correspondence
+	 * one-to-one even though the schema does not enforce it.
 	 */
 	@Transactional
-	fun link(assignments: Map<String, UUID?>) {
-		val holders = users.findAll().filter { it.notionPersonId != null }
-		assignments.forEach { (notionId, userId) ->
-			holders.filter { it.notionPersonId == notionId && it.id != userId }
-				.forEach { users.setNotionPersonId(it.id, null) }
-			if (userId != null) users.setNotionPersonId(userId, notionId)
+	fun link(actor: User, assignments: Map<String, UUID?>) {
+		requireConfigurator(actor)
+		val accounts = users.findAll()
+		val toClear = accounts.filter { account ->
+			val notionId = account.notionPersonId
+			notionId != null && assignments.containsKey(notionId) && assignments.getValue(notionId) != account.id
 		}
+		toClear.forEach { users.setNotionPersonId(it.id, null) }
+		assignments.forEach { (notionId, userId) -> if (userId != null) users.setNotionPersonId(userId, notionId) }
 	}
 
 	/** Configuring the instance's identities is a configurator's job, like the connection itself. */
-	fun requireConfigurator(actor: User) {
+	private fun requireConfigurator(actor: User) {
 		if (!actor.instanceRole.canConfigureInstance) {
 			throw AccessDeniedException("Only the owner or an admin can match Notion people to Kanso accounts")
 		}
