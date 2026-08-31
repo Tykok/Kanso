@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NotionPeopleView } from "@/lib/api";
-import { isSuggested, preselectedAccount, seenPeopleRows } from "./import-people";
+import { buildAssignments, isSuggested, preselectedAccount, seenPeopleRows } from "./import-people";
 
 describe("preselectedAccount", () => {
   it("prefers the confirmed link over the suggestion", () => {
@@ -27,6 +27,35 @@ describe("isSuggested", () => {
 
   it("is false with no suggestion at all", () => {
     expect(isSuggested({})).toBe(false);
+  });
+});
+
+describe("buildAssignments", () => {
+  it("sends an untouched row's confirmed link, not a suggestion it also carries", () => {
+    const rows = [{ id: "n1", userId: "u1", suggestedUserId: "u2" }];
+    expect(buildAssignments(rows, {})).toEqual({ n1: "u1" });
+  });
+
+  it("never sends an untouched row's suggestion when there is no confirmed link", () => {
+    const rows = [{ id: "n2", suggestedUserId: "u2" }];
+    expect(buildAssignments(rows, {})).toEqual({});
+  });
+
+  it("sends what the reader set, confirmed link or not", () => {
+    const rows = [{ id: "n1", userId: "u1" }, { id: "n2" }];
+    expect(buildAssignments(rows, { n1: "u3", n2: "u4" })).toEqual({ n1: "u3", n2: "u4" });
+  });
+
+  it("sends null for a row the reader explicitly cleared", () => {
+    const rows = [{ id: "n1", userId: "u1" }];
+    expect(buildAssignments(rows, { n1: null })).toEqual({ n1: null });
+  });
+
+  it("omits a row with no confirmed link and no edit, rather than sending null", () => {
+    const rows = [{ id: "n1" }, { id: "n2", userId: "u1" }];
+    const result = buildAssignments(rows, {});
+    expect(Object.keys(result)).toEqual(["n2"]);
+    expect(result).toEqual({ n2: "u1" });
   });
 });
 

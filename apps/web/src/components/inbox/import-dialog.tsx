@@ -49,10 +49,11 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   const [mappings, setMappings] = useState<Record<string, BaseMapping>>({});
   const [fallbacks, setFallbacks] = useState<Record<string, Fallback>>({});
   /**
-   * The person correspondence, kept here because the request carries it and step 4 is the
-   * screen that fills it — `import-step-people.tsx`. An empty map is what the request
-   * means by "nobody has said": every mapped person's rows land unassigned rather than
-   * guessed at.
+   * The person correspondence, kept here because the request carries it. `import-step-
+   * people.tsx` computes it — `buildAssignments`, not a raw copy of what it shows — and
+   * calls `setPeople` with the result on every change; a key this map is missing is one
+   * neither a reader nor the correspondence has ever said anything about, and lands
+   * unassigned rather than guessed at.
    */
   const [people, setPeople] = useState<Record<string, string | null>>({});
 
@@ -270,7 +271,6 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           {step === 4 && (
             <StepPeople
               plan={plan}
-              people={people}
               onPeople={setPeople}
               onNext={toPreview}
               onBack={() => setStep(3)}

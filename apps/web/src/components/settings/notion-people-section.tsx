@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notionPeopleApi } from "@/lib/api";
 import { keys, usePeople } from "@/lib/queries";
 import { actionErrorMessage } from "@/lib/errors";
-import { isSuggested, preselectedAccount } from "@/components/inbox/import-people";
+import { buildAssignments, isSuggested, preselectedAccount } from "@/components/inbox/import-people";
 import { SettingsInline, SettingsNote } from "./field";
 
 const QUERY_KEY = ["notion-people"];
@@ -27,9 +27,13 @@ function selection(edits: Record<string, string | null>, id: string, fallback: s
  * server, so a member sees the same rows with no control that would refuse: the same shape
  * `ConnectionsSection` uses for its own fields.
  *
- * [edits] holds only what the reader has actually touched; a row nobody touched still
- * saves its pre-fill (`preselectedAccount`) when the button is pressed — the pre-fill is a
- * default, not a rule nobody can see, the same promise step 3's column selects make.
+ * [edits] holds only what the reader has actually touched. `<select>` still opens on
+ * `preselectedAccount` — showing the guess is the point — but [buildAssignments] is what
+ * `Save` actually sends, and it never turns an untouched suggestion into a write: a row
+ * nobody looked at resends its own already-confirmed link, or nothing at all. Accepting a
+ * guess takes an actual click, the same way step 3's overridable pre-fills are defaults
+ * and never a rule nobody can see — the difference is that here a default that nobody
+ * looked at is not sent as an answer.
  */
 export function NotionPeopleSection({ canConfigure }: { canConfigure: boolean }) {
   const queryClient = useQueryClient();
@@ -41,16 +45,12 @@ export function NotionPeopleSection({ canConfigure }: { canConfigure: boolean })
 
   const save = useMutation({
     mutationFn: () => {
-      const assignments = Object.fromEntries(
-        rows.map((match) => [
-          match.notion.id,
-          match.notion.id in edits ? edits[match.notion.id] : (preselectedAccount(match) || null),
-        ]),
-      );
-      return notionPeopleApi.link(assignments);
+      const idRows = rows.map((match) => ({ id: match.notion.id, userId: match.userId }));
+      return notionPeopleApi.link(buildAssignments(idRows, edits));
     },
     onSuccess: (next) => {
       queryClient.setQueryData(QUERY_KEY, next);
+      // `link` changes `User.notionPersonId`, which `usePeople()` callers can read.
       queryClient.invalidateQueries({ queryKey: keys.people });
       setEdits({});
     },
@@ -82,8 +82,8 @@ export function NotionPeopleSection({ canConfigure }: { canConfigure: boolean })
           {rows.length > 0 && (
             <ul className="flex flex-col gap-px overflow-hidden rounded-md border border-border">
               {rows.map((match) => {
-                const fallback = preselectedAccount(match);
-                const current = selection(edits, match.notion.id, fallback);
+                const touched = match.notion.id in edits;
+                const current = selection(edits, match.notion.id, preselectedAccount(match));
                 return (
                   <li
                     key={match.notion.id}
@@ -91,7 +91,9 @@ export function NotionPeopleSection({ canConfigure }: { canConfigure: boolean })
                   >
                     <span className="flex min-w-0 flex-1 flex-col gap-px leading-tight">
                       {match.notion.name ?? match.notion.id}
-                      {isSuggested(match) && <span className="text-11 text-faint"> suggested</span>}
+                      {isSuggested(match) && !touched && (
+                        <span className="text-11 text-faint"> suggested</span>
+                      )}
                       {match.notion.email && <SettingsNote>{match.notion.email}</SettingsNote>}
                     </span>
                     {canConfigure ? (

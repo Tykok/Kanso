@@ -33,6 +33,33 @@ export function isSuggested(row: { userId?: string; suggestedUserId?: string }):
 }
 
 /**
+ * The map to actually write — the one function both screens' saves go through, because it
+ * is the only thing standing between a suggestion and a permanent identity link.
+ *
+ * A row the reader touched (present in [edits], even if they set it back to `null`)
+ * contributes exactly what they set. A row nobody touched contributes its own already-
+ * confirmed `userId` and nothing else — never [PersonRow.suggestedUserId] — so a reader who
+ * imports, or saves, past two or three people they never looked at cannot silently confirm
+ * a guess for the rest. A row with neither an edit nor a confirmed link contributes nothing
+ * at all: omitted, not `null`, because there is nothing this reader has said about it and a
+ * `null` would claim otherwise.
+ */
+export function buildAssignments(
+  rows: { id: string; userId?: string }[],
+  edits: Record<string, string | null>,
+): Record<string, string | null> {
+  const assignments: Record<string, string | null> = {};
+  for (const row of rows) {
+    if (row.id in edits) {
+      assignments[row.id] = edits[row.id];
+    } else if (row.userId !== undefined) {
+      assignments[row.id] = row.userId;
+    }
+  }
+  return assignments;
+}
+
+/**
  * `people-seen`'s answer joined against the workspace's standing correspondence, so step 4
  * can pre-fill a suggestion it did not itself ask for. A person `people-seen` reports but
  * the correspondence has never heard of — the read is unavailable, or the page names a
