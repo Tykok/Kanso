@@ -54,7 +54,7 @@ class ImportWriter(
 	private val log = LoggerFactory.getLogger(javaClass)
 
 	@Transactional
-	fun write(actor: User, fallbackTeam: UUID?, bases: List<PlannedBase>): ImportOutcome {
+	fun write(actor: User, fallbackTeam: UUID?, people: Map<String, UUID?>, bases: List<PlannedBase>): ImportOutcome {
 		// Filtered to the origins whose entity still exists: the table deliberately carries no
 		// foreign key, so the *reader* of the seed is what has to be careful — see
 		// [ImportOriginRepository.live].
@@ -70,15 +70,17 @@ class ImportWriter(
 
 		var projectCount = 0
 		for (base in bases.filter { it.target == ImportTarget.PROJECTS }) {
-			projectCount += projects.write(actor, base, fallbackTeam, links, rows)
+			projectCount += projects.write(actor, base, fallbackTeam, links, rows, people)
 		}
 
 		var ticketCount = 0
+		var droppedAssignees = 0
 		for (base in bases.filter { it.target == ImportTarget.TICKETS }) {
-			val written = tickets.write(actor, base, fallbackTeam, links, rows)
+			val written = tickets.write(actor, base, fallbackTeam, links, rows, people)
 			ticketCount += written.tickets
 			// A container project is still a project the reader will see on the list.
 			projectCount += written.projects
+			droppedAssignees += written.droppedAssignees
 		}
 		// After every tickets base, not inside one: an arrow can cross from one base into
 		// another, and half the tickets it points at do not exist yet in the middle of the
@@ -109,9 +111,11 @@ class ImportWriter(
 
 		log.info(
 			"Imported {} team(s), {} project(s), {} ticket(s) and {} document(s) into team {}; {} dependency/ies, " +
-				"{} relation(s) dropped, {} link disagreement(s), {} page(s) skipped, {} already imported",
+				"{} relation(s) dropped, {} link disagreement(s), {} assignee(s) dropped, {} page(s) skipped, " +
+				"{} already imported",
 			teamCount, projectCount, ticketCount, docCount, fallbackTeam, dependencies.created,
-			links.droppedRelations + dependencies.dropped, links.conflicts, skipped.size, alreadyImportedCount,
+			links.droppedRelations + dependencies.dropped, links.conflicts, droppedAssignees, skipped.size,
+			alreadyImportedCount,
 		)
 
 		return ImportOutcome(
@@ -129,6 +133,7 @@ class ImportWriter(
 			skipped = skipped,
 			alreadyImported = alreadyImportedCount,
 			linkConflicts = links.conflicts,
+			droppedAssignees = droppedAssignees,
 		)
 	}
 

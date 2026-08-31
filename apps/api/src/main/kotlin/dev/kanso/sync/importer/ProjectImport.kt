@@ -31,6 +31,7 @@ class ProjectImport(
 		fallbackTeam: UUID?,
 		links: ImportLinks.Resolved,
 		rows: ImportedRows,
+		people: Map<String, UUID?>,
 	): Int {
 		var created = 0
 		for (page in base.adoptable) {
@@ -47,10 +48,13 @@ class ProjectImport(
 				start = base.reader.start(page),
 				end = base.reader.end(page),
 				// A Notion `people` column names workspace members, and matching one to a
-				// Kanso account is what `users.notion_person_id` exists for. The request has
-				// no people map yet, so a mapped `LEAD` column is read by nobody: guessing a
-				// lead from a display name is how a project ends up owned by the wrong person.
-				leadUserId = null,
+				// Kanso account is what `people` is: the request's own answer to that match,
+				// one Notion id to at most one Kanso account. `LEAD` can hold several names —
+				// Notion does not stop somebody from naming two — but a project has one lead
+				// the way a ticket has many assignees, so the first one that resolves wins.
+				// Unlike `TicketImport.resolveAssignees`, nothing here checks team
+				// membership: `ProjectService.create` asks only that the account exist.
+				leadUserId = base.reader.people(page, ImportField.LEAD).firstNotNullOfOrNull { people[it.id] },
 				teamId = teamId,
 				docIds = emptyList(),
 			).project

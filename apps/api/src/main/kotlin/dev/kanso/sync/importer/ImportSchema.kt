@@ -141,8 +141,11 @@ object ImportSchema {
 	 * rather than restated from a spec, so this cannot say something the writer does not
 	 * do. [TicketImport] applies [TicketStatus.TODO] and [TicketPriority.NONE];
 	 * [ProjectImport] applies [ProjectStatus.IN_PROGRESS] for the same field's other
-	 * vocabulary. Every other field is passed through as null, or resolved by a relation
-	 * rather than defaulted to a wire value, so it names nothing here either.
+	 * vocabulary. Every other field is passed through as null: a relation is resolved
+	 * rather than defaulted to a wire value, and [ImportField.ASSIGNEES] and
+	 * [ImportField.LEAD] have no default to report either — an unmapped column, or a
+	 * mapped one whose person nobody has matched to a Kanso account, leaves the row
+	 * unassigned, which null already says truthfully.
 	 */
 	private fun defaults(target: ImportTarget): Map<ImportField, String?> = target.fields.associateWith { field ->
 		when {

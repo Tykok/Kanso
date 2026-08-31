@@ -12,6 +12,7 @@ import dev.kanso.service.TicketAccess
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionApiException
 import dev.kanso.sync.notion.NotionPage
+import dev.kanso.sync.notion.NotionPeople
 import dev.kanso.sync.notion.NotionRateLimited
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -34,6 +35,7 @@ class NotionImportService(
 	private val originRows: ImportOriginRepository,
 	private val access: TicketAccess,
 	private val writer: ImportWriter,
+	private val notionPeople: NotionPeople,
 	private val tx: TransactionTemplate,
 ) {
 
@@ -99,6 +101,20 @@ class NotionImportService(
 	fun preview(plan: List<ImportPlanEntry>): ImportPreview = ImportPlanner.preview(read(plan))
 
 	/**
+	 * The people a plan would meet on its mapped `ASSIGNEES` and `LEAD` columns, distinct
+	 * by Notion id — the columns screen 24's people-matching step needs an answer for,
+	 * before the reader is asked to match any of them to a Kanso account.
+	 *
+	 * Through [read], the same resolution [preview] uses, and for the same reason: nothing
+	 * here is handed [NotionPeople] or anything else that writes, so a plan can be probed
+	 * for who it would meet without applying a single one of them.
+	 */
+	fun peopleSeen(plan: List<ImportPlanEntry>): List<NotionPerson> = read(plan).flatMap { base ->
+		ImportField.entries.filter { "people" in it.types && base.mapping.columns.containsKey(it) }
+			.flatMap { field -> base.adoptable.flatMap { page -> base.reader.people(page, field) } }
+	}.distinctBy { it.id }
+
+	/**
 	 * Step 3. The first thing that writes.
 	 *
 	 * [teamId] is no longer unconditional: an import of teams alone has no destination to
@@ -117,7 +133,12 @@ class NotionImportService(
 	 * team's own counter. A base that resolved a team of its own — through a relation or its
 	 * own fallback — uses that one; [teamId] is the answer for everything left over.
 	 */
-	fun perform(actor: User, teamId: UUID?, plan: List<ImportPlanEntry>): ImportOutcome {
+	fun perform(
+		actor: User,
+		teamId: UUID?,
+		plan: List<ImportPlanEntry>,
+		people: Map<String, UUID?> = emptyMap(),
+	): ImportOutcome {
 		val needsDestination = plan.any { it.target != ImportTarget.TEAMS && it.fallback.teamId == null }
 		if (needsDestination && teamId == null) {
 			throw BadRequestException(
@@ -134,7 +155,13 @@ class NotionImportService(
 		plan.flatMap { listOfNotNull(it.fallback.teamId, it.fallback.parentTeamId) }
 			.distinct()
 			.forEach { access.requireTeam(actor, it) }
-		return writer.write(actor, teamId, read(plan))
+		// Before the writer, not after: the correspondence has to outlive this import
+		// whether or not any one assignment resolves, which only holds if it is written
+		// first. Skipped when the request names nobody — an import that maps no person
+		// must not suddenly need the instance-configurator rights `NotionPeople.link`
+		// guards, when it never touched that door before this task.
+		if (people.isNotEmpty()) notionPeople.link(actor, people)
+		return writer.write(actor, teamId, people, read(plan))
 	}
 
 	/**

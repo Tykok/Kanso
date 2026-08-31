@@ -8,13 +8,18 @@ import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
 import dev.kanso.service.ProjectService
+import dev.kanso.service.TeamService
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionPage
 import org.springframework.stereotype.Service
 import java.util.UUID
 
-/** What one tickets base wrote: its pages, and the container project it needed, if any. */
-data class TicketsWritten(val tickets: Int, val projects: Int)
+/**
+ * What one tickets base wrote: its pages, the container project it needed, if any, and the
+ * assignees it could not keep — see [TicketImport.resolveAssignees] for why a mapped person
+ * is dropped rather than left to fail the whole base.
+ */
+data class TicketsWritten(val tickets: Int, val projects: Int, val droppedAssignees: Int)
 
 /**
  * A base whose pages are tickets.
@@ -32,6 +37,7 @@ data class TicketsWritten(val tickets: Int, val projects: Int)
 class TicketImport(
 	private val tickets: TicketService,
 	private val projects: ProjectService,
+	private val teams: TeamService,
 	private val origins: ImportOriginRepository,
 ) {
 
@@ -41,10 +47,16 @@ class TicketImport(
 		fallbackTeam: UUID?,
 		links: ImportLinks.Resolved,
 		rows: ImportedRows,
+		people: Map<String, UUID?>,
 	): TicketsWritten {
 		var written = 0
 		var containers = 0
+		var droppedAssignees = 0
 		val teamOfProject = mutableMapOf<UUID, UUID?>()
+		// Read once per team rather than once per ticket, for the same reason [teamOf]
+		// caches its own lookup: a base of four hundred tickets against one team is one
+		// membership query, not four hundred.
+		val membersOfTeam = mutableMapOf<UUID, Set<UUID>>()
 
 		for (page in base.adoptable) {
 			val projectId = links.projectOfTicket[page.id]?.let(rows::project)
@@ -57,12 +69,14 @@ class TicketImport(
 			// `!!`: unlike a project, a ticket must have a team, and `perform` already
 			// refused before a page was read unless the request or this base supplies one.
 			val teamId = teamOf(projectId, teamOfProject) ?: base.fallback.teamId ?: fallbackTeam!!
-			val ticketId = createTicket(actor, teamId, projectId, base, page)
+			val (assigneeIds, dropped) = resolveAssignees(base, page, teamId, people, membersOfTeam)
+			droppedAssignees += dropped
+			val ticketId = createTicket(actor, teamId, projectId, base, page, assigneeIds)
 			rows.put(OriginKind.TICKET, page.id, ticketId)
 			origins.record(ImportOrigin(page.id, OriginKind.TICKET, ticketId, base.base.dataSourceId))
 			written++
 		}
-		return TicketsWritten(written, containers)
+		return TicketsWritten(written, containers, droppedAssignees)
 	}
 
 	/**
@@ -106,12 +120,39 @@ class TicketImport(
 		return cache[projectId]
 	}
 
+	/**
+	 * The mapped `ASSIGNEES` column's people, resolved through the request's own
+	 * correspondence and narrowed to who can actually hold this ticket.
+	 *
+	 * A Notion person nobody mapped resolves to nothing through `people[id]` and is
+	 * dropped silently by `mapNotNull` — that is an unmapped person, not a failed
+	 * assignment, and it is not what [TicketsWritten.droppedAssignees] counts. A person
+	 * who *is* mapped but is not a member of this ticket's team is different: `people`
+	 * names a real account, `TicketService.create` will not put it on a ticket outside
+	 * its team, and leaving the ticket unassigned instead of failing the whole base is
+	 * the reason this is checked here rather than left to that refusal — one page must
+	 * not roll back the other three hundred ninety-nine.
+	 */
+	private fun resolveAssignees(
+		base: PlannedBase,
+		page: NotionPage,
+		teamId: UUID,
+		people: Map<String, UUID?>,
+		membersOfTeam: MutableMap<UUID, Set<UUID>>,
+	): Pair<List<UUID>, Int> {
+		val resolved = base.reader.people(page, ImportField.ASSIGNEES).mapNotNull { people[it.id] }.distinct()
+		val members = membersOfTeam.getOrPut(teamId) { teams.members(teamId).map { it.user.id }.toSet() }
+		val (kept, dropped) = resolved.partition { it in members }
+		return kept to dropped.size
+	}
+
 	private fun createTicket(
 		actor: User,
 		teamId: UUID,
 		projectId: UUID,
 		base: PlannedBase,
 		page: NotionPage,
+		assigneeIds: List<UUID>,
 	): UUID =
 		tickets.create(
 			actor = actor,
@@ -128,11 +169,7 @@ class TicketImport(
 			start = base.reader.start(page),
 			due = base.reader.due(page),
 			projectId = projectId,
-			// Notion `people` name workspace members, and matching them to Kanso accounts
-			// is the mapping `users.notion_person_id` exists for — it points the other way
-			// and only for people who have already been linked. Guessing an assignee from a
-			// display name is how work lands on the wrong person.
-			assigneeIds = emptyList(),
+			assigneeIds = assigneeIds,
 			docIds = emptyList(),
 		).ticket.id
 }

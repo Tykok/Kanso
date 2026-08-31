@@ -11,6 +11,7 @@ import dev.kanso.sync.importer.ImportSchemaView
 import dev.kanso.sync.importer.ImportSources
 import dev.kanso.sync.importer.ImportTarget
 import dev.kanso.sync.importer.NotionImportService
+import dev.kanso.sync.importer.NotionPerson
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -41,7 +42,7 @@ data class ImportPlanRow(
 data class ImportPreviewRequest(val plan: List<ImportPlanRow> = emptyList())
 
 /**
- * The import itself, and the one field the client had no way to send.
+ * The import itself, and the fields the client had no other way to send.
  *
  * [teamId] is where the ticket's team and its per-team number come from, but no longer
  * unconditionally: an import of teams alone has no destination to ask about, so it is
@@ -51,8 +52,18 @@ data class ImportPreviewRequest(val plan: List<ImportPlanRow> = emptyList())
  * whose work this is, so the mapping carries the answer and [NotionImportService] refuses
  * a team the actor may not write to — [teamId] or any row's own fallback — before anything
  * is written.
+ *
+ * [people] is screen 24's people-matching step, keyed by the Notion person id `peopleSeen`
+ * answered and valued by the Kanso account the reader chose for it, or `null` for one they
+ * chose to leave unmatched. `NotionImportService.perform` writes it through
+ * `NotionPeople.link` before anything else, so the correspondence holds even for a page
+ * whose assignee is not a member of [teamId].
  */
-data class ImportRequest(val teamId: UUID?, val plan: List<ImportPlanRow> = emptyList())
+data class ImportRequest(
+	val teamId: UUID?,
+	val plan: List<ImportPlanRow> = emptyList(),
+	val people: Map<String, UUID?> = emptyMap(),
+)
 
 @RestController
 @RequestMapping("/api/notion/import")
@@ -78,9 +89,19 @@ class NotionImportController(
 	fun preview(@RequestBody request: ImportPreviewRequest): ImportPreview =
 		imports.preview(request.plan.map(::entry))
 
+	/**
+	 * A POST, not a GET, for the same reason [preview] is: the plan is the request body,
+	 * and there is nowhere else on a `GET` to put it. Answers [NotionPerson] rather than
+	 * the raw workspace member list `NotionPeople.view` reads — this is only who the plan's
+	 * *mapped* columns would meet, before the reader is asked to match any of them.
+	 */
+	@PostMapping("/people-seen")
+	fun peopleSeen(@RequestBody request: ImportPreviewRequest): List<NotionPerson> =
+		imports.peopleSeen(request.plan.map(::entry))
+
 	@PostMapping
 	fun confirm(@RequestBody request: ImportRequest): ImportOutcome =
-		imports.perform(currentUser.require(), request.teamId, request.plan.map(::entry))
+		imports.perform(currentUser.require(), request.teamId, request.plan.map(::entry), request.people)
 
 	/**
 	 * An unknown target, field name, or mapped option is a 400 through [ApiExceptionHandler],

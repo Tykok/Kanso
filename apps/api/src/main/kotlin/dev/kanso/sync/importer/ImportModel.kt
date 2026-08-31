@@ -170,4 +170,12 @@ data class ImportOutcome(
 	 * number is how somebody finds out.
 	 */
 	val linkConflicts: Int = 0,
+	/**
+	 * A mapped `ASSIGNEES` person who resolved to a real account, but not one the
+	 * destination team holds — `TicketService.create` will not put them on the ticket, so
+	 * the ticket is written unassigned instead, and this is how the reader finds out. A
+	 * Notion person nobody mapped at all is not one of these: that ticket is unassigned
+	 * too, but nothing was dropped, because nothing was ever named.
+	 */
+	val droppedAssignees: Int = 0,
 )

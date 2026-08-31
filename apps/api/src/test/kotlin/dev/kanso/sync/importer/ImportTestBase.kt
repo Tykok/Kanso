@@ -17,6 +17,7 @@ import dev.kanso.service.ProjectService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketAccess
 import dev.kanso.sync.notion.NotionClient
+import dev.kanso.sync.notion.NotionPeople
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.support.TransactionTemplate
@@ -72,6 +73,10 @@ abstract class ImportTestBase : PostgresTest() {
 		originRows = originRows,
 		access = access,
 		writer = writer,
+		// `link` never touches the client, only `UserRepository` — the same fake workspace
+		// discovery reads from is enough, and building a second real bean would be wiring
+		// for a call this class never makes.
+		notionPeople = NotionPeople(client = client, users = users),
 		tx = tx,
 	)
 
