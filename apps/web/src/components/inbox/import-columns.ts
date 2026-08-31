@@ -1,6 +1,6 @@
 import { TICKET_PRIORITIES, TICKET_STATUSES, PROJECT_STATUSES } from "@/lib/api";
 import { PRIORITY_LABELS, PROJECT_STATUS_LABELS, STATUS_LABELS } from "@/lib/status";
-import type { ImportMapping, ImportTarget } from "./import-map";
+import type { ImportField, ImportMapping, ImportTarget } from "./import-map";
 
 /**
  * Screen 24's third step: what the columns screen derives, and nothing else.
@@ -9,10 +9,13 @@ import type { ImportMapping, ImportTarget } from "./import-map";
  * travels with the schema — the plan says so, because two implementations of "what looks
  * like the status column" are two chances for the guess to drift, and the browser needs
  * the per-field candidates anyway to offer the choice when the guess is wrong. So this
- * module reads a schema and a mapping and answers four questions the screen asks: how many
- * fields have an answer, which options are still falling on a Kanso default, which
- * unmapped base a mapped relation is pointing at, and which fallback the reader still owes
- * an answer for.
+ * module reads a schema and a mapping and answers what the screen asks: how many fields
+ * have an answer, what the mapping becomes when a column is picked, what one option will
+ * become, which options land on the field's own default, which unmapped base a mapped
+ * relation is pointing at, and which fallback the reader still owes an answer for.
+ *
+ * Every one of those is *applied* to the pre-fill rather than a second computation of it:
+ * where an option's own label means something, the server said so and this reads it back.
  */
 
 /** One Notion property, as the schema endpoint describes it. */
@@ -22,8 +25,16 @@ export type NotionImportSchema = {
   sourceId: string;
   target: ImportTarget;
   columns: NotionSchemaColumn[];
-  /** The fields this target reads, each with the columns whose type could fill it. */
-  fields: { field: string; candidates: string[] }[];
+  /**
+   * The fields this target reads, each with the columns whose type could fill it and, per
+   * candidate column, the option table Kanso would fill in if that column were chosen.
+   *
+   * `prefill` is the server's, for every candidate rather than only the suggested one:
+   * `MappedPageReader` still matches an option's label where the mapping says nothing, so a
+   * column nothing suggested — a status column called `Stage` — has to arrive with what its
+   * own labels mean, or this screen has no way to say what picking it does.
+   */
+  fields: { field: ImportField; candidates: string[]; prefill: Record<string, Record<string, string>> }[];
   /** Kanso's first guess: field → property, and per field, option → Kanso value. */
   suggestion: BaseMapping;
   /** What a field falls back to when nothing fills it. Null where there is no default. */
@@ -49,24 +60,86 @@ export function answeredFields(schema: NotionImportSchema, mapping: BaseMapping)
   return schema.fields.filter(({ field }) => (mapping.columns[field] ?? "") !== "").length;
 }
 
+/** What [field]'s mapped column's own labels mean, per the server. Empty where nothing does. */
+const prefillFor = (schema: NotionImportSchema, field: ImportField, property: string) =>
+  schema.fields.find((entry) => entry.field === field)?.prefill[property] ?? {};
+
 /**
- * The options of [field]'s mapped column that no Kanso value has been chosen for.
+ * The mapping after the reader picks [property] for [field], with that column's option
+ * table seeded from the server's pre-fill.
  *
- * Named rather than counted wherever this is drawn: a number tells the reader something
- * was guessed, a list tells them what. An option set to the empty string is one of these —
- * choosing "— default —" is a decision to let the writer's default stand, and the sentence
- * has to keep saying which words that covers.
+ * Seeded on *every* pick, not only on the schema's first arrival. Before this, choosing a
+ * column by hand deleted `values[field]` and left it deleted, so a status column called
+ * `Stage` was drawn with every option on "— default —" — and re-picking the very column the
+ * suggestion had filled in threw that table away too, since the shell refuses a second
+ * seed by design. The table belongs to the column, so it is replaced with the column
+ * rather than emptied.
  */
-export function unmappedOptions(
+export function withColumn(
   schema: NotionImportSchema,
   mapping: BaseMapping,
-  field: string,
+  field: ImportField,
+  property: string,
+): BaseMapping {
+  const columns = { ...mapping.columns };
+  const values = { ...mapping.values };
+  if (property) {
+    columns[field] = property;
+    values[field] = { ...prefillFor(schema, field, property) };
+  } else {
+    delete columns[field];
+    delete values[field];
+  }
+  return { columns, values };
+}
+
+/**
+ * The Kanso value [option] takes when the reader leaves it on "— default —", or null when
+ * there is none to name.
+ *
+ * Not always the *field's* default, which is why this exists: `MappedPageReader` matches an
+ * option's own label where the mapping says nothing, so `Done` left unmapped becomes `Done`
+ * and not `Todo`. The screen prints this rather than the field default so that the words in
+ * front of the reader are what the writer will do — including after they deliberately clear
+ * an option back to "— default —", which was the direction that misled in reverse.
+ *
+ * The label match is the server's answer, read out of [NotionImportSchema.fields], never
+ * recomputed here: one authority for "what does this label mean", on the side that also
+ * applies it.
+ */
+export function optionDefault(
+  schema: NotionImportSchema,
+  mapping: BaseMapping,
+  field: ImportField,
+  option: string,
+): string | null {
+  const property = mapping.columns[field];
+  const matched = property ? prefillFor(schema, field, property)[option] : undefined;
+  return matched ?? schema.defaults[field] ?? null;
+}
+
+/**
+ * The options of [field]'s mapped column that will take the *field's* default — nothing
+ * chose a value for them and their own label lands on none either.
+ *
+ * Named rather than counted wherever this is drawn: a number tells the reader something
+ * was guessed, a list tells them what. An option whose label the server matches is not one
+ * of these however empty its select looks: it becomes that value, and listing it here
+ * beside "become the default — Todo" is precisely the sentence that was false.
+ */
+export function defaultedOptions(
+  schema: NotionImportSchema,
+  mapping: BaseMapping,
+  field: ImportField,
 ): string[] {
   const property = mapping.columns[field];
   if (!property) return [];
   const column = schema.columns.find((candidate) => candidate.name === property);
   const chosen = mapping.values[field] ?? {};
-  return (column?.options ?? []).filter((option) => (chosen[option] ?? "") === "");
+  const prefill = prefillFor(schema, field, property);
+  return (column?.options ?? []).filter(
+    (option) => (chosen[option] ?? "") === "" && !prefill[option],
+  );
 }
 
 /**
@@ -212,7 +285,7 @@ export const FALLBACK_LABELS: Record<keyof Fallback, string> = {
  * projects share one column name and not one set of words, the same split
  * `ImportSchema.vocabulary` makes server side.
  */
-export function kansoValues(field: string, target: ImportTarget): { value: string; label: string }[] {
+export function kansoValues(field: ImportField, target: ImportTarget): { value: string; label: string }[] {
   if (field === "priority") {
     return TICKET_PRIORITIES.map((value) => ({ value, label: PRIORITY_LABELS[value] }));
   }

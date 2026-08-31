@@ -797,6 +797,28 @@ membership is small. That argument is about the data, not about the answer.
 
 ## Not a defect, but load-bearing to know
 
+**An option's meaning has two authorities, and the screen is what keeps them agreeing.**
+`MappedPageReader` applies the mapping's own answer for an option and falls back to matching
+the option's *label* against Kanso's vocabulary — which is what lets a hand-written request
+map `Etat → status` and get `In Progress` right with no option table at all, and is tested as
+such. The columns step therefore cannot print "this takes the field's default" for an option
+whose label the reader would match: `ImportSchema` sends the label match for every candidate
+column, the step seeds it whenever a column is picked, and whatever is left on "— default —"
+is drawn with the value the *reader* would actually apply to it. The alternative — deleting
+the label fallback so the mapping is the only authority — was weighed and declined: three
+tests document the fallback as a decision, and it is the half of the contract an API client
+depends on. What is load-bearing to know is that the two paths exist and that only the
+per-option pre-fill keeps the screen honest about them.
+
+**`preview.skipped` counts what the *reader* refused, and one page can still be refused by
+the writer.** `TeamService.resolveKey` gives up after ninety-nine collisions, so a teams base
+holding a hundredth name that shares its first three alphanumerics has one page `TeamImport`
+drops at the insert — reported in the outcome's `skipped`, invisible to the preview, which
+runs before any transaction and cannot know which keys will be free. The confirm button's
+number is therefore a ceiling by one page per exhausted key prefix. Same family as the
+sentence below about the project count: a preview is arithmetic over what was read, and a
+key is only settled by writing one.
+
 **Step 5 can promise one project more than the import writes.** `import-step-three.tsx`
 counts a tickets base as one project, because `TicketImport` makes a container project for
 tickets whose own relation answered nothing — and the preview cannot say whether every

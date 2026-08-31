@@ -11,6 +11,7 @@ import dev.kanso.docs.DocPageRepository
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.ProjectRepository
+import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.ProjectService
@@ -35,6 +36,7 @@ abstract class ImportTestBase : PostgresTest() {
 
 	@Autowired protected lateinit var meta: NotionMetaRepository
 	@Autowired protected lateinit var originRows: ImportOriginRepository
+	@Autowired protected lateinit var teamRows: TeamRepository
 	@Autowired protected lateinit var ticketRows: TicketRepository
 	@Autowired protected lateinit var projectRows: ProjectRepository
 	@Autowired protected lateinit var pageRows: DocPageRepository
@@ -90,9 +92,23 @@ abstract class ImportTestBase : PostgresTest() {
 	 * the call. Counted through the repositories rather than the events, because the suite
 	 * is `@Transactional` and rolls back — no test in it ever reaches `pg_notify`.
 	 */
-	protected data class RowCounts(val tickets: Int, val projects: Int, val pages: Int, val folders: Int)
+	protected data class RowCounts(
+		/**
+		 * First, because teams are the first thing an import writes — and for a while the
+		 * only kind of row this class could not see, so a team created where none should be
+		 * passed every "and wrote not one row" assertion in the package.
+		 */
+		val teams: Int,
+		val tickets: Int,
+		val projects: Int,
+		val pages: Int,
+		val folders: Int,
+	)
 
 	protected fun rowCounts() = RowCounts(
+		// Archived included, like every other count here: an import that archived a team
+		// rather than creating one is still a write, and the assertion is about writes.
+		teams = teamRows.findAll(includeArchived = true).size,
 		tickets = ticketRows.search(includeArchived = true, limit = 500).size,
 		projects = projectRows.search(teamIds = null, includeArchived = true).size,
 		pages = pageRows.search(null, null, 500).size,

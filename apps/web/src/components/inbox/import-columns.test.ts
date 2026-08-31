@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   answeredFields,
+  defaultedOptions,
   openFallbacks,
+  optionDefault,
   suggestionsFrom,
-  unmappedOptions,
+  withColumn,
   type MappedBase,
   type NotionImportSchema,
 } from "./import-columns";
@@ -13,11 +15,18 @@ const SCHEMA: NotionImportSchema = {
   target: "tickets",
   columns: [
     { name: "Etat", type: "select", options: ["En cours", "Bloqué"] },
+    // English options on a column no name suggestion matches — the shape that misled: the
+    // server matches `Done` by label, so the screen must not draw it as taking the default.
+    { name: "Stage", type: "select", options: ["Done", "Blocked"] },
     { name: "Projet", type: "relation", options: [], relationTo: "projects" },
   ],
   fields: [
-    { field: "status", candidates: ["Etat"] },
-    { field: "project", candidates: ["Projet"] },
+    {
+      field: "status",
+      candidates: ["Etat", "Stage"],
+      prefill: { Etat: {}, Stage: { Done: "done" } },
+    },
+    { field: "project", candidates: ["Projet"], prefill: {} },
   ],
   suggestion: { columns: {}, values: {} },
   defaults: { status: "todo", project: null },
@@ -30,7 +39,43 @@ describe("what the columns screen derives", () => {
 
   it("names the options still falling on the default, which is what the warning lists", () => {
     const mapping = { columns: { status: "Etat" }, values: { status: { "En cours": "in_progress" } } };
-    expect(unmappedOptions(SCHEMA, mapping, "status")).toEqual(["Bloqué"]);
+    expect(defaultedOptions(SCHEMA, mapping, "status")).toEqual(["Bloqué"]);
+  });
+
+  /**
+   * The gap the whole of finding 1 was about. `Stage` matches no name, so the server
+   * suggests nothing for it and the reader picks it by hand — but `MappedPageReader` still
+   * reads `Done` as `Done`. The screen therefore has to seed the pick from the server's
+   * pre-fill, and say the truth about whatever is left on "— default —".
+   */
+  it("seeds a hand-picked column's option table from the server's pre-fill", () => {
+    const seeded = withColumn(SCHEMA, { columns: {}, values: {} }, "status", "Stage");
+
+    expect(seeded).toEqual({ columns: { status: "Stage" }, values: { status: { Done: "done" } } });
+    // `Done` is answered by the seed; only `Blocked` really takes the field's default.
+    expect(defaultedOptions(SCHEMA, seeded, "status")).toEqual(["Blocked"]);
+  });
+
+  it("re-picking a column fills its table again rather than emptying it", () => {
+    // The shell refuses a second seed by design, so before this the reader could destroy a
+    // pre-filled table simply by choosing the very column the suggestion had chosen.
+    const seeded = { columns: { status: "Stage" }, values: { status: { Done: "done" } } };
+    expect(withColumn(SCHEMA, seeded, "status", "Stage")).toEqual(seeded);
+    expect(withColumn(SCHEMA, seeded, "status", "")).toEqual({ columns: {}, values: {} });
+    expect(withColumn(SCHEMA, seeded, "status", "Etat")).toEqual({
+      columns: { status: "Etat" },
+      values: { status: {} },
+    });
+  });
+
+  it("says what an option left on the default really becomes, which is not always the field's", () => {
+    const cleared = { columns: { status: "Stage" }, values: {} };
+
+    // Cleared back to "— default —" by hand: the server matches the label, so this is the
+    // sentence that used to promise `Todo` about an option that becomes `Done`.
+    expect(optionDefault(SCHEMA, cleared, "status", "Done")).toBe("done");
+    expect(optionDefault(SCHEMA, cleared, "status", "Blocked")).toBe("todo");
+    expect(defaultedOptions(SCHEMA, cleared, "status")).toEqual(["Blocked"]);
   });
 
   it("suggests importing the base a mapped relation points at, and only while it is ignored", () => {
@@ -83,7 +128,7 @@ describe("what the columns screen derives", () => {
         sourceId: "projects",
         target: "projects",
         columns: [{ name: "Tâches", type: "relation", options: [], relationTo: "tasks" }],
-        fields: [{ field: "tickets", candidates: ["Tâches"] }],
+        fields: [{ field: "tickets", candidates: ["Tâches"], prefill: {} }],
         suggestion: { columns: {}, values: {} },
         defaults: {},
       },

@@ -2,6 +2,10 @@ package dev.kanso.sync.importer
 
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
+import dev.kanso.domain.MemberRole
+import dev.kanso.domain.User
+import org.junit.jupiter.api.assertThrows
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.test.Test
@@ -161,5 +165,73 @@ class ImportPeopleTest : ImportTestBase() {
 			rey.id, created.leadUserId,
 			"u-9 is listed first and is mapped, but to an account that no longer exists; u-1 is the first that resolves and still exists",
 		)
+	}
+
+	/**
+	 * The rule `NotionImportService.perform` states and used to get wrong: an import that
+	 * changes no correspondence must not suddenly need configurator rights.
+	 *
+	 * The people map is *not* the set of matches the reader just made — the people step
+	 * re-sends every already-confirmed link for every row it left alone — so guarding on
+	 * "the map is non-empty" refused the whole import of anyone who was not a configurator
+	 * and whose workspace's people were already matched. Unreachable through the dialog,
+	 * which gates both entry points on `canConfigure`, and reachable by API, which is what
+	 * a closed door is supposed to mean.
+	 */
+	@Test
+	fun `a member importing a correspondence that is already true is not refused`() {
+		val rey = member("rey@kanso.test", "M. Rey")
+		users.setNotionPersonId(rey.id, "u-1")
+		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-1" to "M. Rey")))))
+
+		val outcome = importerFor(tasks).perform(
+			rey, team.id,
+			people = mapOf("u-1" to rey.id),
+			plan = listOf(
+				ImportPlanEntry(
+					tasks.dataSourceId, ImportTarget.TICKETS,
+					mapping = ColumnMapping(columns = mapOf(ImportField.ASSIGNEES to "Qui")),
+				)
+			),
+		)
+
+		assertEquals(1, outcome.tickets, "the map restates what the table already says, so nothing was configured")
+		val ticket = ticketRows.search(includeArchived = false, limit = 50).single()
+		assertEquals(listOf(rey.id), ticketRows.assigneeIds(ticket.id), "and the assignment still resolves")
+	}
+
+	@Test
+	fun `a member importing a correspondence that would change is still refused`() {
+		// The other half of the same rule: the guard moved from "is the map empty" to "would
+		// the table change", and it is still a guard.
+		val rey = member("rey@kanso.test", "M. Rey")
+		val tasks = FakeDatabase("Tasks", listOf(fakePage("Ship it", mapOf("Qui" to notionPeople("u-1" to "M. Rey")))))
+		val before = rowCounts()
+
+		assertThrows<AccessDeniedException> {
+			importerFor(tasks).perform(
+				rey, team.id,
+				people = mapOf("u-1" to rey.id),
+				plan = listOf(
+					ImportPlanEntry(
+						tasks.dataSourceId, ImportTarget.TICKETS,
+						mapping = ColumnMapping(columns = mapOf(ImportField.ASSIGNEES to "Qui")),
+					)
+				),
+			)
+		}
+		assertEquals(before, rowCounts(), "and nothing was written on the way to the refusal")
+	}
+
+	/**
+	 * A plain member of [team] — the actor the two tests above are about. Added to the team
+	 * so `TicketAccess` lets them import into it, and `admin` with them so the "an empty
+	 * team is open to everyone" rule is not what is being tested.
+	 */
+	private fun member(email: String, name: String): User {
+		val account = users.createLocalUser(email, name, encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
+		teamRows.addMember(team.id, admin.id, MemberRole.MEMBER)
+		teamRows.addMember(team.id, account.id, MemberRole.MEMBER)
+		return account
 	}
 }

@@ -63,10 +63,14 @@ class MappedPageReader(private val mapping: ColumnMapping) {
 	 * import supplies both from the request, so what is left is a page with nothing to
 	 * call it. Reported rather than filled in with "Untitled", which would bury it among
 	 * however many other Untitleds the workspace holds.
+	 *
+	 * Neither sentence names a kind of row. One reader now serves all four targets, and the
+	 * string reaches the reader verbatim through [SkippedPage.reason] — so a teams base used
+	 * to report a problem with a ticket.
 	 */
 	fun refusal(page: NotionPage): String? = when {
 		page.archived -> "the page is in Notion's trash"
-		title(page) == null -> "the page has no title, and a ticket cannot be named from nothing"
+		title(page) == null -> "the page has no title, and nothing here can be named from nothing"
 		else -> null
 	}
 

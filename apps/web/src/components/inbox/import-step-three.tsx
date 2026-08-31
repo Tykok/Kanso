@@ -82,6 +82,28 @@ export function StepThree({
     (entry) => entry.target === "projects" && !(exact.get(entry.sourceId) ?? true),
   );
 
+  /**
+   * The number on the confirm button: the pages that will actually become rows.
+   *
+   * `counts.kept` is the *discovery* count of every kept base — it includes the pages a row
+   * already exists for and the pages the reader will be told could not be adopted, both of
+   * which the sentence above the button names. Putting that number on the button
+   * contradicted the screen's own sentence, which is the one thing `pagesExact` exists to
+   * prevent.
+   *
+   * Once the preview has arrived the honest number is in hand: every group of it counts
+   * `PlannedBase.adoptable`, which is pages minus refused minus already-imported, and the
+   * three groups together cover all four targets. Until then — the preview is still in
+   * flight, or it failed — `counts.kept` is the only number there is, and it is a
+   * ceiling rather than a wrong answer.
+   */
+  const willWrite = preview
+    ? [...preview.teams, ...preview.projects, ...preview.folders].reduce(
+        (all, group) => all + group.pages,
+        0,
+      )
+    : counts.kept;
+
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -136,9 +158,10 @@ export function StepThree({
             ? ` ${preview.skipped} page${preview.skipped === 1 ? "" : "s"} cannot be adopted and will be reported instead.`
             : ""}
           {/*
-           * The sentence that stops somebody importing the same workspace twice. Kanso
-           * leaves those pages alone, so the number below the button is not what gets
-           * written — and only this says so.
+           * The sentence that stops somebody importing the same workspace twice: Kanso
+           * leaves those pages alone. The button below already excludes them — `willWrite`
+           * counts the preview's own groups — so this says *why* its number is smaller than
+           * the count of the bases, which is the question a reader would otherwise have.
            */}
           {preview.alreadyImported > 0
             ? ` ${preview.alreadyImported} have been imported before and will be left as they are.`
@@ -169,8 +192,13 @@ export function StepThree({
             {result.droppedAssignees > 0
               ? `${result.droppedAssignees} assignee${result.droppedAssignees === 1 ? "" : "s"} named an account that no longer exists, so those rows are unassigned. `
               : ""}
+            {/*
+             * The reasons, not one per page: there are two of them in the whole server —
+             * no title, and Notion's trash — so four hundred skipped pages printed the same
+             * sentence four hundred times. The count already says how many.
+             */}
             {result.skipped.length > 0
-              ? `${result.skipped.length} page${result.skipped.length === 1 ? "" : "s"} could not be adopted: ${result.skipped.map((skip) => skip.reason).join(", ")}.`
+              ? `${result.skipped.length} page${result.skipped.length === 1 ? "" : "s"} could not be adopted: ${[...new Set(result.skipped.map((skip) => skip.reason))].join(", ")}.`
               : ""}
           </span>
           <div className="flex items-center gap-2.5">
@@ -180,7 +208,7 @@ export function StepThree({
       ) : (
         <div className="flex items-center gap-2.5">
           <Button disabled={pending} onClick={onConfirm}>
-            Import {pageCount(counts.kept, allExact)}
+            Import {pageCount(willWrite, allExact)}
           </Button>
           <Button variant="outline" onClick={onBack}>
             Back

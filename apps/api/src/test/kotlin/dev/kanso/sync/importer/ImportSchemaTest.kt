@@ -116,4 +116,47 @@ class ImportSchemaTest {
 		)
 		assertEquals("Status", view.suggestion.property(ImportField.STATUS))
 	}
+
+	@Test
+	fun `every candidate column carries its own option table, not only the suggested one`() {
+		// The gap this branch exists for: a status column called `Stage` matches no name, so
+		// nothing is suggested and the reader picks it by hand. Its options are *English* —
+		// the label-matching path — and without a pre-fill of its own the screen drew every
+		// one of them as "— default —" while [MappedPageReader] read `Done` as `Done`.
+		val view = ImportSchema.of(
+			source(
+				mapOf(
+					"Name" to mapOf("type" to "title"),
+					"Stage" to mapOf(
+						"type" to "select",
+						"select" to mapOf("options" to listOf(mapOf("name" to "Done"), mapOf("name" to "Blocked"))),
+					),
+				)
+			),
+			ImportTarget.TICKETS,
+		)
+
+		val status = view.fields.single { it.field == ImportField.STATUS }
+		assertEquals(null, view.suggestion.property(ImportField.STATUS), "nothing matched its name")
+		assertEquals(
+			mapOf("Done" to "done"),
+			status.prefill["Stage"],
+			"`Done` lands on a Kanso value and `Blocked` does not, which is exactly what the screen has to say",
+		)
+	}
+
+	@Test
+	fun `a field with no closed vocabulary offers no option table to pre-fill`() {
+		val view = ImportSchema.of(
+			source(
+				mapOf(
+					"Name" to mapOf("type" to "title"),
+					"Échéance" to mapOf("type" to "date"),
+				)
+			),
+			ImportTarget.TICKETS,
+		)
+
+		assertEquals(emptyMap(), view.fields.single { it.field == ImportField.DUE }.prefill)
+	}
 }

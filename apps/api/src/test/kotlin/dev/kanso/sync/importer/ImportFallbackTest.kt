@@ -3,14 +3,12 @@ package dev.kanso.sync.importer
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.ProjectStatus
-import dev.kanso.repo.TeamRepository
 import dev.kanso.service.BadRequestException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -24,8 +22,6 @@ import java.util.UUID
  */
 @Transactional
 class ImportFallbackTest : ImportTestBase() {
-
-	@Autowired lateinit var teamRows: TeamRepository
 
 	@Test
 	fun `a teams-only plan needs no destination team`() {
@@ -43,7 +39,7 @@ class ImportFallbackTest : ImportTestBase() {
 			importer.perform(admin, null, plan(tasks to ImportTarget.TICKETS))
 		}
 		assertTrue(failure.message!!.contains("team"))
-		assertEquals(RowCounts(0, 0, 0, 0), rowCounts())
+		assertEquals(RowCounts(0, 0, 0, 0, 0), rowCounts(), "not a row of any kind, teams included")
 	}
 
 	@Test

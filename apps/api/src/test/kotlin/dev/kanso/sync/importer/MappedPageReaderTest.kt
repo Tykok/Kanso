@@ -186,7 +186,9 @@ class MappedPageReaderTest {
 			reader.refusal(fakePage("Ship it", archived = true)),
 		)
 		assertEquals(
-			"the page has no title, and a ticket cannot be named from nothing",
+			// No kind of row named: one reader serves four targets, and this string reaches
+			// the reader verbatim, so a teams base must not report a problem with a ticket.
+			"the page has no title, and nothing here can be named from nothing",
 			reader.refusal(untitledPage()),
 		)
 	}

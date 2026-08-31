@@ -66,12 +66,19 @@ class ImportOriginRepository {
 	 * One query per kind, never one per row: [byPageIds] exists precisely so that a base of
 	 * four hundred pages costs one round trip, and a filter that undid that would be worse
 	 * than the defect.
+	 *
+	 * "Alive" is per kind, not across all four. A single pooled set of surviving ids would
+	 * keep a row whose id exists under *some other* kind — a deleted project whose id
+	 * happens to be a live ticket's. Unreachable with v4 UUIDs, and the cost if it ever
+	 * fired is the whole-import rollback this function exists to prevent, so it is spelled
+	 * exactly: [groupBy] already produces the per-kind lists, and keeping them apart is the
+	 * same number of queries.
 	 */
 	fun live(seed: Map<String, ImportOrigin>): Map<String, ImportOrigin> {
 		if (seed.isEmpty()) return seed
-		val alive = seed.values.groupBy({ it.kind }, { it.entityId })
-			.flatMapTo(mutableSetOf()) { (kind, ids) -> existing(kind, ids) }
-		return seed.filterValues { it.entityId in alive }
+		val alive: Map<OriginKind, Set<UUID>> = seed.values.groupBy({ it.kind }, { it.entityId })
+			.mapValues { (kind, ids) -> existing(kind, ids).toSet() }
+		return seed.filterValues { it.entityId in alive.getValue(it.kind) }
 	}
 
 	/**

@@ -10,15 +10,17 @@ import {
   EMPTY_MAPPING,
   FALLBACK_LABELS,
   answeredFields,
+  defaultedOptions,
   kansoValues,
   openFallbacks,
-  unmappedOptions,
+  optionDefault,
+  withColumn,
   type BaseMapping,
   type Fallback,
   type MappedBase,
   type NotionImportSchema,
 } from "./import-columns";
-import type { ImportMapping, ImportPlanEntry } from "./import-map";
+import type { ImportField, ImportMapping, ImportPlanEntry } from "./import-map";
 import { FIELD_LABELS, TARGET_LABELS } from "./import-targets";
 
 /**
@@ -30,9 +32,14 @@ import { FIELD_LABELS, TARGET_LABELS } from "./import-targets";
  * all of them would ask every base every question.
  *
  * Every select is pre-filled from the server's suggestion and every one is overridable —
- * the pre-fill is a default, not a rule. And the options no Kanso value was chosen for are
- * *named* under the field rather than counted: a number tells the reader something was
- * guessed, a list tells them what.
+ * the pre-fill is a default, not a rule. And the options that will take the field's own
+ * default are *named* under the field rather than counted: a number tells the reader
+ * something was guessed, a list tells them what.
+ *
+ * The pre-fill travels per candidate column, so picking a column by hand fills its option
+ * table exactly as the suggestion would have. What each option is drawn as is what the
+ * writer will do to it and nothing looser — including for an option whose own label the
+ * server matches, which is the case this screen used to describe backwards.
  */
 export function StepColumns({
   bases,
@@ -197,17 +204,21 @@ function BaseSection({
   const view = schema.data;
   const current = mapping ?? view?.suggestion ?? EMPTY_MAPPING;
 
-  const setColumn = (field: string, property: string) => {
-    const columns = { ...current.columns };
-    const values = { ...current.values };
-    if (property) columns[field] = property;
-    else delete columns[field];
-    // The option table belonged to the column that has just been replaced.
-    delete values[field];
-    onMapping(base.sourceId, { columns, values });
+  /**
+   * The option table travels with the column: `withColumn` seeds it from the server's
+   * pre-fill for whichever column was just picked, rather than emptying it. Emptying it was
+   * what drew a hand-picked `Stage` column's every option as "— default —" while the reader
+   * on the server still matched their labels.
+   *
+   * The `view` guard is unreachable rather than defensive: the selects that call this are
+   * drawn from `view.fields`, so there is no field row to change before the schema arrives.
+   */
+  const setColumn = (field: ImportField, property: string) => {
+    if (!view) return;
+    onMapping(base.sourceId, withColumn(view, current, field, property));
   };
 
-  const setValue = (field: string, option: string, value: string) => {
+  const setValue = (field: ImportField, option: string, value: string) => {
     const forField = { ...(current.values[field] ?? {}) };
     if (value) forField[option] = value;
     else delete forField[option];
@@ -299,10 +310,10 @@ function FieldRow({
 }: {
   schema: NotionImportSchema;
   mapping: BaseMapping;
-  field: string;
+  field: ImportField;
   candidates: string[];
-  onColumn: (field: string, property: string) => void;
-  onValue: (field: string, option: string, value: string) => void;
+  onColumn: (field: ImportField, property: string) => void;
+  onValue: (field: ImportField, option: string, value: string) => void;
 }) {
   const property = mapping.columns[field] ?? "";
   const column = schema.columns.find((candidate) => candidate.name === property);
@@ -310,13 +321,15 @@ function FieldRow({
   // Options are only worth asking about where Kanso has a closed vocabulary to map them
   // onto: a date, a relation, a person or a description has nothing to choose from.
   const options = values.length > 0 ? (column?.options ?? []) : [];
-  const fallenBack = unmappedOptions(schema, mapping, field);
-  const defaultLabel = values.find((value) => value.value === schema.defaults[field])?.label;
+  const fallenBack = defaultedOptions(schema, mapping, field);
+  /** The word for a Kanso value, so "— default —" can name what it actually means. */
+  const labelOf = (value: string | null) => values.find((known) => known.value === value)?.label;
+  const defaultLabel = labelOf(schema.defaults[field]);
 
   return (
     <div className="flex flex-col gap-1">
       <label className="grid grid-cols-[170px_1fr] items-center gap-3 text-12">
-        <span className="text-muted-foreground">{FIELD_LABELS[field] ?? field}</span>
+        <span className="text-muted-foreground">{FIELD_LABELS[field]}</span>
         <select value={property} onChange={(event) => onColumn(field, event.target.value)}>
           <option value="">— none —</option>
           {candidates.map((name) => (
@@ -327,25 +340,35 @@ function FieldRow({
         </select>
       </label>
 
-      {options.map((option) => (
-        <label
-          key={option}
-          className="grid grid-cols-[170px_1fr] items-center gap-3 pl-3 text-11"
-        >
-          <span className="truncate text-faint">{option}</span>
-          <select
-            value={mapping.values[field]?.[option] ?? ""}
-            onChange={(event) => onValue(field, option, event.target.value)}
+      {options.map((option) => {
+        /*
+         * Per option, not per field: leaving `Done` alone makes it `Done`, because the
+         * reader on the server matches an option's own label where the mapping says
+         * nothing. Printing the field's default here for every option is what made this
+         * select say "Todo" about an option that becomes `Done` — and made clearing one
+         * back to "default" a decision the server ignored without saying so.
+         */
+        const leftAlone = labelOf(optionDefault(schema, mapping, field, option));
+        return (
+          <label
+            key={option}
+            className="grid grid-cols-[170px_1fr] items-center gap-3 pl-3 text-11"
           >
-            <option value="">— {defaultLabel ? `default (${defaultLabel})` : "default"} —</option>
-            {values.map((value) => (
-              <option key={value.value} value={value.value}>
-                {value.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
+            <span className="truncate text-faint">{option}</span>
+            <select
+              value={mapping.values[field]?.[option] ?? ""}
+              onChange={(event) => onValue(field, option, event.target.value)}
+            >
+              <option value="">— {leftAlone ? `default (${leftAlone})` : "default"} —</option>
+              {values.map((value) => (
+                <option key={value.value} value={value.value}>
+                  {value.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
 
       {options.length > 0 && fallenBack.length > 0 && (
         <span className="pl-3 text-11 text-faint">

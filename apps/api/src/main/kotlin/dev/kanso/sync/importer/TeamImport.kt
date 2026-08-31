@@ -10,6 +10,17 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 /**
+ * What one teams base produced, and the pages it could not.
+ *
+ * [refused] is not [PlannedBase.skippedPages]: those pages are refused by the *reader*,
+ * before a transaction is open, and every base has them. These are pages the reader
+ * accepted and the writer then could not key — the one per-page failure that only shows up
+ * mid-write — and they join the same [ImportOutcome.skipped] list, because a reader asking
+ * "what did this import not bring over" is asking one question.
+ */
+data class TeamsWritten(val teams: Int, val refused: List<SkippedPage>)
+
+/**
  * Teams, then their parents.
  *
  * Two passes rather than one, because a parent can be listed after its child: the first
@@ -25,20 +36,33 @@ class TeamImport(
 
 	private val log = LoggerFactory.getLogger(javaClass)
 
-	fun write(actor: User, base: PlannedBase, rows: ImportedRows): Int {
+	fun write(actor: User, base: PlannedBase, rows: ImportedRows): TeamsWritten {
 		var created = 0
+		val refused = mutableListOf<SkippedPage>()
 		for (page in base.adoptable) {
 			val name = requireNotNull(base.reader.title(page)) { "an unadoptable page reached the writer" }
 			// The key is derived from the name by `TeamService`, exactly as for a team
 			// created by hand: a Notion base has nothing that could serve as one, and a key
 			// invented from a column somebody happened to call `Code` would prefix every
 			// ticket identifier in the team for as long as it exists.
-			val team = teams.create(actor, name, null, null)
+			val team = try {
+				teams.create(actor, name, null, null)
+			} catch (e: ConflictException) {
+				// `TeamService.resolveKey` gives up after ninety-nine collisions, so a base
+				// holding a hundredth name that shares its first three alphanumerics with
+				// the others has one page it cannot key. Dropped and counted, like every
+				// other per-page refusal in this import: one page must not roll back a run
+				// of four hundred, and `resolveKey` is right to refuse rather than to invent
+				// a key nobody could read.
+				log.info("Dropped an imported team: {}", e.message)
+				refused += SkippedPage(base.base.name, page.id, "Kanso could not derive a free team key from '$name'")
+				continue
+			}
 			rows.put(OriginKind.TEAM, page.id, team.id)
 			origins.record(ImportOrigin(page.id, OriginKind.TEAM, team.id, base.base.dataSourceId))
 			created++
 		}
-		return created
+		return TeamsWritten(created, refused)
 	}
 
 	/**

@@ -23,10 +23,16 @@ import java.util.UUID
 /**
  * Screen 24: what the workspace holds, what would happen, and then what happens.
  *
- * Three steps and one rule between them — **nothing is written before the third**. The
+ * Five steps and one rule between them — **nothing is written before the last**. The
  * shape that keeps that true is the split in this file: every Notion read goes through
  * [NotionDiscovery] and lands in memory first, and only [perform] is given the services
- * that write. A preview cannot write a row because it is never handed anything that can.
+ * that write — [ImportWriter], [TicketAccess] and [NotionPeople] are reachable from
+ * nowhere else here.
+ *
+ * Not "a preview cannot write because it was never handed anything that can": [read] holds
+ * [ImportOriginRepository], which can, and [preview] goes through [read]. It reads and
+ * never records — see [preview] — but the guarantee is a reviewed one, not a structural
+ * one, and this file would rather say which.
  */
 @Service
 class NotionImportService(
@@ -90,12 +96,17 @@ class NotionImportService(
 	}
 
 	/**
-	 * Step 2 → 3, and the screen's central promise: this answers what *would* happen and
+	 * Step 5, and the screen's central promise: this answers what *would* happen and
 	 * writes nothing.
 	 *
-	 * Nothing in here could write if it tried — the reading is [NotionDiscovery]'s and the
-	 * arithmetic is [ImportPlanner]'s, and neither has ever been handed a repository. The
-	 * one seam that could break the promise is [perform] reading the workspace a second
+	 * The reading is [NotionDiscovery]'s and the arithmetic is [ImportPlanner]'s, and
+	 * neither has ever been handed a repository. What this is *not* is structurally unable
+	 * to write: [read] is handed [ImportOriginRepository], which can, and it is on this
+	 * path. It is used read-only — one [ImportOriginRepository.byPageIds] query, to know
+	 * which pages a row already exists for — and that is enforced by whoever reads this
+	 * file rather than by the types. Nothing else here touches Postgres at all.
+	 *
+	 * The one seam that could break the promise is [perform] reading the workspace a second
 	 * time and getting a different answer; that is the reason both go through [read].
 	 */
 	fun preview(plan: List<ImportPlanEntry>): ImportPreview = ImportPlanner.preview(read(plan))
@@ -105,9 +116,10 @@ class NotionImportService(
 	 * by Notion id — the columns screen 24's people-matching step needs an answer for,
 	 * before the reader is asked to match any of them to a Kanso account.
 	 *
-	 * Through [read], the same resolution [preview] uses, and for the same reason: nothing
-	 * here is handed [NotionPeople] or anything else that writes, so a plan can be probed
-	 * for who it would meet without applying a single one of them.
+	 * Through [read], the same resolution [preview] uses, and with the same standing: this
+	 * is not handed [NotionPeople] or anything else that applies a match, so a plan can be
+	 * probed for who it would meet without applying a single one of them. [read]'s own use
+	 * of [ImportOriginRepository] is read-only here too — see [preview].
 	 */
 	fun peopleSeen(plan: List<ImportPlanEntry>): List<NotionPerson> = read(plan).flatMap { base ->
 		ImportField.entries.filter { "people" in it.types && base.mapping.columns.containsKey(it) }
@@ -115,7 +127,7 @@ class NotionImportService(
 	}.distinctBy { it.id }
 
 	/**
-	 * Step 3. The first thing that writes.
+	 * Step 5's confirm button. The first thing that writes.
 	 *
 	 * [teamId] is no longer unconditional: an import of teams alone has no destination to
 	 * ask about, so it is required only when the plan holds something other than `TEAMS`
@@ -157,9 +169,10 @@ class NotionImportService(
 			.forEach { access.requireTeam(actor, it) }
 		// Before the writer, not after: the correspondence has to outlive this import
 		// whether or not any one assignment resolves, which only holds if it is written
-		// first. Skipped when the request names nobody — an import that maps no person
-		// must not suddenly need the instance-configurator rights `NotionPeople.link`
-		// guards, when it never touched that door before this task.
+		// first. An empty map is skipped only to save the read — the rule that an import
+		// changing no correspondence needs no configurator rights is `NotionPeople.link`'s
+		// own, checked against the table there, because this map re-sends every confirmed
+		// link for every row the reader left alone and so is rarely empty.
 		if (people.isNotEmpty()) notionPeople.link(actor, people)
 		return writer.write(actor, teamId, people, read(plan))
 	}

@@ -19,8 +19,27 @@ import tools.jackson.databind.JsonNode
  */
 data class SchemaColumn(val name: String, val type: String, val options: List<String>, val relationTo: String?)
 
-/** The columns whose type could fill one field, in the order the base declares them. */
-data class FieldCandidates(val field: ImportField, val candidates: List<String>)
+/**
+ * The columns whose type could fill one field, in the order the base declares them, and
+ * for each of them the option table Kanso would fill in if that column were chosen.
+ *
+ * [prefill] is keyed by column name and populated for **every** candidate, not only the
+ * one [ImportSchemaView.suggestion] happened to name: the suggestion matches a column's
+ * *name*, so a status column called `Stage` or `État` gets none, and the reader picks it
+ * by hand. Before this existed the screen then drew every one of that column's options as
+ * "— default —" while [MappedPageReader] still matched their labels — `Done` shown as
+ * becoming `Todo` and becoming `Done`. Computed here rather than in the browser for the
+ * reason the whole file exists: one implementation of "what does this label mean" cannot
+ * disagree with itself.
+ *
+ * Empty for a field with no closed vocabulary — a date, a relation, a person or a
+ * description has no options for anything to mean.
+ */
+data class FieldCandidates(
+	val field: ImportField,
+	val candidates: List<String>,
+	val prefill: Map<String, Map<String, String>> = emptyMap(),
+)
 
 /**
  * What a base's schema offers, and what Kanso would map before anyone touches it.
@@ -58,31 +77,27 @@ object ImportSchema {
 
 	fun of(source: NotionDataSource, target: ImportTarget): ImportSchemaView {
 		val columns = columns(source.properties)
-		val byName = columns.associateBy { it.name }
 
 		val fields = target.fields.map { field ->
-			FieldCandidates(field, columns.filter { it.type in field.types }.map { it.name })
+			val candidates = columns.filter { it.type in field.types }
+			FieldCandidates(field, candidates.map { it.name }, prefill(field, target, candidates))
 		}
 
 		val suggestedColumns = mutableMapOf<ImportField, String>()
 		val suggestedValues = mutableMapOf<ImportField, Map<String, String>>()
-		for (candidates in fields) {
+		for (entry in fields) {
 			// A field with no entry in [NOTION_NAME] — the three that read a parent's own
 			// column naming its children — has nothing here to compare a name to, so it is
 			// never suggested; the request has to name it.
-			val expectedName = NOTION_NAME[candidates.field] ?: continue
-			val matched = candidates.candidates.firstOrNull { it.equals(expectedName, ignoreCase = true) } ?: continue
-			suggestedColumns[candidates.field] = matched
-
-			// Only a field with a closed vocabulary has option values to pre-fill at all —
-			// a mapped date or relation column has nothing here for [ColumnMapping.values]
-			// to say. An option outside the vocabulary is left out of the map rather than
-			// guessed at: the writer's own default is what a reader sees for it instead.
-			vocabulary(candidates.field, target)?.let { fromLabel ->
-				suggestedValues[candidates.field] = byName.getValue(matched).options
-					.mapNotNull { label -> fromLabel(label)?.let { label to it.wire } }
-					.toMap()
-			}
+			val expectedName = NOTION_NAME[entry.field] ?: continue
+			val matched = entry.candidates.firstOrNull { it.equals(expectedName, ignoreCase = true) } ?: continue
+			suggestedColumns[entry.field] = matched
+			// The suggestion's option table *is* the pre-fill for the column it picked —
+			// looked up rather than computed a second time, so the table the reader is shown
+			// for a suggested column and the one they are shown after re-picking it by hand
+			// cannot differ. Absent for a field with no closed vocabulary, which is what
+			// leaves [ColumnMapping.values] silent about a mapped date or relation.
+			entry.prefill[matched]?.let { suggestedValues[entry.field] = it }
 		}
 
 		return ImportSchemaView(
@@ -119,6 +134,25 @@ object ImportSchema {
 		ImportField.PARENT_TEAM to NotionProps.PARENT_TEAM,
 		ImportField.BLOCKED_BY to NotionProps.BLOCKED_BY,
 	)
+
+	/**
+	 * What each of [candidates]' options would mean if that column were chosen for [field].
+	 *
+	 * Every candidate, because the reader is free to pick any of them and the screen has to
+	 * be able to say what the pick does without asking the server again. An option outside
+	 * the vocabulary is left out rather than guessed at — the field's own default is what
+	 * the screen shows for it instead, which is true of it and only of it.
+	 */
+	private fun prefill(
+		field: ImportField,
+		target: ImportTarget,
+		candidates: List<SchemaColumn>,
+	): Map<String, Map<String, String>> {
+		val fromLabel = vocabulary(field, target) ?: return emptyMap()
+		return candidates.associate { column ->
+			column.name to column.options.mapNotNull { label -> fromLabel(label)?.let { label to it.wire } }.toMap()
+		}
+	}
 
 	/**
 	 * The closed vocabulary a select-backed field's options are checked against, or null

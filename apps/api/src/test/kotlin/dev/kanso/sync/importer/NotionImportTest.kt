@@ -6,7 +6,6 @@ import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.repo.DependencyRepository
-import dev.kanso.repo.TeamRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.transaction.annotation.Transactional
@@ -27,7 +26,6 @@ import kotlin.test.assertTrue
 @Transactional
 class NotionImportTest : ImportTestBase() {
 
-	@Autowired lateinit var teamRows: TeamRepository
 	@Autowired lateinit var blockRows: DocBlockRepository
 	@Autowired lateinit var dependencies: DependencyRepository
 

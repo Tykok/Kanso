@@ -229,7 +229,7 @@ export function ConnectionsSection({
 
             {/* Screen 24's way in. The import reads Notion and writes Kanso, which is the
                 opposite direction to everything else in this card — so it is a button
-                that opens a three-step dialog rather than another field. */}
+                that opens a five-step dialog rather than another field. */}
             <SettingsInline>
               <button
                 className="button"

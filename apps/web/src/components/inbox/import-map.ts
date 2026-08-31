@@ -17,6 +17,32 @@ export type NotionSource = {
 
 export type ImportTarget = "teams" | "projects" | "tickets" | "documents" | "ignore";
 
+/**
+ * The fields of a Kanso row a Notion column can be mapped onto — `ImportField`'s fifteen
+ * wire strings, spelled out here rather than left as `string`.
+ *
+ * A closed set on the server has to be a closed set here too, for the reason
+ * [ImportTarget] is one: `FIELD_LABELS` is keyed by these, and a `Record<string, string>`
+ * would let a sixteenth field ship with no label and render as its raw wire word with
+ * nothing failing.
+ */
+export type ImportField =
+  | "status"
+  | "priority"
+  | "description"
+  | "start"
+  | "due"
+  | "end"
+  | "assignees"
+  | "lead"
+  | "project"
+  | "team"
+  | "parentTeam"
+  | "blockedBy"
+  | "tickets"
+  | "projects"
+  | "subTeams";
+
 /** Source id → what it becomes. Absent means [DEFAULT_TARGET]. */
 export type ImportMapping = Record<string, ImportTarget>;
 
@@ -31,7 +57,14 @@ export type ImportMapping = Record<string, ImportTarget>;
 export const DEFAULT_TARGET: ImportTarget = "ignore";
 
 export type ImportCounts = {
-  /** Pages that would be written. The number beside the confirm button. */
+  /**
+   * Pages in the bases the reader kept — step 2's number, and step 2's only.
+   *
+   * Not the number beside the confirm button. This is the *discovery* count, so it still
+   * holds the pages a row already exists for and the pages that will be refused, neither of
+   * which is known before the preview. Step 5 sums the preview's own groups instead; step 2
+   * has no preview and this is the honest ceiling until it does.
+   */
   kept: number;
   /** Pages in the workspace, mapped or not. The denominator. */
   total: number;

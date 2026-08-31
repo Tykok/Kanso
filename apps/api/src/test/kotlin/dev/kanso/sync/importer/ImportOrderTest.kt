@@ -223,4 +223,34 @@ class ImportOrderTest : ImportTestBase() {
 		val imported = teamService.list(includeArchived = false).filter { it.name in setOf("North", "South") }
 		assertEquals(1, imported.count { it.parentTeamId != null }, "one arrow was placed, the other dropped")
 	}
+
+	/**
+	 * `TeamService.resolveKey` derives a key from the first three alphanumerics of the name
+	 * and gives up after ninety-nine collisions. A base holding a hundred names that share
+	 * those three characters therefore has one page nothing can key — and until this was
+	 * caught, the `ConflictException` it raised travelled uncaught out of the writer's
+	 * transaction and rolled the whole run back, permanently, since re-running it hit the
+	 * same page again.
+	 *
+	 * `resolveKey` is left alone: refusing beats inventing a key nobody can read. What
+	 * changed is that the page is dropped and counted, like every other per-page failure in
+	 * this import.
+	 */
+	@Test
+	fun `a team whose name yields no free key is dropped and counted, not fatal to the run`() {
+		// "AAA 1" … "AAA 100" all reduce to the prefix `AAA`, which yields `AAA` plus
+		// `AAA2`…`AAA99` — ninety-nine keys for a hundred names.
+		val pages = (1..100).map { fakePage("AAA $it", id = "page-aaa-$it") }
+		val teams = FakeDatabase("Teams", pages)
+
+		val outcome = importerFor(teams).perform(admin, null, plan(teams to ImportTarget.TEAMS))
+
+		assertEquals(99, outcome.teams, "every page a key could be derived for")
+		assertEquals(1, outcome.skipped.size, "and the hundredth is reported rather than fatal")
+		assertEquals("Teams", outcome.skipped.single().source)
+		assertEquals(
+			99, teamService.list(includeArchived = false).count { it.name.startsWith("AAA ") },
+			"the ninety-nine are really in Postgres, so nothing was rolled back",
+		)
+	}
 }

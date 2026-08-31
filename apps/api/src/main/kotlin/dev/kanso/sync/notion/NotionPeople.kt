@@ -68,7 +68,10 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	 * class. The guard lives here, not beside the caller: a private check the
 	 * controller remembers to call is a check a second caller can forget, so
 	 * nothing reaches [UserRepository.setNotionPersonId] without going through
-	 * [requireConfigurator] first, on the same stack, in the same call.
+	 * [requireConfigurator] first, on the same stack, in the same call. And it guards the
+	 * *change*, not the call: a batch restating links the table already holds writes nothing
+	 * and so asks for nothing, which is what lets an import re-send its whole people table
+	 * without turning every importer into a configurator.
 	 *
 	 * Two passes over one read, not one pass that re-reads as it goes: clearing
 	 * one entry and then re-querying "who holds what" for the next would see the
@@ -87,14 +90,26 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	 */
 	@Transactional
 	fun link(actor: User, assignments: Map<String, UUID?>) {
-		requireConfigurator(actor)
 		val accounts = users.findAll()
 		val toClear = accounts.filter { account ->
 			val notionId = account.notionPersonId
 			notionId != null && assignments.containsKey(notionId) && assignments.getValue(notionId) != account.id
 		}
+		val byId = accounts.associateBy { it.id }
+		val toSet = assignments.mapNotNull { (notionId, userId) ->
+			userId?.takeIf { byId[it]?.notionPersonId != notionId }?.let { notionId to it }
+		}
+		// A batch that asks for the correspondence the table already holds changes nothing,
+		// so it needs no rights. Not the same rule as "the map is empty", which is what this
+		// used to check: `NotionImportService.perform` re-sends every already-confirmed link
+		// for every row the reader left alone, so a non-configurator importing into a
+		// workspace whose people are already matched sent a non-empty map that would change
+		// nothing and got a 403 for the whole import. Checked against the table, once,
+		// against the same read the two passes below use.
+		if (toClear.isEmpty() && toSet.isEmpty()) return
+		requireConfigurator(actor)
 		toClear.forEach { users.setNotionPersonId(it.id, null) }
-		assignments.forEach { (notionId, userId) -> if (userId != null) users.setNotionPersonId(userId, notionId) }
+		toSet.forEach { (notionId, userId) -> users.setNotionPersonId(userId, notionId) }
 	}
 
 	/** Configuring the instance's identities is a configurator's job, like the connection itself. */

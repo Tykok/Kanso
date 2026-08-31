@@ -65,9 +65,17 @@ class ImportWriter(
 
 		val teamBases = bases.filter { it.target == ImportTarget.TEAMS }
 		var teamCount = 0
+		// Pages the *writer* refused, as opposed to the ones the reader did: a team whose
+		// name yields no free key is only discovered at the insert. They join the same list
+		// below rather than a second one — see [TeamsWritten].
+		val refusedByWriter = mutableListOf<SkippedPage>()
 		// Two loops over the same bases rather than one: a parent can be listed after its
 		// child, and can even live in another teams base of the same plan.
-		for (base in teamBases) teamCount += teams.write(actor, base, rows)
+		for (base in teamBases) {
+			val written = teams.write(actor, base, rows)
+			teamCount += written.teams
+			refusedByWriter += written.refused
+		}
 		for (base in teamBases) teams.settleParents(actor, base, links, rows)
 
 		var projectCount = 0
@@ -97,7 +105,7 @@ class ImportWriter(
 			folderCount += written.folders
 		}
 
-		val skipped = bases.flatMap { base ->
+		val skipped = refusedByWriter + bases.flatMap { base ->
 			// `base.skippedPages` already excludes pages already imported — a page already
 			// in Kanso is reported as already-imported only, never also as skipped, which is
 			// the same rule [ImportPlanner.preview] applies from the same property.

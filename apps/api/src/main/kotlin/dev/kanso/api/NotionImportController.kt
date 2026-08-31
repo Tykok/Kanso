@@ -66,7 +66,7 @@ data class ImportSchemaResponse(
 			sourceId = view.sourceId,
 			target = view.target.wire,
 			columns = view.columns,
-			fields = view.fields.map { FieldCandidatesResponse(it.field.wire, it.candidates) },
+			fields = view.fields.map { FieldCandidatesResponse(it.field.wire, it.candidates, it.prefill) },
 			suggestion = ColumnMappingResponse(
 				columns = view.suggestion.columns.mapKeys { (field, _) -> field.wire },
 				values = view.suggestion.values.mapKeys { (field, _) -> field.wire },
@@ -76,7 +76,17 @@ data class ImportSchemaResponse(
 	}
 }
 
-data class FieldCandidatesResponse(val field: String, val candidates: List<String>)
+/**
+ * [prefill] is keyed by column name, never by field: it answers "if the reader picks *this*
+ * column for this field, what does each of its options mean", which is the question the
+ * columns step asks the moment somebody changes a select. Keyed by field it already is —
+ * once, by being inside this field's entry.
+ */
+data class FieldCandidatesResponse(
+	val field: String,
+	val candidates: List<String>,
+	val prefill: Map<String, Map<String, String>>,
+)
 
 data class ColumnMappingResponse(
 	val columns: Map<String, String>,
@@ -149,15 +159,36 @@ class NotionImportController(
 	 * An unknown target, field name, or mapped option is a 400 through [ApiExceptionHandler],
 	 * the same as an unknown status: [ImportTarget.from] and [ImportField.from] both raise
 	 * `IllegalArgumentException` for a wire string outside their vocabulary, and nothing here
-	 * catches it — the vocabulary is closed on both sides of the wire or it is not closed.
+	 * catches it — the vocabulary is closed on both sides of the wire or it is not closed. So
+	 * is a field the *target* does not read, which [field] is for.
 	 */
-	private fun entry(row: ImportPlanRow) = ImportPlanEntry(
-		sourceId = row.sourceId,
-		target = ImportTarget.from(row.target),
-		mapping = ColumnMapping(
-			columns = row.columns.mapKeys { (field, _) -> ImportField.from(field) },
-			values = row.values.mapKeys { (field, _) -> ImportField.from(field) },
-		),
-		fallback = row.fallback,
-	)
+	private fun entry(row: ImportPlanRow): ImportPlanEntry {
+		val target = ImportTarget.from(row.target)
+		return ImportPlanEntry(
+			sourceId = row.sourceId,
+			target = target,
+			mapping = ColumnMapping(
+				columns = row.columns.mapKeys { (field, _) -> field(target, field) },
+				values = row.values.mapKeys { (field, _) -> field(target, field) },
+			),
+			fallback = row.fallback,
+		)
+	}
+
+	/**
+	 * One field name, refused unless [target] is a target that reads it.
+	 *
+	 * `ImportField.from` alone only asks whether the *vocabulary* holds the word. A request
+	 * mapping `description` on a `teams` base passed that and then went nowhere: no writer
+	 * of teams reads it, while `MappedPageReader.claimed` still took the column out of the
+	 * "Imported from Notion" section — so the property was dropped from the row it would
+	 * otherwise have been preserved in, silently. The plan's wire contract says "field ∈
+	 * the target's fields", and this is where that half of it is enforced, as a 400 through
+	 * [ApiExceptionHandler] like every other word outside a closed set.
+	 */
+	private fun field(target: ImportTarget, raw: String): ImportField {
+		val field = ImportField.from(raw)
+		require(field in target.fields) { "A base imported as ${target.wire} has no '$raw' field to map." }
+		return field
+	}
 }
