@@ -75,6 +75,47 @@ Its dates are absolute, in September 2026, and the run goes red once they are pa
 deliberately, so the site is never handed a walk-through of missed deadlines. Move
 `PLAN` forward when that happens.
 
+## The import, which needs a workspace
+
+`import.spec.ts` (scenario 23) walks screen 24's five steps and then asserts the rows the
+import wrote. It cannot run against a workspace nobody has, and with no `NOTION_TOKEN` the
+dialog's first step prints a sentence and there is nothing to walk — so the suite brings
+its own workspace: `notion-workspace.ts` answers Notion's own HTTP API on port 8099, with
+three related bases, a status column called `Etat` and options called `En cours`.
+
+The seam is `NOTION_BASE_URL`, which `application.yml` already reads. Pointing the API at
+the suite's workspace puts the real `HttpNotionClient` under test — its search-filter
+fallback, its cursors, its property parsing — rather than a fake bound inside the
+application, which is the whole reason the workspace lives here and not in
+`apps/api/src/main`. The stack therefore needs two more variables than the others:
+
+```bash
+KANSO_AUTH_MODE=dev NOTION_TOKEN=e2e-stub-token \
+  NOTION_BASE_URL=http://host.docker.internal:8099/v1 \
+  docker compose up -d --build --wait
+
+pnpm exec playwright test e2e/import.spec.ts
+```
+
+`host.docker.internal` is the machine running the suite, seen from inside the container;
+`docker-compose.yml` maps it with `extra_hosts` so this holds on Linux as well as on Docker
+Desktop. The port is fixed because `NOTION_BASE_URL` is read when the container boots and
+the server starts when the spec does — override both together with
+`KANSO_NOTION_STUB_PORT`.
+
+Against a stack without those two variables the scenario **skips**, with the command above
+in the skip's message, rather than failing on an empty workspace. So a default
+`pnpm test:e2e` stays green and says plainly that one scenario did not run. Nothing else in
+the suite minds a configured token: the mirror has no databases to push to, so the outbound
+worker fails its jobs against `NotBootstrapped` and reaches no network at all — which the
+import spec also asserts, by recording every write its workspace was asked for and expecting
+none.
+
+It is re-runnable against a long-lived database: a page is imported exactly once —
+`notion_import_origin` has the Notion page id as its primary key — so every id and title
+the workspace answers carries a fresh per-run suffix. Without that the second run would be
+a test of the skipping path wearing the first run's assertions.
+
 ## Identities
 
 Two accounts, created on the spot by `dev` mode:
