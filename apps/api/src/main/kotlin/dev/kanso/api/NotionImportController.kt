@@ -12,6 +12,7 @@ import dev.kanso.sync.importer.ImportSources
 import dev.kanso.sync.importer.ImportTarget
 import dev.kanso.sync.importer.NotionImportService
 import dev.kanso.sync.importer.NotionPerson
+import dev.kanso.sync.importer.SchemaColumn
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -40,6 +41,47 @@ data class ImportPlanRow(
 )
 
 data class ImportPreviewRequest(val plan: List<ImportPlanRow> = emptyList())
+
+/**
+ * [ImportSchemaView] on the wire, with every field and target named the way the request
+ * names them.
+ *
+ * The view itself is typed in [ImportField] and [ImportTarget], and Jackson writes an enum
+ * as its own `name()` — so returning it raw put `"STATUS"` and `"TICKETS"` on the wire
+ * while [entry] only accepts `"status"` and `"tickets"` coming back. The screen would have
+ * had to hold both vocabularies and a translation between them, which is one more place
+ * for the closed set to drift. Every other response in `Dtos.kt` reaches for `.wire` for
+ * exactly this reason; this one had been the exception.
+ */
+data class ImportSchemaResponse(
+	val sourceId: String,
+	val target: String,
+	val columns: List<SchemaColumn>,
+	val fields: List<FieldCandidatesResponse>,
+	val suggestion: ColumnMappingResponse,
+	val defaults: Map<String, String?>,
+) {
+	companion object {
+		fun of(view: ImportSchemaView) = ImportSchemaResponse(
+			sourceId = view.sourceId,
+			target = view.target.wire,
+			columns = view.columns,
+			fields = view.fields.map { FieldCandidatesResponse(it.field.wire, it.candidates) },
+			suggestion = ColumnMappingResponse(
+				columns = view.suggestion.columns.mapKeys { (field, _) -> field.wire },
+				values = view.suggestion.values.mapKeys { (field, _) -> field.wire },
+			),
+			defaults = view.defaults.mapKeys { (field, _) -> field.wire },
+		)
+	}
+}
+
+data class FieldCandidatesResponse(val field: String, val candidates: List<String>)
+
+data class ColumnMappingResponse(
+	val columns: Map<String, String>,
+	val values: Map<String, Map<String, String>>,
+)
 
 /**
  * The import itself, and the fields the client had no other way to send.
@@ -82,8 +124,8 @@ class NotionImportController(
 
 	/** Not `@Transactional`, for the same reason as [sources]: this walks the network too. */
 	@GetMapping("/schema")
-	fun schema(@RequestParam sourceId: String, @RequestParam target: String): ImportSchemaView =
-		imports.schema(sourceId, ImportTarget.from(target))
+	fun schema(@RequestParam sourceId: String, @RequestParam target: String): ImportSchemaResponse =
+		ImportSchemaResponse.of(imports.schema(sourceId, ImportTarget.from(target)))
 
 	@PostMapping("/preview")
 	fun preview(@RequestBody request: ImportPreviewRequest): ImportPreview =
