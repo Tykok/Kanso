@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, API_URL, type SetupState } from "@/lib/api";
+import { readNotionAppCredentials, redirectUriProblem } from "@/lib/notion-app-credentials";
 import { Callout, CopyRow, TextField, messageFor } from "./fields";
 
 /**
@@ -20,6 +21,9 @@ import { Callout, CopyRow, TextField, messageFor } from "./fields";
  */
 const REDIRECT_URI = `${API_URL}/api/setup/notion/callback`;
 
+/** Where the integration is created. The same page `.env.example` names for the token. */
+const INTEGRATIONS_URL = "https://www.notion.so/profile/integrations";
+
 export function NotionConnect({
   state,
   onState,
@@ -33,6 +37,8 @@ export function NotionConnect({
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [editingApp, setEditingApp] = useState(!stored.appConfigured);
+  /** What the pasted blob said about the redirect URI it was registered with. */
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
 
   const saveApp = useMutation({
     mutationFn: api.saveNotionApp,
@@ -44,6 +50,27 @@ export function NotionConnect({
       onState(next);
     },
   });
+
+  /**
+   * One paste instead of two transcriptions.
+   *
+   * Notion offers no client file, so what arrives is the authorization URL from the
+   * integration page, the labelled block around the two secrets, or the pair as JSON —
+   * `readNotionAppCredentials` treats all three the same. Anything it does not
+   * recognise falls through unchanged, so typing an id by hand still works, and a
+   * recognised blob never stays in the id box, because a field holding a whole block
+   * is a field that looks broken.
+   */
+  const takeClientId = (value: string) => {
+    const credentials = readNotionAppCredentials(value);
+    if (!credentials) {
+      setClientId(value);
+      return;
+    }
+    setClientId(credentials.clientId);
+    if (credentials.clientSecret) setClientSecret(credentials.clientSecret);
+    setPasteNote(redirectUriProblem(credentials, REDIRECT_URI));
+  };
 
   const connect = useMutation({
     mutationFn: api.startNotionConnect,
@@ -108,12 +135,23 @@ export function NotionConnect({
       ) : (
         <>
           <p className="m-0 text-12 text-muted-foreground">
-            Create a <strong>public</strong> integration in Notion once, paste its two
-            values here, and the rest is a button. Notion will not issue a client to a
-            host it has never heard of, which is the one step no app can skip for you.
+            Create a <strong>public</strong> integration in Notion once, paste what it
+            gives you here, and the rest is a button. Notion will not issue a client to a
+            host it has never heard of, which is the one step no app can skip for you.{" "}
+            <a
+              href={INTEGRATIONS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-foreground"
+            >
+              Create it in Notion
+            </a>
+            .
           </p>
 
           <CopyRow label="Redirect URI to register on the integration" value={REDIRECT_URI} />
+
+          {pasteNote && <Callout>{pasteNote}</Callout>}
 
           <TextField
             label="OAuth client id"
@@ -121,7 +159,8 @@ export function NotionConnect({
             spellCheck={false}
             value={clientId}
             placeholder={stored.appConfigured ? "Saved — type a new one to replace it" : ""}
-            onChange={(event) => setClientId(event.target.value)}
+            hint="Or paste Notion's authorization URL, or both values at once — it fills in the secret too."
+            onChange={(event) => takeClientId(event.target.value)}
           />
 
           <TextField

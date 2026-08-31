@@ -70,10 +70,20 @@ logs a loud warning. Never expose an instance running that way.
 
 ### Connecting Notion
 
-From the wizard, or later from settings → setup: paste an internal integration
-token, and the id of a page you have shared with that integration. "Test connection"
-does a real round trip before saving, then "Create the databases" builds the four
-mirrored databases and queues everything already in Postgres.
+From the wizard, or later from settings → setup. Notion will not issue an OAuth client
+to a host it has never heard of, so one step happens in Notion: create a **public**
+integration and register the redirect URI Kanso prints next to the field. Then paste
+what that page gives you — its authorization URL, or the client id and the secret
+together — into the client id field, and both are filled in from the one paste.
+
+Everything after that is a button. "Connect Notion" opens Notion's own consent screen,
+where you pick which pages Kanso may see, so nothing has to be shared by hand from a
+`•••` menu. "Create the databases" then builds the four mirrored databases and queues
+everything already in Postgres.
+
+Pasting an internal integration token still works, folded away behind "Paste an
+integration token instead" — for an instance that already has one, and for one whose
+browser cannot reach a consent screen at all.
 
 Anything set in the environment (`NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, …) **wins over
 the wizard** and is shown read-only — operator config and in-app config disagreeing
