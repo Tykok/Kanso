@@ -43,8 +43,21 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       NOTION_TOKEN: ${NOTION_TOKEN:-}
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
       NOTION_PARENT_PAGE_ID: ${NOTION_PARENT_PAGE_ID:-}
       NOTION_API_VERSION: ${NOTION_API_VERSION:-2025-09-03}
+      # Where Notion is. Overridden by one thing only: `e2e/import.spec.ts`, which
+      # stands up a workspace of its own at `e2e/notion-workspace.ts` and points the
+      # container at it, so the import can be walked in a browser against the real
+      # `HttpNotionClient` rather than against a fake bound inside the application.
+      # The default has to be spelled out rather than left empty — an empty value
+      # would override `application.yml`'s own default with the empty string.
+      NOTION_BASE_URL: ${NOTION_BASE_URL:-https://api.notion.com/v1}
+    # So a `NOTION_BASE_URL` naming `host.docker.internal` reaches the machine running
+    # the suite on Linux too, where Docker Desktop's own alias does not exist.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:

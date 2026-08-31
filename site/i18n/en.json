@@ -1,0 +1,88 @@
+{
+  "meta.title": "Kanso — a project, end to end, mirrored to Notion",
+  "meta.description": "Kanso runs a project end to end — teams, projects, tickets, cycles, a roadmap, a timeline with dependencies, workload — and keeps the documents that explain it alongside. Self-hosted, AGPL-3.0.",
+  "skip": "Skip to the walk-through",
+
+  "nav.tagline": "Self-hosted project manager",
+  "nav.language": "Language",
+
+  "hero.eyebrow": "Project manager · living documents",
+  "hero.title": "Kanso runs a project end to end — teams, projects, tickets, cycles, a roadmap, a timeline with dependencies, workload — and keeps the documents that explain it alongside.",
+  "hero.lead": "Everyone who does not open it reads the same data in Notion.",
+  "hero.repo": "The source on GitHub",
+  "hero.ports": "Web on :3000, API on :8080.",
+  "hero.statuses": "Six statuses, backlog to canceled, on one keystroke each. The same six in the list, the board and the timeline.",
+
+  "walk.eyebrow": "The walk-through",
+  "walk.title": "Five screens, in the order you meet them",
+  "walk.lead": "A project, a ticket, then the same tickets read three ways.",
+
+  "step.project.title": "Create a project",
+  "step.project.caption": "A team owns its tickets; a project groups them across the team and carries a lead, a status and dates. Cycles and the roadmap read from the same rows.",
+  "step.project.alt": "A project in Kanso, with its lead, its status and its dates.",
+
+  "step.ticket.title": "Create a ticket",
+  "step.ticket.caption": "<code>c</code> from anywhere, <code>e</code> to rename in place, <code>1</code>–<code>6</code> for the status. The ticket takes a short per-team identifier — KAN-1, then KAN-2 — allocated inside the insert.",
+  "step.ticket.alt": "A ticket in Kanso, with its identifier, its status and its assignee.",
+
+  "step.timeline.title": "Read it as a timeline",
+  "step.timeline.caption": "Bars, dependencies between them, and a warning when two overlap. One scoped query, drawn as time.",
+  "step.timeline.alt": "The Kanso timeline: bars over weeks, with arrows between dependent tickets.",
+
+  "step.board.title": "Read it as a board",
+  "step.board.caption": "The same query, drawn as six columns. Dragging a card changes the status and nothing else.",
+  "step.board.alt": "The Kanso board: six status columns with ticket cards.",
+
+  "step.assigned.title": "Read it as one person's list",
+  "step.assigned.caption": "The same query again, filtered to an assignee and kept as a saved view. List, board and timeline are three dispositions of one query, not three features to keep in step — which is also why workload per person is a reading of the same rows and not a report.",
+  "step.assigned.alt": "The Kanso list filtered to one assignee, grouped by status.",
+
+  "pillars.eyebrow": "What it is",
+  "pillars.title": "Four things, in this order",
+  "pillar.project.title": "A whole project, not a task list.",
+  "pillar.project.body": "Cycles, a roadmap, a timeline that knows its dependencies and warns about overlap, workload per person.",
+  "pillar.document.title": "The document sits next to the work.",
+  "pillar.document.body": "Notion pages are referenced by projects and tickets, many-to-many on both sides. The page that explains a decision hangs off the work it decided, instead of being filed in a second tool.",
+  "pillar.keyboard.title": "At the keyboard.",
+  "pillar.keyboard.body": "<code>j</code>/<code>k</code> to move, <code>1</code>–<code>6</code> for the status, <code>⌘K</code> for the palette, <code>/</code> to filter. The same keys in all three views.",
+  "pillar.readers.title": "Nobody else has to learn Kanso.",
+  "pillar.readers.body": "Connect Notion and Kanso feeds four databases. The people who only need to follow along build their own views there and never open Kanso.",
+
+  "notion.eyebrow": "Notion",
+  "notion.title": "Both directions, and only one of them is a loop",
+  "notion.out.title": "Outbound, continuously",
+  "notion.out.body": "Every write enqueues a job in the same transaction, and a worker pushes it into four databases. Readers filter, group and chart them in Notion the way they already do, and never open Kanso. Postgres stays the source of truth; Notion catches up, and Kanso stays usable while it is down.",
+  "notion.in.title": "Inbound, once",
+  "notion.in.body": "Arrive with six months of tickets already in Notion and the import adopts them: it lists the databases it can see, you say which team each one becomes, and it copies the pages in. Once. Afterwards tickets are created in Kanso — a page created in Notion later is logged and left where it is, and the poller only carries scalar fields back: title, status, priority, dates, archived. Assignees and relations stay Kanso's.",
+  "notion.landing": "One door to move in, one source of truth to live in.",
+
+  "run.eyebrow": "Run it",
+  "run.title": "Two commands, on your own machine",
+  "run.env": "cp .env.example .env      # fill in OIDC credentials, or set KANSO_AUTH_MODE=dev",
+  "run.command": "docker compose up",
+  "run.web": "Web — localhost:3000",
+  "run.api": "API — localhost:8080",
+  "run.health": "Health — localhost:8080/actuator/health",
+  "run.wizard": "First launch opens a setup wizard. You create the owner account with an email and a password, then — if you want to — link Notion, enable Google sign-in and pick a theme. Every step after the account is skippable and reopenable from settings, so you can be filing tickets in under a minute.",
+  "run.optional": "Notion is optional. With no token every write still enqueues a sync job and a no-op client completes it: the queue and the retry machinery run, and nothing leaves the machine.",
+
+  "oss.eyebrow": "Open source",
+  "oss.title": "AGPL-3.0, and hostable by you",
+  "oss.licence": "AGPL-3.0. No paid edition, no feature kept behind a wall.",
+  "oss.review": "Reviewed within a week. No CLA to sign.",
+  "oss.repo": "Read the source",
+  "oss.start.title": "Before you start",
+  "oss.start.1": "Clone it and run",
+  "oss.start.1.code": "docker compose up kanso",
+  "oss.start.2": "Read the contributing guide (5 min)",
+  "oss.start.3": "Say hello in the ticket's discussion",
+  "oss.start.4": "Open a pull request, even an incomplete one",
+
+  "closing.title": "It runs the project. Everyone else reads it in Notion.",
+  "closing.body": "One instance, your Postgres, your Notion token or none at all. Nothing to sign up for and nothing to send us — there is no telemetry to switch off.",
+  "closing.cta": "The repository",
+
+  "footer.licence": "AGPL-3.0 · Kanso",
+  "footer.repo": "github.com/Tykok/Kanso",
+  "footer.captures": "The captures are taken from the running application by a test that waits for each screen, so a moved screen breaks the script instead of photographing the wrong thing."
+}

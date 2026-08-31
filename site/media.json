@@ -1,0 +1,17 @@
+{
+  "_base": "TO FILL: the host the owner serves the captures from. Nothing binary is committed — five @2x PNGs are 1-2 MB and a clip is 5-30 MB per revision, permanently. Keep the /v1/ segment: replacing a file at a stable URL leaves caches serving the previous screenshot under the new caption.",
+  "_host": [
+    "HTTPS. An http:// image on an HTTPS Pages document is blocked, not degraded.",
+    "A versioned path, so a replaced capture gets a new URL.",
+    "Publicly readable, no signed URLs: they expire and the page cannot notice."
+  ],
+  "_type": "image or video. A clip is the same entry with type changed and a poster added; the template does not move.",
+  "base": "https://media.example.invalid/kanso/v1/",
+  "steps": [
+    { "key": "step.project", "type": "image", "src": "01-project.png" },
+    { "key": "step.ticket", "type": "image", "src": "02-ticket.png" },
+    { "key": "step.timeline", "type": "image", "src": "03-timeline.png" },
+    { "key": "step.board", "type": "image", "src": "04-board.png" },
+    { "key": "step.assigned", "type": "image", "src": "05-assigned.png" }
+  ]
+}

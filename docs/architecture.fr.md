@@ -91,6 +91,21 @@ sous un « Untitled » de plus.
 | 10 | `Kanso ID` n'est pas unique côté Notion : une page dupliquée produit deux lignes revendiquant la même entité. | La réconciliation se fait d'abord par `notion_page_id` ; `Kanso ID` n'est qu'une clé de récupération. |
 | 11 | La relation d'équipe auto-référencée de Notion accepte un cycle. | L'acyclicité est imposée dans Postgres avec `WITH RECURSIVE`, à l'aller comme au retour. Le parentage d'équipe n'est jamais accepté depuis Notion. |
 
+Les lignes 1 à 11 parlent toutes du miroir : ce que Kanso écrit et relit dans ses quatre
+bases, dont il a choisi chaque nom de colonne. L'import lit dans l'autre sens — un espace de
+travail construit par quelqu'un d'autre, une seule fois — et il est lossy à sa manière, qui
+n'a rien à voir avec celle du miroir.
+
+| # | Problème | Ce que fait Kanso |
+|---|---|---|
+| 12 | **Le nom d'une colonne ne veut rien dire d'un workspace à l'autre.** Une base construite par quelqu'un qui n'a jamais entendu parler de Kanso appelle son statut `État` et ses options `En cours`. La correspondance stricte par nom qui sert le miroir importait un tel workspace en quatre cents tickets en `Todo`. | Les noms sont un pré-remplissage et jamais une règle : `ImportSchema` suggère, la troisième étape de l'écran 24 décide, et `MappedPageReader` lit une page *à travers* cette réponse. Le titre est la seule exception et se trouve par **type** — `title` est la seule propriété que Notion exige de toute base, et faire correspondre `"Name"` est précisément ce qui nommait « Untitled » les pages d'un workspace français. |
+| 13 | Une option de select importée n'a aucune raison d'être un mot que Kanso connaît : `Terminé`, `Bloqué`, `P0`. | Chaque option d'une colonne mappée est à l'écran avec la valeur Kanso qu'elle prendra, et celles sur lesquelles rien ne tombe sont **nommées** plutôt que comptées — un nombre dit au lecteur qu'on a deviné quelque chose, une liste lui dit quoi. Une option non mappée prend la valeur par défaut du champ, jamais un septième statut que rien d'autre ne comprend. |
+| 14 | Un rollup ou une formule n'a pas de colonne ici et pas de sens hors de Notion. | Conservé sous sa valeur *affichée* dans une section « imported from Notion » de la description, avec toutes les autres propriétés que rien n'a revendiquées. Volontairement lossy : une ligne lisible là vaut mieux qu'une copie fidèle des rouages de Notion dans une colonne qu'il faudrait ensuite maintenir en phase. |
+| 15 | Une relation ne porte du sens que si ses deux bouts arrivent. Une colonne `Projet` qui pointe vers une base ignorée — ou importée dans le mauvais rôle — n'a rien à résoudre. | La deuxième étape le dit, à côté du décompte de ce que cela coûte, et propose d'importer l'autre base dans le rôle que cette relation demande. Ce n'est jamais bloquant : la ligne atterrit dans le repli donné à sa base, et la relation est comptée comme abandonnée dans le compte rendu. |
+| 16 | Une relation `two_property` est déclarée des deux côtés et les deux peuvent se contredire — un ticket qui nomme le projet B alors que le projet A prétend le contenir. | La réponse de l'enfant gagne, parce que l'enfant est la ligne qu'on écrit, et le désaccord est compté dans le compte rendu plutôt que tranché en silence. La colonne inverse d'un parent (`Tâches` sur une base de projets) est un recours de dernier ressort, lue seulement là où l'enfant n'a rien dit. |
+| 17 | Notion ne répond aucun total de pages pour une data source : un décompte est donc un parcours, à environ 2,5 requêtes par seconde. | Le parcours est borné par `kanso.notion.import.max-pages-per-database`, et une base plus longue rapporte le décompte atteint suivi d'un `+` — à la première étape, à la deuxième et sur le bouton de confirmation. Un nombre nu devant un bouton de confirmation serait un nombre faux. L'import ramène ensuite le préfixe qu'il a lu et rien au-delà de la borne ; `follow-ups.md` le lui reproche. |
+| 18 | Une colonne `people` ne peut devenir une assignation que si un compte Kanso existe déjà pour cette personne. | La quatrième étape fait correspondre chaque personne Notion rencontrée sur une colonne mappée à un compte et *écrit* `users.notion_person_id`, si bien que la réponse tient pour tous les imports suivants et permet ensuite au miroir de remplir la propriété `people`. Qui reste sans correspondance laisse ses lignes non assignées plutôt que devinées, et créer des comptes reste le travail du flux d'invitation. |
+
 ### Connecter Notion
 
 Une instance se connecte via une intégration **publique** et l'écran de consentement de
@@ -124,6 +139,71 @@ filtrée sur les pages renvoie les *lignes* des bases de données, et chaque pag
 miroir écrit en est une, donc la liste exclut toute page dont le parent est une base ou une
 source de données. C'est une règle sur la forme, pas une liste des identifiants de Kanso :
 elle ne peut pas se périmer.
+
+### La table des origines, et pourquoi ce n'est pas `notion_page_id`
+
+`teams.notion_page_id`, `projects.notion_page_id` et `tickets.notion_page_id` contiennent
+**la page du miroir** — la ligne que Kanso a créée dans `Kanso · Tickets` — et chaque push
+sortant les écrase. Un import doit retenir un autre fait : de quelle page, dans l'espace de
+travail de quelqu'un d'autre, une ligne Kanso a été faite.
+
+Les deux faits se ressemblent assez pour partager une colonne, et c'est exactement pourquoi
+ils ne doivent pas. Mettez l'id d'une page importée dans `notion_page_id` et le push suivant
+pointe « Kanso gagne » vers l'espace de travail que quelqu'un vient de confier : l'état de
+Kanso est écrit sur ses propres pages, et l'import efface ce qu'il importe. L'écran 24
+promet que rien ne change dans Notion, et cette promesse meurt à l'instant où une colonne
+veut dire les deux choses.
+
+Le second fait a donc une table à lui, `V15__notion_import_origin.sql` :
+
+```sql
+CREATE TABLE notion_import_origin (
+  notion_page_id TEXT PRIMARY KEY,
+  entity_type    TEXT NOT NULL CHECK (entity_type IN ('team', 'project', 'ticket', 'doc')),
+  entity_id      UUID NOT NULL,
+  data_source_id TEXT NOT NULL,
+  imported_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entity_type, entity_id)
+);
+
+CREATE INDEX notion_import_origin_source_idx ON notion_import_origin (data_source_id);
+```
+
+`notion_page_id` est la clé primaire parce qu'une page Notion devient au plus une ligne
+Kanso : la contrainte *est* la règle « importé une seule fois », imposée par Postgres plutôt
+que par le fait de penser à vérifier — c'est ce qui rend l'import sûr à presser deux fois.
+`entity_type` est le même vocabulaire fermé que celui du fil, tenu fermé ici par un `CHECK`.
+
+Trois choses lisent cette table, et trois seulement :
+
+1. **Résoudre une relation** vers une ligne importée lors d'une session **antérieure**, pour
+   qu'un lien dont l'autre bout est arrivé le mois dernier reste silencieux au lieu de
+   devenir une question.
+2. **Reconnaître une page**, pour qu'un second import la laisse tranquille.
+3. **Retrouver le projet conteneur d'une base de tâches** — celui que `TicketImport` nomme
+   d'après la base, pour les tickets dont la relation n'a rien répondu. Cette ligne est
+   clefée par l'id de *data source* de la base là où toutes les autres le sont par un id de
+   page, et c'est le seul endroit où cette table est écrite deux fois : un conteneur que
+   quelqu'un a supprimé depuis doit être remplacé par le nouveau, sinon la fois suivante on
+   retrouverait l'id mort et on créerait un troisième conteneur.
+
+`data_source_id` est écrit sur chaque ligne et, aujourd'hui, **lu par rien**. C'est ce dont un
+import ultérieur aurait besoin pour dire « cette base a déjà été ramenée, 396 de ses 400
+pages sont là », et `notion_import_origin_source_idx` est l'index que cette requête
+utiliserait ; aucun écran ne la demande encore, et `follow-ups.md` le dit plutôt que de
+laisser la colonne passer pour porteuse.
+
+Aucun des trois n'est un chemin entrant. Relire Notion dans une ligne existante est ce que
+« Notion est en lecture seule dans les faits » refuse, et cela écraserait tout ce qui a été
+fait dans Kanso depuis.
+
+Il n'y a pas de clé étrangère, délibérément : la référence est polymorphe, et l'alternative
+serait quatre colonnes nullables et un `CHECK` disant qu'une seule est remplie. Le prix est
+qu'une entité supprimée laisse une ligne qui ne pointe plus sur rien : la graine que les
+writers résolvent est donc d'abord filtrée sur les lignes vivantes — `ImportOriginRepository.live`,
+une requête d'existence par sorte — et une ligne périmée se comporte alors exactement comme
+une relation vers une base ignorée : elle ne résout rien et retombe sur le repli. Nettoyer
+ces lignes est une entrée de `follow-ups.md`, pas un trigger.
 
 ---
 

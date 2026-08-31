@@ -56,6 +56,75 @@ The HTML report from the last run:
 pnpm exec playwright show-report
 ```
 
+## The captures, which are not a scenario
+
+`shots.spec.ts` writes the five PNGs the public site's walk-through shows, into
+`site/media/`. It is tagged `@shots` and `playwright.config.ts` keeps it out of every
+other run, because it writes files and because it needs a database no `Atlas` has been
+created in — ticket identifiers come off a counter on the team row, and a picture
+captioned `KAN-1` has to show `KAN-1`. It refuses to run otherwise rather than
+photographing `KAN-47`.
+
+```bash
+docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wait
+pnpm shots
+```
+
+The files are never committed: they are uploaded to the host named in `site/media.json`.
+Its dates are absolute, in September 2026, and the run goes red once they are past —
+deliberately, so the site is never handed a walk-through of missed deadlines. Move
+`PLAN` forward when that happens.
+
+## The import, which needs a workspace
+
+`import.spec.ts` (scenario 23) walks screen 24's five steps and then asserts the rows the
+import wrote. It cannot run against a workspace nobody has, and with no `NOTION_TOKEN` the
+dialog's first step prints a sentence and there is nothing to walk — so the suite brings
+its own workspace: `notion-workspace.ts` answers Notion's own HTTP API on port 8099, with
+three related bases, a status column called `Etat` and options called `En cours`.
+
+The seam is `NOTION_BASE_URL`, which `application.yml` already reads. Pointing the API at
+the suite's workspace puts the real `HttpNotionClient` under test — its search-filter
+fallback, its cursors, its property parsing — rather than a fake bound inside the
+application, which is the whole reason the workspace lives here and not in
+`apps/api/src/main`. The stack therefore needs two more variables than the others:
+
+```bash
+KANSO_AUTH_MODE=dev NOTION_TOKEN=e2e-stub-token \
+  NOTION_BASE_URL=http://host.docker.internal:8099/v1 \
+  docker compose up -d --build --wait
+
+KANSO_NOTION_STUB=1 pnpm exec playwright test e2e/import.spec.ts
+```
+
+Two variables on the stack, one on the runner, and they are not interchangeable: the first
+two are read when the container boots, and `KANSO_NOTION_STUB` is read by Playwright.
+
+`host.docker.internal` is the machine running the suite, seen from inside the container;
+`docker-compose.yml` maps it with `extra_hosts` so this holds on Linux as well as on Docker
+Desktop. The port is fixed because `NOTION_BASE_URL` is read when the container boots and
+the server starts when the spec does — override both together with
+`KANSO_NOTION_STUB_PORT`.
+
+Without `KANSO_NOTION_STUB=1` the scenario **skips**, with the command above in the skip's
+message, so a default `pnpm test:e2e` stays green and says plainly that one scenario did not
+run. That flag is the *whole* decision, on purpose. The tempting guard — ask the API whether
+the three bases are there and skip if they are not — makes the precondition the feature under
+test: break discovery and the scenario would skip on a correctly configured stack, and a
+green suite with one skip looks exactly like "nobody set a workspace up". With the flag set,
+the source list is an `expect` at the top of the test and an unreachable or incomplete
+workspace fails loudly, naming the command it needs.
+
+Nothing else in the suite minds a configured token: the mirror has no databases to push to,
+so the outbound worker fails its jobs against `NotBootstrapped` and reaches no network at
+all — which the import spec also asserts, by recording every write its workspace was asked
+for and expecting none.
+
+It is re-runnable against a long-lived database: a page is imported exactly once —
+`notion_import_origin` has the Notion page id as its primary key — so every id and title
+the workspace answers carries a fresh per-run suffix. Without that the second run would be
+a test of the skipping path wearing the first run's assertions.
+
 ## Identities
 
 Two accounts, created on the spot by `dev` mode:

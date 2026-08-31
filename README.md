@@ -1,7 +1,22 @@
 # Kanso
 
-A keyboard-first task tracker, in the spirit of Linear, that keeps Notion as a
-durable, readable mirror.
+Kanso runs a project end to end — teams, projects, tickets, cycles, a roadmap, a
+timeline with dependencies, workload — and keeps the documents that explain it
+alongside. Everyone who does not open it reads the same data in Notion.
+
+**What it does**
+
+- **A whole project, not a task list.** Cycles, a roadmap, a timeline that knows its
+  dependencies and warns about overlap, workload per person.
+- **The document sits next to the work.** Notion pages are referenced by projects *and*
+  tickets, many-to-many on both sides — not filed in a second tool.
+- **At the keyboard.** Keyboard-first: `j`/`k`, `1`…`6`, `⌘K`, and list, board and
+  timeline are one scoped query drawn three ways.
+- **Nobody else has to learn Kanso.** Connect Notion and Kanso feeds four databases
+  that the people following along build their own views on; an existing workspace is
+  imported once — with its own columns and its own words, so a base whose status is
+  called `État` and whose options read `En cours` comes over as work already started
+  rather than as a pile of `Todo`. One door to move in, one source of truth to live in.
 
 **Postgres is the operational source of truth. Notion is an asynchronous mirror.**
 People who move work forward every day live in Kanso; everyone else keeps reading
@@ -57,10 +72,25 @@ logs a loud warning. Never expose an instance running that way.
 
 ### Connecting Notion
 
-From the wizard, or later from settings → setup: paste an internal integration
-token, and the id of a page you have shared with that integration. "Test connection"
-does a real round trip before saving, then "Create the databases" builds the four
-mirrored databases and queues everything already in Postgres.
+From the wizard, or later from settings → setup. Notion will not issue an OAuth client
+to a host it has never heard of, so one step happens in Notion: create a **public**
+integration and register the redirect URI Kanso prints next to the field. Then paste
+what that page gives you — its authorization URL, or the client id and the secret
+together — into the client id field, and both are filled in from the one paste.
+
+Everything after that is a button. "Connect Notion" opens Notion's own consent screen,
+where you pick which pages Kanso may see, so nothing has to be shared by hand from a
+`•••` menu. "Create the databases" then builds the four mirrored databases and queues
+everything already in Postgres.
+
+Set `NOTION_CLIENT_ID` and `NOTION_CLIENT_SECRET` in the environment and the paste is
+gone for good: every instance you bring up afterwards — a fresh database, a test stack,
+a second deployment — shows only the button. They pin the *door*, not the connection;
+nothing is mirrored until somebody consents.
+
+Pasting an internal integration token still works, folded away behind "Paste an
+integration token instead" — for an instance that already has one, and for one whose
+browser cannot reach a consent screen at all.
 
 Anything set in the environment (`NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, …) **wins over
 the wizard** and is shown read-only — operator config and in-app config disagreeing
@@ -137,9 +167,11 @@ docs        architecture notes
 
 ## Status
 
-v1 in progress. Not yet: per-field merge on conflict, Notion webhooks, saved views,
-comments, attachments.
+v1 in progress. Not yet: per-field merge on conflict, Notion webhooks, attachments,
+sub-tickets.
 
 ## License
 
-MIT
+AGPL-3.0 — the full text is in [`LICENSE`](LICENSE). The network clause is the reason:
+Kanso is run as a service by whoever deploys it, so a hosted fork owes its changes to
+the people using it.

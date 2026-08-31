@@ -52,9 +52,9 @@ class NotionImportPreviewTest : ImportTestBase() {
 	private fun importer() = importerFor(engineering, specs, meetings, design, archive)
 
 	private fun drawnPlan() = plan(
-		engineering to ImportTarget.PROJECT,
-		specs to ImportTarget.PROJECT,
-		meetings to ImportTarget.PROJECT,
+		engineering to ImportTarget.TICKETS,
+		specs to ImportTarget.TICKETS,
+		meetings to ImportTarget.TICKETS,
 		design to ImportTarget.DOCUMENTS,
 	)
 
@@ -81,30 +81,46 @@ class NotionImportPreviewTest : ImportTestBase() {
 	}
 
 	@Test
-	fun `counts the bases whose relations would become dependencies`() {
-		// The drawing's own sentence: "trois bases liées entre elles". Engineering and
-		// Meeting notes both point into Product specs, so all three are linked; Design docs
-		// becomes documents and holds no relation, and the archive is not being imported.
-		assertEquals(3, importer().preview(drawnPlan()).linkedSources)
+	fun `a base of teams and a base of projects each get a group of their own`() {
+		val teams = FakeDatabase("Squads", listOf(fakePage("Platform")))
+		val projects = FakeDatabase("Roadmaps", listOf(fakePage("Q4"), fakePage("Q1")))
+		val preview = importerFor(teams, projects, engineering).preview(
+			plan(
+				teams to ImportTarget.TEAMS,
+				projects to ImportTarget.PROJECTS,
+				engineering to ImportTarget.TICKETS,
+			)
+		)
+
+		assertEquals(listOf("Squads" to 1), preview.teams.map { it.name to it.pages })
+		assertEquals(
+			listOf("Roadmaps" to 2, "Engineering tasks" to 2),
+			preview.projects.map { it.name to it.pages },
+			"both shapes produce projects: pages that are projects, and pages in one project",
+		)
 	}
 
 	@Test
-	fun `does not count a relation that leaves what is being imported`() {
-		// Engineering keeps pointing at Product specs, but Product specs is not in the plan
-		// now, so there is no second end for a dependency to land on.
-		val preview = importer().preview(plan(engineering to ImportTarget.PROJECT))
-
-		assertEquals(0, preview.linkedSources)
-	}
-
-	@Test
-	fun `names the properties Kanso has no column for, and only those`() {
+	fun `a relation nobody mapped links nothing`() {
+		// Engineering and Meeting notes both point into Product specs, and all three bases
+		// are kept — but the request carries no mapping, so no column has been named as a
+		// link and there is nothing to cross between bases. The counted-links case is
+		// [ImportPlannerTest], which can give a mapping by hand.
 		val preview = importer().preview(drawnPlan())
 
-		// Status, Priority and Due have columns. `Spec` is a relation and becomes a
-		// dependency, so it is not lost either. What is left is what the "imported from
-		// Notion" section exists for.
-		assertEquals(listOf("Sprint", "Squad"), preview.unmappedProperties)
+		assertEquals(0, preview.linkedSources)
+		assertEquals(0, preview.linkedByRelation)
+	}
+
+	@Test
+	fun `names the properties nothing claimed, which without a mapping is all of them`() {
+		val preview = importer().preview(drawnPlan())
+
+		// Nothing here mapped a column, so nothing has a column of its own and everything
+		// readable is preserved verbatim — which is the honest answer for a base whose
+		// meaning nobody has stated yet. `Spec` is absent because it is a relation: it holds
+		// page ids, which are not content anybody can read.
+		assertEquals(listOf("Due", "Priority", "Sprint", "Squad", "Status"), preview.unmappedProperties)
 	}
 
 	@Test
@@ -113,7 +129,7 @@ class NotionImportPreviewTest : ImportTestBase() {
 			"Field notes",
 			pages = listOf(fakePage("Readable", id = "page-ok"), untitledPage("page-nameless")),
 		)
-		val preview = importerFor(awkward).preview(plan(awkward to ImportTarget.PROJECT))
+		val preview = importerFor(awkward).preview(plan(awkward to ImportTarget.TICKETS))
 
 		assertEquals(1, preview.skipped, "a page with no title has nothing to make a row out of")
 		assertEquals(listOf("Field notes" to 1), preview.projects.map { it.name to it.pages })
@@ -125,7 +141,7 @@ class NotionImportPreviewTest : ImportTestBase() {
 		// that has since been deleted. Counting it would put a number on step 3 with
 		// nothing behind it — `import-map.ts` refuses the same thing on its own side.
 		val preview = importer().preview(
-			drawnPlan() + ImportPlanEntry("ds-deleted-yesterday", ImportTarget.PROJECT)
+			drawnPlan() + ImportPlanEntry("ds-deleted-yesterday", ImportTarget.TICKETS)
 		)
 
 		assertEquals(3, preview.projects.size)

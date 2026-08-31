@@ -8,13 +8,16 @@ import dev.kanso.domain.Team
 import dev.kanso.domain.User
 import dev.kanso.docs.DocFolderRepository
 import dev.kanso.docs.DocPageRepository
+import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.ProjectService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketAccess
 import dev.kanso.sync.notion.NotionClient
+import dev.kanso.sync.notion.NotionPeople
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.support.TransactionTemplate
@@ -31,6 +34,7 @@ import java.util.UUID
 abstract class ImportTestBase : PostgresTest() {
 
 	@Autowired protected lateinit var meta: NotionMetaRepository
+	@Autowired protected lateinit var originRows: ImportOriginRepository
 	@Autowired protected lateinit var ticketRows: TicketRepository
 	@Autowired protected lateinit var projectRows: ProjectRepository
 	@Autowired protected lateinit var pageRows: DocPageRepository
@@ -39,6 +43,7 @@ abstract class ImportTestBase : PostgresTest() {
 	@Autowired protected lateinit var writer: ImportWriter
 	@Autowired protected lateinit var tx: TransactionTemplate
 	@Autowired protected lateinit var teamService: TeamService
+	@Autowired protected lateinit var projectService: ProjectService
 	@Autowired protected lateinit var users: UserRepository
 	@Autowired protected lateinit var encoder: PasswordEncoder
 
@@ -65,8 +70,13 @@ abstract class ImportTestBase : PostgresTest() {
 			client = client,
 		),
 		meta = meta,
+		originRows = originRows,
 		access = access,
 		writer = writer,
+		// `link` never touches the client, only `UserRepository` — the same fake workspace
+		// discovery reads from is enough, and building a second real bean would be wiring
+		// for a call this class never makes.
+		notionPeople = NotionPeople(client = client, users = users),
 		tx = tx,
 	)
 
@@ -91,4 +101,18 @@ abstract class ImportTestBase : PostgresTest() {
 
 	protected fun plan(vararg rows: Pair<FakeDatabase, ImportTarget>) =
 		rows.map { (database, target) -> ImportPlanEntry(database.dataSourceId, target) }
+
+	/**
+	 * One plan row carrying the mapping the request would carry for it.
+	 *
+	 * Separate from [plan] because most tests need no mapping at all, and a helper that
+	 * took one would put an empty `ColumnMapping()` on every call site that does not care.
+	 * Only the columns, never the values: a test about which column answers which field
+	 * has nothing to say about what its options mean.
+	 */
+	protected fun mapped(
+		base: FakeDatabase,
+		target: ImportTarget,
+		vararg columns: Pair<ImportField, String>,
+	) = ImportPlanEntry(base.dataSourceId, target, ColumnMapping(columns = columns.toMap()))
 }

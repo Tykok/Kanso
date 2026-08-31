@@ -1,4 +1,4 @@
-import type { TicketPriority, TicketStatus } from "./api";
+import type { ProjectStatus, TicketPriority, TicketStatus } from "./api";
 
 /**
  * How a status is written and coloured, wherever it is drawn.
@@ -52,4 +52,13 @@ export const PRIORITY_LABELS: Record<TicketPriority, string> = {
   medium: "Medium",
   high: "High",
   urgent: "Urgent",
+};
+
+/** The other status vocabulary, whose words a project's own screens print. */
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  planned: "Planned",
+  in_progress: "In progress",
+  paused: "Paused",
+  completed: "Completed",
+  canceled: "Canceled",
 };

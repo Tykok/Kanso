@@ -2,6 +2,7 @@ package dev.kanso.sync.importer
 
 import dev.kanso.config.KansoProperties
 import dev.kanso.sync.notion.NotionClient
+import dev.kanso.sync.notion.NotionDataSource
 import dev.kanso.sync.notion.NotionPage
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -71,6 +72,9 @@ class NotionDiscovery(private val props: KansoProperties, private val client: No
 		walk(dataSourceId) { collected += it }
 		return collected
 	}
+
+	/** A base's own schema, for the mapping screen — see [NotionDataSource] for why. */
+	suspend fun schema(dataSourceId: String): NotionDataSource? = client.retrieveDataSource(dataSourceId)
 
 	/**
 	 * Walks one data source, ascending, and returns whether it reached the end.

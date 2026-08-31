@@ -16,8 +16,17 @@ export const TICKET_STATUSES = [
 
 export const TICKET_PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
 
+/**
+ * `ProjectStatus`, server side (`domain/Model.kt`). Here rather than in the project
+ * dialog, which used to hold it: the Notion import's columns step offers the same choice
+ * when it maps a base of projects, and two copies of a closed vocabulary are two things
+ * to keep in step with one enum.
+ */
+export const PROJECT_STATUSES = ["planned", "in_progress", "paused", "completed", "canceled"] as const;
+
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type SyncState = "pending" | "synced" | "failed" | "disabled";
 
 export type Mirror = {
@@ -285,6 +294,13 @@ export type SetupState = {
      * the screen has to tell "nothing set up" from "set up, nobody has consented yet".
      */
     appConfigured: boolean;
+    /**
+     * The integration comes from `NOTION_CLIENT_ID` / `NOTION_CLIENT_SECRET` rather than
+     * from this screen. The opposite of `managedByEnvironment` in what it hides: a pinned
+     * token leaves nothing to connect, a pinned integration leaves nothing to type — the
+     * button is precisely what remains.
+     */
+    appManagedByEnvironment: boolean;
     /** The workspace a completed consent named. Absent when the token was pasted. */
     workspaceName?: string;
   };

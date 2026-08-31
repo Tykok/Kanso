@@ -1,3 +1,4 @@
+import type { NotionImportSchema } from "@/components/inbox/import-columns";
 import { API_URL, ApiError, getDevUser } from "./core";
 
 /**
@@ -145,19 +146,70 @@ export type NotionImportSources = {
   sources: NotionImportSource[];
 };
 
-/** One row of the mapping. An ignored base is absent, never `target: "ignore"`. */
-export type NotionImportPlanRow = { sourceId: string; target: "project" | "documents" };
+/**
+ * One row of the mapping. An ignored base is absent, never `target: "ignore"`.
+ *
+ * `columns` says which of this base's Notion properties answers which field, keyed by the
+ * field's wire string (`status`, `parentTeam`, `blockedBy`, …); `values` says, per field,
+ * what each of that column's own options means in Kanso's vocabulary. `fallback` is where
+ * this base's unlinked rows land — per base, because a base whose team cannot be resolved
+ * may want a different destination from its neighbour.
+ */
+export type NotionImportPlanRow = {
+  sourceId: string;
+  target: "teams" | "projects" | "tickets" | "documents";
+  columns: Record<string, string>;
+  values: Record<string, Record<string, string>>;
+  fallback: { teamId?: string; parentTeamId?: string; projectId?: string };
+};
 
-/** What step 3 sends, and what it gets back before anything is written. */
+/**
+ * What the preview and the import both take.
+ *
+ * `teamId` is required only for a plan holding a row that is not `teams` and has no
+ * `fallback.teamId` of its own — an import of teams alone has no destination to ask about.
+ * `people` is the person correspondence, keyed by the Notion person id and valued by the
+ * Kanso account the reader chose, or null for one they left unmatched.
+ */
+export type NotionImportRequest = {
+  teamId?: string;
+  people: Record<string, string | null>;
+  plan: NotionImportPlanRow[];
+};
+
+/** A base's name and how many of its pages the plan would write. */
+export type NotionImportGroup = { name: string; pages: number };
+
+/** What step 5 sends, and what it gets back before anything is written. */
 export type NotionImportPreview = {
-  projects: { name: string; pages: number }[];
-  folders: { name: string; pages: number }[];
-  /** Relations between the chosen databases, which become ticket dependencies. */
+  teams: NotionImportGroup[];
+  projects: NotionImportGroup[];
+  folders: NotionImportGroup[];
+  /**
+   * Bases taking part in a mapped link that crosses into another kept base — bases, not
+   * arrows, because a hundred relations between two databases is still two databases. Not
+   * a count of dependencies: a `Projet` relation places a ticket in a project, and only a
+   * `Blocked by` relation draws an arrow between two tickets.
+   */
   linkedSources: number;
+  /** Rows a relation would place — one per child page whose parent was found. */
+  linkedByRelation: number;
+  /**
+   * Rows no relation places, which would land in a base's `fallback`. Always 0 from the
+   * server today — `ImportPlanner.preview` takes no fallback into account — so nothing
+   * here prints it.
+   */
+  fellBack: number;
   /** Properties Kanso has no column for. They land in an "imported from Notion" block. */
   unmappedProperties: string[];
   /** Pages Kanso cannot make a row out of — one with no title at all. Reported, not hidden. */
   skipped: number;
+  /**
+   * Pages a row already exists for. Distinct from `skipped`: these are adoptable, there is
+   * simply already a Kanso row for them, and a second run would leave them alone. The one
+   * number that stops somebody importing the same workspace twice.
+   */
+  alreadyImported: number;
 };
 
 /** A page the import reported instead of inventing a row for. */
@@ -166,12 +218,19 @@ export type NotionImportSkip = { source: string; pageId: string; reason: string 
 /** What the import did, once it has done it. */
 export type NotionImportResult = {
   started: boolean;
+  teams: number;
   tickets: number;
   docs: number;
   projects: number;
   folders: number;
   dependencies: number;
+  /** Relations with an end that resolved to nothing. Counted, never guessed at. */
   droppedRelations: number;
+  /** Two sides of a relation that contradicted each other; the child won. */
+  linkConflicts: number;
+  /** A mapped person whose Kanso account no longer exists. The row was written unassigned. */
+  droppedAssignees: number;
+  alreadyImported: number;
   skipped: NotionImportSkip[];
 };
 
@@ -179,14 +238,23 @@ export const notionImportApi = {
   sources: () => request<NotionImportSources>("/api/notion/import/sources"),
 
   /**
+   * One base's columns, and Kanso's first guess at how to map them. Asked once per kept
+   * base, so a base whose schema Notion refuses does not blank the screen.
+   */
+  schema: (sourceId: string, target: NotionImportPlanRow["target"]) =>
+    request<NotionImportSchema>(
+      `/api/notion/import/schema?sourceId=${encodeURIComponent(sourceId)}&target=${target}`,
+    ),
+
+  /**
    * Reads. Named `preview` rather than `dryRun` because that is what the button says,
    * and because nothing about it is a rehearsal of a write: it is the last read before
    * one, and the drawing's own promise is that nothing is written until it is confirmed.
    */
-  preview: (plan: NotionImportPlanRow[]) =>
+  preview: (body: NotionImportRequest) =>
     request<NotionImportPreview>("/api/notion/import/preview", {
       method: "POST",
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify(body),
     }),
 
   /**
@@ -199,11 +267,52 @@ export const notionImportApi = {
    * so the answer is part of the request, and the server refuses a team the actor may not
    * write to before it reads a single page.
    */
-  confirm: (teamId: string, plan: NotionImportPlanRow[]) =>
+  confirm: (body: NotionImportRequest) =>
     request<NotionImportResult>("/api/notion/import", {
       method: "POST",
-      body: JSON.stringify({ teamId, plan }),
+      body: JSON.stringify(body),
     }),
+
+  /**
+   * The people a plan's mapped columns would meet, before step 4 asks who any of them are
+   * in Kanso. Reads, writes nothing — `perform` is still the only call that does, and only
+   * once the import itself is confirmed.
+   */
+  peopleSeen: (plan: NotionImportPlanRow[]) =>
+    request<NotionPersonSeen[]>("/api/notion/import/people-seen", {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    }),
+};
+
+/** A Notion person `notionImportApi.peopleSeen` found on a plan's mapped people columns. */
+export type NotionPersonSeen = { id: string; name?: string };
+
+// --- the person correspondence -----------------------------------------------
+//
+// Standing, not scoped to one import: `users.notion_person_id` outlives whichever import
+// last touched it, which is why this lives beside screen 24 rather than inside it. Step 4
+// reads it to pre-fill a suggestion for the people its own mapped columns met;
+// `settings/notion-people-section.tsx` is where the rest of the workspace gets matched, and
+// the only screen that calls `link` directly — step 4's own map reaches the server through
+// `notionImportApi.confirm`'s `people` field instead, applied by `perform`, never by a PUT
+// from here.
+
+/**
+ * `available: false` is a first-class answer here too: an integration without the
+ * "read user information" capability cannot list members, and `reason` is the sentence
+ * saying where to tick it.
+ */
+export type NotionPeopleView = {
+  available: boolean;
+  reason?: string;
+  people: { notion: { id: string; name?: string; email?: string }; userId?: string; suggestedUserId?: string }[];
+};
+
+export const notionPeopleApi = {
+  view: () => request<NotionPeopleView>("/api/notion/people"),
+  link: (assignments: Record<string, string | null>) =>
+    request<NotionPeopleView>("/api/notion/people", { method: "PUT", body: JSON.stringify(assignments) }),
 };
 
 /**

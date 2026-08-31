@@ -36,6 +36,14 @@ data class KansoProperties(
 	data class Notion(
 		val token: String = "",
 		val parentPageId: String = "",
+		/**
+		 * The public integration consent is asked *through*, which is a different setting
+		 * from [token] — that one says which workspace this instance mirrors, this one says
+		 * which door a browser may be sent to. Pinned here, a database that has never been
+		 * connected still shows a button rather than a form, which is the only way the
+		 * second instance costs nothing to set up.
+		 */
+		val app: Provider = Provider(),
 		val apiVersion: String = "2025-09-03",
 		val baseUrl: String = "https://api.notion.com/v1",
 		val requestTimeout: Duration = Duration.ofSeconds(20),

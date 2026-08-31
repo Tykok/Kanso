@@ -15,7 +15,7 @@ export type NotionSource = {
   pages: number;
 };
 
-export type ImportTarget = "project" | "documents" | "ignore";
+export type ImportTarget = "teams" | "projects" | "tickets" | "documents" | "ignore";
 
 /** Source id → what it becomes. Absent means [DEFAULT_TARGET]. */
 export type ImportMapping = Record<string, ImportTarget>;
@@ -35,7 +35,9 @@ export type ImportCounts = {
   kept: number;
   /** Pages in the workspace, mapped or not. The denominator. */
   total: number;
+  teams: number;
   projects: number;
+  tickets: number;
   folders: number;
   ignored: number;
 };
@@ -49,14 +51,22 @@ export const targetOf = (mapping: ImportMapping, source: NotionSource): ImportTa
  * and counting that would put a number on screen with nothing behind it.
  */
 export function importCounts(sources: NotionSource[], mapping: ImportMapping): ImportCounts {
-  const counts: ImportCounts = { kept: 0, total: 0, projects: 0, folders: 0, ignored: 0 };
+  const counts: ImportCounts = { kept: 0, total: 0, teams: 0, projects: 0, tickets: 0, folders: 0, ignored: 0 };
 
   for (const source of sources) {
     counts.total += source.pages;
     switch (targetOf(mapping, source)) {
-      case "project":
+      case "teams":
+        counts.kept += source.pages;
+        counts.teams++;
+        break;
+      case "projects":
         counts.kept += source.pages;
         counts.projects++;
+        break;
+      case "tickets":
+        counts.kept += source.pages;
+        counts.tickets++;
         break;
       case "documents":
         counts.kept += source.pages;

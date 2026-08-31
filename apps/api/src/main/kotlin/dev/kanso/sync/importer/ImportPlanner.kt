@@ -24,84 +24,105 @@ data class PageDependency(val predecessorPageId: String, val successorPageId: St
  */
 object ImportPlanner {
 
-	fun preview(bases: List<PlannedBase>): ImportPreview = ImportPreview(
-		projects = bases.filter { it.target == ImportTarget.PROJECT }
-			.map { PreviewGroup(it.base.name, it.adoptable.size) },
-		folders = bases.filter { it.target == ImportTarget.DOCUMENTS }
-			.map { PreviewGroup(it.base.name, it.adoptable.size) },
-		linkedSources = linkedBases(bases).size,
-		unmappedProperties = bases.flatMap { it.adoptable }
-			.flatMap(NotionPageReader::unmapped)
-			.map { (name, _) -> name }
-			.distinct()
-			.sorted(),
-		skipped = bases.sumOf { it.pages.size - it.adoptable.size },
-	)
+	fun preview(bases: List<PlannedBase>): ImportPreview {
+		val links = ImportLinks.resolve(bases)
+		return ImportPreview(
+			teams = bases.filter { it.target == ImportTarget.TEAMS }
+				.map { PreviewGroup(it.base.name, it.adoptable.size) },
+			// Both shapes, because both produce projects: a base whose pages *are* projects,
+			// and a base whose pages are tickets in one project named after it. A group is
+			// "this base, and how many of its pages come over", which is what the screen
+			// draws — the same reading `folders` has, where one base becomes one folder.
+			projects = bases.filter { it.target == ImportTarget.PROJECTS || it.target == ImportTarget.TICKETS }
+				.map { PreviewGroup(it.base.name, it.adoptable.size) },
+			folders = bases.filter { it.target == ImportTarget.DOCUMENTS }
+				.map { PreviewGroup(it.base.name, it.adoptable.size) },
+			linkedSources = linkedBases(bases, links).size,
+			unmappedProperties = bases.flatMap { base -> base.adoptable.flatMap(base.reader::unmapped) }
+				.map { (name, _) -> name }
+				.distinct()
+				.sorted(),
+			// `PlannedBase.skippedPages` already excludes pages already imported — see it for
+			// why. The writer counts the same list for the same reason, from the same property,
+			// so the two can no longer drift into counting one page in both buckets.
+			skipped = bases.sumOf { it.skippedPages.size },
+			alreadyImported = bases.sumOf { it.alreadyImported.size },
+			// A row placed by a relation, which is what these three maps are: one entry per
+			// child page whose parent was found. A dependency is not one of them — it places
+			// no row, it draws an arrow between two rows already placed.
+			linkedByRelation = links.parentOfTeam.size + links.teamOfProject.size + links.projectOfTicket.size,
+		)
+	}
 
 	/**
-	 * The bases taking part in a relation that crosses from one kept base into another.
+	 * The bases taking part in a link that crosses from one kept base into another.
 	 *
 	 * Step 3's sentence — "three of them are linked to each other" — is about bases, not
 	 * arrows: a hundred relations between the same two databases is still two databases
-	 * linked. A relation inside a single base still becomes a dependency (see
-	 * [dependencies]); it just says nothing about which bases are linked.
+	 * linked. Every link [ImportLinks] resolved counts, a dependency included; a link whose
+	 * two ends sit in the *same* base is real and still says nothing about which bases are
+	 * linked to which.
 	 */
-	private fun linkedBases(bases: List<PlannedBase>): Set<String> {
-		val ticketable = bases.filter { it.target == ImportTarget.PROJECT }
-		val owner = ticketable.flatMap { base -> base.adoptable.map { it.id to base.base.dataSourceId } }.toMap()
+	private fun linkedBases(bases: List<PlannedBase>, links: ImportLinks.Resolved): Set<String> {
+		val owner = bases.flatMap { base -> base.adoptable.map { it.id to base.base.dataSourceId } }.toMap()
+		val ends = listOf(links.parentOfTeam, links.teamOfProject, links.projectOfTicket)
+			.flatMap { linked -> linked.map { (child, parent) -> child to parent } } +
+			links.dependencies.map { it.successorPageId to it.predecessorPageId }
 
 		val linked = mutableSetOf<String>()
-		for (base in ticketable) {
-			for (page in base.adoptable) {
-				for (target in NotionPageReader.relations(page)) {
-					val other = owner[target] ?: continue
-					if (other == base.base.dataSourceId) continue
-					linked += base.base.dataSourceId
-					linked += other
-				}
-			}
+		for ((from, to) in ends) {
+			val here = owner[from] ?: continue
+			val there = owner[to] ?: continue
+			if (here == there) continue
+			linked += here
+			linked += there
 		}
 		return linked
 	}
-
-	/**
-	 * Every relation whose two ends both became tickets, and the count of those that did
-	 * not.
-	 *
-	 * A relation pointing at a page in an ignored base, in a base that became documents, or
-	 * at a page that could not be adopted has one end and no other. It is dropped and
-	 * counted — never invented, and never turned into a dependency on the nearest thing
-	 * that happened to resolve.
-	 */
-	fun dependencies(bases: List<PlannedBase>): DependencyPlan {
-		val ticketable = bases.filter { it.target == ImportTarget.PROJECT }
-		val adoptedIds = ticketable.flatMapTo(mutableSetOf()) { base -> base.adoptable.map { it.id } }
-
-		val edges = mutableListOf<PageDependency>()
-		var dropped = 0
-		for (base in ticketable) {
-			for (page in base.adoptable) {
-				for (target in NotionPageReader.relations(page)) {
-					if (target in adoptedIds && target != page.id) {
-						edges += PageDependency(predecessorPageId = target, successorPageId = page.id)
-					} else {
-						dropped++
-					}
-				}
-			}
-		}
-		return DependencyPlan(edges, dropped)
-	}
 }
-
-data class DependencyPlan(val edges: List<PageDependency>, val dropped: Int)
 
 /** A base, what it becomes, and the pages that were read out of it. */
 class PlannedBase(
 	val base: WorkspaceBase,
 	val target: ImportTarget,
 	val pages: List<NotionPage>,
+	/** Pages this instance has already imported, by id. Skipped, and counted. */
+	val alreadyImported: Set<String> = emptySet(),
+	/** Which columns of this base answer which fields — see [ImportLinks] for the relations. */
+	val mapping: ColumnMapping = ColumnMapping(),
+	/**
+	 * Where this base's rows land when no relation answers. `NotionImportService.read`
+	 * carries this straight from the plan's own `ImportPlanEntry.fallback` — one per base,
+	 * because a base whose team cannot be resolved may want a different destination from
+	 * its neighbour. Every writer reads it instead of the request's destination directly,
+	 * which is what lets a base's own answer beat the request's.
+	 */
+	val fallback: Fallback = Fallback(),
 ) {
+	/**
+	 * How this base's pages are read. The only way anything reaches a [MappedPageReader]:
+	 * one base is one mapping, so a reader built anywhere else would be a reader built
+	 * without one.
+	 */
+	val reader: MappedPageReader by lazy { MappedPageReader(mapping) }
+
 	/** The pages that can become rows, in the order Notion returned them. */
-	val adoptable: List<NotionPage> by lazy { pages.filter { NotionPageReader.refusal(it) == null } }
+	val adoptable: List<NotionPage> by lazy {
+		pages.filter { reader.refusal(it) == null && it.id !in alreadyImported }
+	}
+
+	/**
+	 * Pages that are neither adoptable nor already imported — refused by
+	 * [MappedPageReader.refusal], and the only pages that end up in a [SkippedPage].
+	 *
+	 * A page already imported is already-imported *only*: what Notion currently says about
+	 * it — archived, untitled, whatever — is beside the point of what this import will do,
+	 * so [alreadyImported] is excluded here, the same exclusion [adoptable] makes. Both the
+	 * preview and the writer count this one property instead of each writing their own copy
+	 * of the exclusion, which is how a page already imported and now untitled once ended up
+	 * counted as both skipped and already-imported in the same run.
+	 */
+	val skippedPages: List<NotionPage> by lazy {
+		pages.filter { it.id !in alreadyImported && reader.refusal(it) != null }
+	}
 }

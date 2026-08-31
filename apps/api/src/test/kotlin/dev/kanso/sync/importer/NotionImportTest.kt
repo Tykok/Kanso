@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -62,9 +63,22 @@ class NotionImportTest : ImportTestBase() {
 
 	private fun importer() = importerFor(engineering, specs, design, archive)
 
+	/**
+	 * What the request carries about the engineering base: which of its columns answer which
+	 * field, including the one that means "waits on".
+	 */
+	private val engineeringMapping = ColumnMapping(
+		columns = mapOf(
+			ImportField.STATUS to "Status",
+			ImportField.PRIORITY to "Priority",
+			ImportField.DUE to "Due",
+			ImportField.BLOCKED_BY to "Spec",
+		),
+	)
+
 	private fun drawnPlan() = plan(
-		engineering to ImportTarget.PROJECT,
-		specs to ImportTarget.PROJECT,
+		engineering to ImportTarget.TICKETS,
+		specs to ImportTarget.TICKETS,
 		design to ImportTarget.DOCUMENTS,
 	)
 
@@ -103,10 +117,12 @@ class NotionImportTest : ImportTestBase() {
 		assertEquals(setOf("Index the archive", "Paginate the walk"), imported.map { it.title }.toSet())
 		// The title was found by type, not by name: the second page calls its title "Tâche".
 		val indexed = imported.single { it.title == "Index the archive" }
-		assertEquals(TicketStatus.IN_PROGRESS, indexed.status)
-		assertEquals(TicketPriority.HIGH, indexed.priority)
-		assertEquals("2026-09-01", indexed.due?.at?.toLocalDate()?.toString())
 		assertEquals(team.id, indexed.teamId, "the team comes from the request, which is the only place it can")
+		// Nothing in this plan said which column the status is, and a column called `Status`
+		// is only the status because somebody says so — so the writer's default stands.
+		assertEquals(TicketStatus.TODO, indexed.status)
+		assertEquals(TicketPriority.NONE, indexed.priority)
+		assertNull(indexed.due)
 	}
 
 	@Test
@@ -146,8 +162,14 @@ class NotionImportTest : ImportTestBase() {
 	}
 
 	@Test
-	fun `a relation between two mapped bases becomes a dependency`() {
-		importer().perform(admin, team.id, drawnPlan())
+	fun `the relation the mapping calls a dependency becomes one`() {
+		importer().perform(
+			admin, team.id,
+			listOf(
+				ImportPlanEntry(engineering.dataSourceId, ImportTarget.TICKETS, engineeringMapping),
+				ImportPlanEntry(specs.dataSourceId, ImportTarget.TICKETS),
+			),
+		)
 
 		val successor = ticketsOf("Engineering tasks").single { it.title == "Index the archive" }
 		val predecessor = ticketsOf("Product specs").single()
@@ -158,13 +180,23 @@ class NotionImportTest : ImportTestBase() {
 	}
 
 	@Test
-	fun `a relation with one end outside the import is dropped and counted`() {
-		// Product specs is no longer in the plan, so the relation has one end and nothing
-		// to be a dependency between.
+	fun `a relation nobody mapped as a dependency does not become one`() {
+		// The `Spec` relation is right there on the page, and both its ends are imported.
+		// Every relation used to become an arrow; a `Related` column is a link between two
+		// pages, not an order to do them in, so now only the mapped column is read.
+		val outcome = importer().perform(admin, team.id, drawnPlan())
+
+		assertEquals(0, outcome.dependencies)
+		assertEquals(0, outcome.droppedRelations, "and it is not dropped either: nothing tried to read it")
+	}
+
+	@Test
+	fun `a mapped relation with one end outside the import is dropped and counted`() {
+		// Product specs is not in this plan, so the relation has one end and nothing to be
+		// a dependency between.
 		val outcome = importer().perform(
-			admin,
-			team.id,
-			plan(engineering to ImportTarget.PROJECT, design to ImportTarget.DOCUMENTS),
+			admin, team.id,
+			listOf(ImportPlanEntry(engineering.dataSourceId, ImportTarget.TICKETS, engineeringMapping)),
 		)
 
 		assertEquals(0, outcome.dependencies)
@@ -177,7 +209,7 @@ class NotionImportTest : ImportTestBase() {
 			"Field notes",
 			pages = listOf(fakePage("Readable", id = "page-ok"), untitledPage("page-nameless")),
 		)
-		val outcome = importerFor(awkward).perform(admin, team.id, plan(awkward to ImportTarget.PROJECT))
+		val outcome = importerFor(awkward).perform(admin, team.id, plan(awkward to ImportTarget.TICKETS))
 
 		assertEquals(1, outcome.tickets)
 		val skipped = outcome.skipped.single()
@@ -187,8 +219,24 @@ class NotionImportTest : ImportTestBase() {
 	}
 
 	@Test
-	fun `a property Kanso has no column for stays readable on the ticket`() {
-		importer().perform(admin, team.id, drawnPlan())
+	fun `a mapped column fills the ticket's own field`() {
+		importer().perform(
+			admin, team.id,
+			listOf(ImportPlanEntry(engineering.dataSourceId, ImportTarget.TICKETS, engineeringMapping)),
+		)
+
+		val indexed = ticketsOf("Engineering tasks").single { it.title == "Index the archive" }
+		assertEquals(TicketStatus.IN_PROGRESS, indexed.status)
+		assertEquals(TicketPriority.HIGH, indexed.priority)
+		assertEquals("2026-09-01", indexed.due?.at?.toLocalDate()?.toString())
+	}
+
+	@Test
+	fun `a property the mapping did not claim stays readable on the ticket`() {
+		importer().perform(
+			admin, team.id,
+			listOf(ImportPlanEntry(engineering.dataSourceId, ImportTarget.TICKETS, engineeringMapping)),
+		)
 
 		val description = ticketsOf("Engineering tasks").single { it.title == "Index the archive" }.description
 		assertTrue(description!!.contains("Imported from Notion"), "the drawing's own section heading")

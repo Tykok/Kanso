@@ -5,9 +5,15 @@ import { PREFERENCE_BOOTSTRAP_SCRIPT } from "@/lib/theme";
 import { Providers } from "./providers";
 import "./globals.css";
 
+/**
+ * The description is the one sentence a search result shows, so it says what Kanso
+ * manages rather than what it resembles: a reader who only learns that it is like two
+ * products they already pay for has no reason to run it.
+ */
 export const metadata: Metadata = {
   title: "Kanso",
-  description: "A keyboard-first task tracker, mirrored to Notion",
+  description:
+    "Kanso runs a project end to end — projects, tickets, cycles, a roadmap, a timeline, workload — and everyone else reads the same data in Notion.",
 };
 
 /**

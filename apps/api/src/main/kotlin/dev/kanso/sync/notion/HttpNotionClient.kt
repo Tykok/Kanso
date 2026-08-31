@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -122,6 +123,34 @@ class HttpNotionClient(
 		)
 	}
 
+	/**
+	 * `GET /users`, cursor-driven like the two searches above but walked to
+	 * completion here rather than left to the caller: [NotionPeople] needs the whole
+	 * roster to match against, not a page of it, and a workspace's membership is
+	 * small enough that this never costs more than a handful of requests.
+	 *
+	 * Only `type == "person"` survives — a bot integration is `type == "bot"` and
+	 * carries no email — and `person.email` is read where it is there, which is not
+	 * always: a guest can be invited without one.
+	 */
+	override suspend fun listUsers(): List<NotionMember> {
+		val members = mutableListOf<NotionMember>()
+		var cursor: String? = null
+		while (true) {
+			val query = buildString {
+				append("?page_size=100")
+				cursor?.let { append("&start_cursor=").append(URLEncoder.encode(it, Charsets.UTF_8)) }
+			}
+			val body = request("GET", "/users$query", null) ?: break
+			body.path("results")
+				.filter { it.path("type").asText("") == "person" }
+				.mapTo(members, ::member)
+			cursor = body.path("next_cursor").asText(null)
+			if (cursor == null || !body.path("has_more").asBoolean(false)) break
+		}
+		return members
+	}
+
 	override suspend fun createDatabase(
 		parentPageId: String,
 		title: String,
@@ -140,6 +169,11 @@ class HttpNotionClient(
 
 	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? =
 		request("GET", "/databases/$databaseId", null)?.let(::database)
+
+	override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? =
+		request("GET", "/data_sources/$dataSourceId", null)?.let {
+			NotionDataSource(it.path("id").asText(dataSourceId), plainTitle(it.path("title")), it.path("properties"))
+		}
 
 	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) {
 		request("PATCH", "/data_sources/$dataSourceId", mapOf("properties" to properties))
@@ -302,7 +336,7 @@ class HttpNotionClient(
 	 *
 	 * The title is whichever property is of type `title` — its name is the database's to
 	 * choose for a row, and `title` for a page that is not one — joined across its
-	 * fragments, the same reading [dev.kanso.sync.importer.NotionPageReader] does of a row.
+	 * fragments, the same reading [dev.kanso.sync.importer.MappedPageReader] does of a row.
 	 * Blank becomes null rather than "": an empty string in a list is a row that looks
 	 * like a rendering bug, and the caller has a name for the case.
 	 */
@@ -316,6 +350,20 @@ class HttpNotionClient(
 		url = body.path("url").asText(null),
 		parentType = body.path("parent").path("type").asText(null),
 		archived = body.path("archived").asBoolean(false) || body.path("in_trash").asBoolean(false),
+	)
+
+	/**
+	 * A title's fragments, joined the same way every other title read here is. [NotionDataSource.name]
+	 * is non-nullable, unlike [NotionDatabase.title] — a schema screen has nothing sensible
+	 * to print for a base with no name at all, so blank becomes "Untitled" rather than null.
+	 */
+	private fun plainTitle(title: JsonNode): String =
+		title.joinToString("") { it.path("plain_text").asText("") }.ifBlank { "Untitled" }
+
+	private fun member(body: JsonNode) = NotionMember(
+		id = body.path("id").asText(),
+		name = body.path("name").asText(null),
+		email = body.path("person").path("email").asText(null),
 	)
 
 	private fun page(body: JsonNode) = NotionPage(

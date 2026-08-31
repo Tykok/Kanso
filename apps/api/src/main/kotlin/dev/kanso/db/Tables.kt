@@ -471,3 +471,13 @@ object TicketFiles : Table("ticket_files") {
 	val position = integer("position")
 	override val primaryKey = PrimaryKey(ticketId, path)
 }
+
+/** Which Notion page each imported row came from. See `V15__notion_import_origin.sql`. */
+object NotionImportOrigins : Table("notion_import_origin") {
+	val notionPageId = text("notion_page_id")
+	val entityType = text("entity_type")
+	val entityId = javaUUID("entity_id")
+	val dataSourceId = text("data_source_id")
+	val importedAt = timestampWithTimeZone("imported_at")
+	override val primaryKey = PrimaryKey(notionPageId)
+}

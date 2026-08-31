@@ -87,6 +87,21 @@ reported with its id and its reason rather than filed as another "Untitled".
 | 10 | `Kanso ID` is not unique on Notion's side; a duplicated page produces two rows claiming the same entity. | Reconciliation is by `notion_page_id` first; `Kanso ID` is only a recovery key. |
 | 11 | Notion's self-referencing team relation accepts a cycle. | Acyclicity is enforced in Postgres with `WITH RECURSIVE`, on the way in and on the way back. Team parenting is never accepted from Notion. |
 
+Rows 1 to 11 are all the mirror: what Kanso writes and reads back in its own four
+databases, where it chose every column name. The import reads the other direction — a
+workspace somebody else built, once — and it is lossy in its own ways, none of which have
+anything to do with the mirror's.
+
+| # | Problem | What Kanso does |
+|---|---|---|
+| 12 | **A column's name means nothing across workspaces.** A base built by somebody who never heard of Kanso calls its status `État` and its options `En cours`. The strict name match that serves the mirror imported such a workspace as four hundred tickets in `Todo`. | Names are a pre-fill and never a rule: `ImportSchema` suggests, the third step of screen 24 decides, and `MappedPageReader` reads a page *through* that answer. The title is the one exception and is found by **type** — `title` is the only property Notion requires of every database, and matching on `"Name"` is exactly what named a French workspace's pages "Untitled". |
+| 13 | An imported select option has no reason to be a word Kanso knows: `Terminé`, `Bloqué`, `P0`. | Every option of a mapped column is on screen with the Kanso value it will take, and the ones nothing lands on are **named** rather than counted — a number tells the reader something was guessed, a list tells them what. An unmapped option takes the field's default, never a seventh status nothing else understands. |
+| 14 | A rollup or a formula has no column here and no meaning outside Notion. | Preserved as its *displayed* value in an "Imported from Notion" section of the description, with every other property nothing claimed. Deliberately lossy: a readable line there is worth more than a faithful copy of Notion's internals in a column that would then have to be kept in step with it. |
+| 15 | A relation only carries meaning if both ends come over. A `Projet` column pointing at a base being ignored — or imported as the wrong kind — has nothing to resolve to. | The second step says so beside the count of what it costs, and offers to import the other base as the kind that relation needs. It is never a blocker: the row lands in the fallback its base was given, and the relation is counted as dropped in the outcome. |
+| 16 | A `two_property` relation is declared on both sides and the two can disagree — a ticket naming project B while project A claims to hold it. | The child's own answer wins, because the child is the row being written, and the disagreement is counted in the outcome rather than settled silently. A parent's inverse column (`Tâches` on a projects base) is a source of last resort, read only where the child said nothing. |
+| 17 | Notion answers no page total for a data source, so a count is a walk at roughly 2.5 requests a second. | The walk is bounded by `kanso.notion.import.max-pages-per-database`, and a base longer than that reports the count it reached with a `+` — on the first step, the second, and the confirm button. A bare number in front of a confirm button would be a wrong one. The import then brings over the prefix it read and nothing past the bound; `follow-ups.md` holds that against it. |
+| 18 | A `people` column can only become an assignee if a Kanso account already exists for that person. | The fourth step matches each Notion person met on a mapped column to an account and *writes* `users.notion_person_id`, so the answer holds for every later import and lets the mirror fill the `people` property afterwards. Anyone left unmatched leaves their rows unassigned rather than guessed at, and creating accounts stays the invitation flow's job. |
+
 ### Connecting Notion
 
 An instance connects through a **public** integration and Notion's own consent screen,
@@ -118,6 +133,65 @@ rather than named by id. One caveat is worth knowing: a search filtered to pages
 database *rows*, and every page the mirror writes is one, so the list excludes any page
 whose parent is a database or a data source. That is a rule about shape, not a list of
 Kanso's own ids, so it cannot fall out of date.
+
+### The table of origins, and why it is not `notion_page_id`
+
+`teams.notion_page_id`, `projects.notion_page_id` and `tickets.notion_page_id` hold **the
+mirror's page** — the row Kanso created inside `Kanso · Tickets` — and every outbound push
+overwrites them. An import has to remember a different fact: which page in somebody else's
+workspace a Kanso row was made from.
+
+The two facts look alike enough to share a column, and that is exactly why they must not.
+Put an imported page's id in `notion_page_id` and the next push aims *Kanso wins* at the
+workspace somebody has just handed over: Kanso's state is written onto their own pages, and
+the import erases the thing it imported. Screen 24 promises nothing in Notion changes, and
+that promise dies the moment one column means both things.
+
+So the second fact gets a table, `V15__notion_import_origin.sql`:
+
+```sql
+CREATE TABLE notion_import_origin (
+  notion_page_id TEXT PRIMARY KEY,
+  entity_type    TEXT NOT NULL CHECK (entity_type IN ('team', 'project', 'ticket', 'doc')),
+  entity_id      UUID NOT NULL,
+  data_source_id TEXT NOT NULL,
+  imported_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entity_type, entity_id)
+);
+
+CREATE INDEX notion_import_origin_source_idx ON notion_import_origin (data_source_id);
+```
+
+`notion_page_id` is the primary key because one Notion page becomes at most one Kanso row:
+the constraint *is* the "import once" rule, enforced by Postgres rather than by remembering
+to check, which is what makes the import safe to press twice. `entity_type` is the same
+closed vocabulary the wire uses, held closed here by a `CHECK`.
+
+Three things read this table, and only three:
+
+1. **Resolving a relation** onto a row imported in an **earlier** session, so a link whose
+   other end came over last month is silent rather than a question.
+2. **Recognising a page**, so a second import leaves it alone.
+3. **Finding a tickets base's container project** — the one `TicketImport` names after the
+   base for tickets whose own relation answered nothing. That row is keyed by the base's
+   *data source* id where every other row is keyed by a page id, which is the one place this
+   table is written twice: a container somebody has since deleted has to be replaced by the
+   new one, or the run after would find the dead id and make a third.
+
+`data_source_id` is recorded on every row and, today, **read by nothing**. It is what a later
+run would need to report "this base was already brought over, 396 of its 400 pages are here",
+and `notion_import_origin_source_idx` is the index that query would use; no screen asks for
+it yet, and `follow-ups.md` says so rather than leaving the column looking load-bearing.
+
+None of the three is an inbound path. Re-reading Notion into an existing row is what "Notion
+is read-only in practice" refuses, and would overwrite whatever has been done in Kanso since.
+
+There is no foreign key, deliberately: the reference is polymorphic, and the alternative is
+four nullable columns and a `CHECK` that exactly one is set. The cost is that deleting an
+entity leaves a row pointing at nothing, so the seed the writers resolve against is filtered
+to live rows first — `ImportOriginRepository.live`, one existence query per kind — and a
+stale row then behaves exactly like a relation into an ignored base: it resolves to nothing
+and falls back. Cleaning those rows up is a `follow-ups.md` line, not a trigger.
 
 ---
 
@@ -368,6 +442,6 @@ per-team sequence to keep in step.
 - Inbound sync is scalar-only (see above).
 - Sessions are in memory: more than one API instance needs a shared session store
   (one property with `spring-session-jdbc`).
-- No attachments or sub-tickets. Comments, mentions and labels exist as of `V8`;
-  saved views do not.
+- No attachments or sub-tickets. Comments, mentions and labels exist as of `V8`,
+  saved views and cycles as of `V10`.
 - A full reconcile queues at most 500 tickets per call and says so in the log.

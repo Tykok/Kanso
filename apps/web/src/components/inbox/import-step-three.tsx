@@ -1,18 +1,28 @@
 "use client";
 
-import { type NotionImportPreview, type NotionImportSource, type Team } from "@/lib/api";
+import {
+  type NotionImportPreview,
+  type NotionImportResult,
+  type NotionImportSource,
+  type Team,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { importPlan, type ImportCounts, type ImportMapping } from "./import-map";
 import { ROW_GRID, TARGET_LABELS, pageCount } from "./import-targets";
 
 /**
- * Step 3: the last read, and then the only write.
+ * Step 5: the last read, and then the only write.
  *
  * Everything on it comes from the preview the server just answered, so what is confirmed
- * is what was described. The two sentences the drawing puts here — the linked bases whose
- * relations become dependencies, and the properties with no column — are the server's
- * answer, not this component's guess at one.
+ * is what was described. The sentences the drawing puts here — the linked bases, the rows a
+ * relation would place, the properties with no column, and the pages a row already exists
+ * for — are the server's answer, not this component's guess at one.
+ *
+ * It stays on screen after the write to say what the write did. The numbers are the only
+ * report there is: `droppedRelations`, `linkConflicts` and `droppedAssignees` are things
+ * the import decided on its own, and a dialog that closed on success would have decided
+ * them silently.
  */
 export function StepThree({
   sources,
@@ -20,7 +30,9 @@ export function StepThree({
   counts,
   preview,
   teamName,
+  result,
   onConfirm,
+  onClose,
   onBack,
   pending,
   error,
@@ -30,7 +42,10 @@ export function StepThree({
   counts: ImportCounts;
   preview?: NotionImportPreview;
   teamName?: Team["name"];
+  /** Present once the import has run. Until then this screen is the last read. */
+  result?: NotionImportResult;
   onConfirm: () => void;
+  onClose: () => void;
   onBack: () => void;
   pending: boolean;
   error?: string;
@@ -40,23 +55,51 @@ export function StepThree({
   // and `import-map.ts` is arithmetic against the drawing — not the place to widen.
   const exact = new Map(sources.map((source) => [source.id, source.pagesExact]));
   const allExact = sources.every((source) => source.pagesExact);
+  const plan = importPlan(sources, mapping);
+
+  /**
+   * What will exist afterwards — and no single source can say it.
+   *
+   * `ImportPreview.projects` deliberately merges the two shapes that produce a project: a
+   * base whose pages *are* projects, and a base of tickets that becomes one project named
+   * after it. Summing its pages would report a base of three hundred tickets as three
+   * hundred projects, so the shapes are counted apart here, from the plan.
+   *
+   * Teams do come from the preview: one page becomes one team, and the preview counts the
+   * pages that actually come over — adoptable ones, after the read — where the plan only
+   * has the discovery count, which may still be a bound.
+   */
+  const teams = preview
+    ? preview.teams.reduce((all, group) => all + group.pages, 0)
+    : plan.reduce((all, entry) => all + (entry.target === "teams" ? entry.pages : 0), 0);
+  const projects = plan.reduce(
+    (all, entry) =>
+      all + (entry.target === "projects" ? entry.pages : entry.target === "tickets" ? 1 : 0),
+    0,
+  );
+  /** A base of projects whose own count stopped at the discovery bound makes this a floor. */
+  const projectsBounded = plan.some(
+    (entry) => entry.target === "projects" && !(exact.get(entry.sourceId) ?? true),
+  );
 
   return (
     <>
       <div className="flex flex-col gap-1.5">
         <span className="text-15 font-medium">
-          {counts.projects} {counts.projects === 1 ? "project" : "projects"}, {counts.folders}{" "}
-          {counts.folders === 1 ? "folder" : "folders"}
+          {teams > 0 ? `${teams} ${teams === 1 ? "team" : "teams"}, ` : ""}
+          {projects}
+          {projectsBounded ? "+" : ""} {projects === 1 ? "project" : "projects"},{" "}
+          {counts.folders} {counts.folders === 1 ? "folder" : "folders"}
           {teamName ? ` in ${teamName}` : ""}
         </span>
         <span className="text-12 text-muted-foreground">
-          {counts.kept} pages out of {counts.total}. Confirming is the first thing that writes
-          anything.
+          {counts.kept} pages out of {counts.total}.
+          {result ? "" : " Confirming is the first thing that writes anything."}
         </span>
       </div>
 
       <div className="flex flex-col gap-0.5 text-12">
-        {importPlan(sources, mapping).map((entry) => (
+        {plan.map((entry) => (
           <div
             key={entry.sourceId}
             className={cn("grid h-[30px] items-center gap-3 rounded-sm bg-background px-3", ROW_GRID)}
@@ -70,10 +113,16 @@ export function StepThree({
         ))}
       </div>
 
-      {preview && (
+      {preview && !result && (
         <span className="text-11 text-faint">
+          {/*
+           * "take part in a link", not "become dependencies": `linkedSources` counts the
+           * bases on either end of any resolved relation, and most of those relations place
+           * a row rather than draw an arrow — a `Projet` column puts a ticket in a project.
+           * `linkedByRelation` is the count of rows actually placed that way.
+           */}
           {preview.linkedSources > 0
-            ? `${preview.linkedSources} of them are linked to each other; those relations become dependencies. `
+            ? `${preview.linkedSources} of them are linked to each other; ${preview.linkedByRelation} rows are placed by those relations, and the ones between two tickets become dependencies. `
             : ""}
           {preview.unmappedProperties.length > 0
             ? `Unmapped properties: ${preview.unmappedProperties.join(", ")}.`
@@ -86,17 +135,58 @@ export function StepThree({
           {preview.skipped > 0
             ? ` ${preview.skipped} page${preview.skipped === 1 ? "" : "s"} cannot be adopted and will be reported instead.`
             : ""}
+          {/*
+           * The sentence that stops somebody importing the same workspace twice. Kanso
+           * leaves those pages alone, so the number below the button is not what gets
+           * written — and only this says so.
+           */}
+          {preview.alreadyImported > 0
+            ? ` ${preview.alreadyImported} have been imported before and will be left as they are.`
+            : ""}
         </span>
       )}
 
-      <div className="flex items-center gap-2.5">
-        <Button disabled={pending} onClick={onConfirm}>
-          Import {pageCount(counts.kept, allExact)}
-        </Button>
-        <Button variant="outline" onClick={onBack}>
-          Back
-        </Button>
-      </div>
+      {result ? (
+        <>
+          <span className="text-12">
+            Imported {result.teams} {result.teams === 1 ? "team" : "teams"}, {result.projects}{" "}
+            {result.projects === 1 ? "project" : "projects"}, {result.tickets}{" "}
+            {result.tickets === 1 ? "ticket" : "tickets"}, {result.docs}{" "}
+            {result.docs === 1 ? "document" : "documents"} in {result.folders}{" "}
+            {result.folders === 1 ? "folder" : "folders"}, and {result.dependencies}{" "}
+            {result.dependencies === 1 ? "dependency" : "dependencies"}.
+          </span>
+          <span className="text-11 text-faint">
+            {result.alreadyImported > 0
+              ? `${result.alreadyImported} page${result.alreadyImported === 1 ? " was" : "s were"} already imported and left alone. `
+              : ""}
+            {result.droppedRelations > 0
+              ? `${result.droppedRelations} relation${result.droppedRelations === 1 ? "" : "s"} pointed at nothing here and were dropped. `
+              : ""}
+            {result.linkConflicts > 0
+              ? `${result.linkConflicts} relation${result.linkConflicts === 1 ? " had two sides that" : "s had two sides that"} disagreed; the child's answer won. `
+              : ""}
+            {result.droppedAssignees > 0
+              ? `${result.droppedAssignees} assignee${result.droppedAssignees === 1 ? "" : "s"} named an account that no longer exists, so those rows are unassigned. `
+              : ""}
+            {result.skipped.length > 0
+              ? `${result.skipped.length} page${result.skipped.length === 1 ? "" : "s"} could not be adopted: ${result.skipped.map((skip) => skip.reason).join(", ")}.`
+              : ""}
+          </span>
+          <div className="flex items-center gap-2.5">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-2.5">
+          <Button disabled={pending} onClick={onConfirm}>
+            Import {pageCount(counts.kept, allExact)}
+          </Button>
+          <Button variant="outline" onClick={onBack}>
+            Back
+          </Button>
+        </div>
+      )}
 
       {error && <span className="text-12 text-urgent">{error}</span>}
     </>

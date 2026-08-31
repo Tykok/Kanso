@@ -3,6 +3,7 @@ package dev.kanso.sync.importer
 import dev.kanso.docs.DocBlockRepository
 import dev.kanso.docs.DocService
 import dev.kanso.domain.User
+import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ProjectService
@@ -10,6 +11,8 @@ import dev.kanso.service.ScheduleService
 import dev.kanso.service.TicketAccess
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionApiException
+import dev.kanso.sync.notion.NotionPage
+import dev.kanso.sync.notion.NotionPeople
 import dev.kanso.sync.notion.NotionRateLimited
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -29,8 +32,10 @@ import java.util.UUID
 class NotionImportService(
 	private val discovery: NotionDiscovery,
 	private val meta: NotionMetaRepository,
+	private val originRows: ImportOriginRepository,
 	private val access: TicketAccess,
 	private val writer: ImportWriter,
+	private val notionPeople: NotionPeople,
 	private val tx: TransactionTemplate,
 ) {
 
@@ -59,12 +64,29 @@ class NotionImportService(
 				)
 			}
 		} catch (e: NotionRateLimited) {
-			// Not a 500: the workspace is readable, just not this second, and "try again in
-			// twelve seconds" is a sentence somebody can act on.
-			unavailable("Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
+			unavailable(refusal(e))
 		} catch (e: NotionApiException) {
-			unavailable("Notion refused the request: ${e.message}")
+			unavailable(refusal(e))
 		}
+	}
+
+	/**
+	 * The columns a base offers, which fields each could fill, and the mapping Kanso
+	 * suggests before the request overrides any of it — see [ImportSchema] for the rule.
+	 * The read is [NotionDiscovery]'s, same as everywhere else in this file; refused with
+	 * the same two sentences [sources] uses, because the workspace can be unreachable here
+	 * exactly as it can there.
+	 */
+	fun schema(sourceId: String, target: ImportTarget): ImportSchemaView = try {
+		runBlocking {
+			val source = discovery.schema(sourceId)
+				?: throw BadRequestException("Notion no longer has a data source with that id.")
+			ImportSchema.of(source, target)
+		}
+	} catch (e: NotionRateLimited) {
+		throw BadRequestException(refusal(e))
+	} catch (e: NotionApiException) {
+		throw BadRequestException(refusal(e))
 	}
 
 	/**
@@ -79,21 +101,67 @@ class NotionImportService(
 	fun preview(plan: List<ImportPlanEntry>): ImportPreview = ImportPlanner.preview(read(plan))
 
 	/**
+	 * The people a plan would meet on its mapped `ASSIGNEES` and `LEAD` columns, distinct
+	 * by Notion id — the columns screen 24's people-matching step needs an answer for,
+	 * before the reader is asked to match any of them to a Kanso account.
+	 *
+	 * Through [read], the same resolution [preview] uses, and for the same reason: nothing
+	 * here is handed [NotionPeople] or anything else that writes, so a plan can be probed
+	 * for who it would meet without applying a single one of them.
+	 */
+	fun peopleSeen(plan: List<ImportPlanEntry>): List<NotionPerson> = read(plan).flatMap { base ->
+		ImportField.entries.filter { "people" in it.types && base.mapping.columns.containsKey(it) }
+			.flatMap { field -> base.adoptable.flatMap { page -> base.reader.people(page, field) } }
+	}.distinctBy { it.id }
+
+	/**
 	 * Step 3. The first thing that writes.
 	 *
-	 * The team is checked first, before a single page is read: an import is a write and a
-	 * large one, and the refusal belongs in front of the work rather than after four
-	 * hundred inserts have to be rolled back. [teamId] is also *where the team comes from*
-	 * — `architecture.md` says a Notion-authored page can supply neither a team nor a
-	 * per-team number, and this is the request where somebody is present to answer the
-	 * first, which lets `TicketService` answer the second from the team's own counter.
+	 * [teamId] is no longer unconditional: an import of teams alone has no destination to
+	 * ask about, so it is required only when the plan holds something other than `TEAMS`
+	 * that has no [Fallback.teamId] of its own to land in instead. That check runs before a
+	 * single page is read — an import is a large write, and the refusal belongs in front of
+	 * the work rather than after four hundred inserts have to be rolled back.
+	 *
+	 * Once a destination is settled, every team the request names is access-checked, not
+	 * only [teamId]: both [Fallback.teamId] and [Fallback.parentTeamId] are places a row can
+	 * land — the second by `TeamImport.settleParents` moving an imported team under it — and
+	 * a reader who may not write to a team must not be able to reach it by naming it in
+	 * either fallback field instead. `architecture.md` says a Notion-authored page can
+	 * supply neither a team nor a per-team number, and this is the request where somebody
+	 * is present to answer the first, which lets `TicketService` answer the second from the
+	 * team's own counter. A base that resolved a team of its own — through a relation or its
+	 * own fallback — uses that one; [teamId] is the answer for everything left over.
 	 */
-	fun perform(actor: User, teamId: UUID, plan: List<ImportPlanEntry>): ImportOutcome {
+	fun perform(
+		actor: User,
+		teamId: UUID?,
+		plan: List<ImportPlanEntry>,
+		people: Map<String, UUID?> = emptyMap(),
+	): ImportOutcome {
+		val needsDestination = plan.any { it.target != ImportTarget.TEAMS && it.fallback.teamId == null }
+		if (needsDestination && teamId == null) {
+			throw BadRequestException(
+				"Choose the team imported work lands in. Only an import of teams alone needs no destination."
+			)
+		}
 		// Directly, not inside `tx`: `TicketAccess.requireTeam` is transactional itself, and
 		// a refusal raised inside a template here would also mark the caller's transaction
 		// rollback-only on its way out — a 403 that poisons whatever else the request was in.
-		access.requireTeam(actor, teamId)
-		return writer.write(actor, teamId, read(plan))
+		teamId?.let { access.requireTeam(actor, it) }
+		// [Fallback.parentTeamId] alongside [Fallback.teamId]: `TeamImport.settleParents`
+		// moves an imported team under it, which is a write into that team's tree just as
+		// much as landing a ticket in it is — the same door, one more name for it.
+		plan.flatMap { listOfNotNull(it.fallback.teamId, it.fallback.parentTeamId) }
+			.distinct()
+			.forEach { access.requireTeam(actor, it) }
+		// Before the writer, not after: the correspondence has to outlive this import
+		// whether or not any one assignment resolves, which only holds if it is written
+		// first. Skipped when the request names nobody — an import that maps no person
+		// must not suddenly need the instance-configurator rights `NotionPeople.link`
+		// guards, when it never touched that door before this task.
+		if (people.isNotEmpty()) notionPeople.link(actor, people)
+		return writer.write(actor, teamId, people, read(plan))
 	}
 
 	/**
@@ -109,7 +177,7 @@ class NotionImportService(
 		if (plan.isEmpty()) return emptyList()
 		val excluded = tx.execute { mirrorIds() }.orEmpty()
 
-		return runBlocking {
+		val resolved = runBlocking {
 			val found = discovery.search(excluded)
 			found.unavailable?.let { throw BadRequestException(it) }
 			val byId = found.bases.associateBy { it.dataSourceId }
@@ -120,11 +188,32 @@ class NotionImportService(
 					log.info("Ignoring plan row for {}: the workspace no longer holds it", entry.sourceId)
 					null
 				} else {
-					PlannedBase(base, entry.target, discovery.pages(base.dataSourceId))
+					ResolvedBase(base, entry, discovery.pages(base.dataSourceId))
 				}
 			}
 		}
+
+		// One query for the whole plan, not one per base and not one per page: a base of
+		// four hundred pages must not cost four hundred round trips inside the transaction
+		// that holds a team's ticket counter.
+		//
+		// Unfiltered, unlike the writer's own seed — [ImportOriginRepository.live] — and
+		// deliberately: "already imported" is a fact about this page having been imported,
+		// and a page whose row somebody has since deleted is not a page to import again.
+		// Resurrecting a team a reader chose to remove is the louder mistake.
+		val allPageIds = resolved.flatMap { it.pages }.map { it.id }
+		val existing = tx.execute { originRows.byPageIds(allPageIds) }.orEmpty()
+
+		return resolved.map { r ->
+			val already = r.pages.mapNotNullTo(mutableSetOf()) { page -> page.id.takeIf { it in existing } }
+			PlannedBase(
+				r.base, r.entry.target, r.pages,
+				alreadyImported = already, mapping = r.entry.mapping, fallback = r.entry.fallback,
+			)
+		}
 	}
+
+	private data class ResolvedBase(val base: WorkspaceBase, val entry: ImportPlanEntry, val pages: List<NotionPage>)
 
 	/**
 	 * Kanso's own four databases, by both ids.
@@ -139,5 +228,19 @@ class NotionImportService(
 	private fun unavailable(reason: String): ImportSources {
 		log.info("Notion import discovery unavailable: {}", reason)
 		return ImportSources(available = false, reason = reason, sources = emptyList())
+	}
+
+	/**
+	 * The one sentence for whichever way Notion itself refuses a request — [sources] and
+	 * [schema] both hit this, and before this existed each had its own copy of both
+	 * strings. One function, so a doc comment claiming "the same sentence" is something the
+	 * code enforces rather than something somebody has to keep true by hand.
+	 */
+	private fun refusal(e: Exception): String = when (e) {
+		// Not a 500: the workspace is readable, just not this second, and "try again in
+		// twelve seconds" is a sentence somebody can act on.
+		is NotionRateLimited -> "Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s."
+		is NotionApiException -> "Notion refused the request: ${e.message}"
+		else -> throw e
 	}
 }

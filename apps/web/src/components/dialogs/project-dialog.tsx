@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  PROJECT_STATUSES,
   api,
   dayValue,
   fromDayValue,
@@ -13,22 +14,8 @@ import {
   type User,
 } from "@/lib/api";
 import { keys } from "@/lib/queries";
+import { PROJECT_STATUS_LABELS } from "@/lib/status";
 import { DialogFrame, Field } from "./field";
-
-/**
- * `ProjectStatus`, server side (`domain/Model.kt`). Written here rather than in
- * `api.ts`: this dialog is the only place that offers the choice; everywhere else the
- * value is read back off the row.
- */
-const PROJECT_STATUSES = ["planned", "in_progress", "paused", "completed", "canceled"] as const;
-
-const PROJECT_STATUS_LABELS: Record<(typeof PROJECT_STATUSES)[number], string> = {
-  planned: "Planned",
-  in_progress: "In progress",
-  paused: "Paused",
-  completed: "Completed",
-  canceled: "Canceled",
-};
 
 type ProjectErrors = { team?: string; general?: string };
 

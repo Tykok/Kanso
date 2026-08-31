@@ -1,0 +1,423 @@
+/*
+ * The layout of one page, and nothing else.
+ *
+ * tokens.css sits next to this file, copied whole from the application, and owns every
+ * colour, radius and elevation here. No Tailwind: the utilities need a compiler, and this
+ * build deliberately has no dependency to run one.
+ *
+ * The design language is the in-app landing page's: structure from space and rules rather
+ * than borders and shadows, one accent, 400 and 500 only, and mono uppercase eyebrows.
+ */
+
+/* tokens.css's --font-sans names --font-public-sans, which next/font defines inside the
+   application and nothing defines here — an undefined var() with no fallback invalidates
+   the whole declaration, so font-family would resolve to nothing at all. The site states
+   its own stack instead of pulling the face from a third party to look identical. */
+:root {
+  --site-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --page: 1120px;
+  --gutter: clamp(20px, 5vw, 56px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--site-sans);
+  /* The scale is restated in px because tokens.css declares it inside `@theme`, which is
+     Tailwind's namespace and invisible to a browser. Same six sizes as the app. */
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.022em;
+}
+
+h1 {
+  font-size: clamp(25px, 4.2vw, 42px);
+  max-width: 21ch;
+}
+h2 {
+  font-size: clamp(21px, 2.6vw, 30px);
+  max-width: 30ch;
+}
+h3 {
+  font-size: 15px;
+  letter-spacing: -0.012em;
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+.lead {
+  font-size: 17px;
+  color: var(--muted-foreground);
+  max-width: 58ch;
+}
+
+.narrow {
+  max-width: 48ch;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.caption,
+.col p {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  max-width: 54ch;
+}
+
+/* The skip link exists for the keyboard, so it is off-screen rather than absent. */
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: var(--gutter);
+  top: 8px;
+  z-index: 1;
+  background: var(--card);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px 18px;
+  max-width: var(--page);
+  margin-inline: auto;
+  padding: 18px var(--gutter);
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.topbar-note {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.langs {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.langs a {
+  color: var(--faint);
+  text-decoration: none;
+}
+.langs a[aria-current] {
+  color: var(--foreground);
+}
+
+.band {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: var(--page);
+  margin-inline: auto;
+  padding: clamp(48px, 7vw, 92px) var(--gutter);
+  border-top: 1px solid var(--rule);
+}
+
+/* The hero states the ground the bands below sit on, so it carries no rule of its own. */
+.hero {
+  border-top: 0;
+  padding-top: clamp(28px, 4vw, 48px);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-top: 10px;
+}
+
+.cmd {
+  background: var(--secondary);
+  color: var(--foreground);
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+/* A link, not a block: inside a column of stretched flex children it has to be told the
+   width of its own words. */
+.col > .cta {
+  align-self: flex-start;
+}
+
+.cta {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* The six statuses, read from the tokens: the palette is the claim, so it is not
+   restated in hex here any more than it is in the application. */
+.statuses {
+  display: flex;
+  gap: 8px;
+  margin-top: 22px;
+}
+.statuses span {
+  height: 3px;
+  width: clamp(26px, 7vw, 54px);
+}
+.s-backlog {
+  background: var(--status-backlog);
+}
+.s-todo {
+  background: var(--status-todo);
+}
+.s-progress {
+  background: var(--status-progress);
+}
+.s-review {
+  background: var(--status-review);
+}
+.s-done {
+  background: var(--status-done);
+}
+.s-canceled {
+  background: var(--status-canceled);
+}
+
+.steps {
+  list-style: none;
+  margin: 26px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 44px;
+}
+
+/* minmax(0, 1fr) rather than the default auto track, here and on .cols: an auto track is
+   sized from the widest thing inside it, and one <pre> holding a shell command is enough
+   to push the whole page sideways at 375px. */
+.step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px 0;
+}
+
+.step + .step {
+  border-top: 1px solid var(--rule);
+  padding-top: 44px;
+}
+
+.step-n {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+/* A fixed box, always: the media is hosted elsewhere and the build never checks it, so an
+   unreachable host has to leave a page that is thinner instead of one that has collapsed.
+   Every caption is written to read without its capture for the same reason. */
+.shot-box {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--secondary);
+  border-radius: var(--panel-radius);
+  margin: 6px 0 10px;
+}
+.shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 26px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule);
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.col.soft {
+  background: var(--accent-soft);
+  border-radius: var(--panel-radius);
+  padding: 26px;
+}
+
+.dbs,
+.ports,
+.checklist {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  display: grid;
+  gap: 5px;
+}
+.dbs,
+.ports {
+  list-style: none;
+  padding-left: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--faint);
+  /* A host and a path have nowhere to break on a narrow screen unless told. */
+  overflow-wrap: anywhere;
+}
+
+.checklist code {
+  color: var(--foreground);
+}
+
+.promise {
+  color: var(--accent-ink);
+}
+
+.block {
+  margin: 0;
+  background: var(--secondary);
+  border-radius: var(--panel-radius);
+  padding: 16px 18px;
+  /* Wrapped rather than scrolled: a command half-hidden behind a scrollbar is a command
+     the reader copies wrong. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.landing {
+  margin-top: 30px;
+  padding-left: 16px;
+  border-left: 2px solid var(--primary);
+  font-size: clamp(17px, 2.2vw, 21px);
+  max-width: 36ch;
+}
+
+.closing h2 {
+  max-width: 24ch;
+}
+
+.footer {
+  border-top: 1px solid var(--rule);
+  padding-block: 26px 40px;
+}
+.footer .captures {
+  flex-basis: 100%;
+  max-width: 76ch;
+}
+
+@media (min-width: 700px) {
+  .two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 34px 40px;
+  }
+  .step {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-areas:
+      "n    shot"
+      "head shot"
+      "cap  shot";
+    grid-template-rows: auto auto 1fr;
+    column-gap: clamp(24px, 4vw, 56px);
+  }
+  .step-n {
+    grid-area: n;
+  }
+  .step h3 {
+    grid-area: head;
+  }
+  .step .shot-box {
+    grid-area: shot;
+    margin: 0;
+  }
+  .step .caption {
+    grid-area: cap;
+  }
+}
+
+@media (min-width: 1000px) {
+  .four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+  /* A rule between two columns, not a card around each: the same decision the app's
+     own sections take. */
+  .four > .col + .col,
+  .two > .col + .col:not(.soft) {
+    border-left: 1px solid var(--rule);
+    padding-left: 30px;
+  }
+  .four > .col {
+    padding-right: 30px;
+  }
+  .two {
+    gap: 40px;
+  }
+}

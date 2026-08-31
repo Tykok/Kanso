@@ -7,6 +7,7 @@ import { AccountSection } from "@/components/settings/account-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
 import { SettingsNote } from "@/components/settings/field";
+import { NotionPeopleSection } from "@/components/settings/notion-people-section";
 import { PeopleSection } from "@/components/settings/people-section";
 import { ApiError } from "@/lib/api";
 import { useMe, useSetupState } from "@/lib/queries";
@@ -72,17 +73,27 @@ export default function SettingsPage() {
           {section === "account" && <AccountSection me={me.data} />}
           {section === "appearance" && <AppearanceSection />}
           {section === "people" && canConfigure && <PeopleSection />}
-          {section === "connections" &&
-            (setup.data ? (
-              <ConnectionsSection state={setup.data} canConfigure={canConfigure} />
-            ) : (
-              <section className="flex flex-col gap-6">
-                <h2 className="text-21 font-medium tracking-tight">Connections</h2>
-                <SettingsNote>
-                  {setup.error ? "Instance configuration unavailable." : "Loading…"}
-                </SettingsNote>
-              </section>
-            ))}
+          {section === "connections" && (
+            <div className="flex flex-col gap-6">
+              {setup.data ? (
+                <ConnectionsSection state={setup.data} canConfigure={canConfigure} />
+              ) : (
+                <section className="flex flex-col gap-6">
+                  <h2 className="text-21 font-medium tracking-tight">Connections</h2>
+                  <SettingsNote>
+                    {setup.error ? "Instance configuration unavailable." : "Loading…"}
+                  </SettingsNote>
+                </section>
+              )}
+              {/*
+               * Notion's own section, not folded into `ConnectionsSection` — that file is
+               * already 375 lines about a different subject, and the person correspondence
+               * outlives any one connection: it is what lets the mirror fill the `people`
+               * property once it writes one at all.
+               */}
+              <NotionPeopleSection canConfigure={canConfigure} />
+            </div>
+          )}
         </main>
       </div>
     </div>

@@ -1,6 +1,16 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
+ * Whether this run was asked for the captures by name.
+ *
+ * Read off the command line because `grep` and `grepInvert` are ANDed: written as a
+ * plain `grepInvert: /@shots/`, the exclusion below would also swallow
+ * `--grep @shots` — the one command that produces the files — and report a pass over
+ * zero tests, which is the most expensive kind of green there is.
+ */
+const askedForShots = process.argv.some((argument) => argument.includes("@shots"));
+
+/**
  * No `webServer`.
  *
  * What these tests check is mostly server behaviour — the disposition plans, the
@@ -18,6 +28,18 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  /**
+   * `@shots` is left out of the default run.
+   *
+   * `e2e/shots.spec.ts` is not a scenario: it writes five PNGs into `site/media/` for the
+   * public site's walk-through, and it needs a database no `Atlas` has been created in —
+   * ticket identifiers come off a counter on the team row, and a picture captioned
+   * `KAN-1` has to show `KAN-1`. Run with the rest it would leave files behind on every
+   * pass and refuse on the second one, turning the suite red over something no part of
+   * the application had done. It is asked for by name instead:
+   * `pnpm exec playwright test --grep @shots`, against a fresh stack.
+   */
+  grepInvert: askedForShots ? undefined : /@shots/,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: [["list"], ["html", { open: "never" }]],

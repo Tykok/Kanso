@@ -2,6 +2,8 @@ package dev.kanso.sync.importer
 
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionDatabase
+import dev.kanso.sync.notion.NotionDataSource
+import dev.kanso.sync.notion.NotionMember
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionPageRef
 import dev.kanso.sync.notion.NotionPageSearch
@@ -77,7 +79,8 @@ class FakeNotionWorkspace(
 	/** A database row as search answers it: parented by a data source, titled by its own property. */
 	private fun row(page: NotionPage) = NotionPageRef(
 		id = page.id,
-		title = NotionPageReader.title(page),
+		// An empty mapping still finds the title: it is the one thing found by type.
+		title = MappedPageReader(ColumnMapping()).title(page),
 		url = page.url,
 		parentType = "data_source_id",
 		archived = page.archived,
@@ -109,6 +112,17 @@ class FakeNotionWorkspace(
 	override suspend fun createDatabase(parentPageId: String, title: String, properties: Map<String, Any?>): NotionDatabase =
 		throw UnsupportedOperationException()
 	override suspend fun retrieveDatabase(databaseId: String): NotionDatabase? = throw UnsupportedOperationException()
+
+	/**
+	 * The one read the schema screen needs that a row search never answers: what
+	 * [FakeDatabase.properties] says the base's columns are, keyed by data source id since
+	 * that is the only id the schema call ever carries.
+	 */
+	override suspend fun retrieveDataSource(dataSourceId: String): NotionDataSource? {
+		requests++
+		val base = databases.firstOrNull { it.dataSourceId == dataSourceId } ?: return null
+		return NotionDataSource(base.dataSourceId, base.name, json.valueToTree(base.properties))
+	}
 	override suspend fun updateDataSourceSchema(dataSourceId: String, properties: Map<String, Any?>) =
 		throw UnsupportedOperationException()
 	override suspend fun createPage(dataSourceId: String, properties: Map<String, Any?>): NotionPage =
@@ -116,14 +130,22 @@ class FakeNotionWorkspace(
 	override suspend fun updatePage(pageId: String, properties: Map<String, Any?>?, archived: Boolean?): NotionPage =
 		throw UnsupportedOperationException()
 	override suspend fun retrievePage(pageId: String): NotionPage? = throw UnsupportedOperationException()
+	override suspend fun listUsers(): List<NotionMember> = throw UnsupportedOperationException()
 }
 
-/** One base in the fake workspace. Ids are given so a relation can name a page. */
+/**
+ * One base in the fake workspace. Ids are given so a relation can name a page.
+ *
+ * [properties] is the schema [retrieveDataSource] answers with — Notion's own shape, the
+ * same one [fakePage] uses for a row — defaulted to a lone `title` property called `Name`
+ * so every fake built before the schema screen existed still describes a valid base.
+ */
 class FakeDatabase(
 	val name: String,
 	val pages: List<NotionPage> = emptyList(),
 	val databaseId: String = "db-${UUID.randomUUID()}",
 	val dataSourceId: String = "ds-${UUID.randomUUID()}",
+	val properties: Map<String, Any?> = mapOf("Name" to mapOf("type" to "title")),
 )
 
 /**
@@ -180,6 +202,27 @@ fun notionNumber(value: Number): Map<String, Any?> = mapOf("type" to "number", "
 
 fun notionRelation(vararg pageIds: String): Map<String, Any?> =
 	mapOf("type" to "relation", "relation" to pageIds.map { mapOf("id" to it) })
+
+fun notionPeople(vararg people: Pair<String, String?>): Map<String, Any?> = mapOf(
+	"type" to "people",
+	"people" to people.map { (id, name) -> mapOf("object" to "user", "id" to id, "name" to name) },
+)
+
+/**
+ * A base as the plan resolves it: what it becomes, and which of its columns answer which
+ * field. The mapping is the request's own answer, so a test that cares about a link or a
+ * status has to give one.
+ */
+fun planned(
+	base: FakeDatabase,
+	target: ImportTarget,
+	mapping: ColumnMapping = ColumnMapping(),
+): PlannedBase = PlannedBase(
+	base = WorkspaceBase(base.dataSourceId, base.databaseId, base.name),
+	target = target,
+	pages = base.pages,
+	mapping = mapping,
+)
 
 /** A page with no title at all — the shape Kanso cannot adopt. */
 fun untitledPage(id: String = "page-${UUID.randomUUID()}"): NotionPage = NotionPage(
