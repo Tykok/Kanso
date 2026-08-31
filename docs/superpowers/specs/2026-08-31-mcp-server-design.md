@@ -158,7 +158,7 @@ be configuration that can drift from what the library actually serves.
 | `GET /.well-known/oauth-protected-resource` | **ours** | RFC 9728, a **MUST** for a protected MCP server. Names the canonical resource URI, the authorisation server, and `scopes_supported`. |
 | `GET /.well-known/oauth-authorization-server` | library | RFC 8414 metadata. |
 | `GET /oauth2/authorize` | library | Where the browser lands. Validates, then redirects to our consent page. |
-| `GET /oauth/consent` (web) | **ours** | The consent screen, reached by that redirect. Requires a Kanso session. |
+| `GET /oauth/consent` (API) | **ours** | The consent screen, reached by that redirect. Server-rendered on the API origin — see below. |
 | `POST /oauth2/authorize` | library | The decision our screen posts back. Issues the code. |
 | `POST /oauth2/token` | library | `authorization_code` with PKCE, and `refresh_token` with rotation. |
 | `POST /connect/register` | library | Dynamic client registration. |
@@ -166,9 +166,28 @@ be configuration that can drift from what the library actually serves.
 | `GET /api/oauth/consent/request` | **ours** | Describes the pending consent for the screen: client name, scopes in prose, and why it would be refused. |
 | `GET`/`DELETE /api/oauth/grants` | **ours** | The connected-applications list, and revoking one. |
 
-**The consent screen is the one piece in `apps/web`.** It is the only OAuth surface a
-human looks at, so it has to render Kanso's design system and reuse Kanso's login
-redirect — which the API, serving JSON to a browserless client, does neither of.
+**Amended: the consent screen is served by the API, not by `apps/web`.** The first draft
+put it in the web app, reasoning that the only OAuth surface a human looks at should render
+Kanso's design system. Implementation planning found that it cannot work there.
+
+Web runs on :3000 and the API on :8080 — `WebConfig` configures CORS between them, so they
+are genuinely different origins — and `application.yml` sets the session cookie
+`SameSite=Lax`. Lax sends no cookie on a cross-site POST, so the decision would arrive at
+`/oauth2/authorize` with no session and the library would have nobody to record the consent
+for. `fetch` does not rescue it either: CORS forbids reading `Location` off the library's
+302, which is the trap `api/core.ts`'s `startNotionConnect` comment already records for the
+Notion flow.
+
+The browser is **already on the API origin** when it reaches `/oauth2/authorize`. Serving
+the page there makes it same-origin and first-party, and the decision is a plain form post
+the library handles unaided. The cost is that one page does not use the shadcn design
+system: it gets a self-contained stylesheet built from the same CSS custom properties
+`globals.css` defines, and it is the only page in Kanso that renders from the API.
+
+An anonymous visitor is redirected to the app's login screen with a return URL, and comes
+back. That return URL is reflected into a redirect, so it is validated against exactly two
+shapes — a relative path, or an absolute URL whose origin equals the API's — compared as
+parsed origins rather than as string prefixes.
 
 Two integration facts that are easy to discover too late:
 
@@ -333,7 +352,8 @@ hand out durable credentials rather than a session.
 
 ## What the member sees
 
-**The consent screen** — the `apps/web` route at `/oauth/authorize`. Client name, the
+**The consent screen** — served by the API at `/oauth/consent`, for the origin reasons
+above. Client name, the
 member's own identity ("as elie@…"), the two scopes in a sentence rather than as
 identifiers ("Read tickets, projects and documents in your teams" / "Create and change
 them"), Authorise and Deny. Existing design system, no new patterns. Denying redirects with
@@ -450,7 +470,8 @@ mcp/
 oauth/
   AuthorizationServerConfig.kt   the library's filter chain, settings, token format
   ProtectedResourceController.kt /.well-known/oauth-protected-resource  (RFC 9728)
-  ConsentController.kt           describe a pending consent for the screen
+  ConsentController.kt           serve the consent page, or redirect to login
+  ConsentPage.kt                 the page as a pure render, escaping included
   GrantsController.kt            list and revoke connected applications
   GrantService.kt                the queries behind those two
   ScopeCopy.kt                   a scope's name in prose, shared with the screen
@@ -510,8 +531,10 @@ first three are the ones to write first:
 5. **A revoked grant stops working on the next request** — no window.
 
 Beyond those: `McpBearerFilter` over unknown, expired, revoked and malformed tokens; the
-consent screen's copy and parameter validation as a `.ts` module, because `vitest` runs
-under `environment: "node"` here and cannot reach JSX; and `PlanService` tests for the
+consent page as a pure render — copy, the form's target, and the escaping of a client
+name the client chose itself, which is the assertion that matters most on that page; the
+return-URL validation as its own module, because `vitest` runs under
+`environment: "node"` here and cannot reach JSX; and `PlanService` tests for the
 50-ticket bound, dependency cycles and local-reference resolution.
 
 **The library's rules are tested at the boundary, not reimplemented.** PKCE (S256 accepted,
