@@ -91,10 +91,11 @@ class PlannedBase(
 	/** Which columns of this base answer which fields — see [ImportLinks] for the relations. */
 	val mapping: ColumnMapping = ColumnMapping(),
 	/**
-	 * Where this base's rows land when no relation answers. Read by every writer and
-	 * filled by nothing yet: the task that makes the request's destination team optional
-	 * is what carries a [Fallback] from the wire to here, and a writer that read the
-	 * request's destination directly would have to be rewritten when it does.
+	 * Where this base's rows land when no relation answers. `NotionImportService.read`
+	 * carries this straight from the plan's own `ImportPlanEntry.fallback` — one per base,
+	 * because a base whose team cannot be resolved may want a different destination from
+	 * its neighbour. Every writer reads it instead of the request's destination directly,
+	 * which is what lets a base's own answer beat the request's.
 	 */
 	val fallback: Fallback = Fallback(),
 ) {

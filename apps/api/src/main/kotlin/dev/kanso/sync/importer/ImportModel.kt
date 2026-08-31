@@ -105,9 +105,9 @@ data class ImportPreview(
 	val linkedByRelation: Int = 0,
 	/**
 	 * Rows [ImportLinks] alone cannot place, and so would land in a [Fallback] the writer
-	 * chooses. Always 0 here, and always will be from this file alone: knowing a base's own
-	 * [Fallback] is the writer's knowledge, not this preview's — the task that wires
-	 * `Fallback` into the writer fills this in.
+	 * chooses. Always 0 here: [ImportPlanner.preview] takes a base's own [Fallback] into
+	 * account nowhere in its arithmetic, so a fallback-heavy plan under-reports this count
+	 * today. Counting it is still to be done, whenever a task decides to.
 	 */
 	val fellBack: Int = 0,
 )

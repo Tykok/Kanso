@@ -6,6 +6,7 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.repo.TeamRepository
 import dev.kanso.service.BadRequestException
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -86,6 +87,36 @@ class ImportFallbackTest : ImportTestBase() {
 
 		assertEquals(1, projectRows.search(teamIds = null, includeArchived = false).size)
 		assertEquals(existing.id, ticketRows.search(includeArchived = false, limit = 50).first().projectId)
+	}
+
+	@Test
+	fun `a team whose parent relation resolves to nothing takes the base's own parent fallback`() {
+		val group = teamService.create(admin, "Group", "GRP", null)
+		val teams = FakeDatabase("Teams", listOf(fakePage("Platform")))
+
+		importerFor(teams).perform(
+			admin, null,
+			listOf(
+				ImportPlanEntry(
+					sourceId = teams.dataSourceId,
+					target = ImportTarget.TEAMS,
+					fallback = Fallback(parentTeamId = group.id),
+				),
+			),
+		)
+
+		val created = teamService.list(includeArchived = false).first { it.name == "Platform" }
+		assertEquals(group.id, created.parentTeamId)
+	}
+
+	@Test
+	fun `a team whose parent relation resolves to nothing and has no fallback stays unparented`() {
+		val teams = FakeDatabase("Teams", listOf(fakePage("Platform")))
+
+		importerFor(teams).perform(admin, null, plan(teams to ImportTarget.TEAMS))
+
+		val created = teamService.list(includeArchived = false).first { it.name == "Platform" }
+		assertNull(created.parentTeamId)
 	}
 
 	@Test
