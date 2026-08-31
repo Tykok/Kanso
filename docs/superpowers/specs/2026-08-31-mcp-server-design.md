@@ -133,8 +133,26 @@ looks like it works" argues against writing them by hand, including when this do
 was the thing proposing it.
 
 What the library owns: authorisation code issuance and single use, PKCE, the token
-endpoint, refresh rotation and reuse detection, RFC 8414 metadata, dynamic client
-registration, exact redirect-URI matching, and the persistence for all of it.
+endpoint, refresh rotation and reuse detection, RFC 8414 metadata, exact redirect-URI
+matching, and the persistence for all of it.
+
+**Amended after the Task 1 spike** (`plans/2026-08-31-mcp-oauth-door-spike.md`, which is
+binding where it disagrees with this document). Two items left that list once the library
+was actually stood up and driven by hand:
+
+- **Dynamic client registration.** The endpoint is off until enabled, and once enabled
+  `OAuth2ClientRegistrationAuthenticationProvider` requires a single-use initial access
+  token bearing scope `client.create`. MCP clients present nothing. See "Registration is
+  ours" below.
+- **`iss` on the authorisation response.** SAS 7.1.0 does not implement RFC 9207: no
+  setting on `AuthorizationServerSettings`, no name in `ConfigurationSettingNames`, no
+  `iss` on the 302, and no `authorization_response_iss_parameter_supported` in the
+  metadata. It is a **MUST** here, so it is hand-written.
+
+Audience binding moved the other way, partly. `resource` *is* carried and readable —
+`OAuth2AuthorizationRequest.additionalParameters["resource"]`, persisted and readable back
+— so nothing has to record it. Nothing validates it either, so both enforcement points
+below are still ours.
 
 What is still written here, because the library does not claim it:
 
@@ -142,8 +160,10 @@ What is still written here, because the library does not claim it:
   of an authorisation server's scope by definition. Twenty lines of static JSON.
 - **The consent screen**, which the library supports as a first-class custom page but does
   not draw.
-- **Audience binding to this resource** (RFC 8707) — the one MUST whose library support is
-  unverified, and therefore the first task of plan one. See "The unverified MUST".
+- **Audience binding to this resource** (RFC 8707) — the value is carried for us; the
+  validation, at both ends, is not. See "The unverified MUST", now answered.
+- **Dynamic client registration**, open rather than token-gated. See "Registration is ours".
+- **`iss` on the authorisation response** (RFC 9207), which the library does not implement.
 - **The MCP bearer filter**, which turns a token into a `User` the existing services accept.
 - **Connected applications**, the screen and the grant queries behind it.
 
@@ -161,7 +181,7 @@ be configuration that can drift from what the library actually serves.
 | `GET /oauth/consent` (API) | **ours** | The consent screen, reached by that redirect. Server-rendered on the API origin — see below. |
 | `POST /oauth2/authorize` | library | The decision our screen posts back. Issues the code. |
 | `POST /oauth2/token` | library | `authorization_code` with PKCE, and `refresh_token` with rotation. |
-| `POST /connect/register` | library | Dynamic client registration. |
+| `POST /connect/register` | **ours** | Dynamic client registration (RFC 7591), open. The library's own is token-gated — see "Registration is ours". |
 | `POST /oauth2/revoke` | library | Lets a client hand a token back. |
 | `GET /api/oauth/consent/request` | **ours** | Describes the pending consent for the screen: client name, scopes in prose, and why it would be refused. |
 | `GET`/`DELETE /api/oauth/grants` | **ours** | The connected-applications list, and revoking one. |
@@ -206,12 +226,56 @@ get a sibling list with a guard test of its own rather than a weakened existing 
 `/connect/register` in particular is an unauthenticated row-creating endpoint, the single
 most abusable surface this spec adds, and it is rate-limited per IP.
 
+## Registration is ours
+
+`POST /connect/register` answers 404 out of the box: the library ships
+`OAuth2ClientRegistrationEndpointConfigurer` but leaves it disabled. Enabling it is not
+enough. `OAuth2ClientRegistrationAuthenticationProvider` requires the caller to present an
+**initial access token with scope `client.create`**, which it then invalidates — RFC 7591's
+protected-registration mode, single use, correct for an enterprise handing out credentials
+and wrong for this. No MCP client has such a token, and there is nobody to give it one:
+`claude mcp add` speaks RFC 7591 unauthenticated or not at all.
+
+Three ways out were weighed — open registration written here, an initial access token
+issued from the Kanso UI, or no registration at all and one pre-registered client per
+instance. **Open registration, written here.** The others each break something this
+document already committed to: the second reintroduces the pasted credential that "No token
+to paste" exists to eliminate, and the third makes the one-command install depend on
+client behaviour Kanso does not control.
+
+So Kanso serves its own RFC 7591 endpoint at the library's default path, and it is
+deliberately small: accept a `POST`, validate, write one `RegisteredClient` through
+`RegisteredClientRepository`, answer with the registration response. It creates a client
+and nothing else — no initial access token, no registration access token, no update or
+delete, because a client that cannot be edited cannot be edited by an attacker either.
+
+What guards it, given it is unauthenticated and it creates rows:
+
+- **`redirect_uris` against a narrow allowlist**, compared as parsed URLs and not as string
+  prefixes: loopback (`http://127.0.0.1:*/…`, `http://localhost:*/…`) for a CLI, and the
+  Claude origins for the hosted clients. Anything else is refused. This is the whole
+  security of the endpoint — a registration is only ever as dangerous as where it can send
+  a code.
+- **Rate limited per IP**, and **capped in total**, so a loop cannot fill the table. The cap
+  is a refusal, not a prune: deleting a stranger's client to make room for another
+  stranger's is worse than saying no.
+- **Fixed grants and scopes.** The request does not get to ask for `client_secret_post`, a
+  confidential client, or a scope outside `kanso:read kanso:write`. Every registration comes
+  out a public client with PKCE required.
+- **No secret is ever issued**, so a leaked registration response is worth nothing on its
+  own. The client still has to get a member through the consent screen.
+
+A registered client is not an authorisation. It is a name that may *ask* — and until a
+member says yes on the consent screen, it can read nothing. That is what makes open
+registration acceptable here rather than merely convenient.
+
 ## The rules that are not optional
 
 Each of these is a **MUST** in the specification, and each one is a way to build a
-plausible-looking OAuth server that is broken. The library enforces the first six; they
+plausible-looking OAuth server that is broken. The library enforces four of them; they
 are listed anyway, because a rule nobody can name is a rule nobody can test, and plan one
-asserts each of them against the running server rather than trusting a changelog:
+asserts each of them against the running server rather than trusting a changelog — and the
+spike has already moved two of them out of the library's column:
 
 - **Audience binding.** A token records the `resource` it was issued for, and every MCP
   request validates that it names *this* server. A token that does not is rejected with
@@ -224,7 +288,7 @@ asserts each of them against the running server rather than trusting a changelog
   matching, no wildcards; that is how open redirects get built.
 - **`iss` on every authorisation response**, error responses included, and
   `authorization_response_iss_parameter_supported: true` in the metadata, so clients can
-  detect a mix-up attack.
+  detect a mix-up attack. **Ours**: the library does not implement RFC 9207.
 - **Single-use codes**, 60-second lifetime, bound to client, redirect URI, code
   challenge, resource and user. Redeeming one twice revokes the grant rather than
   returning an error, because a replay means the code leaked.
@@ -250,6 +314,37 @@ authorisation with a `resource` parameter, and look at what the token row record
 
 Either outcome is a task, not a redesign. This is written down so the answer is a finding
 rather than a surprise.
+
+**Answered, and it was neither branch.** The spike drove one authorisation and one token
+exchange by hand, with `resource` on both. Verdict: **carried, readable, unenforced.**
+
+The authorisation endpoint's converter copies every parameter it does not itself consume
+into `additionalParameters` — its bytecode excludes exactly `response_type`, `client_id`,
+`redirect_uri`, `scope`, `state` — so `resource` survives without being a supported
+feature. It is readable back, in memory and as persisted JSON:
+
+```kotlin
+authorization
+    .getAttribute<OAuth2AuthorizationRequest>(OAuth2AuthorizationRequest::class.java.name)
+    ?.additionalParameters
+    ?.get("resource")
+```
+
+One value arrives as a `String`, repeated ones as an `Array<String>`; both need handling.
+Only the authorize-time value is stored — the token endpoint parses `resource` and drops
+it — so the two cannot be compared after the fact.
+
+Nothing else is true of it. The library does not check the value against anything, does not
+reject an unknown resource, and puts no `aud` on the token, which is opaque and carries no
+claims at all. So the token customiser the second branch imagined is unnecessary, and two
+enforcement points are load-bearing:
+
+1. **At authorise time**, a custom `OAuth2AuthorizationCodeRequestAuthenticationValidator`
+   refuses a `resource` that is not this server's MCP endpoint.
+2. **At `/api/mcp`**, the bearer filter reads the attribute and compares.
+
+Without the first, a token minted for another resource is accepted here. Without the
+second, one minted for Kanso is accepted anywhere. Both, or neither is worth writing.
 
 ## Opaque tokens, not JWTs
 
