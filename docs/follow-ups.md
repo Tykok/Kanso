@@ -709,3 +709,204 @@ second consent simply replaces the token; re-connecting is idempotent by constru
   The distinction is recorded because it is the discipline this repository otherwise keeps.
 - An untitled Notion page lists as `Untitled page · <8 id chars>`: a page nobody can pick is
   worse than one with an ugly name.
+
+---
+
+# Carried out of the branch that made an existing workspace importable
+
+Screen 24 could already read *one* shape of Notion database — a base becomes a project, its
+columns matched by exact English name. This branch made it read the workspace people
+actually arrive with: separate bases for teams, projects and tasks, wired by relations, with
+columns called `État` and options called `En cours`, people matched to Kanso accounts, and a
+table of origins that makes a second import skip rather than duplicate. Same rule as every
+block above: each item below was found by a review or by the browser pass, judged not to
+block the merge, and left deliberately. The reasoning is here so the next person does not
+have to derive it again.
+
+## Worth a decision
+
+**An origin row outlives the entity it names, and nothing cleans it up.**
+`notion_import_origin` carries no foreign key — the reference is polymorphic onto four
+tables — so deleting a team, a project or a ticket leaves a row whose `entity_id` resolves
+to nothing. That much is harmless by construction: `ImportOriginRepository.live` filters the
+seed the writers *resolve* against to rows whose entity still exists, so a stale row behaves
+exactly like a relation into an ignored base — it resolves to nothing and falls back.
+
+The "already imported" set is deliberately **not** filtered the same way, and
+`NotionImportService.read` says why: a page whose Kanso row somebody has since deleted is
+not a page to import again, because resurrecting a team a reader chose to remove is the
+louder mistake. That reading is right for a deletion somebody meant. It is wrong for a
+deletion somebody regrets, and there is nothing anywhere that can tell the two apart, which
+is what makes this a decision rather than a cleanup: a sweep that dropped stale rows would
+turn every accidental delete into a re-import, and doing nothing means a base can never be
+brought over again. What is missing first is a way to *see* the stale rows — the number of
+them, per base, on the preview — before anybody decides what to do with them. The spec named
+the cleanup as out of the branch, and `architecture.md` records why the table has no foreign
+key in the first place.
+
+**A base longer than `max-pages-per-database` imports its first two thousand pages, and the
+only thing that says so is a `+`.** Notion answers no page total for a data source, so the
+count and the read are the same bounded walk, and the import brings over exactly the prefix
+it walked. The screens are honest about the *count* — `pageCount` prints `2000+ pages` on
+step 1, step 2 and the confirm button — but nothing anywhere says "and the rest will not come
+over", and the outcome afterwards reports two thousand rows written with no mention of what
+was left behind. Somebody importing a five-thousand-row base cannot tell that from a
+complete import except by arithmetic. Raising the bound is a setting; saying it out loud is a
+sentence somebody has to write, and the preview is the place for it rather than the count.
+
+**Cycling a base's target on step 2 costs one Notion call per target tried.** The relation
+suggestion needs the base's schema, so step 2 asks for it as soon as the base is kept. The
+query is keyed by `(sourceId, target)` with `staleTime: Infinity`, so keeping a base once
+costs exactly one call and walking back into step 2 or forward into step 3 costs none — the
+plan's own worry, "one call per base per screen visit", the cache already answered. What is
+left is the cycling: a reader who presses the button through teams, projects, tickets and
+documents to read the labels spends four calls on a base they may then ignore, and the
+client's ceiling is ~2.5 requests a second across the whole application. Asking only for the
+target a reader settles on, or debouncing the button, would close it.
+
+**The parent-side link rule is per base, not per page.** A `single_property` relation can
+live on the parent alone — a `Tâches` column on the projects base and nothing on the tasks
+base — so `openFallbacks` treats a link as resolvable when *either* end names the other,
+which is exactly what `ImportLinks.resolveOneToOne` reads. But a schema cannot say how many
+pages that column actually names. A parent column naming 10 of 300 children therefore hides
+the fallback selects for the whole base, and the other 290 rows land in the auto-named
+project with nothing having asked where they should go. Answering per page needs the
+preview's counts on a screen that currently holds only the schema.
+
+**A `documents` base is always asked where its unlinked rows land, and a `tickets` base is
+asked twice.** `openFallbacks` answers per target. Documents has no relation to try, so it
+always returns `teamId` — which is the question step 2 already asked and the reader already
+answered. Tickets returns `projectId` *and* `teamId` together, so choosing a project does
+not retire the team question, even though a project determines its team. Neither is wrong;
+both put a select in front of somebody who has already decided.
+
+**A second import of a `documents` base still creates a second folder.** A tickets base's
+container project is recorded in `notion_import_origin` under the base's own data source id,
+so a later run finds it instead of making another; a folder cannot be, because `entity_type`
+is `CHECK`-constrained to `team | project | ticket | doc` and a folder is none of them. The
+two container kinds therefore behave differently and only one is safe to press twice. It
+waits on a migration that gives a folder a kind of its own — which is also where the
+`documents` target's own spec will have to start, since the spec left importing documentation
+properly out on purpose.
+
+**`HttpNotionClient.listUsers` walks its cursor with no upper bound.** Every other walk in
+that client is capped — `NotionDiscovery.search` at `max-databases`, the page walk at
+`max-pages-per-database` — because a Notion answer that repeats a cursor or never clears
+`has_more` would loop. `listUsers` is the exception, on the argument that a workspace's
+membership is small. That argument is about the data, not about the answer.
+
+## Not a defect, but load-bearing to know
+
+**Step 5 can promise one project more than the import writes.** `import-step-three.tsx`
+counts a tickets base as one project, because `TicketImport` makes a container project for
+tickets whose own relation answered nothing — and the preview cannot say whether every
+ticket will resolve. When they all do, no container is created: the header reads "1 team, 2
+projects" and the outcome underneath reports one project. Found by the browser pass, which
+asserts the outcome and deliberately does not assert the header, because asserting a number
+that can be wrong is how a wrong number gets kept.
+
+**The suite's Notion workspace sits at the network boundary, not inside the application.**
+`e2e/notion-workspace.ts` answers Notion's own HTTP API and the container is pointed at it
+through `NOTION_BASE_URL`, so the client under test is the real `HttpNotionClient` — its
+search-filter fallback, its cursors, its property parsing. The alternative considered was a
+`NotionClient` bean chosen by a Spring profile, which would have put `FakeNotionWorkspace`
+into the production source set to make a test possible, and was ruled out before the work
+started. The cost is that scenario 23 needs a stack carrying two extra variables and skips
+without them; `e2e/README.md` holds the command, and the skip's own message repeats it.
+
+**Nothing in the import writes to Notion, and the suite now says so instead of assuming
+it.** Imported rows get their own pages in `Kanso · Tickets` through the outbox like any
+other row, and the source workspace is never written to. Scenario 23's workspace records
+every write it is asked for and the scenario expects none — a live assertion of the promise
+screen 24 makes in words.
+
+**A batch matching two Notion ids to the same Kanso account leaves that account's
+`notion_person_id` dependent on map insertion order.** Ambiguous input rather than a defect:
+two Notion identities cannot both be the one id a Kanso row carries. Nothing in either
+screen can produce it, since a row is one person; a hand-written `PUT /api/notion/people`
+can.
+
+**`droppedAssignees` counts assignments, not people.** One outsider on fifty pages reports
+fifty. The number exists to say "some work came over unassigned", which fifty says as well
+as one — but it reads like a headcount and is not one.
+
+**A one-to-one relation naming a row that has since been deleted falls back correctly and is
+not counted.** Only the dependency pass counts its own drops, so the outcome can report zero
+dropped relations for an import where a link genuinely went nowhere.
+
+## Test shape, not test count
+
+**The browser pass walks the five screens once, along the path a reader takes.** What it
+does not cover: a second import of the same plan (skipping is proven in process by
+`NotionImportTest`), a base whose schema Notion refuses in the middle of the dialog, the
+`documents` target, and the 403 from `listUsers` reaching step 4 as a sentence rather than
+as an empty list. Each of those is another full walk through a five-step dialog against a
+suite that runs one worker, which is the reason they are not there rather than an argument
+that they should not be.
+
+**Nothing pins that the person correspondence is written before the writer runs.**
+`NotionPeople.link` runs first inside `perform`, so that a page whose assignee is dropped
+still leaves the correspondence behind — and the ordering is hard to observe from a
+`@Transactional` test class that rolls back.
+
+**`rowCounts()` in the import tests covers neither `notion_import_origin` nor
+`users.notion_person_id`.** So the "`peopleSeen` writes nothing" assertion is weaker than
+its name; the real guarantee is structural — the function takes no `people` parameter and is
+handed nothing that can write.
+
+**No test drives a refused fallback project through the import.** The access check itself is
+verified in `TicketService`; what is unproven is that a `Fallback.projectId` naming a project
+the actor may not write to is refused before anything is written.
+
+**`DocumentImport`'s lazy folder and `TeamImport.settleParents` skipping an already-imported
+child are unpinned.** Both are second-run behaviours of paths whose first run is covered.
+
+**The "no token configured" branch of `NotionPeople.view` has no test.** Its behaviour was
+verified by reading `NoopNotionClient.enabled = false`.
+
+## Small and mechanical
+
+- Four files in `sync/importer` are past the ~180-line shape the rest of the package holds
+  to: `NotionImportService.kt` (246), `MappedPageReader.kt` (234), `ImportLinks.kt` (201),
+  `ImportModel.kt` (187). `import-step-columns.tsx` (358) and `import-dialog.tsx` (301) are
+  the same story in the browser. Splitting any of them is its own piece of work.
+- Two refusal sentences — "Notion is rate-limiting this integration…" and "Notion refused
+  the request: …" — are written out verbatim in three places: `NotionImportService`,
+  `NotionPeople` and `setup/NotionParentPages`. `SetupController` carries a fourth, worded
+  differently.
+- `ImportPlanner` reads `MappedPageReader.refusal` twice over the same page list, once to
+  keep the adoptable pages and once to keep the refused ones, and `ImportWriter` reads it a
+  third time to name the reason. Bounded and small; one partition would say it once.
+- `ImportOriginRepository.live` pools every kind's surviving ids into one flat `Set<UUID>`,
+  so a row survives if its id exists under *any* kind. Unreachable with v4 UUIDs, and a
+  per-kind filter would be exact for no extra code.
+- `V15__notion_import_origin.sql` still states the fall-through as unconditional, with no
+  pointer to `live`. It cannot simply be corrected: editing an applied migration changes its
+  Flyway checksum and every existing instance would then fail validation. The explanation
+  lives in `architecture.md` instead.
+- `ImportOriginRepository.recordContainer` keys a container project by the base's *data
+  source* id in a column named `notion_page_id`. Its doc comment says so; a `require` would
+  make it enforceable.
+- `ImportLinks` keeps the first target of a child-side one-to-one relation holding several
+  and discards the rest without counting them in `droppedRelations`.
+- `read` and `write` in `NotionImportService` each query `byPageIds`, and each comment claims
+  to be the only one; carrying the first result onto `PlannedBase` would collapse them.
+- A `PUT /api/notion/people` costs two full `users` scans, one in `link` and one in the
+  `view()` built for the response.
+- `peopleSeen` filters its pages by reaching past `ColumnMapping.property(field)` to
+  `columns.containsKey` — a loop skip written as though it were a correctness test.
+- The fallback select's copy is split between `import-columns.ts` (`FALLBACK_LABELS`) and
+  `import-step-columns.tsx` (`FALLBACK_NONE`), while every sibling label table lives in
+  `import-targets.ts`.
+- `lib/api/inbox.ts` imports `NotionImportSchema` from a component module — the reverse of
+  every other wire type there — and `Fallback` is declared in one file and re-inlined in the
+  other.
+- `linkConflicts`' two plural branches in `import-step-three.tsx` duplicate the whole clause
+  for one `s`.
+- `openFallbacks` picks its `LINK` row by `base.schema.target` while judging both ends by
+  `kept`. They cannot diverge in the real screen, but the function reads two ways about
+  which is authoritative.
+- `queries/inbox.ts`'s long doc comment now heads `importSchemaQuery` while the hook's own
+  comment explains `useQueries`, so it reads slightly out of place.
+- `notion-people-section.tsx` invalidates `keys.people` on a Notion-link save with no stated
+  reason: comment it or drop it.

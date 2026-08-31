@@ -14,7 +14,9 @@ alongside. Everyone who does not open it reads the same data in Notion.
   timeline are one scoped query drawn three ways.
 - **Nobody else has to learn Kanso.** Connect Notion and Kanso feeds four databases
   that the people following along build their own views on; an existing workspace is
-  imported once. One door to move in, one source of truth to live in.
+  imported once — with its own columns and its own words, so a base whose status is
+  called `État` and whose options read `En cours` comes over as work already started
+  rather than as a pile of `Todo`. One door to move in, one source of truth to live in.
 
 **Postgres is the operational source of truth. Notion is an asynchronous mirror.**
 People who move work forward every day live in Kanso; everyone else keeps reading
