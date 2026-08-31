@@ -34,8 +34,10 @@ class DocumentImport(
 	private val origins: ImportOriginRepository,
 ) {
 
-	fun write(actor: User, base: PlannedBase, fallbackTeam: UUID): DocsWritten {
-		val teamId = base.fallback.teamId ?: fallbackTeam
+	fun write(actor: User, base: PlannedBase, fallbackTeam: UUID?): DocsWritten {
+		// `!!`: a document needs a team to be filed under, and `perform` already refused
+		// before a page was read unless the request or this base supplies one.
+		val teamId = base.fallback.teamId ?: fallbackTeam!!
 		var folderId: UUID? = null
 		var written = 0
 

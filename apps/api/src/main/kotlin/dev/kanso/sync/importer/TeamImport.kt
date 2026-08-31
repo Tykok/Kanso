@@ -42,7 +42,8 @@ class TeamImport(
 	}
 
 	/**
-	 * The second pass: every parent the resolver found, one move at a time.
+	 * The second pass: every parent the resolver found, one move at a time — or, failing
+	 * that, the base's own [Fallback.parentTeamId].
 	 *
 	 * Only [PlannedBase.adoptable] pages are moved. A team this run left alone because it
 	 * was already imported keeps the parent it has: a second import never updates from
@@ -51,9 +52,11 @@ class TeamImport(
 	 */
 	fun settleParents(actor: User, base: PlannedBase, links: ImportLinks.Resolved, rows: ImportedRows) {
 		for (page in base.adoptable) {
-			val parentPage = links.parentOfTeam[page.id] ?: continue
 			val childId = rows.team(page.id) ?: continue
-			val parentId = rows.team(parentPage) ?: continue
+			// The relation's own answer, else the base's fallback: a team whose parent
+			// relation names nothing, or names a page this run did not keep, is not left
+			// unparented just because nobody in Notion happened to say where it goes.
+			val parentId = links.parentOfTeam[page.id]?.let(rows::team) ?: base.fallback.parentTeamId ?: continue
 			val child = teams.get(childId)
 			try {
 				teams.update(actor, childId, child.name, child.key, parentId)

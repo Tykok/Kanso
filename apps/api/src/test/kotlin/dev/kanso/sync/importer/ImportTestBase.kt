@@ -13,6 +13,7 @@ import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.ProjectService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketAccess
 import dev.kanso.sync.notion.NotionClient
@@ -41,6 +42,7 @@ abstract class ImportTestBase : PostgresTest() {
 	@Autowired protected lateinit var writer: ImportWriter
 	@Autowired protected lateinit var tx: TransactionTemplate
 	@Autowired protected lateinit var teamService: TeamService
+	@Autowired protected lateinit var projectService: ProjectService
 	@Autowired protected lateinit var users: UserRepository
 	@Autowired protected lateinit var encoder: PasswordEncoder
 

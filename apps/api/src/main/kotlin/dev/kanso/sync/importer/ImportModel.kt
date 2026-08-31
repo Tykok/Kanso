@@ -31,11 +31,16 @@ enum class ImportTarget(override val wire: String) : Wire {
  * It has no wire form yet — the controller still builds an empty one — but it reaches
  * [PlannedBase] from here, so the writer reads a base's relations through the same mapping
  * the request will carry once the columns screen sends it.
+ *
+ * [fallback] is this base's own answer to where an unlinked row lands, screen 24 filling
+ * it in per base because a base whose team cannot be resolved may want a different
+ * destination from its neighbour. It carries all the way to [PlannedBase] unchanged.
  */
 data class ImportPlanEntry(
 	val sourceId: String,
 	val target: ImportTarget,
 	val mapping: ColumnMapping = ColumnMapping(),
+	val fallback: Fallback = Fallback(),
 )
 
 /**

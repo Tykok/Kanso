@@ -1,12 +1,10 @@
 package dev.kanso.sync.importer
 
 import dev.kanso.domain.DispositionPlan
-import dev.kanso.service.ProjectService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.annotation.Transactional
 
 /**
@@ -30,8 +28,6 @@ import org.springframework.transaction.annotation.Transactional
  */
 @Transactional
 class ImportDeletedRowTest : ImportTestBase() {
-
-	@Autowired private lateinit var projectService: ProjectService
 
 	@Test
 	fun `a tickets base whose container project was deleted gets a fresh one`() {

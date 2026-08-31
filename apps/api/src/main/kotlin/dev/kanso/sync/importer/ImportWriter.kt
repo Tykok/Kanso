@@ -53,7 +53,7 @@ class ImportWriter(
 	private val log = LoggerFactory.getLogger(javaClass)
 
 	@Transactional
-	fun write(actor: User, fallbackTeam: UUID, bases: List<PlannedBase>): ImportOutcome {
+	fun write(actor: User, fallbackTeam: UUID?, bases: List<PlannedBase>): ImportOutcome {
 		// Filtered to the origins whose entity still exists: the table deliberately carries no
 		// foreign key, so the *reader* of the seed is what has to be careful — see
 		// [ImportOriginRepository.live].

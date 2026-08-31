@@ -44,7 +44,7 @@ class TicketImport(
 	fun write(
 		actor: User,
 		base: PlannedBase,
-		fallbackTeam: UUID,
+		fallbackTeam: UUID?,
 		links: ImportLinks.Resolved,
 		rows: ImportedRows,
 	): TicketsWritten {
@@ -60,7 +60,9 @@ class TicketImport(
 				?: rows.project(base.base.dataSourceId)
 				?: container(base, fallbackTeam, rows).also { containers++ }
 
-			val teamId = teamOf(projectId, teamOfProject) ?: base.fallback.teamId ?: fallbackTeam
+			// `!!`: unlike a project, a ticket must have a team, and `perform` already
+			// refused before a page was read unless the request or this base supplies one.
+			val teamId = teamOf(projectId, teamOfProject) ?: base.fallback.teamId ?: fallbackTeam!!
 			val ticketId = createTicket(actor, teamId, projectId, base, page)
 			rows.put(OriginKind.TICKET, page.id, ticketId)
 			origins.record(ImportOrigin(page.id, OriginKind.TICKET, ticketId, base.base.dataSourceId))
@@ -117,7 +119,7 @@ class TicketImport(
 	 * Created only when a ticket actually needs it, so a base whose every ticket resolves
 	 * to a real project creates no project at all.
 	 */
-	private fun container(base: PlannedBase, fallbackTeam: UUID, rows: ImportedRows): UUID {
+	private fun container(base: PlannedBase, fallbackTeam: UUID?, rows: ImportedRows): UUID {
 		val project = projects.create(
 			name = base.base.name,
 			// In progress, not planned: the pages being imported are work somebody has

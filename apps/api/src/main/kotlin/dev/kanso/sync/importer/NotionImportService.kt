@@ -84,20 +84,33 @@ class NotionImportService(
 	/**
 	 * Step 3. The first thing that writes.
 	 *
-	 * The team is checked first, before a single page is read: an import is a write and a
-	 * large one, and the refusal belongs in front of the work rather than after four
-	 * hundred inserts have to be rolled back. [teamId] is also *where the team comes from*
-	 * when nothing else answers — `architecture.md` says a Notion-authored page can supply
-	 * neither a team nor a per-team number, and this is the request where somebody is
-	 * present to answer the first, which lets `TicketService` answer the second from the
-	 * team's own counter. A base of projects that resolved a team of its own uses that one,
-	 * and its tickets follow their project; this is the answer for everything left over.
+	 * [teamId] is no longer unconditional: an import of teams alone has no destination to
+	 * ask about, so it is required only when the plan holds something other than `TEAMS`
+	 * that has no [Fallback.teamId] of its own to land in instead. That check runs before a
+	 * single page is read — an import is a large write, and the refusal belongs in front of
+	 * the work rather than after four hundred inserts have to be rolled back.
+	 *
+	 * Once a destination is settled, every team the request names is access-checked, not
+	 * only [teamId]: a fallback is as much a place to write as the destination is, and a
+	 * reader who may not write to a team must not be able to reach it by naming it in a
+	 * fallback instead. `architecture.md` says a Notion-authored page can supply neither a
+	 * team nor a per-team number, and this is the request where somebody is present to
+	 * answer the first, which lets `TicketService` answer the second from the team's own
+	 * counter. A base that resolved a team of its own — through a relation or its own
+	 * fallback — uses that one; [teamId] is the answer for everything left over.
 	 */
-	fun perform(actor: User, teamId: UUID, plan: List<ImportPlanEntry>): ImportOutcome {
+	fun perform(actor: User, teamId: UUID?, plan: List<ImportPlanEntry>): ImportOutcome {
+		val needsDestination = plan.any { it.target != ImportTarget.TEAMS && it.fallback.teamId == null }
+		if (needsDestination && teamId == null) {
+			throw BadRequestException(
+				"Choose the team imported work lands in. Only an import of teams alone needs no destination."
+			)
+		}
 		// Directly, not inside `tx`: `TicketAccess.requireTeam` is transactional itself, and
 		// a refusal raised inside a template here would also mark the caller's transaction
 		// rollback-only on its way out — a 403 that poisons whatever else the request was in.
-		access.requireTeam(actor, teamId)
+		teamId?.let { access.requireTeam(actor, it) }
+		plan.mapNotNull { it.fallback.teamId }.distinct().forEach { access.requireTeam(actor, it) }
 		return writer.write(actor, teamId, read(plan))
 	}
 
@@ -143,7 +156,10 @@ class NotionImportService(
 
 		return resolved.map { r ->
 			val already = r.pages.mapNotNullTo(mutableSetOf()) { page -> page.id.takeIf { it in existing } }
-			PlannedBase(r.base, r.entry.target, r.pages, alreadyImported = already, mapping = r.entry.mapping)
+			PlannedBase(
+				r.base, r.entry.target, r.pages,
+				alreadyImported = already, mapping = r.entry.mapping, fallback = r.entry.fallback,
+			)
 		}
 	}
 

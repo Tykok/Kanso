@@ -28,16 +28,16 @@ class ProjectImport(
 	fun write(
 		actor: User,
 		base: PlannedBase,
-		fallbackTeam: UUID,
+		fallbackTeam: UUID?,
 		links: ImportLinks.Resolved,
 		rows: ImportedRows,
 	): Int {
 		var created = 0
 		for (page in base.adoptable) {
 			// The team its own relation named, else the base's own answer, else the
-			// request's. A project whose relation named a team in a base nobody kept has no
-			// team of its own to land in, and inventing one from the name is how work lands
-			// in front of the wrong people.
+			// request's — one of which `NotionImportService.perform` guarantees is present
+			// for a `PROJECTS` base, but `ProjectService.create` is left to accept the
+			// nullable type as it is rather than being handed a promise it cannot check.
 			val teamId = links.teamOfProject[page.id]?.let(rows::team)
 				?: base.fallback.teamId
 				?: fallbackTeam
