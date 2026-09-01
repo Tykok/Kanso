@@ -5,9 +5,9 @@ import { socialApi, type ActivityEntity, type LabelColour } from "../api/social"
  * Keys for the three shared reads.
  *
  * Declared here rather than added to `keys` in `queries/core.ts`, which six branches would
- * otherwise all edit. The first segment is what matters: `applyEvent` in `realtime.ts`
- * invalidates on it, so these grow into the realtime channel the day the server publishes
- * an event for a comment — which it does not yet, deliberately.
+ * otherwise all edit. The first segment is what matters: `applyEvents` in
+ * `lib/realtime-events.ts` matches on it, so these grow into the realtime channel the
+ * day the server publishes an event for a comment — which it does not yet, deliberately.
  */
 export const socialKeys = {
   activity: (entityType: ActivityEntity, entityId: string) =>

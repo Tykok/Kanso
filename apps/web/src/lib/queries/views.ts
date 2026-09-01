@@ -12,9 +12,11 @@ import { keys, useSavePreferences } from "./core";
  * the two mutations the board needs — a status patch and nothing else — are
  * `usePatchTicket`, which already exists.
  *
- * Every ticket key below begins with `"tickets"` on purpose. `applyEvent` invalidates on
- * that first segment alone, so a realtime edit refreshes the page-width ticket and the
- * board's cards without this file having to be known to the socket.
+ * Every ticket key below begins with `"tickets"` on purpose. `applyEvents` finds them on
+ * that first segment, so a realtime edit refreshes the page-width ticket and the board's
+ * cards without this file having to be known to the socket. What it does with each one
+ * depends on its shape: the two scoped lists are patched row by row, and the ticket
+ * page's own entry — a single row keyed on the identifier — is replaced outright.
  */
 
 /** The scope the search reads: everything, because a global search that is not is a filter. */

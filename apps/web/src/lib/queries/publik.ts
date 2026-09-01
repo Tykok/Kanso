@@ -6,7 +6,7 @@ import { publicApi, type Roadmap } from "@/lib/api/publik";
 /**
  * The public surfaces' own hooks.
  *
- * Keyed under `public` rather than sharing `keys.tickets`: `applyEvent` invalidates on
+ * Keyed under `public` rather than sharing `keys.tickets`: `applyEvents` matches on
  * the first segment when a realtime event arrives, and these pages have no session, so
  * no event will ever reach them. Sharing a prefix would let a signed-in tab's
  * invalidation refetch a stranger's page for no reason, and would make the roadmap look

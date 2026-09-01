@@ -132,8 +132,13 @@ export type ViewGroupBy = (typeof VIEW_GROUP_BYS)[number];
 export type ViewSortBy = (typeof VIEW_SORT_BYS)[number];
 
 /**
- * The facets the server actually matches on — `SavedViewService.SERVED_FILTERS`, key for
+ * The facets the server actually matches on — `TicketFilterVocabulary.SERVED`, key for
  * key. A key this type carries that the set does not is a 400 on the write, not a chip.
+ *
+ * It is no longer only a saved view's vocabulary: `GET /api/tickets` takes these same
+ * names as query parameters and is refused by the same gate, so the main list and a
+ * stored question are one query asked through two doors. The name stays `ViewFilters`
+ * because a chip is a chip wherever it is drawn.
  */
 export type ViewFilters = {
   status?: TicketStatus[];
@@ -152,7 +157,41 @@ export type ViewFilters = {
   label?: string[];
   /** "Blocked for 3 days", measured from creation. */
   openedForDays?: number;
+  /**
+   * "Sans estimation" — its own flag rather than a bound, because null is not a small
+   * number. Asked with a bound, the two contradict and the answer is empty, which is the
+   * honest reading of "unsized and bigger than a 3".
+   */
+  unestimated?: boolean;
+  /** Bounds on the points, inclusive. Neither of them ever matches an unsized ticket. */
+  estimateMin?: number;
+  estimateMax?: number;
 };
+
+/**
+ * A [ViewFilters] as `GET /api/tickets` takes it — the same names, in a query string.
+ *
+ * The list endpoint and a saved view are one question asked through two doors, so this is
+ * a spelling change and nothing more. A list-valued facet repeats its key rather than
+ * joining on a comma, because that is what `MultiValueMap` on the other side reads and
+ * because a comma is a legal character in nothing the values here hold.
+ *
+ * An empty list and `false` are written as absent. The server refuses a name it does not
+ * serve but says nothing about a facet asked with no answer, and sending `unassigned=
+ * false` would put a chip on the wire that the screen is not drawing.
+ */
+export function filterParams(filters: ViewFilters): URLSearchParams {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (Array.isArray(value)) {
+      for (const one of value) search.append(key, String(one));
+    } else {
+      search.append(key, String(value));
+    }
+  }
+  return search;
+}
 
 export type SavedView = {
   id: string;
@@ -230,6 +269,33 @@ export const organiseApi = {
 
   decide: (body: { ticketId: string; decision: TriageDecision; duplicateOfId?: string }) =>
     request<TriageRuling>("/api/triage/decisions", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
+   * The main list, asked with the saved view's vocabulary — an unsaved saved view.
+   *
+   * `api.tickets` in `core.ts` stays exactly as it is and keeps working: it sends
+   * `teamId`, `includeDescendants`, `projectId` and `includeArchived`, which the server
+   * still answers because the old names are aliases over these same filters. This is the
+   * door for the facets that door cannot spell.
+   */
+  ticketsMatching: (
+    filters: ViewFilters,
+    scope: {
+      teamId?: string;
+      includeDescendants?: boolean;
+      includeArchived?: boolean;
+      sort?: ViewSortBy;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) => {
+    const search = filterParams(filters);
+    for (const [key, value] of Object.entries(scope)) {
+      if (value !== undefined) search.set(key, String(value));
+    }
+    const encoded = search.toString();
+    return request<Ticket[]>(`/api/tickets${encoded ? `?${encoded}` : ""}`);
+  },
 
   views: (teamId: string) => request<SavedView[]>(`/api/teams/${teamId}/views`),
 

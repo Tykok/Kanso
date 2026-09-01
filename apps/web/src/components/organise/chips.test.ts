@@ -77,6 +77,29 @@ describe("chipsOf", () => {
   it("falls back to the raw id rather than dropping the chip", () => {
     expect(chipsOf({ project: ["gone"] }, names)[0].value).toBe("gone");
   });
+
+  // `unestimated` is a boolean facet like `unassigned`, and for the same reason: null is
+  // not a small number, so "not sized yet" cannot be spelled as a bound.
+  it("prints the unestimated facet as a bare label", () => {
+    expect(chipsOf({ unestimated: true }, names)).toEqual([
+      { key: "unestimated", label: "Unestimated", value: "" },
+    ]);
+  });
+
+  // Two keys under one label, so each has to print its own sign: a strip showing `Points
+  // 5` twice would leave a reader unable to say which end was which.
+  it("spells each estimate bound with the sign it means", () => {
+    expect(chipsOf({ estimateMin: 5, estimateMax: 8 }, names)).toEqual([
+      { key: "estimateMin", label: "Points", value: "≥ 5" },
+      { key: "estimateMax", label: "Points", value: "≤ 8" },
+    ]);
+  });
+
+  // Zero is a legitimate bound and `undefined` is the absence of one. A falsy check here
+  // would drop `estimateMax: 0` and quietly widen the list.
+  it("draws a bound of zero rather than treating it as absent", () => {
+    expect(chipsOf({ estimateMax: 0 }, names)[0].value).toBe("≤ 0");
+  });
 });
 
 describe("withoutChip", () => {

@@ -60,6 +60,23 @@ export function isContextRow(row: Row) {
 }
 
 /**
+ * Which lane the ticket [ticketId] is drawn in, or -1.
+ *
+ * The same count `arrows.tsx` makes when it walks the rows for its anchors: a lane is a
+ * position in the row list, and the project headings between two tickets are lanes too.
+ * Written once, here, because the chart positions a lane at `lane × --row-h` and the
+ * arrow layer draws into `lane × --row-h` — two places counting lanes their own way is
+ * one arrow missing the bar it points at by a whole row.
+ *
+ * -1 for a project row as much as for an absent one: a project is not a ticket, and the
+ * cursor the chart scrolls to is always a ticket's.
+ */
+export function laneOf(rows: readonly Row[], ticketId: string | undefined): number {
+  if (ticketId === undefined) return -1;
+  return rows.findIndex((row) => row.kind === "ticket" && row.ticket.id === ticketId);
+}
+
+/**
  * The label a row prints: a project by its own name, an ordinary ticket by its
  * identifier, and a context ticket with the team it belongs to named first — the one
  * fact on the chart that says whose work this row is drawing.

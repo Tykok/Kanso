@@ -38,8 +38,9 @@ export const organiseKeys = {
  * than have every mutation name every key, they all call this: the four organising
  * families plus the two `core` families that draw the same rows.
  *
- * Invalidating on the first segment only, which is what `applyEvent` in `core` already
- * does, so a key can grow a segment without this having to learn about it.
+ * Invalidating on the first segment only, which is how `applyEvents` in
+ * `lib/realtime-events.ts` finds these too, so a key can grow a segment without this
+ * having to learn about it.
  */
 function invalidateOrganise(queryClient: ReturnType<typeof useQueryClient>) {
   // `labels` because the strip's sixth button changes what the selected rows wear, and a

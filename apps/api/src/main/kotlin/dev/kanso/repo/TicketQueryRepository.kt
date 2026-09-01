@@ -4,10 +4,12 @@ import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketCycles
 import dev.kanso.db.TicketLabels
 import dev.kanso.db.Tickets
+import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
+import dev.kanso.trash.TrashKind
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
@@ -15,13 +17,33 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
- * A saved view's question, parsed. Every field is a chip on screen 21.
+ * What a ticket query is bounded by before the first chip is read.
+ *
+ * Separate from [TicketFilters] rather than three more fields on it: a chip is a question
+ * the reader asked and can take back off, and none of these are. They are the walls of
+ * the room the question is asked in, they come from the route rather than from the filter
+ * vocabulary, and [dev.kanso.service.TicketFilterVocabulary] must never accept them as
+ * filter names — `?archived=true` on the list would otherwise read as a served facet.
+ *
+ * [teamIds] null and [teamIds] empty are different questions: null is "every team", which
+ * is what `GET /api/tickets` with no `teamId` means, and empty is "no team at all", which
+ * answers with nothing. Collapsing them would make a scope that resolved to nothing
+ * silently show the whole instance.
+ */
+data class TicketScope(
+	val teamIds: Collection<UUID>? = null,
+	val includeArchived: Boolean = false,
+)
+
+/**
+ * The question, parsed. Every field is a chip on screen 21 — and, since the two filtering
+ * paths were merged, every field is also a query parameter of `GET /api/tickets`.
  *
  * `statusesExcluded` exists because the drawing's second chip is `Statut ≠ Done`: "not
  * done" is the useful shape and expressing it as the five statuses that are not `done`
  * would silently stop meaning that the day a sixth is added.
  */
-data class SavedViewFilters(
+data class TicketFilters(
 	val statuses: List<TicketStatus> = emptyList(),
 	val statusesExcluded: List<TicketStatus> = emptyList(),
 	val priorities: List<TicketPriority> = emptyList(),
@@ -29,7 +51,7 @@ data class SavedViewFilters(
 	val assigneeIds: List<UUID> = emptyList(),
 	val unassigned: Boolean = false,
 	val cycleIds: List<UUID> = emptyList(),
-	/** The drawing's `Étiquette synchro`, by id — see `SavedViewService.SERVED_FILTERS`. */
+	/** The drawing's `Étiquette synchro`, by id — see `TicketFilterVocabulary.SERVED`. */
 	val labelIds: List<UUID> = emptyList(),
 	/** "Blocked for 3 days", from the drawing's own list of saved views. */
 	val openedMoreThanDaysAgo: Int? = null,
@@ -45,41 +67,65 @@ data class SavedViewFilters(
 )
 
 /**
- * The one query a saved view runs.
+ * The one query that answers "which tickets".
  *
- * Separate from [TicketRepository] rather than a widening of its `search`: `search` takes
- * eight parameters that every controller already passes, and adding six more optional
- * ones would make a method nobody can read at the call site. The predicate here is built
- * the same way `search` builds its own — `buildList` then `compoundAnd` — so the two are
- * recognisably the same idiom.
+ * It used to be two. `TicketRepository.search` served the main list with four filters and
+ * this one served a saved view with nine, both building their predicate the same way —
+ * `buildList` then `compoundAnd` — from two independently written sets of clauses. The
+ * old note here argued the split was worth it, because folding six optional parameters
+ * into `search` would make a call nobody can read at the call site. That argument was
+ * about the *parameter list*, and it stopped applying the moment the filters became one
+ * named object: [TicketFilters] is one argument whatever it holds, so the wide query has
+ * the narrow one's call shape and there is nothing left to buy by writing the predicate
+ * twice.
+ *
+ * What the split cost while it lasted is the better argument for closing it. The two
+ * predicates had already drifted: this one never excluded the trash, so a deleted ticket
+ * stayed in every saved view and in every sidebar count, while the list it was deleted
+ * from had dropped it. One predicate cannot disagree with itself.
  */
 @Repository
-class ViewTicketRepository {
+class TicketQueryRepository {
 
 	fun matching(
-		teamIds: Collection<UUID>,
-		filters: SavedViewFilters,
-		sortBy: dev.kanso.service.ViewSortBy,
+		scope: TicketScope,
+		filters: TicketFilters,
+		sortBy: dev.kanso.service.ViewSortBy = dev.kanso.service.ViewSortBy.UPDATED,
 		limit: Int,
+		offset: Long = 0,
 	): List<Ticket> {
-		if (teamIds.isEmpty()) return emptyList()
-		return Tickets.selectAll().where(predicate(teamIds, filters))
+		if (scope.teamIds?.isEmpty() == true) return emptyList()
+		return Tickets.selectAll().where(predicate(scope, filters))
 			.orderBy(*order(sortBy))
-			.limit(limit)
+			.limit(limit).offset(offset)
 			.map { it.toTicket() }
 	}
 
-	fun count(teamIds: Collection<UUID>, filters: SavedViewFilters): Int {
-		if (teamIds.isEmpty()) return 0
-		return Tickets.selectAll().where(predicate(teamIds, filters)).count().toInt()
+	fun count(scope: TicketScope, filters: TicketFilters): Int {
+		if (scope.teamIds?.isEmpty() == true) return 0
+		return Tickets.selectAll().where(predicate(scope, filters)).count().toInt()
 	}
 
-	private fun predicate(teamIds: Collection<UUID>, filters: SavedViewFilters): Op<Boolean> {
+	/**
+	 * A row is soft-deleted exactly when `trash_entries` names it — there is no `deleted`
+	 * column to keep in step with that, which is `V11`'s whole argument. Duplicated from
+	 * [TicketRepository] on purpose: that copy is `private` to a class full of row readers
+	 * that each decide for themselves, and exporting it would invite a caller to forget.
+	 */
+	private val trashed
+		get() = TrashEntries.select(TrashEntries.entityId)
+			.where { TrashEntries.entityType eq TrashKind.TICKET.wire }
+
+	private fun predicate(scope: TicketScope, filters: TicketFilters): Op<Boolean> {
 		val conditions = buildList {
-			// An archived ticket is out of every saved view. A view is a working list, and
-			// the archive is where things go to stop being on one.
-			add(Tickets.archived eq false)
-			add(Tickets.teamId inList teamIds)
+			// Unconditional, and not behind `includeArchived`: deleted is not archived, and
+			// showing the archived work must not also surface what is in the trash.
+			add(Tickets.id notInSubQuery trashed)
+			// An archived ticket is out of every saved view — `SavedViewService` never asks
+			// for one — and out of the list until the Archives tab asks. A view is a working
+			// list, and the archive is where things go to stop being on one.
+			if (!scope.includeArchived) add(Tickets.archived eq false)
+			scope.teamIds?.let { add(Tickets.teamId inList it) }
 			if (filters.statuses.isNotEmpty()) add(Tickets.status inList filters.statuses.map { it.wire })
 			if (filters.statusesExcluded.isNotEmpty()) {
 				add(Tickets.status notInList filters.statusesExcluded.map { it.wire })
@@ -136,6 +182,10 @@ class ViewTicketRepository {
 	 * The tie-break is always `number DESC`, whatever the sort: two tickets of equal
 	 * priority have to come back in a stable order or the list reshuffles under the
 	 * cursor on every refetch, which is what makes `⇧↑↓` unusable.
+	 *
+	 * It is also what makes `limit`/`offset` paging mean anything, which the main list
+	 * needs and a saved view does not: two rows tied on `updated_at` and ordered by
+	 * nothing else can land on both page 1 and page 2, or on neither.
 	 */
 	private fun order(sortBy: dev.kanso.service.ViewSortBy): Array<Pair<Expression<*>, SortOrder>> =
 		when (sortBy) {

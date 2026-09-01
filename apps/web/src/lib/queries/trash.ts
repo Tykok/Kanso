@@ -28,10 +28,10 @@ type Target = { kind: TrashKind; id: string };
  * invalidates a different set, and a single hook would either over-invalidate or hide
  * which one did what.
  *
- * All three invalidate `["tickets"]` as well. `applyEvent` in `queries/core.ts` cannot do
- * it for them — it maps a realtime entity onto a key and knows nothing about the trash —
- * and a restored ticket has to reappear in the list of whoever restored it without a
- * reload.
+ * All three invalidate `["tickets"]` as well. `applyEvents` in `lib/realtime-events.ts`
+ * cannot do it for them — it maps a realtime entity onto a key and knows nothing about
+ * the trash — and a restored ticket has to reappear in the list of whoever restored it
+ * without a reload.
  */
 function useExit(run: (target: Target) => Promise<void>) {
   const client = useQueryClient();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TICKET_STATUSES, type Ticket, type TicketPriority, type TicketStatus } from "@/lib/api";
-import { boardColumns, boardMove, cardLabel, deltaTo } from "./columns";
+import { boardColumns, boardMove, cardLabel, deltaTo, locateCard } from "./columns";
 
 /** Only the fields the board reads; the rest of `Ticket` is noise in these assertions. */
 function ticket(
@@ -131,5 +131,37 @@ describe("cardLabel", () => {
 
   it("leaves out a priority nobody set rather than saying 'No priority'", () => {
     expect(cardLabel(ticket("KAN-130", "backlog"))).toBe("KAN-130, Backlog: Title of KAN-130");
+  });
+});
+
+describe("locateCard", () => {
+  const columns = boardColumns([
+    ticket("KAN-1", "backlog"),
+    ticket("KAN-2", "backlog"),
+    ticket("KAN-3", "in_progress"),
+  ]);
+
+  /**
+   * Where the board's scroll-into-view starts. A virtualised column has no element for a
+   * card below the fold, so `j` landing on one can only be followed by asking the column
+   * which index it is — never by looking the element up in the DOM, which is what the
+   * card used to do for itself.
+   */
+  it("says which column holds a card and how far down it is", () => {
+    expect(locateCard(columns, "kan-1")).toEqual({ column: 0, row: 0 });
+    expect(locateCard(columns, "kan-2")).toEqual({ column: 0, row: 1 });
+    expect(locateCard(columns, "kan-3")).toEqual({ column: 2, row: 0 });
+  });
+
+  it("still answers for a card far past the bottom of its column", () => {
+    const many = boardColumns(
+      Array.from({ length: 400 }, (_, at) => ticket(`KAN-${at + 1}`, "todo")),
+    );
+    expect(locateCard(many, "kan-400")).toEqual({ column: 1, row: 399 });
+  });
+
+  it("is undefined for a card on no column, and for no card at all", () => {
+    expect(locateCard(columns, "nobody")).toBeUndefined();
+    expect(locateCard(columns, undefined)).toBeUndefined();
   });
 });
