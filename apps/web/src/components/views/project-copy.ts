@@ -149,6 +149,9 @@ const healthOf = (payload: Record<string, unknown>, key: "from" | "to"): string 
     ? PROJECT_HEALTH_LABELS[value as ProjectHealth]
     : undefined;
 };
+/** An estimate off either end of a re-sizing. Absent and null both read as "no size". */
+const points = (payload: Record<string, unknown>, key: "from" | "to"): number | undefined =>
+  typeof payload[key] === "number" ? (payload[key] as number) : undefined;
 
 const statusOf = (payload: Record<string, unknown>, key: "from" | "to"): string | undefined => {
   const value = payload[key];
@@ -174,7 +177,7 @@ export function activitySentence(row: ActivityRow): string {
   const what = ref(row.payload);
 
   // Written as the verb phrase first, so the actor is prepended once rather than in
-  // twelve branches that could each get the spacing wrong.
+  // thirteen branches that could each get the spacing wrong.
   const phrase = ((): string => {
     switch (row.kind) {
       case "created":
@@ -225,6 +228,18 @@ export function activitySentence(row: ActivityRow): string {
         // than sending a null — and no `to` only if the row arrived from a writer that
         // recorded less than this hoped for.
         return "posted a health update";
+      case "estimated": {
+        // Both ends are optional and they mean different things by their absence: no
+        // `to` is an estimate withdrawn, no `from` is one arrived at for the first
+        // time. Printing "sized KAN-142 at undefined" for either is the failure the
+        // whole payload-read-by-key discipline in this file exists to avoid.
+        const from = points(row.payload, "from");
+        const to = points(row.payload, "to");
+        const it = what ?? "a ticket";
+        if (from !== undefined && to !== undefined) return `re-sized ${it} from ${from} to ${to}`;
+        if (to !== undefined) return `sized ${it} at ${to}`;
+        if (from !== undefined) return `un-sized ${it}, from ${from}`;
+        return `re-sized ${it}`;
       }
     }
   })();

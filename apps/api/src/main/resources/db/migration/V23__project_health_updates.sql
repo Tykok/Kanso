@@ -89,9 +89,15 @@ CREATE INDEX project_updates_project_idx ON project_updates (project_id, at DESC
 -- carries the health it moved to; it does not quote the body, following `commented`: an
 -- activity row outlives what it describes, and a feed holding a copy of the sentence is a
 -- second copy to keep in step.
+-- `estimated` is V21's, restated here and not dropped: this statement re-states the
+-- whole vocabulary rather than amending it, so a list written without V21's word would
+-- silently revoke it — Kotlin would keep accepting `ESTIMATED` and the database would
+-- start refusing the row. The two migrations were written on branches that could not
+-- see each other; the union is the merge's job, and this is it.
 ALTER TABLE activity DROP CONSTRAINT activity_kind_chk;
 
 ALTER TABLE activity ADD CONSTRAINT activity_kind_chk
   CHECK (kind IN ('created', 'status_changed', 'priority_changed', 'assigned',
                   'unassigned', 'renamed', 'scheduled', 'archived', 'commented',
-                  'labelled', 'mirror_pushed', 'carried_over', 'health_posted'));
+                  'labelled', 'mirror_pushed', 'carried_over', 'estimated',
+                  'health_posted'));

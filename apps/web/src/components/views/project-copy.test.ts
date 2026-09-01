@@ -141,6 +141,25 @@ describe("activitySentence", () => {
     expect(activitySentence(row("carried_over"))).toBe("Tykok carried work into the next cycle");
   });
 
+  /**
+   * Re-sizing is the decision somebody comes back looking for, so the sentence carries
+   * both sizes. The two one-ended rows are not the same event and must not read alike:
+   * the server omits a null, so an estimate arrived at has no `from` and one withdrawn
+   * has no `to`.
+   */
+  it("says what a ticket was re-sized from and to", () => {
+    expect(activitySentence(row("estimated", { ref: "KAN-142", from: 3, to: 13 }))).toBe(
+      "Tykok re-sized KAN-142 from 3 to 13",
+    );
+    expect(activitySentence(row("estimated", { ref: "KAN-142", to: 5 }))).toBe(
+      "Tykok sized KAN-142 at 5",
+    );
+    expect(activitySentence(row("estimated", { ref: "KAN-142", from: 8 }))).toBe(
+      "Tykok un-sized KAN-142, from 8",
+    );
+    expect(activitySentence(row("estimated"))).toBe("Tykok re-sized a ticket");
+  });
+
   /** The mirror is not a person, and "nobody pushed 2 pages" is not a sentence. */
   it("leaves the actor out when there was not one", () => {
     expect(activitySentence({ ...row("mirror_pushed"), actor: null })).toBe("Pushed to Notion");

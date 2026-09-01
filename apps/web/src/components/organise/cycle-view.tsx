@@ -217,7 +217,14 @@ function WillSlip({
                 className="flex h-[26px] items-center gap-2.5 rounded-md bg-card px-2"
                 data-testid="slipping-row"
               >
-                <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
+                {/* `shrink-0`, because a flex item that may shrink is allowed to break
+                    `KAN-36` after its hyphen: the identifier wrapped to two lines in a
+                    26px row and sat over the title beside it. The same list lower down
+                    the page is a grid with a column of its own for this cell, which is
+                    why only the panel had it. No width either — the identifier is the
+                    one cell here that cannot be abbreviated, so it takes what it needs
+                    and the title truncates into what is left. */}
+                <span className="shrink-0 font-mono text-11 text-faint">{ticket.identifier}</span>
                 <span className="truncate text-muted-foreground">{ticket.title}</span>
               </div>
             ))}
