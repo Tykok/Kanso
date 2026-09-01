@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { Team, Ticket } from "./api";
 import {
   applyEvents,
+  findTicket,
   PATCH_LIMIT,
   RealtimeCache,
   topicsFor,
+  writeTickets,
   type CacheEntry,
   type EventCache,
   type KansoEvent,
@@ -230,6 +232,76 @@ describe("applying a realtime event to the cache", () => {
     expect(store.was(["teams"])).toBe(true);
     expect(store.was(["timeline"])).toBe(false);
     expect(api.asked).toEqual([]);
+  });
+});
+
+describe("writing a changed row, whoever changed it", () => {
+  it("leaves the cache alone when the row it was handed is the row already there", () => {
+    const store = fakeCache([
+      { key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] },
+      { key: ["tickets", "by-key", "KAN", 142] as const, data: ticket("t1") },
+    ]);
+
+    writeTickets(store.cache, { changed: new Map([["t1", ticket("t1")]]) });
+
+    expect(store.writes).toEqual([]);
+    expect(store.invalidated).toEqual([]);
+  });
+
+  it("writes once the row actually differs", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    writeTickets(store.cache, { changed: new Map([["t1", ticket("t1", { title: "renamed" })]]) });
+
+    expect(store.writes).toEqual([JSON.stringify(listKey("all", ""))]);
+  });
+
+  it("folds an overlay over the row before deciding anything about it", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    writeTickets(store.cache, {
+      changed: new Map([["t1", ticket("t1")]]),
+      overlay: (row) => ({ ...row, priority: "urgent" }),
+    });
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.[0]?.priority).toBe("urgent");
+  });
+
+  it("takes the row out when the overlay says it is gone", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] }]);
+
+    writeTickets(store.cache, {
+      changed: new Map([["t1", ticket("t1")]]),
+      overlay: () => null,
+    });
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.map((row) => row.id)).toEqual(["t2"]);
+  });
+
+  it("does nothing at all when it is handed nothing", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    writeTickets(store.cache, {});
+
+    expect(store.writes).toEqual([]);
+    expect(store.invalidated).toEqual([]);
+  });
+});
+
+describe("finding a row the cache already holds", () => {
+  it("reads it out of a list", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] }]);
+    expect(findTicket(store.cache, "t2")?.id).toBe("t2");
+  });
+
+  it("reads it out of the ticket page's own entry", () => {
+    const store = fakeCache([{ key: ["tickets", "by-key", "KAN", 142], data: ticket("t1") }]);
+    expect(findTicket(store.cache, "t1")?.id).toBe("t1");
+  });
+
+  it("answers nothing for a row nobody has loaded", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    expect(findTicket(store.cache, "t9")).toBeUndefined();
   });
 });
 
