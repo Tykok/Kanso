@@ -65,6 +65,12 @@ class ClientRegistrationService(
 	fun register(request: ClientRegistrationRequest): ClientRegistrationResponse {
 		// The cap first: refusing early means a full table costs one count, not a
 		// validation pass, for whoever is hammering the endpoint.
+		//
+		// Read outside the insert, so two registrations arriving at the cap can both pass
+		// it — the overshoot is bounded by how many requests are in flight, and left as it
+		// is on purpose: closing it means a transaction around a count and a save, or a
+		// lock on a table the library owns, to hold a number that is a safety valve rather
+		// than a quota.
 		if (clientCount() >= maxClients) {
 			throw ClientRegistrationRefused(
 				"invalid_client_metadata",
@@ -78,6 +84,21 @@ class ClientRegistrationService(
 			throw ClientRegistrationRefused(
 				"invalid_redirect_uri",
 				"At least one redirect_uris entry is required.",
+			)
+		}
+		// Lengths, before anything is parsed and long before anything is saved. The columns
+		// are the library's — `client_name varchar(200)`, and `redirect_uris varchar(1000)`
+		// holding the whole comma-joined list — copied verbatim from its schema and not
+		// ours to widen, so what does not fit has to be refused here. Unchecked, it reached
+		// Postgres instead and came back as a 500 from an endpoint that needs no
+		// credential, where RFC 7591 asks for a code the client can read. Kotlin counts
+		// UTF-16 units and Postgres counts characters, so this bound errs on the strict
+		// side for anything outside the BMP, which is the harmless direction.
+		if (redirectUris.size > MAX_REDIRECT_URIS || redirectUris.joinToString(",").length > MAX_REDIRECT_URIS_LENGTH) {
+			throw ClientRegistrationRefused(
+				"invalid_client_metadata",
+				"redirect_uris must be at most $MAX_REDIRECT_URIS entries and " +
+					"$MAX_REDIRECT_URIS_LENGTH characters in total.",
 			)
 		}
 		// One bad entry refuses the whole request. A partial registration is a client that
@@ -104,6 +125,12 @@ class ClientRegistrationService(
 			}
 
 		val name = request.clientName?.trim()?.takeIf { it.isNotBlank() } ?: "An unnamed client"
+		if (name.length > MAX_NAME_LENGTH) {
+			throw ClientRegistrationRefused(
+				"invalid_client_metadata",
+				"client_name must be at most $MAX_NAME_LENGTH characters.",
+			)
+		}
 		val clientId = UUID.randomUUID().toString()
 
 		val client = RegisteredClient.withId(UUID.randomUUID().toString())
@@ -154,5 +181,20 @@ class ClientRegistrationService(
 			tokenEndpointAuthMethod = "none",
 			scope = OAuthScopes.ALL.joinToString(" "),
 		)
+	}
+
+	private companion object {
+
+		/** `oauth2_registered_client.client_name`, which is `varchar(200)`. */
+		const val MAX_NAME_LENGTH = 200
+
+		/**
+		 * `redirect_uris` is one `varchar(1000)` for the joined list, so the total is the
+		 * real bound. The count is here as well because a request naming five hundred
+		 * short callbacks is not a client, and refusing it early is cheaper than parsing
+		 * each one.
+		 */
+		const val MAX_REDIRECT_URIS = 10
+		const val MAX_REDIRECT_URIS_LENGTH = 1000
 	}
 }

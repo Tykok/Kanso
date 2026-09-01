@@ -160,6 +160,51 @@ class ClientRegistrationServiceTest {
 		assertTrue(saved.isEmpty())
 	}
 
+	/**
+	 * `client_name` is `varchar(200)` and `redirect_uris` is one `varchar(1000)` holding
+	 * the comma-joined list — the library's own schema, copied verbatim and not ours to
+	 * widen. Nothing checked either, so an over-long name reached Postgres and came back
+	 * as a `DataIntegrityViolationException`: a **500 from an unauthenticated endpoint**,
+	 * where RFC 7591 asks for a 400 carrying a code the client can read.
+	 */
+	@Test
+	fun `a name longer than the column is a 400 with a reason, not a 500 from Postgres`() {
+		val refusal = assertFailsWith<ClientRegistrationRefused> {
+			service().register(request(clientName = "n".repeat(201)))
+		}
+		assertEquals("invalid_client_metadata", refusal.code)
+		assertTrue(refusal.reason.contains("200"), "a refusal a client cannot act on costs it a retry loop")
+		assertTrue(saved.isEmpty())
+	}
+
+	@Test
+	fun `a name that exactly fills the column is still a registration`() {
+		// The bound is the column, not a taste in names: refusing 200 as well would be a
+		// second rule nobody wrote down.
+		service().register(request(clientName = "n".repeat(200)))
+		assertEquals(200, saved.single().clientName.length)
+	}
+
+	@Test
+	fun `more redirect uris than the row can hold is refused rather than truncated`() {
+		val many = (1..40).map { "http://127.0.0.1:$it/callback" }
+		val refusal = assertFailsWith<ClientRegistrationRefused> { service().register(request(redirectUris = many)) }
+
+		assertEquals("invalid_client_metadata", refusal.code)
+		assertTrue(saved.isEmpty(), "the alternative is a client whose last callback silently is not registered")
+	}
+
+	@Test
+	fun `one enormous but otherwise allowed redirect uri is refused too`() {
+		// Loopback on any port is allowed by policy, and policy says nothing about length —
+		// so a single legal URI can still be longer than the column that has to hold it.
+		val refusal = assertFailsWith<ClientRegistrationRefused> {
+			service().register(request(redirectUris = listOf("http://127.0.0.1:9999/" + "c".repeat(1200))))
+		}
+		assertEquals("invalid_client_metadata", refusal.code)
+		assertTrue(saved.isEmpty())
+	}
+
 	@Test
 	fun `a missing client name gets one rather than an empty string`() {
 		// `client_name` is optional in RFC 7591 and it is what the consent screen shows a
