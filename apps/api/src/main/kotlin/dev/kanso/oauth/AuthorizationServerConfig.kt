@@ -1,6 +1,7 @@
 package dev.kanso.oauth
 
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -18,7 +19,13 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository
 import org.springframework.security.oauth2.server.authorization.context.AuthorizationServerContextHolder
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.security.oauth2.core.OAuth2Token
+import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
+import org.springframework.security.oauth2.server.authorization.token.DelegatingOAuth2TokenGenerator
+import org.springframework.security.oauth2.server.authorization.token.JwtGenerator
+import org.springframework.security.oauth2.server.authorization.token.OAuth2AccessTokenGenerator
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.preauth.AbstractPreAuthenticatedProcessingFilter
 
@@ -83,12 +90,24 @@ class AuthorizationServerConfig {
 	@Bean
 	@Order(Ordered.HIGHEST_PRECEDENCE)
 	@ConditionalOnExpression("!'\${kanso.auth.mode:oidc}'.equalsIgnoreCase('dev')")
-	fun authorizationServerChain(http: HttpSecurity): SecurityFilterChain {
+	fun authorizationServerChain(http: HttpSecurity, clients: RegisteredClientRepository): SecurityFilterChain {
 		LoggerFactory.getLogger(javaClass).info("Authorisation server enabled — agents may connect by consent")
 		val configurer = OAuth2AuthorizationServerConfigurer()
 		http
 			.securityMatcher(configurer.endpointsMatcher)
 			.with(configurer) { server ->
+				// The hour after which the connector would otherwise stop working. Every client
+				// here is public, and none of the library's five converters recognises one on a
+				// `grant_type=refresh_token` request — so the request arrives unauthenticated,
+				// `anyRequest().authenticated()` below refuses it, and the answer is a bare 401.
+				// Verified against a running instance. [PublicClientRefresh] argues the shape and
+				// names the rule this does *not* satisfy.
+				server.clientAuthentication { clientAuth ->
+					clientAuth.authenticationConverter(PublicClientRefreshConverter())
+					// Added first, which is what the configurer does with anything added here, and
+					// harmless: it answers null for every request that is not its own.
+					clientAuth.authenticationProvider(PublicClientRefreshProvider(clients))
+				}
 				server.authorizationEndpoint { endpoint ->
 					endpoint.consentPage(CONSENT_PAGE)
 					// RFC 9207. The library builds the redirect without `iss`; these two
@@ -163,6 +182,30 @@ class AuthorizationServerConfig {
 		jdbc: JdbcOperations,
 		clients: RegisteredClientRepository,
 	): OAuth2AuthorizationConsentService = JdbcOAuth2AuthorizationConsentService(jdbc, clients)
+
+	/**
+	 * The library's default generator, with one delegate replaced.
+	 *
+	 * `OAuth2ConfigurerUtils.getTokenGenerator` builds a
+	 * `DelegatingOAuth2TokenGenerator(jwt?, access, refresh)` when no bean of this type
+	 * exists, and its refresh delegate is the one that refuses a public client. This is
+	 * that list with [PublicClientRefreshTokenGenerator] in its place and nothing else
+	 * changed — the JWT half is kept exactly because it is not this file's business:
+	 * Boot autoconfigures a `JwtEncoder` from the JWKS this server publishes, and
+	 * dropping it would silently take self-contained access tokens away from a future
+	 * client that asked for one.
+	 *
+	 * Outside the dev-mode gate, with the three below it and for the same reason: with no
+	 * chain in front of it there is nothing to generate a token for.
+	 */
+	@Bean
+	fun tokenGenerator(jwtEncoder: ObjectProvider<JwtEncoder>): OAuth2TokenGenerator<out OAuth2Token> {
+		val access = OAuth2AccessTokenGenerator()
+		val refresh = PublicClientRefreshTokenGenerator()
+		return jwtEncoder.getIfAvailable()
+			?.let { DelegatingOAuth2TokenGenerator(JwtGenerator(it), access, refresh) }
+			?: DelegatingOAuth2TokenGenerator(access, refresh)
+	}
 
 	@Bean
 	fun authorizationServerSettings(): AuthorizationServerSettings =

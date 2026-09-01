@@ -140,8 +140,10 @@ class ClientRegistrationService(
 			.clientName(name)
 			.clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
 			.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-			// Declared, or there is no refresh token and the rotation MUST has nothing to
-			// rotate — which is exactly what the spike observed.
+			// Declared, and on its own not enough: the library refuses a *public* client a
+			// refresh token whatever it registered for, and refuses to authenticate one on
+			// a refresh request. [PublicClientRefresh] is what makes this line mean
+			// something, and says what was observed without it.
 			.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
 			.apply { redirectUris.forEach { redirectUri(it) } }
 			.apply { OAuthScopes.ALL.forEach { scope(it) } }
@@ -163,7 +165,15 @@ class ClientRegistrationService(
 					.accessTokenFormat(OAuth2TokenFormat.REFERENCE)
 					.accessTokenTimeToLive(Duration.ofHours(1))
 					.refreshTokenTimeToLive(Duration.ofDays(60))
-					// Consumed on use and replaced. Reuse of a spent one revokes the grant.
+					// Consumed on use and replaced. Rotation is the whole of what this line
+					// buys: reuse of a spent one is refused with `invalid_grant` and does
+					// **not** revoke the grant —
+					// `OAuth2RefreshTokenAuthenticationProvider` never calls
+					// `OAuth2Authorization.Builder.invalidate`, and a replay followed by a
+					// use of the live token both behaved that way on a running instance.
+					// The code-replay path does cascade, so the asymmetry is real rather
+					// than a reading of the source. `docs/follow-ups.md` records it as the
+					// one MUST of the spec's seven that is unmet.
 					.reuseRefreshTokens(false)
 					.build(),
 			)
