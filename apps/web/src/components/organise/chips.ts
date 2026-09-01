@@ -27,6 +27,9 @@ const LABELS: Record<keyof ViewFilters, string> = {
   cycle: "Cycle",
   label: "Label",
   openedForDays: "Open for",
+  unestimated: "Unestimated",
+  estimateMin: "Points",
+  estimateMax: "Points",
 };
 
 /** Left to right as the drawing has them, so the strip does not reshuffle on every edit. */
@@ -40,6 +43,9 @@ const ORDER: (keyof ViewFilters)[] = [
   "cycle",
   "label",
   "openedForDays",
+  "unestimated",
+  "estimateMin",
+  "estimateMax",
 ];
 
 /** Resolves the ids a filter stores into the names a reader recognises. */
@@ -81,10 +87,19 @@ function valueOf(
       // A boolean facet is its own answer, so the chip is the label alone. `Unassigned true`
       // would read as a database row rather than as a question somebody asked.
       return filters.unassigned ? "" : undefined;
+    case "unestimated":
+      return filters.unestimated ? "" : undefined;
     case "openedForDays":
       return filters.openedForDays === undefined
         ? undefined
         : `more than ${filters.openedForDays} days`;
+    // Two keys rather than one range chip, because the server takes two and either may be
+    // asked alone. Each prints the sign it means, so a reader can tell `≥ 5` from `≤ 5`
+    // when both are on the strip under the same `Points` label.
+    case "estimateMin":
+      return filters.estimateMin === undefined ? undefined : `≥ ${filters.estimateMin}`;
+    case "estimateMax":
+      return filters.estimateMax === undefined ? undefined : `≤ ${filters.estimateMax}`;
     case "status":
       return joined(filters.status?.map(statusLabel));
     case "statusNot": {

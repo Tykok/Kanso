@@ -3,11 +3,15 @@ package dev.kanso.api
 import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
+import dev.kanso.repo.TicketFilters
 import dev.kanso.service.ScheduleService
+import dev.kanso.service.TicketFilterVocabulary
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
+import dev.kanso.service.ViewSortBy
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
+import org.springframework.util.MultiValueMap
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
 
@@ -19,26 +23,56 @@ class TicketController(
 	private val currentUser: CurrentUser,
 ) {
 
+	/**
+	 * The main list, which is a saved view nobody saved.
+	 *
+	 * The filters arrive as the raw query string rather than as one typed parameter each,
+	 * because the vocabulary they are checked against is
+	 * [TicketFilterVocabulary.SERVED] and a typed parameter list cannot be checked
+	 * against anything — Spring would bind the names it knows and drop the rest, so
+	 * `?labelColour=indigo` would answer with a page that looks filtered and is not. That
+	 * is the failure the saved view's gate has always refused, and this endpoint had no
+	 * way to refuse until it shared the gate.
+	 *
+	 * Everything named as a parameter here is scope rather than filter: which room the
+	 * question is asked in, and how much of the answer to hand back. `SCOPE_PARAMS` is
+	 * what gets subtracted before the rest goes through the gate, so a name added to one
+	 * of the two lists and not the other is either refused or silently ignored — both of
+	 * which show up immediately.
+	 */
 	@GetMapping
 	fun list(
 		@RequestParam(required = false) teamId: UUID?,
 		@RequestParam(defaultValue = "false") includeDescendants: Boolean,
-		@RequestParam(required = false) projectId: UUID?,
-		@RequestParam(required = false) status: List<String>?,
-		@RequestParam(required = false) assigneeId: UUID?,
 		@RequestParam(defaultValue = "false") includeArchived: Boolean,
 		@RequestParam(defaultValue = "200") limit: Int,
 		@RequestParam(defaultValue = "0") offset: Long,
-	): List<TicketResponse> = tickets.search(
+		@RequestParam(defaultValue = "updated") sort: String,
+		@RequestParam query: MultiValueMap<String, String>,
+	): List<TicketResponse> = tickets.list(
 		teamId = teamId,
 		includeDescendants = includeDescendants,
-		projectId = projectId,
-		statuses = status.orEmpty().map(TicketStatus::from),
-		assigneeId = assigneeId,
 		includeArchived = includeArchived,
+		filters = filtersFrom(query),
+		sortBy = ViewSortBy.from(sort),
 		limit = limit.coerceIn(1, 500),
 		offset = offset.coerceAtLeast(0),
 	).map(TicketResponse::of)
+
+	/**
+	 * The query string, minus the scope, through the same gate a saved view is written
+	 * through — and with `projectId`/`assigneeId` folded onto the names they are the
+	 * singular of, so the shape the web app sends today keeps answering what it always did.
+	 */
+	private fun filtersFrom(query: MultiValueMap<String, String>): TicketFilters {
+		val asked = buildMap<String, MutableList<String>> {
+			query.forEach { (name, values) ->
+				if (name in SCOPE_PARAMS) return@forEach
+				getOrPut(TicketFilterVocabulary.ALIASES[name] ?: name) { mutableListOf() }.addAll(values)
+			}
+		}
+		return TicketFilterVocabulary.parseServed(asked)
+	}
 
 	@GetMapping("/{id}")
 	fun get(@PathVariable id: UUID): TicketResponse = TicketResponse.of(tickets.get(id))
@@ -116,5 +150,23 @@ class TicketController(
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	fun removeDependency(@PathVariable id: UUID, @PathVariable predecessorId: UUID) {
 		schedule.unlink(currentUser.require(), predecessorId, id)
+	}
+
+	companion object {
+		/**
+		 * The names [list] answers to that are not filters, and so must not reach the gate.
+		 *
+		 * `projectId` and `assigneeId` are deliberately absent: they *are* filters, spelled
+		 * the way this endpoint has always spelled them, and [TicketFilterVocabulary.ALIASES]
+		 * renames them on the way through rather than dropping them here.
+		 */
+		private val SCOPE_PARAMS = setOf(
+			"teamId",
+			"includeDescendants",
+			"includeArchived",
+			"limit",
+			"offset",
+			"sort",
+		)
 	}
 }
