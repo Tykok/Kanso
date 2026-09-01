@@ -107,7 +107,14 @@ enum class ActivityKind(override val wire: String) : Wire {
 	ARCHIVED("archived"),
 	COMMENTED("commented"),
 	LABELLED("labelled"),
-	MIRROR_PUSHED("mirror_pushed");
+	MIRROR_PUSHED("mirror_pushed"),
+
+	/**
+	 * Work that outlived the cycle it was committed to. Not a `STATUS_CHANGED` and not
+	 * a second `CREATED`: nothing about the ticket changed, only the plan it belongs
+	 * to, and the feed has to be able to say that in the ticket's own history.
+	 */
+	CARRIED_OVER("carried_over");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
