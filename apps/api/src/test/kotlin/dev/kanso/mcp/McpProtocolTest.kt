@@ -1,6 +1,7 @@
 package dev.kanso.mcp
 
 import dev.kanso.PostgresTest
+import dev.kanso.auth.CurrentUser
 import dev.kanso.auth.KansoAgentUser
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
@@ -45,7 +46,7 @@ import kotlin.test.assertTrue
  * behind it.
  */
 @Transactional
-class McpStubTest : PostgresTest() {
+class McpProtocolTest : PostgresTest() {
 
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
@@ -54,13 +55,15 @@ class McpStubTest : PostgresTest() {
 	@Autowired lateinit var consents: OAuth2AuthorizationConsentService
 	@Autowired lateinit var build: BuildProperties
 	@Autowired lateinit var transactionManager: PlatformTransactionManager
+	@Autowired lateinit var currentUser: CurrentUser
+	@Autowired lateinit var tools: List<McpTool>
 
 	private val grants by lazy { TestGrants(clients, authorizations, consents) }
 
 	private val mvc: MockMvc by lazy {
 		// The explicit type argument is the builder's own generic self-type, which Kotlin
 		// cannot infer through `addFilters`. Nothing about it is a decision.
-		MockMvcBuilders.standaloneSetup(McpStubController(build))
+		MockMvcBuilders.standaloneSetup(McpController(build, currentUser, tools))
 			.addFilters<StandaloneMockMvcBuilder>(McpBearerFilter(authorizations, clients, users, transactionManager, authMode = "oidc"))
 			.build()
 	}
@@ -116,18 +119,31 @@ class McpStubTest : PostgresTest() {
 	}
 
 	/**
-	 * The deliverable of the whole plan, in one assertion: `tools/list` answered over a
-	 * session an agent got by asking a member. Empty, and honestly so — see
-	 * [McpStubController]'s own note on why a stub that claimed a tool would be worse than
-	 * one that claims none.
+	 * The deliverable of the door, in one assertion: `tools/list` answered over a session
+	 * an agent got by asking a member. It was empty while there was nothing to declare, and
+	 * `McpToolsTest` now owns what is in it — this asserts only that the envelope arrives
+	 * and the list is real, which is the protocol half.
 	 */
 	@Test
-	fun `tools list answers an authorised agent with an empty list`() {
+	fun `tools list answers an authorised agent over the session it was granted`() {
 		call("""{"jsonrpc":"2.0","id":"t1","method":"tools/list"}""", bearer()).andExpect {
 			status { isOk() }
 			jsonPath("$.id") { value("t1") }
 			jsonPath("$.result.tools") { isArray() }
-			jsonPath("$.result.tools.length()") { value(0) }
+			jsonPath("$.result.tools[0].name") { exists() }
+		}
+	}
+
+	/**
+	 * `listChanged: false`, and it is not a placeholder. The surface is a fixed set of
+	 * beans, so there is no notification this server could ever send; a client told
+	 * otherwise keeps a subscription open for one that never comes.
+	 */
+	@Test
+	fun `initialize promises no tool-list notifications, because there are none to send`() {
+		call("""{"jsonrpc":"2.0","id":1,"method":"initialize"}""", bearer()).andExpect {
+			status { isOk() }
+			jsonPath("$.result.capabilities.tools.listChanged") { value(false) }
 		}
 	}
 
@@ -149,9 +165,14 @@ class McpStubTest : PostgresTest() {
 		assertEquals(CLIENT, principal.clientId, "with the application it came from travelling alongside")
 	}
 
+	/**
+	 * `resources/list` rather than a nonsense name: it is a real MCP method this server
+	 * does not implement, which is the case a client actually produces — it asks for every
+	 * capability it knows and expects to be told no.
+	 */
 	@Test
-	fun `a method this stub does not answer is a JSON-RPC error, not an HTTP one`() {
-		call("""{"jsonrpc":"2.0","id":9,"method":"tools/call"}""", bearer()).andExpect {
+	fun `a method this server does not answer is a JSON-RPC error, not an HTTP one`() {
+		call("""{"jsonrpc":"2.0","id":9,"method":"resources/list"}""", bearer()).andExpect {
 			// 200 on purpose: the transport worked. A 404 here would read to a client as a
 			// server that has gone away, and it would reconnect rather than report.
 			status { isOk() }

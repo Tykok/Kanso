@@ -1,5 +1,7 @@
 package dev.kanso.service
 
+import dev.kanso.auth.CurrentUser
+import dev.kanso.auth.KansoAgentUser
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.User
@@ -45,6 +47,8 @@ class ActivityService(
 	private val activity: ActivityRepository,
 	private val users: UserRepository,
 	private val json: ObjectMapper,
+	/** Read for provenance only — see [clientTyping]. Never to decide anything. */
+	private val currentUser: CurrentUser,
 ) {
 
 	/**
@@ -68,8 +72,34 @@ class ActivityService(
 			kind = kind,
 			payload = json.writeValueAsString(payload),
 			createdAt = OffsetDateTime.now(),
+			viaClientId = clientTyping(actorId),
 		)
 	}
+
+	/**
+	 * Which application typed this row, read off the request rather than passed in.
+	 *
+	 * Every caller of [record] is a service in the middle of a write it was asked to make,
+	 * and none of them knows or should know how the asking arrived — `TicketService.create`
+	 * is the same method whether a person pressed `c` or an agent called `kanso_create_ticket`.
+	 * Threading a client id through forty call sites would put that knowledge in all of
+	 * them; reading it here puts it in one, and it is the one place that already exists for
+	 * "who is this request", so a second derivation cannot drift from it.
+	 *
+	 * The public `client_id`, which is what [dev.kanso.mcp.McpBearerFilter] puts on the
+	 * principal and what `V19__activity_via_client_id_target.sql` made a legal foreign-key
+	 * target so this line could be written at all.
+	 *
+	 * Attached only when the row's actor **is** the grant's owner. Nothing writes such a
+	 * row today, and the guard is cheap: a change recorded against somebody else while an
+	 * agent's request happens to be on the thread would name a client that did not type it,
+	 * which is worse than naming none — provenance that is sometimes wrong is provenance
+	 * nobody can use.
+	 */
+	private fun clientTyping(actorId: UUID?): String? =
+		(currentUser.principalOrNull() as? KansoAgentUser)
+			?.takeIf { it.kansoUserId == actorId }
+			?.clientId
 
 	/** Newest first: every reader of this list draws a feed, and a feed starts at the top. */
 	@Transactional(readOnly = true)
