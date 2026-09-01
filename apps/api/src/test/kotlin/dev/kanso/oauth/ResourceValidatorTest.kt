@@ -12,6 +12,7 @@ import java.util.function.Consumer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -82,6 +83,27 @@ class ResourceValidatorTest {
 			failure.error.description?.contains(ours) == true,
 			"the refusal names what this server would have accepted",
 		)
+	}
+
+	/**
+	 * The refusal used to quote the `resource` values back. They travel to the client as
+	 * `error_description` on a redirect the browser follows, and they are the caller's own
+	 * text — a `%23` in one decodes to `#`, ends the query and pushes `iss` into the
+	 * fragment. `IssuerAppendingFailureHandler` now escapes what it appends, so that
+	 * particular trick is closed twice; this closes the class of it, and costs the client
+	 * nothing it does not already know, since it chose the value.
+	 */
+	@Test
+	fun `the refusal does not read the caller's own text back out`() {
+		val failure = assertFailsWith<OAuth2AuthorizationCodeRequestAuthenticationException> {
+			validator().accept(context("https://someone-else.example.com/%23/api/mcp"))
+		}
+
+		assertFalse(
+			failure.error.description!!.contains("someone-else"),
+			"a description a caller can write is a description that ends up in a header a browser follows",
+		)
+		assertTrue(failure.error.description!!.contains(ours), "what this server accepts is still said")
 	}
 
 	@Test

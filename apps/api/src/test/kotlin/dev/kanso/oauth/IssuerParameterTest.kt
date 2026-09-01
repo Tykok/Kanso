@@ -8,10 +8,13 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationException
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationToken
 import org.springframework.web.util.UriComponentsBuilder
+import org.springframework.web.util.UriUtils
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -35,15 +38,18 @@ class IssuerParameterTest {
 		UriComponentsBuilder.fromUriString(location).build().queryParams
 			.mapValues { (_, values) -> values.first().orEmpty() }
 
-	private fun granted(state: String?) = OAuth2AuthorizationCodeRequestAuthenticationToken(
-		"$issuer/oauth2/authorize",
-		"client-1",
-		UsernamePasswordAuthenticationToken("a-user-id", null, emptyList()),
-		OAuth2AuthorizationCode("the-code", Instant.now(), Instant.now().plus(1, ChronoUnit.MINUTES)),
-		"http://127.0.0.1:9000/callback",
-		state,
-		setOf(OAuthScopes.READ),
-	)
+	private fun granted(state: String?, redirectUri: String = "http://127.0.0.1:9000/callback") =
+		OAuth2AuthorizationCodeRequestAuthenticationToken(
+			"$issuer/oauth2/authorize",
+			"client-1",
+			UsernamePasswordAuthenticationToken("a-user-id", null, emptyList()),
+			OAuth2AuthorizationCode("the-code", Instant.now(), Instant.now().plus(1, ChronoUnit.MINUTES)),
+			redirectUri,
+			state,
+			setOf(OAuthScopes.READ),
+		)
+
+	private fun decoded(value: String?): String? = value?.let { UriUtils.decode(it, StandardCharsets.UTF_8) }
 
 	@Test
 	fun `a granted authorisation redirects with code, state and iss`() {
@@ -111,6 +117,66 @@ class IssuerParameterTest {
 		assertNull(response.redirectedUrl, "nothing is redirected anywhere")
 		assertEquals(400, response.status)
 		assertTrue(response.contentAsString.contains("invalid_request"))
+	}
+
+	/**
+	 * The redirect was built with `toUriString()` and no encoding at all, so `code`,
+	 * `state` and `error_description` went into the `Location` header exactly as they
+	 * arrived. The target is always the client's own registered address, so nothing here
+	 * crosses a trust boundary — but a `#` in a value ends the query and pushes `iss` into
+	 * the fragment, which is the one parameter a client reads to detect a mix-up, and the
+	 * only thing keeping a control character out of the header was Tomcat replacing them.
+	 * That is a property of a servlet container, asserted nowhere and ours to lose.
+	 */
+	@Test
+	fun `a state carrying delimiters cannot rewrite the redirect it travels in`() {
+		val response = MockHttpServletResponse()
+		IssuerAppendingSuccessHandler(issuer = { issuer })
+			.onAuthenticationSuccess(MockHttpServletRequest(), response, granted("a#b&iss=evil c"))
+
+		val location = response.redirectedUrl!!
+		assertFalse(location.contains("#"), "an unescaped fragment marker takes iss out of the query")
+		val parameters = query(location)
+		assertEquals("a#b&iss=evil c", decoded(parameters["state"]), "and the state still arrives as the client sent it")
+		assertEquals(issuer, decoded(parameters["iss"]), "which is what the client checks")
+	}
+
+	@Test
+	fun `an error description cannot truncate the query it is put in`() {
+		val response = MockHttpServletResponse()
+		IssuerAppendingFailureHandler(issuer = { issuer }).onAuthenticationFailure(
+			MockHttpServletRequest(),
+			response,
+			OAuth2AuthorizationCodeRequestAuthenticationException(
+				OAuth2Error("invalid_target", "This server issues tokens for a#b only.", null),
+				granted("state-1"),
+			),
+		)
+
+		val location = response.redirectedUrl!!
+		assertFalse(location.contains("#"), "the refused half of the MUST is the half a caller can put text into")
+		assertEquals(issuer, decoded(query(location)["iss"]))
+	}
+
+	/**
+	 * The client's own address, byte for byte. It is already encoded — the library matched
+	 * it against the registered one before this handler ran — so re-encoding the whole URI
+	 * would turn its `%20` into `%2520` and send the code somewhere the client never
+	 * registered. Only what this handler appends is this handler's to escape.
+	 */
+	@Test
+	fun `the registered redirect uri keeps its own escaping`() {
+		val response = MockHttpServletResponse()
+		IssuerAppendingSuccessHandler(issuer = { issuer }).onAuthenticationSuccess(
+			MockHttpServletRequest(),
+			response,
+			granted("state-1", redirectUri = "http://127.0.0.1:9000/cb%20one?fixed=a%2Bb"),
+		)
+
+		assertTrue(
+			response.redirectedUrl!!.startsWith("http://127.0.0.1:9000/cb%20one?fixed=a%2Bb&code=the-code"),
+			"a redirect the client cannot recognise is a flow that ends at its callback with an error",
+		)
 	}
 
 	@Test

@@ -17,6 +17,8 @@ import org.springframework.security.web.RedirectStrategy
 import org.springframework.security.web.authentication.AuthenticationFailureHandler
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler
 import org.springframework.web.util.UriComponentsBuilder
+import org.springframework.web.util.UriUtils
+import java.nio.charset.StandardCharsets
 import java.util.function.Consumer
 
 /**
@@ -36,6 +38,26 @@ import java.util.function.Consumer
  */
 private val currentIssuer: () -> String = { AuthorizationServerContextHolder.getContext().issuer }
 
+/**
+ * One parameter, escaped, onto a URI that is already escaped.
+ *
+ * Not `UriComponentsBuilder.encode()`, and this is the part worth reading. `encode()`
+ * encodes the *whole* builder, the registered redirect URI included — and that URI is
+ * already encoded, because the library matched it against the client's registration
+ * before either handler here ran. So a callback registered as `/cb%20one` goes out as
+ * `/cb%2520one`: the code lands at an address the client never registered, which is a
+ * flow that dies at the callback. Verified, not reasoned about — the test named for it
+ * fails with `encode()` in place.
+ *
+ * What has to be escaped is only what these handlers append. Unescaped, a `#` in a
+ * `state` or an `error_description` ends the query and pushes `iss` into the fragment,
+ * where the client cannot read the one parameter that detects a mix-up; and what kept a
+ * control character out of the `Location` header was Tomcat replacing them, which is a
+ * property of a servlet container rather than of this code.
+ */
+private fun UriComponentsBuilder.appending(name: String, value: String): UriComponentsBuilder =
+	queryParam(name, UriUtils.encodeQueryParam(value, StandardCharsets.UTF_8))
+
 /** Advertised, or no client knows to check what we now send. */
 val ISS_PARAMETER_ADVERTISED: Consumer<OAuth2AuthorizationServerMetadata.Builder> =
 	Consumer { it.claim("authorization_response_iss_parameter_supported", true) }
@@ -53,9 +75,9 @@ class IssuerAppendingSuccessHandler(
 	) {
 		val granted = authentication as OAuth2AuthorizationCodeRequestAuthenticationToken
 		val redirect = UriComponentsBuilder.fromUriString(granted.redirectUri!!)
-			.queryParam(OAuth2ParameterNames.CODE, granted.authorizationCode!!.tokenValue)
-			.also { if (!granted.state.isNullOrBlank()) it.queryParam(OAuth2ParameterNames.STATE, granted.state) }
-			.queryParam("iss", issuer())
+			.appending(OAuth2ParameterNames.CODE, granted.authorizationCode!!.tokenValue)
+			.also { if (!granted.state.isNullOrBlank()) it.appending(OAuth2ParameterNames.STATE, granted.state!!) }
+			.appending("iss", issuer())
 			.build()
 			.toUriString()
 		redirects.sendRedirect(request, response, redirect)
@@ -92,15 +114,15 @@ class IssuerAppendingFailureHandler(
 		}
 
 		val redirect = UriComponentsBuilder.fromUriString(target)
-			.queryParam(OAuth2ParameterNames.ERROR, error.errorCode)
+			.appending(OAuth2ParameterNames.ERROR, error.errorCode)
 			.also { builder ->
 				if (!error.description.isNullOrBlank()) {
-					builder.queryParam(OAuth2ParameterNames.ERROR_DESCRIPTION, error.description)
+					builder.appending(OAuth2ParameterNames.ERROR_DESCRIPTION, error.description!!)
 				}
-				if (!error.uri.isNullOrBlank()) builder.queryParam(OAuth2ParameterNames.ERROR_URI, error.uri)
-				if (!token.state.isNullOrBlank()) builder.queryParam(OAuth2ParameterNames.STATE, token.state)
+				if (!error.uri.isNullOrBlank()) builder.appending(OAuth2ParameterNames.ERROR_URI, error.uri!!)
+				if (!token.state.isNullOrBlank()) builder.appending(OAuth2ParameterNames.STATE, token.state!!)
 			}
-			.queryParam("iss", issuer())
+			.appending("iss", issuer())
 			.build()
 			.toUriString()
 		redirects.sendRedirect(request, response, redirect)

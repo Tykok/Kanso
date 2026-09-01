@@ -62,10 +62,19 @@ class ReturnUrlSuccessHandler(defaultTarget: String) : SimpleUrlAuthenticationSu
 
 	/**
 	 * The API's own origin as this request saw it — always with a port, because
-	 * [ReturnUrl] normalises the default ones on both sides of the comparison. Read off
-	 * the request rather than through `ServletUriComponentsBuilder`, which would throw:
-	 * `RequestContextHolder` is populated by the `DispatcherServlet`, and that runs *after*
-	 * the security filter chain this handler lives in.
+	 * [ReturnUrl] normalises the default ones on both sides of the comparison.
+	 *
+	 * Read off the request in hand rather than through `ServletUriComponentsBuilder`, and
+	 * **not** because the holder is empty here: this file used to say the
+	 * `DispatcherServlet` populates it, which is false. Boot's
+	 * `WebMvcAutoConfigurationAdapter` registers `OrderedRequestContextFilter` at order
+	 * `-105`, ahead of the security chain at `-100`, so `RequestContextHolder` is populated
+	 * throughout the chain. The correction matters beyond this comment: `ResourceValidator`
+	 * defaults its `expected` to `McpResource::fromCurrentRequest`, which calls
+	 * `fromCurrentContextPath()` from inside an authentication provider on that same chain
+	 * — it works, and acting on the sentence that was here would have broken the
+	 * authorise-time half of the audience check. What is left is a preference rather than a
+	 * necessity: a handler handed a request should read that request.
 	 *
 	 * These three reflect `X-Forwarded-*` only where forwarded headers are honoured, and
 	 * this application does not configure them: there is no `server.forward-headers-strategy`

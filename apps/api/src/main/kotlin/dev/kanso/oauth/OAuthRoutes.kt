@@ -27,6 +27,15 @@ object OAuthRoutes {
 	 * is the most abusable surface this branch adds. It is rate-limited, and it is here
 	 * rather than hidden because a list of open routes that omits the dangerous one is
 	 * worse than no list.
+	 *
+	 * It is also the only one of the three this list actually opens, and the entry above
+	 * overstates the rest: in oidc mode `/oauth2/token` and `/oauth2/revoke` belong to the
+	 * authorisation server's chain, which is ordered ahead of Kanso's and claims them
+	 * through `configurer.endpointsMatcher` — a rule in `SecurityConfig` is never reached
+	 * for them. In dev mode that chain does not exist, so the two are permitted and answer
+	 * 404. They stay listed because a reader looking for what the OAuth flow opens should
+	 * find them named, and because deleting them would make this file quietly wrong the
+	 * day the chains are reordered.
 	 */
 	val OPEN_POST = arrayOf(
 		"/oauth2/token",

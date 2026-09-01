@@ -53,10 +53,16 @@ class ResourceValidator(
 		asked: List<String>,
 		ours: String,
 	): Nothing {
+		// Counted, never quoted. What `asked` holds is the caller's own text, and it would
+		// travel to the client as `error_description` on a redirect a browser follows —
+		// where a `%23` decodes to `#`, ends the query and pushes `iss` into the fragment.
+		// `IssuerAppendingFailureHandler` escapes what it appends, so saying it would be
+		// safe today; not saying it is safe the next time somebody builds that redirect.
+		// The client loses nothing either way: it chose the value.
 		val what = when {
 			asked.isEmpty() -> "no resource was named"
-			asked.size > 1 -> "more than one resource was named: ${asked.joinToString(", ")}"
-			else -> "the resource named was ${asked.single()}"
+			asked.size > 1 -> "${asked.size} were named"
+			else -> "the one named was a different server"
 		}
 		throw OAuth2AuthorizationCodeRequestAuthenticationException(
 			OAuth2Error(
