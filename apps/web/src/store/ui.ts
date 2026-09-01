@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ViewFilters } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
 
 /**
@@ -53,6 +54,14 @@ export type Dialog =
   // one widening here beats six edits to one union.
   | { kind: "saveView"; id?: string }
   | { kind: "importMap" }
+  /**
+   * Composing a filter. It carries nothing: the facets it can offer come from the server
+   * and the answer it composes goes into [UiState.filters], so a second copy of either in
+   * here would be a third place the same question is written down. A dialog rather than
+   * an overlay because `page.tsx` stands its whole window key handler down for a dialog,
+   * which is what lets `↑↓↵` inside it mean what they say and not also move the list.
+   */
+  | { kind: "filter" }
   | {
       kind: "restore";
       target: { kind: "ticket" | "doc" | "view" | "folder"; id: string };
@@ -81,6 +90,20 @@ type UiState = {
   overlay: Overlay;
   dialog: Dialog;
   query: string;
+  /**
+   * The question the main list is asking — the unsaved saved view.
+   *
+   * Here rather than in `page.tsx` because three things read it and none of them is the
+   * list: the tickets query sends it, the strip draws it, and `SaveViewDialog` is what
+   * turns it into a stored view. `query` above is a different thing and stays one — it
+   * narrows what is already on screen by title, client-side, and never leaves the browser.
+   *
+   * Not scoped per team on purpose. A filter is a question somebody is holding, and
+   * changing which team it is asked of is a narrower change than being handed a
+   * different question; the chips stay on screen across a scope change, which is the
+   * only way to tell that the answer got shorter *because* of them.
+   */
+  filters: ViewFilters;
   showArchived: boolean;
 
   setScope: (scope: Scope) => void;
@@ -93,6 +116,7 @@ type UiState = {
   close: () => void;
   openDialog: (dialog: Dialog) => void;
   setQuery: (query: string) => void;
+  setFilters: (filters: ViewFilters) => void;
   setShowArchived: (showArchived: boolean) => void;
 };
 
@@ -103,6 +127,7 @@ export const useUi = create<UiState>((set) => ({
   overlay: "none",
   dialog: { kind: "none" },
   query: "",
+  filters: {},
   showArchived: false,
 
   // A new scope is a new list, so no cursor from the old one can survive it.
@@ -124,5 +149,9 @@ export const useUi = create<UiState>((set) => ({
   close: () => set({ overlay: "none", dialog: { kind: "none" } }),
   openDialog: (dialog) => set({ dialog }),
   setQuery: (query) => set({ query }),
+  // Passed whole rather than merged key by key, for the reason `SavedViewService.update`
+  // gives about the same value: an empty map is a legitimate answer — it is what taking
+  // the last chip off leaves behind — and a merge could never express it.
+  setFilters: (filters) => set({ filters }),
   setShowArchived: (showArchived) => set({ showArchived }),
 }));

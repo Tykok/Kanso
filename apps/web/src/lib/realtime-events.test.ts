@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { Team, Ticket } from "./api";
 import {
   applyEvents,
+  findTicket,
   PATCH_LIMIT,
   RealtimeCache,
   topicsFor,
+  writeTickets,
   type CacheEntry,
   type EventCache,
   type KansoEvent,
@@ -44,6 +46,10 @@ function fakeCache(seed: CacheEntry[] = []) {
 
 const listKey = (kind: "all" | "team" | "project", id: string, includeArchived = false) =>
   ["tickets", kind, id, includeArchived] as const;
+
+/** The same list, narrowed by a composed filter — `keys.tickets`'s fifth segment. */
+const askedKey = (asked: string, kind: "all" | "team" | "project" = "all", id = "") =>
+  ["tickets", kind, id, false, asked] as const;
 
 const ticket = (id: string, overrides: Partial<Ticket> = {}): Ticket => ({
   id,
@@ -230,6 +236,127 @@ describe("applying a realtime event to the cache", () => {
     expect(store.was(["teams"])).toBe(true);
     expect(store.was(["timeline"])).toBe(false);
     expect(api.asked).toEqual([]);
+  });
+});
+
+describe("writing a changed row, whoever changed it", () => {
+  it("leaves the cache alone when the row it was handed is the row already there", () => {
+    const store = fakeCache([
+      { key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] },
+      { key: ["tickets", "by-key", "KAN", 142] as const, data: ticket("t1") },
+    ]);
+
+    writeTickets(store.cache, { changed: new Map([["t1", ticket("t1")]]) });
+
+    expect(store.writes).toEqual([]);
+    expect(store.invalidated).toEqual([]);
+  });
+
+  it("writes once the row actually differs", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    writeTickets(store.cache, { changed: new Map([["t1", ticket("t1", { title: "renamed" })]]) });
+
+    expect(store.writes).toEqual([JSON.stringify(listKey("all", ""))]);
+  });
+
+  it("folds an overlay over the row before deciding anything about it", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    writeTickets(store.cache, {
+      changed: new Map([["t1", ticket("t1")]]),
+      overlay: (row) => ({ ...row, priority: "urgent" }),
+    });
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.[0]?.priority).toBe("urgent");
+  });
+
+  it("takes the row out when the overlay says it is gone", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] }]);
+
+    writeTickets(store.cache, {
+      changed: new Map([["t1", ticket("t1")]]),
+      overlay: () => null,
+    });
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.map((row) => row.id)).toEqual(["t2"]);
+  });
+
+  it("does nothing at all when it is handed nothing", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    writeTickets(store.cache, {});
+
+    expect(store.writes).toEqual([]);
+    expect(store.invalidated).toEqual([]);
+  });
+});
+
+describe("finding a row the cache already holds", () => {
+  it("reads it out of a list", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] }]);
+    expect(findTicket(store.cache, "t2")?.id).toBe("t2");
+  });
+
+  it("reads it out of the ticket page's own entry", () => {
+    const store = fakeCache([{ key: ["tickets", "by-key", "KAN", 142], data: ticket("t1") }]);
+    expect(findTicket(store.cache, "t1")?.id).toBe("t1");
+  });
+
+  it("answers nothing for a row nobody has loaded", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    expect(findTicket(store.cache, "t9")).toBeUndefined();
+  });
+});
+
+/**
+ * A filtered list is a different question, and nothing in this module can answer it.
+ *
+ * `placement` knows a row's team and its project, which is the whole of what a *scope*
+ * is. A list narrowed by status, label or points is narrowed by something it cannot see,
+ * so patching one would be guessing — and the guess is always the same one: every row
+ * the scope admits belongs. That is a ticket appearing in a list that excludes it.
+ */
+describe("a list narrowed by a composed filter", () => {
+  it("refetches rather than placing a row it cannot judge", async () => {
+    const store = fakeCache([{ key: askedKey("status=todo"), data: [ticket("t1")] }]);
+    const api = server([ticket("t1", { status: "done", title: "finished" })]);
+
+    await applyEvents({ cache: store.cache, fetchTicket: api.fetchTicket }, [event()]);
+
+    expect(store.was(askedKey("status=todo"))).toBe(true);
+    // Not patched in place either: a row that no longer matches would have stayed on
+    // screen wearing its new status, which is the wrong list drawn confidently.
+    expect(store.writes).toEqual([]);
+  });
+
+  // The unfiltered entry beside it is still patched. The two live under one first
+  // segment on purpose — one optimistic write, one invalidation family — so the
+  // distinction has to be the fifth segment and not the first.
+  it("leaves the unfiltered list to be patched as it always was", async () => {
+    const store = fakeCache([
+      { key: listKey("all", ""), data: [ticket("t1")] },
+      { key: askedKey("unassigned=true"), data: [ticket("t1")] },
+    ]);
+    const api = server([ticket("t1", { title: "renamed" })]);
+
+    await applyEvents({ cache: store.cache, fetchTicket: api.fetchTicket }, [event()]);
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.map((row) => row.title)).toEqual(["renamed"]);
+    expect(store.was(askedKey("unassigned=true"))).toBe(true);
+  });
+
+  // Every key written before the segment existed, and the unfiltered one written after,
+  // read the same: no filter. Otherwise this change would have quietly stopped the main
+  // list being patched at all.
+  it("reads a key with no filter segment as unfiltered", async () => {
+    const store = fakeCache([{ key: askedKey(""), data: [ticket("t1")] }]);
+    const api = server([ticket("t1", { title: "renamed" })]);
+
+    await applyEvents({ cache: store.cache, fetchTicket: api.fetchTicket }, [event()]);
+
+    expect(store.read<Ticket[]>(askedKey(""))?.map((row) => row.title)).toEqual(["renamed"]);
+    expect(store.was(askedKey(""))).toBe(false);
   });
 });
 

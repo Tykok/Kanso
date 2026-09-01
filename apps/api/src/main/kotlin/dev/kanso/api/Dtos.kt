@@ -326,6 +326,15 @@ data class TicketResponse(
 	}
 }
 
+/**
+ * The filter names `GET /api/tickets` and a saved view both answer to, sorted.
+ *
+ * A list and not a map of shapes: what a facet takes is already enforced by the parser
+ * that reads it, and a second description of it here would be a second thing to keep
+ * true. A client that wants to draw a control for `status` knows what a status is.
+ */
+data class ServedFiltersResponse(val served: List<String>)
+
 // --- timeline ----------------------------------------------------------------
 
 /** A bound plus where it came from: without [derived], nothing says what may be edited. */

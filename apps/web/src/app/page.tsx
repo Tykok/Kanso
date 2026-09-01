@@ -13,6 +13,7 @@ import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
 import { MobileNavDrawer } from "@/components/mobile-nav";
 import { NewMenu } from "@/components/new-menu";
+import { ListFilters } from "@/components/organise/list-filters";
 import { Composer } from "@/components/composer";
 import { CommandPalette, DetailPanel, HelpOverlay } from "@/components/overlays";
 import { SettingsPanel } from "@/components/settings/panel";
@@ -451,6 +452,16 @@ export default function InboxPage() {
           />
           <NewMenu ctx={ctx} />
         </div>
+
+        {/*
+          * The composed filters, and the one control that adds one.
+          *
+          * Not on the chart. The timeline draws its own query, which these facets do not
+          * reach: a strip of chips over a chart they are not narrowing would say the plan
+          * had been filtered when it had not. `visible` in this file already documents the
+          * same split for the cursor, and for the same reason.
+          */}
+        {view !== "timeline" && <ListFilters />}
 
         {/*
          * Read-only is a fact about the scope, not the chart's own state, so it is said

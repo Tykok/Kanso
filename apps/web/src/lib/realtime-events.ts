@@ -102,6 +102,16 @@ export type CacheTarget = {
   cache: EventCache;
   /** One row by id. `undefined` when the server did not hand it over — gone, or refused. */
   fetchTicket: (id: string) => Promise<Ticket | undefined>;
+  /**
+   * Folded over every fetched row before it is written — [TicketWrite.overlay].
+   *
+   * `lib/optimistic.ts` supplies it, and it is optional so this module stays testable
+   * without one. Without it, an event that lands while a mutation of this reader's own is
+   * still in flight would write the server's row over a guess the server has not been
+   * told about yet, and the change would visibly un-happen for as long as the request has
+   * left to run.
+   */
+  overlay?: (ticket: Ticket) => Ticket | null;
 };
 
 /**
@@ -183,12 +193,86 @@ async function applyTickets(target: CacheTarget, events: readonly KansoEvent[]):
     return;
   }
 
+  writeTickets(cache, { changed: fetched, gone, overlay: target.overlay });
+}
+
+// --- writing rows into the cache ---------------------------------------------
+
+export type TicketWrite = {
+  /** Rows as they are now described, by id. */
+  changed?: ReadonlyMap<string, Ticket>;
+  /** Rows that are not anywhere any more. */
+  gone?: ReadonlySet<string>;
+  /**
+   * Folded over each row in [changed] before anything is decided about it; `null` moves
+   * that row to [gone].
+   *
+   * The seam `lib/optimistic.ts` writes through. A guess about a row is the same
+   * operation as an event about it — a changed row, written into every cached list that
+   * holds it — so it is the same function, and the two cannot drift into disagreeing
+   * about which lists hold what.
+   */
+  overlay?: (ticket: Ticket) => Ticket | null;
+};
+
+/**
+ * Writes changed and vanished rows into every cached entry that holds them.
+ *
+ * The one door: `applyEvents` above comes through it with rows it fetched, and
+ * `lib/optimistic.ts` with rows it guessed. Both need the same three answers — which
+ * lists hold the row, which of them it has just moved out of, and what the ticket page's
+ * single-row entry should say — and there is no version of those answers that is right
+ * for a socket and wrong for a keystroke.
+ */
+export function writeTickets(cache: EventCache, write: TicketWrite): void {
+  const gone = new Set(write.gone ?? []);
+  const changed = new Map<string, Ticket>();
+  for (const [id, row] of write.changed ?? []) {
+    const folded = write.overlay ? write.overlay(row) : row;
+    if (folded) changed.set(id, folded);
+    else gone.add(id);
+  }
+  if (!changed.size && !gone.size) return;
+
   const teams = knownTeams(cache);
   for (const entry of cache.entries("tickets")) {
     const list = listShape(entry);
-    if (list) patchList(cache, entry.key, list, fetched, gone, teams);
-    else if (isTicket(entry.data)) patchRow(cache, entry.key, entry.data, fetched, gone);
+    if (list) patchList(cache, entry.key, list, changed, gone, teams);
+    else if (isTicket(entry.data)) patchRow(cache, entry.key, entry.data, changed, gone);
+    // A filtered list, which nothing here can place a row in. The wide answer, for the
+    // reason the two paragraphs above give: only the server knows what matches, so
+    // asking it again is the only honest way to learn whether this row now does.
+    else if (Array.isArray(entry.data) && askedOf(entry) !== "") cache.invalidate(entry.key);
   }
+}
+
+/**
+ * The row as the cache currently holds it, from wherever it holds it.
+ *
+ * What a guess needs before it can be a guess: something to guess *from*. A row nobody
+ * has loaded answers `undefined`, which is the honest answer and the one that tells
+ * `lib/optimistic.ts` there is nothing on screen to paint.
+ */
+export function findTicket(cache: EventCache, id: string): Ticket | undefined {
+  for (const entry of cache.entries("tickets")) {
+    const list = listShape(entry);
+    if (list) {
+      const row = list.rows.find((candidate) => candidate.id === id);
+      if (row) return row;
+    } else if (isTicket(entry.data) && entry.data.id === id) {
+      return entry.data;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The filter set a tickets entry was asked with, as `keys.tickets` spells it — `""` for
+ * the unfiltered list, and for any key written before that segment existed.
+ */
+function askedOf(entry: CacheEntry): string {
+  const asked = entry.key[4];
+  return typeof asked === "string" ? asked : "";
 }
 
 type ListShape = { rows: Ticket[]; scope: Scope; includeArchived: boolean };
@@ -201,11 +285,18 @@ const SCOPE_KINDS = ["all", "team", "project"] as const;
  * Read off the key rather than declared anywhere: `queries/core.ts` builds these and
  * `queries/views.ts` deliberately puts other things under the same first segment, so
  * the shape is what tells them apart.
+ *
+ * A *filtered* entry is not one of these, and saying so is the whole of [askedOf]. The
+ * scope is the only question [placement] below can answer — it knows a row's team and
+ * its project and nothing else about it — so a list narrowed by status, label or points
+ * would take every row the scope admits, filter or no filter. That is a row appearing in
+ * a list that excludes it, which is the failure the filter gate exists to prevent.
  */
 function listShape(entry: CacheEntry): ListShape | null {
   const [, kind, id, includeArchived] = entry.key;
   if (!Array.isArray(entry.data)) return null;
   if (typeof includeArchived !== "boolean") return null;
+  if (askedOf(entry) !== "") return null;
   if (typeof kind !== "string" || !SCOPE_KINDS.includes(kind as (typeof SCOPE_KINDS)[number])) {
     return null;
   }
@@ -237,7 +328,7 @@ function patchList(
   cache: EventCache,
   key: readonly unknown[],
   list: ListShape,
-  fetched: Map<string, Ticket>,
+  changed: Map<string, Ticket>,
   gone: Set<string>,
   teams: readonly Team[],
 ): void {
@@ -249,21 +340,29 @@ function patchList(
       touched = true;
       continue;
     }
-    const fresh = fetched.get(row.id);
+    const fresh = changed.get(row.id);
     if (!fresh) {
       next.push(row);
       continue;
     }
-    touched = true;
     // "unknown" keeps it: the row was in this list a moment ago, and dropping it on a
     // tree the client has not loaded would make a sub-team's work vanish mid-edit.
-    if (placement(fresh, list, teams) !== "out") next.push(fresh);
+    if (placement(fresh, list, teams) === "out") {
+      touched = true;
+      continue;
+    }
+    // Compared rather than assumed changed, and this is what makes the server's echo of
+    // this client's own edit free: the event arrives carrying the row already on screen,
+    // and a write of an identical list is a repaint of something nobody changed.
+    if (!same(fresh, row)) touched = true;
+    next.push(fresh);
   }
 
   // A row this list does not hold yet. Where the server would sort it in is the server's
   // business, so the key is refetched rather than guessed at — and only this key, which
-  // is what a `CREATED` event for work nobody is looking at now costs: nothing.
-  const arriving = [...fetched.values()].some(
+  // is what a `CREATED` event for work nobody is looking at now costs: nothing. The same
+  // rule answers a rolled-back guess that had emptied a row out of this list.
+  const arriving = [...changed.values()].some(
     (fresh) =>
       !list.rows.some((row) => row.id === fresh.id) && placement(fresh, list, teams) !== "out",
   );
@@ -277,20 +376,43 @@ function patchRow(
   cache: EventCache,
   key: readonly unknown[],
   row: Ticket,
-  fetched: Map<string, Ticket>,
+  changed: Map<string, Ticket>,
   gone: Set<string>,
 ): void {
   // Refetched rather than dropped: the page's answer to a ticket that no longer exists
   // is the 404 it was written for, and only the query can produce it.
   if (gone.has(row.id)) cache.invalidate(key);
   else {
-    const fresh = fetched.get(row.id);
-    if (fresh) cache.set(key, fresh);
+    const fresh = changed.get(row.id);
+    if (fresh && !same(fresh, row)) cache.set(key, fresh);
   }
 }
 
 function isTicket(data: unknown): data is Ticket {
   return typeof data === "object" && data !== null && typeof (data as Ticket).id === "string";
+}
+
+/**
+ * Whether two rows say the same thing.
+ *
+ * Written out rather than left to react-query's structural sharing, which would also
+ * spare the render: that is a library detail one `structuralSharing: false` away from
+ * being untrue, and "the server's echo of your own edit changes nothing" is a promise
+ * this module makes and its tests check. A ticket is JSON — scalars, two instants, two
+ * string arrays and the mirror — so a walk over it is all this needs to be.
+ */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = Object.keys(a as object);
+  const right = Object.keys(b as object);
+  if (left.length !== right.length) return false;
+  return left.every(
+    (key) =>
+      key in (b as object) &&
+      same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+  );
 }
 
 /**

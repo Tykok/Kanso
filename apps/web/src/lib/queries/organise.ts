@@ -30,6 +30,7 @@ export const organiseKeys = {
   view: (id: string) => ["views", "one", id] as const,
   viewTickets: (id: string) => ["views", "one", id, "tickets"] as const,
   workload: (teamId: string, cycleId?: string) => ["workload", teamId, cycleId ?? ""] as const,
+  servedFilters: ["servedFilters"] as const,
 };
 
 /**
@@ -195,6 +196,26 @@ export function useDeleteView() {
     onSuccess: () => invalidateOrganise(queryClient),
   });
 }
+
+// --- the filter vocabulary ------------------------------------------------
+
+/**
+ * Which facets this server will answer — the list the "add a filter" control is built
+ * from, so that nothing in the client has to write the twelve names down a second time.
+ *
+ * `staleTime: Infinity` because the answer changes when the server is redeployed and at
+ * no other moment; refetching it would be a request per navigation for a constant. It is
+ * deliberately *not* seeded with a default: an empty list offers no facets, which is the
+ * honest state before the answer has landed, where a default would offer twelve facets
+ * on the strength of a guess about which server this is.
+ */
+export const useServedFilters = () =>
+  useQuery({
+    queryKey: organiseKeys.servedFilters,
+    queryFn: () => organiseApi.servedFilters(),
+    staleTime: Infinity,
+    select: (answer) => answer.served,
+  });
 
 // --- bulk edit ------------------------------------------------------------
 

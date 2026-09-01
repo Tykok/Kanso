@@ -1,9 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { patchedTicket, removedTicket, ticketGuesses } from "@/lib/optimistic";
+import { queryCache } from "@/lib/realtime-events";
 import { useUi, type Scope } from "@/store/ui";
 import {
   api,
+  filterParams,
+  organiseApi,
   DEFAULT_PREFERENCES,
   type EffortPoints,
   type KansoInstant,
@@ -12,9 +17,9 @@ import {
   type Preferences,
   type Project,
   type Team,
-  type Ticket,
   type TicketPriority,
   type TicketStatus,
+  type ViewFilters,
 } from "../api";
 
 export const keys = {
@@ -33,8 +38,18 @@ export const keys = {
   teams: (includeArchived: boolean) => ["teams", includeArchived] as const,
   /** All projects, one query — the sidebar needs the whole set to draw its tree. */
   projects: (includeArchived: boolean) => ["projects", includeArchived] as const,
-  tickets: (scope: Scope, includeArchived: boolean) =>
-    ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived] as const,
+  /**
+   * `asked` is the composed filter set, already spelled as a query string — the whole of
+   * what makes two entries under this key different questions.
+   *
+   * It defaults to the empty string, which is the unfiltered list, so every caller that
+   * predates the filter control keys the same entry it always did. `queries/views.ts`
+   * relies on exactly that: a project page and the list scoped to that project are
+   * deliberately one cache entry, and they would silently stop being one if this
+   * segment had no default.
+   */
+  tickets: (scope: Scope, includeArchived: boolean, asked = "") =>
+    ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived, asked] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
@@ -43,14 +58,58 @@ export const keys = {
 };
 
 /**
- * The scope and the archived toggle live in the store, not in props, so every
- * caller of these hooks agrees on what is being shown without passing it down.
+ * The cache as `lib/realtime-events.ts` and `lib/optimistic.ts` want it.
+ *
+ * The ticket mutations below write through those two rather than naming a key, because
+ * the row they change is in more places than the list on screen — other scopes' lists
+ * the reader has visited, and the ticket page's own single-row entry. Naming one key was
+ * why a status change on the board left the same ticket's page showing the old status
+ * until something refetched it.
  */
-const useTicketsKey = () =>
-  keys.tickets(
-    useUi((state) => state.scope),
-    useUi((state) => state.showArchived),
-  );
+const useEventCache = () => {
+  const queryClient = useQueryClient();
+  return useMemo(() => queryCache(queryClient), [queryClient]);
+};
+
+/**
+ * Stops the refetches that could land on top of a guess about to be painted.
+ *
+ * Every ticket key, not just the list on screen, because the guess is painted into all
+ * of them — but only the ones that already hold rows. A query still loading for the
+ * first time has nothing for the guess to overwrite and nothing to overwrite the guess
+ * with, so cancelling it would strand a first load to buy nothing: `writeTickets` skips
+ * an entry with no data anyway.
+ */
+const cancelTicketRefetches = (queryClient: ReturnType<typeof useQueryClient>) =>
+  queryClient.cancelQueries({
+    queryKey: ["tickets"],
+    predicate: (query) => query.state.data !== undefined,
+  });
+
+/**
+ * A project scope is a `project` filter, because that is the only way this door can
+ * express one: `ticketsMatching` takes a team and its descendants as scope, and a
+ * project belongs to no team in particular.
+ *
+ * It overwrites rather than joining what was composed, and cannot collide with it: the
+ * filter control does not offer `project` while the list is scoped to one, since the
+ * scope has already answered that question. Joining would be worse than either — the
+ * server reads two values of one facet as "either", so a project chip added inside a
+ * project scope would widen the list past the project whose name is in the header.
+ */
+const scopedFilters = (filters: ViewFilters, scope: Scope): ViewFilters =>
+  scope.kind === "project" ? { ...filters, project: [scope.id] } : filters;
+
+/**
+ * The composed filter set as the wire spells it, which is also what tells one cached
+ * answer from another.
+ *
+ * A string rather than the object: a query key is compared structurally and the store
+ * hands back a new object on every `setFilters`, so keying on the object would be one
+ * cache entry per keystroke of the filter control. `URLSearchParams` also fixes the
+ * order, so `status` then `priority` and `priority` then `status` are one question.
+ */
+const useAskedFilters = () => filterParams(useUi((state) => state.filters)).toString();
 
 export const useAuthMode = () => useQuery({ queryKey: keys.authMode, queryFn: api.authMode });
 
@@ -150,12 +209,33 @@ export const useProjects = () => {
   });
 };
 
+/**
+ * The main list — a saved view nobody saved.
+ *
+ * Two doors onto one question, and which one is used is decided by whether anything has
+ * been composed. Unfiltered, it is `api.tickets` exactly as it always was, so the entry
+ * `queries/views.ts` shares stays shared and the four mutation hooks below go on writing
+ * it optimistically. Composed, it is `organiseApi.ticketsMatching`, which spells the
+ * scope the same way and the facets in the vocabulary the server validates.
+ */
 export const useTickets = () => {
   const scope = useUi((state) => state.scope);
   const showArchived = useUi((state) => state.showArchived);
+  const filters = useUi((state) => state.filters);
+  const asked = useAskedFilters();
   return useQuery({
-    queryKey: keys.tickets(scope, showArchived),
-    queryFn: () => api.tickets(scope, showArchived),
+    queryKey: keys.tickets(scope, showArchived, asked),
+    queryFn: () =>
+      asked === ""
+        ? api.tickets(scope, showArchived)
+        : organiseApi.ticketsMatching(scopedFilters(filters, scope), {
+            // The same scope the unfiltered door sends, so the two answer about the same
+            // room: a team scope reaches its descendants, a project scope names no team.
+            teamId: scope.kind === "team" ? scope.id : undefined,
+            includeDescendants: scope.kind === "team" ? true : undefined,
+            includeArchived: showArchived,
+            limit: 200,
+          }),
   });
 };
 
@@ -243,13 +323,25 @@ export type PatchInput = {
 /**
  * Optimistic patch.
  *
- * The point of Kanso is that a status change feels instant, so the cache is
- * rewritten before the request leaves. On failure the snapshot is restored — the
- * row visibly snaps back, which is the honest signal that the change did not land.
+ * The point of Kanso is that a status change feels instant, so the cache is rewritten
+ * before the request leaves. Every field here is one the server stores as it is sent, so
+ * the guess is not a guess about behaviour — only about whether the write is allowed.
+ *
+ * The guess goes through `lib/optimistic.ts`, which paints it into every cached entry
+ * holding the row rather than into the one list this hook knows a key for, and which
+ * stacks two edits of the same row instead of snapshotting one on top of the other.
+ *
+ * The list is no longer refetched when the request comes back, and that is the change
+ * worth explaining. `/api/tickets` answers in `updatedAt DESC`, so a refetch moved the
+ * row that was just edited to the top of the list — a jump, a scroll-position change and
+ * a repaint, every time anyone pressed a status key. `applyEvents` deliberately patches
+ * a changed row *in place* rather than reordering, so the socket's version of this same
+ * edit does not move it; refetching here was the one thing that did. What the row now
+ * says is the response itself, which is the whole saved row and needs no second ask.
  */
 export function usePatchTicket() {
   const queryClient = useQueryClient();
-  const key = useTicketsKey();
+  const cache = useEventCache();
 
   return useMutation({
     mutationFn: ({ id, ...body }: PatchInput) => api.patchTicket(id, body),
@@ -258,37 +350,16 @@ export function usePatchTicket() {
     // it, the cached ticket has no such field, and spreading it would leave a stray
     // array on the row.
     onMutate: async ({ id, unset, ...body }) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Ticket[]>(key);
-
-      queryClient.setQueryData<Ticket[]>(key, (current) =>
-        (current ?? []).map((ticket) => {
-          if (ticket.id !== id) return ticket;
-          const patched: Ticket = { ...ticket, ...body };
-          // JSON cannot tell an absent key from an explicit null, so the server takes
-          // a list of fields to clear. The optimistic copy has to clear them too, or
-          // the value the person just removed sits there until the refetch lands.
-          for (const field of unset ?? []) {
-            delete (patched as Record<string, unknown>)[field];
-          }
-          // The mirror is asynchronous by design: the moment a row changes locally,
-          // Notion is behind. Show that rather than imply it landed.
-          patched.mirror = {
-            ...ticket.mirror,
-            state: ticket.mirror.state === "disabled" ? "disabled" : "pending",
-          };
-          return patched;
-        }),
-      );
-      return { previous };
+      await cancelTicketRefetches(queryClient);
+      return { handle: ticketGuesses.open(cache, id, patchedTicket(body, unset ?? [])) };
     },
 
-    onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(key, context.previous);
-    },
-
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: key });
+    // One call for both outcomes, which is the point of the ledger: the response row
+    // becomes the new base, and its absence — a refusal — leaves the base as it was.
+    // Either way what is repainted is the base with whatever else is still in flight
+    // folded back over it, so a second edit of the same row survives this one failing.
+    onSettled: (saved, _error, _input, context) => {
+      if (context) ticketGuesses.close(cache, context.handle, saved);
       // A patch may have cascaded into tickets this mutation never named, and it
       // changes slack and criticality for others that did not move at all.
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
@@ -300,6 +371,14 @@ export function usePatchTicket() {
  * Drawing an arrow. The response carries the tickets the new constraint moved, but the
  * timeline is refetched rather than patched from it: the same edit also changes slack
  * and criticality for tickets that did not move at all.
+ *
+ * Not optimistic, and this is the clearest case for leaving one alone. A dependency runs
+ * the scheduler: it moves the successor, then whatever waits on the successor, and it
+ * recomputes slack and criticality across the whole closure. Guessing at that means
+ * reimplementing the scheduler in the browser, and guessing at it *badly* means bars
+ * sliding to the wrong dates and then sliding again when the answer lands. The arrow
+ * itself would be the only honest part of the guess, and it is not the part anyone is
+ * waiting to see.
  */
 export function useLinkDependency() {
   const queryClient = useQueryClient();
@@ -336,36 +415,52 @@ export function useUnlinkDependency() {
   });
 }
 
+/**
+ * Deliberately not optimistic, and the clearest case of it.
+ *
+ * A ticket's identifier comes from a per-team counter the server owns — `KAN-142` is not
+ * something this client can invent, and a row drawn with a placeholder key that turns
+ * into a different one a moment later is worse than a row that appears a moment late.
+ * Its position is the server's too: the list is ordered on `updatedAt`, which does not
+ * exist yet either.
+ *
+ * So the row is not guessed, it is *placed*, from the response — through the same writer
+ * the socket uses, which refetches only the cached lists that have to gain it.
+ */
 export function useCreateTicket() {
   const queryClient = useQueryClient();
-  const key = useTicketsKey();
+  const cache = useEventCache();
   return useMutation({
     mutationFn: api.createTicket,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: key });
+    onSuccess: (created) => {
+      ticketGuesses.arrived(cache, created);
       // The team row carries a ticket count, so it is stale too.
       queryClient.invalidateQueries({ queryKey: ["teams"] });
     },
   });
 }
 
+/**
+ * Optimistic, because a deletion the person confirmed is one they have already decided:
+ * the row leaves every list holding it and the ticket page falls through to the 404 it
+ * was written for. A refusal puts it back — through a refetch of the keys that lost it,
+ * because where a row sorts back in is the server's order and not this client's guess.
+ */
 export function useDeleteTicket() {
   const queryClient = useQueryClient();
-  const key = useTicketsKey();
+  const cache = useEventCache();
   return useMutation({
     mutationFn: api.deleteTicket,
     onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Ticket[]>(key);
-      queryClient.setQueryData<Ticket[]>(key, (current) =>
-        (current ?? []).filter((ticket) => ticket.id !== id),
-      );
-      return { previous };
+      await cancelTicketRefetches(queryClient);
+      return { handle: ticketGuesses.open(cache, id, removedTicket) };
     },
-    onError: (_error, _id, context) => {
-      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    // `null` rather than "no answer": the endpoint returns nothing, so success has to say
+    // in so many words that the row is gone, or settling would put it back.
+    onSettled: (_data, error, _id, context) => {
+      if (context) ticketGuesses.close(cache, context.handle, error ? undefined : null);
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
 }
 
