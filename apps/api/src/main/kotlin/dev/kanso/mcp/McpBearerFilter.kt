@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
 import org.springframework.web.filter.OncePerRequestFilter
 import java.util.UUID
 
@@ -52,13 +53,34 @@ class McpBearerFilter(
 ) : OncePerRequestFilter() {
 
 	/**
-	 * The path within the application, not the raw URI. Under a servlet context path the
-	 * two differ, and matching the raw one would skip `/kanso/api/mcp` — leaving the
-	 * endpoint to the session chain, which is a bearer-protected route quietly falling
-	 * back to a cookie. [McpResource.origin] is context-path aware; so is this.
+	 * The path Spring routes on, which is not the URI Tomcat received.
+	 *
+	 * The pair this replaces — `requestURI.removePrefix(contextPath).startsWith(PATH)` —
+	 * read a string the dispatcher never looks at. `getRequestURI()` keeps path
+	 * parameters and keeps percent-escapes; request mapping strips the first and decodes
+	 * the second. So `/api;x=y/mcp` was routed to an `/api/mcp` handler while this filter
+	 * stood aside, and `/api/%6Dcp` with it. In dev mode that is the 503 gone and
+	 * `DevAuthenticationFilter` naming whoever asks; in oidc mode it is every
+	 * token-shaped guarantee gone — no audience, no revocation, no scopes.
+	 *
+	 * `PathPatternRequestMatcher` rather than reading
+	 * `ServletRequestPathUtils.parseAndCache(...).pathWithinApplication().value()` by
+	 * hand, and the difference is not convenience: that `value()` is the *raw* path,
+	 * semicolons and escapes intact, so it would have kept the bug. The matcher compares
+	 * against each segment's `valueToMatch()`, which is exactly what `PathPatternParser`
+	 * gives the handler mapping — one derivation for "is this the MCP endpoint", used by
+	 * the guard and by the router. It also subtracts the context path itself, which is
+	 * the property the old line got right and this one keeps.
+	 *
+	 * The pattern ends in a wildcard so the reach stays what it was — a prefix, not one
+	 * exact path. `/api/mcp/` and anything below it is guarded even though nothing is
+	 * mapped there: a 401 on a request that would have 404'd is the harmless direction for
+	 * a guard to err in, and the alternative is a filter whose reach has to be re-argued
+	 * the day a sub-path is added.
 	 */
-	override fun shouldNotFilter(request: HttpServletRequest): Boolean =
-		!request.requestURI.removePrefix(request.contextPath).startsWith(McpResource.PATH)
+	private val endpoint = PathPatternRequestMatcher.withDefaults().matcher(McpResource.PATH + "/**")
+
+	override fun shouldNotFilter(request: HttpServletRequest): Boolean = !endpoint.matches(request)
 
 	override fun doFilterInternal(
 		request: HttpServletRequest,

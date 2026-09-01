@@ -11,6 +11,7 @@ import dev.kanso.oauth.OAuthScopes
 import dev.kanso.repo.UserRepository
 import org.junit.jupiter.api.AfterEach
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.http.server.RequestPath
 import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
@@ -21,6 +22,7 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.util.pattern.PathPatternParser
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -236,6 +238,67 @@ class McpBearerFilterTest : PostgresTest() {
 		val principal = SecurityContextHolder.getContext().authentication?.principal as KansoAgentUser
 		assertEquals(setOf(OAuthScopes.READ), principal.scopes)
 		assertTrue(OAuthScopes.WRITE !in principal.scopes)
+	}
+
+	private fun at(uri: String): MockHttpServletResponse {
+		val response = MockHttpServletResponse()
+		filter.doFilter(MockHttpServletRequest("POST", uri), response, MockFilterChain())
+		return response
+	}
+
+	/**
+	 * Path parameters are stripped before a request is routed and **kept** in
+	 * `getRequestURI()`, so a filter reasoning about the raw URI and a `DispatcherServlet`
+	 * reasoning about the parsed path disagree over one character: both are handed
+	 * `/api;x=y/mcp`, `PathPatternParser` matches it against `/api/mcp`, and a string
+	 * prefix does not. The filter stood aside and the request was routed anyway — in dev
+	 * mode that is the 503 gone, and with it the only thing between an agent and
+	 * `DevAuthenticationFilter`'s header identity.
+	 */
+	@Test
+	fun `a path parameter is not a way past the filter`() {
+		assertEquals(401, at("/api;x=y/mcp").status, "the path Spring routes on is the path this filter guards")
+		assertEquals(401, at("/api;/mcp").status, "an empty path parameter is the same trick with less to type")
+		assertEquals(401, at("/api/%6Dcp").status, "and so is an escaped letter, which the parsed path decodes")
+	}
+
+	/**
+	 * The rule behind the test above, over the shapes a URL can take. One direction only,
+	 * because only one direction is a hole: anything Spring would route to `/api/mcp` has
+	 * to have passed the filter first. The reverse costs a 401 where a 404 would have
+	 * done, which is the safe way round for a guard to be wrong.
+	 *
+	 * `/api/../api/mcp` reaches neither, and is here as a pin: Tomcat normalises the URI
+	 * before the filter or the dispatcher sees it, so what this holds is that the two
+	 * still agree on the form that never arrives.
+	 */
+	@Test
+	fun `whatever Spring routes to the endpoint, this filter has already seen`() {
+		val routed = PathPatternParser.defaultInstance.parse(McpResource.PATH)
+		val shapes = mapOf(
+			"/api/mcp" to true,
+			"/api;x=y/mcp" to true,
+			"/api;/mcp" to true,
+			"/api/mcp;session=1" to true,
+			"/api/%6Dcp" to true,
+			"/api/mcp/" to true,
+			"//api/mcp" to false,
+			"/api//mcp" to false,
+			"/api/../api/mcp" to false,
+			"/API/MCP" to false,
+			"/api/tickets" to false,
+		)
+
+		for ((uri, guarded) in shapes) {
+			assertEquals(
+				if (guarded) 401 else 200,
+				at(uri).status,
+				"$uri — 401 is this filter answering, 200 is it standing aside for something else to refuse",
+			)
+			if (routed.matches(RequestPath.parse(uri, ""))) {
+				assertTrue(guarded, "$uri is routed to the endpoint, so it cannot be a request this filter skips")
+			}
+		}
 	}
 
 	@Test
