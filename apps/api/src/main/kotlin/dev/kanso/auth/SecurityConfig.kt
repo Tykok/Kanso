@@ -2,6 +2,7 @@ package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
 import dev.kanso.mcp.McpBearerFilter
+import dev.kanso.oauth.CONSENT_PAGE
 import dev.kanso.oauth.OAuthRoutes
 import dev.kanso.publik.PublicRoutes
 import dev.kanso.repo.UserRepository
@@ -96,6 +97,13 @@ class SecurityConfig(
 					// `/api/public/`, and that assertion is worth more than the reuse.
 					.requestMatchers(HttpMethod.GET, *OAuthRoutes.OPEN_GET).permitAll()
 					.requestMatchers(HttpMethod.POST, *OAuthRoutes.OPEN_POST).permitAll()
+					// Reachable without a session precisely so it can redirect to one:
+					// the controller reads the principal itself and sends an anonymous
+					// visitor to the app's login screen with a return URL. Inline rather
+					// than in `OAuthRoutes`, and the two facts do not contradict — that
+					// list is for endpoints a machine calls with no session at all, and
+					// this is a page a person is about to sign in to.
+					.requestMatchers(HttpMethod.GET, CONSENT_PAGE).permitAll()
 					.anyRequest().authenticated()
 			}
 			// A 302 to Google is useless to a fetch() call; the SPA wants a 401 and
