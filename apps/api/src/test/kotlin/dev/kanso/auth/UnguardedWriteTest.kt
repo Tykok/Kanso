@@ -5,16 +5,20 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping
 import java.net.URI
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 /**
  * The rung above `ReadOnlySeatLeakTest`: not "may a viewer write", but "does this write
@@ -27,12 +31,36 @@ import kotlin.test.assertNotEquals
  * a door the route never opened. `PUT /api/users/{id}/notion-person` was exactly that:
  * refused to a viewer by the interceptor, wide open to every member behind it, taking a
  * colleague's user id straight off the path and rewriting their Notion identity.
+ *
+ * So this file asks the question the seat cannot, in two ways, and neither substitutes
+ * for the other:
+ *
+ * 1. [every write can name the actor it is acting for] enumerates, the way both house
+ *    precedents do — off `RequestMappingHandlerMapping`, never off a list somebody typed,
+ *    because the route that leaks is the one nobody thought to type. It is structural and
+ *    it is coarse on purpose: it proves the handler's controller can *reach* the acting
+ *    identity, which is the shape all four holes in this sweep shared and the one a new
+ *    controller written by somebody who never opens this file will share too.
+ * 2. The three tests after it are behavioural and specific. They fire the routes this
+ *    sweep guarded, as an ordinary member, and check the colleague's row afterwards —
+ *    because "the request was refused" and "nothing was written" are two claims, and only
+ *    the second is the one the owner asked for.
+ *
+ * The two openly-unguarded routes are pinned too, in
+ * [the mirror's badge and its retry button stay open to every member]. An exemption
+ * nobody exercises rots into a claim; worse, the next reader tightening this controller
+ * would take the sync badge off every member's status bar and find out from a screenshot.
  */
 @Transactional
 class UnguardedWriteTest : MockMvcTest() {
 
 	@Autowired lateinit var mvc: MockMvc
 	@Autowired lateinit var users: UserRepository
+
+	/** Qualified by name for `ReadOnlySeatLeakTest`'s reason: the actuator contributes one too. */
+	@Autowired
+	@Qualifier("requestMappingHandlerMapping")
+	lateinit var mappings: RequestMappingHandlerMapping
 
 	private val member: User by lazy { person("An ordinary member", InstanceRole.MEMBER) }
 	private val admin: User by lazy { person("An administrator", InstanceRole.ADMIN) }
@@ -54,6 +82,83 @@ class UnguardedWriteTest : MockMvcTest() {
 			.content(body),
 	).andReturn().response
 
+	// --- 1. the enumeration --------------------------------------------------
+
+	/**
+	 * Every unsafe mapping's controller holds a [CurrentUser], or is named below.
+	 *
+	 * What this proves and what it does not, stated plainly because a guard test that
+	 * oversells itself is worse than none. It proves the handler's class *can* ask who is
+	 * calling. It cannot prove the handler then asks — `ProjectController` injects
+	 * `CurrentUser`, hands it to `archive` and `delete`, and drops it for `create` and
+	 * `update`, which this test therefore passes and the report records as an open finding.
+	 * Its value is the other direction: a controller that never took the dependency cannot
+	 * be checking anything, in any of its methods, and three of this sweep's four holes
+	 * were precisely that. There is no version of "I forgot" that this misses.
+	 *
+	 * Direct field, not one hop through a service, and that narrowness is why [ACTORLESS]
+	 * is a list rather than a rule: `GrantsController` is genuinely correct and would fail
+	 * a looser check for a worse reason. Naming it costs one line and makes the argument
+	 * readable.
+	 */
+	@Test
+	fun `every write can name the actor it is acting for`() {
+		val writes = everyWrite()
+		// Without this the whole test passes on an empty enumeration, which is exactly how a
+		// sweep like this rots into a green light that checks nothing.
+		assertTrue(
+			writes.size > 60,
+			"the enumeration found only ${writes.size} unsafe mappings; the application has far more",
+		)
+
+		val blind = writes
+			.filterNot { (_, controller) -> controller in ACTORLESS }
+			.filterNot { (_, controller) -> holdsCurrentUser(controller) }
+			.map { (route, controller) -> "$route -> $controller" }
+			.distinct()
+			.sorted()
+
+		assertEquals(
+			emptyList(),
+			blind,
+			"${blind.size} write(s) are served by a controller that never asked who is calling. Each is " +
+				"either a route that has to check the actor, or one somebody has to add to `ACTORLESS` " +
+				"with the argument for why it does not:",
+		)
+	}
+
+	/** `"METHOD /pattern"` to the simple name of the controller serving it. */
+	private fun everyWrite(): List<Pair<String, String>> = mappings.handlerMethods.entries
+		.flatMap { (info, handler) ->
+			patternsOf(info).flatMap { pattern ->
+				methodsOf(info).map { "$it $pattern" to handler.beanType.simpleName }
+			}
+		}
+		.distinct()
+
+	private fun patternsOf(info: RequestMappingInfo): Set<String> =
+		info.pathPatternsCondition?.patternValues.orEmpty()
+
+	/**
+	 * A mapping that declares no method answers all of them, so it expands into the four
+	 * unsafe ones rather than being skipped: the permissive case must not be the invisible
+	 * one. `ReadOnlySeatLeakTest` reads its enumeration the same way, for the same reason.
+	 */
+	private fun methodsOf(info: RequestMappingInfo): List<String> =
+		info.methodsCondition.methods
+			.map { it.name }
+			.filter { it in UNSAFE }
+			.ifEmpty { if (info.methodsCondition.methods.isEmpty()) UNSAFE.toList() else emptyList() }
+
+	private fun holdsCurrentUser(controller: String): Boolean =
+		mappings.handlerMethods.values
+			.first { it.beanType.simpleName == controller }
+			.beanType
+			.declaredFields
+			.any { CurrentUser::class.java.isAssignableFrom(it.type) }
+
+	// --- 2. the holes this sweep closed --------------------------------------
+
 	/**
 	 * The hole the owner found by accident, and the one the rest of the sweep grew from.
 	 *
@@ -68,11 +173,7 @@ class UnguardedWriteTest : MockMvcTest() {
 		val body = """{"notionPersonId":"11111111-2222-3333-4444-555555555555"}"""
 
 		val refused = fire(member, "PUT", "/api/users/${colleague.id}/notion-person", body)
-		assertEquals(
-			403,
-			refused.status,
-			"a colleague's Notion identity is not a member's to set: ${refused.contentAsString}",
-		)
+		assertEquals(403, refused.status, "a colleague's Notion identity is not a member's to set: ${refused.contentAsString}")
 		assertEquals(
 			null,
 			users.findById(colleague.id)?.notionPersonId,
@@ -103,18 +204,10 @@ class UnguardedWriteTest : MockMvcTest() {
 	@Test
 	fun `a member cannot bootstrap or reconcile the mirror`() {
 		val bootstrap = fire(member, "POST", "/api/admin/notion/bootstrap")
-		assertEquals(
-			403,
-			bootstrap.status,
-			"creating the mirror's databases is configuration: ${bootstrap.contentAsString}",
-		)
+		assertEquals(403, bootstrap.status, "creating the mirror's databases is configuration: ${bootstrap.contentAsString}")
 
 		val reconcile = fire(member, "POST", "/api/admin/notion/reconcile")
-		assertEquals(
-			403,
-			reconcile.status,
-			"rewriting every page in the instance is too: ${reconcile.contentAsString}",
-		)
+		assertEquals(403, reconcile.status, "rewriting every page in the instance is too: ${reconcile.contentAsString}")
 
 		assertNotEquals(
 			403,
@@ -127,6 +220,25 @@ class UnguardedWriteTest : MockMvcTest() {
 			"and reconcile needs no Notion at all: it only fills the outbox",
 		)
 	}
+
+	/**
+	 * The docs index, whose upsert key is a Notion page id and not a row id — so a member
+	 * who could reach it could repoint the title and the URL of a page every ticket in the
+	 * instance links to, at a target of their choosing.
+	 */
+	@Test
+	fun `a member cannot repoint a doc the whole instance links to`() {
+		val page = UUID.randomUUID().toString()
+		val body = { url: String -> """{"notionPageId":"$page","title":"Runbook","url":"$url"}""" }
+
+		val refused = fire(member, "POST", "/api/docs", body("https://example.invalid/elsewhere"))
+		assertEquals(403, refused.status, "registering a Notion page binds the instance: ${refused.contentAsString}")
+
+		val allowed = fire(admin, "POST", "/api/docs", body("https://notion.so/runbook"))
+		assertEquals(201, allowed.status, "an admin binds one: ${allowed.contentAsString}")
+	}
+
+	// --- 3. what stays open, on purpose --------------------------------------
 
 	/**
 	 * Neither of these is an oversight, and the point of asserting them is that the next
@@ -146,5 +258,36 @@ class UnguardedWriteTest : MockMvcTest() {
 
 		val retry = fire(member, "POST", "/api/admin/sync/retry-failed")
 		assertEquals(200, retry.status, "Retry on a failure row is every member's too: ${retry.contentAsString}")
+	}
+
+	private companion object {
+		val UNSAFE = setOf("POST", "PUT", "PATCH", "DELETE")
+
+		/**
+		 * Controllers whose writes correctly never ask who is calling, and why.
+		 *
+		 * Three arguments, not one, which is why they are listed rather than pattern-matched:
+		 *
+		 * `PublicController` and `ClientRegistrationController` answer callers with no
+		 * session by construction — `PublicRoutes.OPEN_POST` and `OAuthRoutes.OPEN_POST` open
+		 * them in `SecurityConfig`, and the roadmap vote is keyed on an anonymous voter key
+		 * rather than on a Kanso account at all. There is no actor to name.
+		 *
+		 * `GrantsController` has one and refuses to hold it, which is stronger than holding
+		 * it: `GrantService` reads the member off the security context itself and takes no
+		 * principal parameter on either method, so there is no argument any caller could pass
+		 * that would point it at somebody else's connected applications. The isolation is a
+		 * property of the signature. Naming it here rather than loosening the check to "or a
+		 * service that holds one" keeps that argument visible.
+		 *
+		 * `BasicErrorController` is Spring's, serves `/error`, and is reached by a forward
+		 * rather than by a client.
+		 */
+		val ACTORLESS = setOf(
+			"PublicController",
+			"ClientRegistrationController",
+			"GrantsController",
+			"BasicErrorController",
+		)
 	}
 }
