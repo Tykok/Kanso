@@ -20,6 +20,7 @@ import { STATUS_LABELS } from "@/lib/status";
 import { Menu, type MenuItem } from "./menu";
 import { TicketIdentifier } from "./pills";
 import { Backdrop } from "./overlays";
+import { TicketDurationNote } from "./ticket-duration";
 import { TicketLabels } from "./ticket-labels";
 import { Kbd } from "./ui/kbd";
 import { PriorityMark } from "./ui/priority-mark";
@@ -155,6 +156,15 @@ export function DetailPanel({
               ))}
             </select>
           </MetaRow>
+
+          {/* Not a `MetaRow`: it holds no control to name, and its second line is prose
+              rather than a value — `items-center` would centre a four-line sentence against
+              an 11px caption. Read-only everywhere, because it is derived: the way to change
+              it is to resize the ticket or change who is on it. */}
+          <div className={`${META_ROW} items-start`}>
+            <span className="pt-0.5 text-11 text-faint">Duration</span>
+            <TicketDurationNote ticketId={ticket.id} />
+          </div>
 
           <MetaRow label="Project">
             <select

@@ -32,6 +32,7 @@ import { SyncBadge, TicketIdentifier } from "../pills";
 import { Kbd } from "../ui/kbd";
 import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
+import { TicketDurationNote } from "../ticket-duration";
 import { TicketLabels } from "../ticket-labels";
 import { Avatar } from "./avatar";
 import { ViewsShell } from "./shell";
@@ -309,6 +310,14 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
                 a call the client does carry, and it is the same control the panel draws —
                 the labels of one ticket are one question, not two implementations. */}
             <TicketLabels ticket={ticket} />
+          </div>
+
+          {/* Not a chip: a chip is a value at a glance, and this is a range plus the
+              sentence that stops the range being read as a date. Its own line, on the one
+              measure wide enough to hold the sentence without wrapping it three times. */}
+          <div className="flex items-start gap-2.5">
+            <span className="shrink-0 pt-0.5 text-11 text-faint">Duration</span>
+            <TicketDurationNote ticketId={ticket.id} />
           </div>
 
           {dependsOn.length > 0 && (

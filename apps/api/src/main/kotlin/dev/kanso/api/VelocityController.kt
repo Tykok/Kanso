@@ -3,7 +3,10 @@ package dev.kanso.api
 import dev.kanso.auth.CurrentUser
 import dev.kanso.service.EffectiveVelocity
 import dev.kanso.service.EffectiveVelocityService
+import dev.kanso.service.TicketDuration
+import dev.kanso.service.TicketDurationService
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -68,4 +71,70 @@ class VelocityController(
 	@GetMapping("/api/me/velocity")
 	fun mine(@RequestParam teamId: UUID): EffectiveVelocityResponse =
 		EffectiveVelocityResponse.of(velocity.forPerson(currentUser.require(), teamId))
+}
+
+/**
+ * How long a ticket should take, or which of the three reasons it cannot be said.
+ *
+ * Flat, with [basis] as the discriminator, rather than the sealed hierarchy the service
+ * returns: Jackson has no shape for a sealed interface that a TypeScript union reads
+ * cleanly, and the client's job here is a `switch` over four cases. The compiler enforces
+ * the totality on the Kotlin side, which is where the branch is easy to forget.
+ *
+ * No point estimate is carried, only the two ends. A field holding the un-widened number
+ * would be printed by somebody, and a bare date computed off a three-cycle mean is exactly
+ * what the range exists to prevent.
+ */
+data class TicketDurationResponse(
+	/** `estimated`, `no_estimate`, `no_assignee` or `no_velocity`. */
+	val basis: String,
+	val lowWorkingDays: Int?,
+	val highWorkingDays: Int?,
+	val points: Int?,
+	val assignees: Int?,
+	/**
+	 * Assignees this range could not account for, and so the amount it overstates by. Travels
+	 * with the number the way `unestimated` travels with a points total.
+	 */
+	val withoutVelocity: Int?,
+) {
+	companion object {
+		fun of(duration: TicketDuration) = when (duration) {
+			is TicketDuration.Estimated -> TicketDurationResponse(
+				basis = "estimated",
+				lowWorkingDays = duration.lowWorkingDays,
+				highWorkingDays = duration.highWorkingDays,
+				points = duration.points,
+				assignees = duration.assignees,
+				withoutVelocity = duration.withoutVelocity,
+			)
+			TicketDuration.NoEstimate -> absent("no_estimate")
+			TicketDuration.NoAssignee -> absent("no_assignee")
+			TicketDuration.NoVelocity -> absent("no_velocity")
+		}
+
+		private fun absent(basis: String) = TicketDurationResponse(basis, null, null, null, null, null)
+	}
+}
+
+/**
+ * `/api/tickets/{id}/duration`, beside the ticket rather than inside it.
+ *
+ * Not a field on `TicketResponse`: computing it costs a walk of the team's closed cycles
+ * and a preferences read per assignee, which every list of two hundred rows would then pay
+ * for to render a number only the detail view draws. A second request from the one screen
+ * that wants it is the cheaper shape by a wide margin.
+ *
+ * It does leak something the velocity route deliberately would not: a ticket with one
+ * assignee and a known size divides to that person's pace. That is inherent in the feature
+ * rather than an oversight of this route — a duration derived from somebody's velocity is
+ * a fact about their velocity — and it is bounded by the same rule as the ticket itself,
+ * which anyone who can read the ticket can already read.
+ */
+@RestController
+class TicketDurationController(private val durations: TicketDurationService) {
+
+	@GetMapping("/api/tickets/{id}/duration")
+	fun forTicket(@PathVariable id: UUID): TicketDurationResponse =
+		TicketDurationResponse.of(durations.forTicket(id))
 }

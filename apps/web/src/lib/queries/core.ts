@@ -55,6 +55,7 @@ export const keys = {
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** Per team, because a velocity measured against another team's fortnights is a different number. */
   velocity: (teamId: string) => ["velocity", teamId] as const,
+  ticketDuration: (id: string) => ["ticketDuration", id] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
   timeline: (scope: Scope) =>
     ["timeline", scope.kind, scope.kind === "all" ? "" : scope.id] as const,
@@ -196,12 +197,13 @@ export function useSavePreferences() {
       queryClient.setQueryData<Me>(keys.me, (current) =>
         current ? { ...current, preferences: saved } : current,
       );
-      // The declared velocity is the one preference that is an *input* to a read living in
-      // another cache: which velocity is in force is computed on the server from it and the
-      // team's cycles, so it cannot be patched from the response here. Conditional rather
-      // than a blanket invalidate, because a theme change moves nothing.
+      // The declared velocity is the one preference that is an *input* to reads living in
+      // other caches: which velocity is in force, and now every ticket's duration. Both are
+      // computed on the server from it, so neither can be patched from the response here.
+      // Conditional rather than a blanket invalidate, because a theme change moves nothing.
       if ("declaredVelocity" in patch || (patch.unset ?? []).includes("declaredVelocity")) {
         queryClient.invalidateQueries({ queryKey: ["velocity"] });
+        queryClient.invalidateQueries({ queryKey: ["ticketDuration"] });
       }
     },
   });
@@ -219,6 +221,21 @@ export const useVelocity = (teamId?: string) =>
     queryKey: keys.velocity(teamId ?? ""),
     queryFn: () => api.velocity(teamId!),
     enabled: Boolean(teamId),
+  });
+
+/**
+ * How long one ticket should take. Detail surfaces only — the list never asks.
+ *
+ * Its own key rather than a field on the ticket cache, because it moves for reasons the
+ * ticket does not: an assignee closing a cycle changes this number and nothing about the
+ * row. Left to the client-wide staleTime, since a duration nobody can read to the day does
+ * not need to be fresh to the second.
+ */
+export const useTicketDuration = (id?: string) =>
+  useQuery({
+    queryKey: keys.ticketDuration(id ?? ""),
+    queryFn: () => api.ticketDuration(id!),
+    enabled: Boolean(id),
   });
 
 export const useTeams = () => {

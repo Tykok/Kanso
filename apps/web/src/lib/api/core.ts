@@ -365,6 +365,33 @@ export type EffectiveVelocity = {
   cyclesUntilMeasured: number;
 };
 
+/**
+ * How long a ticket should take, or which of three reasons Kanso will not say.
+ *
+ * A discriminated union on `basis`, so the four cases are four branches the compiler
+ * counts. The three absences are deliberately not one nullable range: a screen that cannot
+ * tell "nobody sized this" from "nobody is on this" points the reader at the wrong fix,
+ * and an empty field reads as something that failed to load.
+ *
+ * There is no point estimate anywhere in this type, only the two ends. A field holding the
+ * un-widened number would get printed, and a bare date off a three-cycle mean is exactly
+ * what the range exists to prevent.
+ */
+export type TicketDuration =
+  | {
+      basis: "estimated";
+      lowWorkingDays: number;
+      highWorkingDays: number;
+      points: number;
+      assignees: number;
+      /** Assignees with no known pace, and so the amount this range overstates by. */
+      withoutVelocity: number;
+    }
+  // Carries nothing but the reason. The API omits nulls, so the four numbers are not
+  // absent-and-null here — they are not on the wire at all, and the union is what makes
+  // reaching for one a compile error rather than a `NaN` on the screen.
+  | { basis: "no_estimate" | "no_assignee" | "no_velocity" };
+
 /** Preferences travel with the session so the first paint needs one round trip, not two. */
 export type Me = {
   user: User;
@@ -640,6 +667,13 @@ export const api = {
    * picking one for them would show a number measured against the wrong one.
    */
   velocity: (teamId: string) => request<EffectiveVelocity>(`/api/me/velocity${query({ teamId })}`),
+
+  /**
+   * Beside the ticket rather than on it: this costs a walk of the team's closed cycles and
+   * a preferences read per assignee, which a list of two hundred rows should not pay to
+   * render something only the detail view draws.
+   */
+  ticketDuration: (id: string) => request<TicketDuration>(`/api/tickets/${id}/duration`),
 
   /**
    * `onboarded: true` stamps the moment the wizard was finished. It is a command,
