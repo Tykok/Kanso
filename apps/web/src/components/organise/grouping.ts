@@ -1,6 +1,7 @@
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import type {
   Ticket,
+  TicketGroup as ServerGroup,
   TicketPriority,
   TicketStatus,
   ViewGroupBy,
@@ -10,10 +11,17 @@ import type {
 /**
  * How the rows are stacked on screens 19 and 21, and the sentence under screen 23.
  *
- * The server sorts and the client groups. A grouped wire shape would be a second
- * representation of one list that could disagree with itself, so the one rule this module
- * has to keep is that grouping never reorders **inside** a group — otherwise the view's
- * `sortBy` silently stops working for every grouped view.
+ * The server stacks and counts now; this module names. It used to do all three, and the
+ * counting was the part it could not do honestly: it bucketed whatever page had been
+ * fetched, so `Todo · 29` meant "twenty-nine of the two hundred rows I hold" while the
+ * question had two thousand. [nameGroups] is the screen's half of the new split — the
+ * server owns which buckets exist, how big they are and what order they come in, and
+ * this file owns what a reader sees them called, because the names are here.
+ *
+ * [groupTickets] stays for the lists that are fetched whole. A cycle is a bounded set and
+ * screen 19 already holds all of it, so bucketing it locally is not a page pretending to
+ * be an answer. Both paths keep the one rule this module has always had: grouping never
+ * reorders **inside** a group, or the view's `sortBy` silently stops working.
  */
 export type Group = {
   /** The value rows were grouped on. Empty string for "these have none". */
@@ -35,6 +43,35 @@ const STATUS_ORDER: TicketStatus[] = [
 ];
 
 const PRIORITY_ORDER: TicketPriority[] = ["urgent", "high", "medium", "low", "none"];
+
+/**
+ * The server's buckets, named for the reader — and nothing else.
+ *
+ * No reordering and no recounting. The order the buckets arrive in is the order the page
+ * boundary was cut against, so restacking them here would put a header above rows that
+ * belong under the next one; and the count is the whole match, which is a number this
+ * side of the wire cannot check and must not replace with the length of what it holds.
+ *
+ * The one thing it does decide is that a bucket the page has not reached yet still draws
+ * its header. `Done · 12` above nothing is not an empty group — it is twelve rows one
+ * scroll away, and hiding the header until they load would make the list grow a heading
+ * in the middle of a scroll.
+ */
+export function nameGroups(
+  groups: readonly ServerGroup[],
+  groupBy: ViewGroupBy,
+  names?: { person?: (id: string) => string; project?: (id: string) => string },
+): Group[] {
+  if (groupBy === "none") {
+    // One flat list, and no header over it — the same reading `groupTickets` gives `none`.
+    return groups.map((group) => ({ ...group, label: "", tickets: [...group.tickets] }));
+  }
+  return groups.map((group) => ({
+    ...group,
+    label: labelOf(group.key, groupBy, names),
+    tickets: [...group.tickets],
+  }));
+}
 
 export function groupTickets(
   tickets: readonly Ticket[],

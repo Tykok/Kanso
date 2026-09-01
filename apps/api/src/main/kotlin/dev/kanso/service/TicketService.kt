@@ -95,6 +95,12 @@ class TicketService(
 	 * trash's own service owns *removing* it, which is the half that has three exits.
 	 */
 	private val trash: TrashRepository,
+	/**
+	 * Grouping, which is two queries rather than one and so is not [list]'s business.
+	 * Shared with [SavedViewService], because the list is a saved view nobody saved and
+	 * the two have to stack their rows the same way.
+	 */
+	private val groups: TicketGroups,
 ) {
 
 	/**
@@ -124,6 +130,36 @@ class TicketService(
 				limit = limit,
 				offset = offset,
 			)
+		)
+	}
+
+	/**
+	 * The same list, stacked — every bucket the question has, each with a count of the
+	 * whole match and the rows of it this page reached.
+	 *
+	 * A second method rather than a shape [list] switches into: a response whose type
+	 * depends on a query parameter is one every caller has to branch on, and the flat
+	 * answer is what every other screen in the app already reads.
+	 */
+	@Transactional(readOnly = true)
+	fun grouped(
+		teamId: UUID?,
+		includeDescendants: Boolean,
+		includeArchived: Boolean,
+		filters: TicketFilters,
+		groupBy: ViewGroupBy,
+		sortBy: ViewSortBy,
+		limit: Int,
+		offset: Long,
+	): List<TicketGroup> {
+		val teamIds = teamId?.let { if (includeDescendants) teams.descendantIds(it) else listOf(it) }
+		return groups.of(
+			scope = TicketScope(teamIds = teamIds, includeArchived = includeArchived),
+			filters = filters,
+			groupBy = groupBy,
+			sortBy = sortBy,
+			limit = limit,
+			offset = offset,
 		)
 	}
 
