@@ -2,6 +2,7 @@ package dev.kanso.service
 
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
+import dev.kanso.domain.EffortPoints
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
@@ -47,6 +48,7 @@ data class TicketPatch(
 	val description: String? = null,
 	val status: TicketStatus? = null,
 	val priority: TicketPriority? = null,
+	val estimate: Int? = null,
 	val start: KansoInstant? = null,
 	val due: KansoInstant? = null,
 	val projectId: UUID? = null,
@@ -149,6 +151,7 @@ class TicketService(
 		projectId: UUID?,
 		assigneeIds: List<UUID>,
 		docIds: List<UUID>,
+		estimate: Int? = null,
 	): TicketDetail {
 		// First, because `nextTicketNumber` below takes an exclusive row lock on the
 		// team — a check placed after it would serialise every legitimate creator in that
@@ -174,6 +177,11 @@ class TicketService(
 		}
 		requireUsers(assigneeIds)
 		requireDocs(docIds)
+		// Checked here rather than at the edge, unlike a status: a status arrives as a wire
+		// string and the controller has to parse it anyway, while an estimate is already an
+		// Int by the time it lands. Parsing belongs at the edge; a rule belongs with the
+		// write, where the importer and any later caller meet it too.
+		val points = EffortPoints.from(estimate)
 
 		// Allocated inside this transaction: the row lock on the team serialises
 		// concurrent creates, so two people pressing "c" at once get 41 and 42.
@@ -186,6 +194,7 @@ class TicketService(
 			description = description,
 			status = status,
 			priority = priority,
+			estimate = points,
 			start = start,
 			due = due,
 			projectId = projectId,
@@ -248,6 +257,10 @@ class TicketService(
 		val start = if ("start" in patch.unset) null else patch.start ?: current.start
 		val due = if ("due" in patch.unset) null else patch.due ?: current.due
 		validateDates(start, due)
+		// Un-estimating is a real edit, so it has to be spelled: an absent field leaves the
+		// points alone, and `unset` is the only way back to "nobody has sized this".
+		val estimate =
+			if ("estimate" in patch.unset) null else EffortPoints.from(patch.estimate) ?: current.estimate
 
 		patch.assigneeIds?.let { requireUsers(it) }
 		patch.docIds?.let { requireDocs(it) }
@@ -278,6 +291,7 @@ class TicketService(
 			description = if ("description" in patch.unset) null else patch.description ?: current.description,
 			status = status,
 			priority = patch.priority ?: current.priority,
+			estimate = estimate,
 			start = start,
 			due = due,
 			completedAt = completedAt,

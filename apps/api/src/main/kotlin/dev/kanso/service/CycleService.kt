@@ -36,8 +36,26 @@ data class Cycle(
 /** A cycle and how much work is in it — one sidebar row. */
 data class CycleSummary(val cycle: Cycle, val ticketCount: Int)
 
-/** One bar of the burn-down. [projected] is what the drawing hatches. */
-data class RemainingDay(val day: LocalDate, val open: Int, val projected: Boolean)
+/**
+ * One bar of the burn-down, in both units. [projected] is what the drawing hatches.
+ *
+ * Two numbers rather than one because a cycle can be estimated, half-estimated or not
+ * estimated at all, and the chart has to stay readable in all three: [openPoints] is the
+ * work left, [open] is the rows left, and neither is derivable from the other. A response
+ * carrying only points would draw a flat empty chart for a team that does not estimate.
+ */
+data class RemainingDay(val day: LocalDate, val open: Int, val openPoints: Int, val projected: Boolean)
+
+/**
+ * The cycle's effort, in points — and the size of what the points cannot speak for.
+ *
+ * A type of its own rather than three more Ints on [CycleReport], because [unestimated]
+ * has to travel with the sum wherever it goes. A ticket nobody has sized is left out of
+ * [total] rather than added as a zero, so a sum on its own reads as the whole cycle while
+ * describing part of it — and a burn-down that silently ignores a third of the work is
+ * worse than one that counts rows.
+ */
+data class CyclePoints(val total: Int, val done: Int, val percent: Int, val unestimated: Int)
 
 /**
  * Everything screen 19 draws, computed on read.
@@ -51,6 +69,12 @@ data class CycleReport(
 	val total: Int,
 	val done: Int,
 	val percent: Int,
+	/**
+	 * The same three questions asked in points. Kept beside the counts rather than
+	 * replacing them: the counts are what a team that has not estimated anything reads,
+	 * and [CyclePoints.unestimated] is what says which of the two to believe.
+	 */
+	val points: CyclePoints,
 	val byStatus: Map<TicketStatus, Int>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDay>,
@@ -182,20 +206,36 @@ class CycleService(
 		val done = byStatus[TicketStatus.DONE] ?: 0
 		val open = loaded.filter { it.ticket.status != TicketStatus.DONE }
 
+		// Summed, never counted as zero: a ticket nobody has sized is missing from both
+		// halves of this and present in `unestimated` instead, which is the only honest way
+		// to report a fraction whose numerator and denominator are both incomplete.
+		val totalPoints = counted.sumOf { it.estimate ?: 0 }
+		val donePoints = counted.filter { it.status == TicketStatus.DONE }.sumOf { it.estimate ?: 0 }
+
 		val daysLeft = ChronoUnit.DAYS.between(today, cycle.endsOn).toInt().coerceAtLeast(0)
 		// Inclusive of today: a cycle on its first day has measured one day, not zero, and
 		// dividing by zero is the only other option.
 		val measured = ChronoUnit.DAYS.between(cycle.startsOn, minOf(today, cycle.endsOn)).toInt() + 1
 		val rate = if (measured <= 0) null else done.toDouble() / measured
+		// The same observed rate in the other unit — points closed per day so far. Not
+		// derived from `rate`: a team that closes one 13 and three 1s in a week has two
+		// rates that say different things, which is the whole reason the points exist.
+		val pointsRate = if (measured <= 0) null else donePoints.toDouble() / measured
 
 		return CycleReport(
 			cycle = cycle,
 			total = total,
 			done = done,
 			percent = if (total == 0) 0 else (done * 100.0 / total).roundToInt(),
+			points = CyclePoints(
+				total = totalPoints,
+				done = donePoints,
+				percent = if (totalPoints == 0) 0 else (donePoints * 100.0 / totalPoints).roundToInt(),
+				unestimated = counted.count { it.estimate == null },
+			),
 			byStatus = byStatus,
 			daysLeft = daysLeft,
-			remaining = burnDown(cycle, counted, total, today, rate, open.size),
+			remaining = burnDown(cycle, counted, today, rate, pointsRate),
 			slipping = slipping(open, rate, daysLeft),
 			tickets = loaded,
 		)
@@ -204,40 +244,72 @@ class CycleService(
 	// --- helpers -------------------------------------------------------------
 
 	/**
-	 * One bar per day of the cycle. Measured days read `completed_at`; the days that have
-	 * not happened yet fall by the observed rate and are marked so the chart can hatch
-	 * them. The projection stops at the work that will not fit rather than at zero —
-	 * drawing a line to zero would contradict the list of slipping tickets beside it.
+	 * One bar per day of the cycle, in both units at once.
+	 *
+	 * The two series are the same [descent] over two weights — one ticket each, or its
+	 * points — rather than two pieces of arithmetic that could drift apart. Written that
+	 * way because they *must* agree about which days are measured and which are hatched: a
+	 * chart whose two readings disagree about where today is describes two cycles.
 	 */
 	private fun burnDown(
 		cycle: Cycle,
 		counted: List<dev.kanso.domain.Ticket>,
-		total: Int,
 		today: LocalDate,
 		rate: Double?,
-		openNow: Int,
+		pointsRate: Double?,
 	): List<RemainingDay> {
-		val closedOn = counted.mapNotNull { it.completedAt?.toLocalDate() }.sorted()
-		val floor = slipCount(openNow, rate, ChronoUnit.DAYS.between(today, cycle.endsOn).toInt())
-		var day = cycle.startsOn
-		val bars = mutableListOf<RemainingDay>()
-		while (!day.isAfter(cycle.endsOn)) {
+		val days = generateSequence(cycle.startsOn) { it.plusDays(1) }
+			.takeWhile { !it.isAfter(cycle.endsOn) }
+			.toList()
+		val rows = descent(days, counted, today, rate) { 1 }
+		// An unsized ticket weighs nothing here, and is reported by `CyclePoints.unestimated`
+		// instead: giving it a 1, or the median of the scale, would be inventing the very
+		// number somebody declined to give.
+		val points = descent(days, counted, today, pointsRate) { it.estimate ?: 0 }
+		return days.mapIndexed { index, day ->
+			RemainingDay(day, rows[index], points[index], projected = day.isAfter(today))
+		}
+	}
+
+	/**
+	 * One unit's descent. Measured days read `completed_at`; the days that have not
+	 * happened yet fall by the observed rate and are marked so the chart can hatch them.
+	 * The projection stops at the work that will not fit rather than at zero — drawing a
+	 * line to zero would contradict the list of slipping tickets beside it.
+	 */
+	private fun descent(
+		days: List<LocalDate>,
+		counted: List<dev.kanso.domain.Ticket>,
+		today: LocalDate,
+		rate: Double?,
+		weight: (dev.kanso.domain.Ticket) -> Int,
+	): List<Int> {
+		val total = counted.sumOf(weight)
+		val closed = counted.mapNotNull { ticket -> ticket.completedAt?.let { it.toLocalDate() to weight(ticket) } }
+		val openNow = counted.filter { it.status != TicketStatus.DONE }.sumOf(weight)
+		val floorAt = slipCount(openNow, rate, ChronoUnit.DAYS.between(today, days.last()).toInt())
+		return days.map { day ->
 			if (!day.isAfter(today)) {
-				bars += RemainingDay(day, total - closedOn.count { !it.isAfter(day) }, projected = false)
+				total - closed.filter { !it.first.isAfter(day) }.sumOf { it.second }
 			} else {
 				val ahead = ChronoUnit.DAYS.between(today, day).toInt()
 				val projectedOpen = if (rate == null) openNow else openNow - floor(rate * ahead).toInt()
-				bars += RemainingDay(day, projectedOpen.coerceAtLeast(floor), projected = true)
+				projectedOpen.coerceAtLeast(floorAt)
 			}
-			day = day.plusDays(1)
 		}
-		return bars
 	}
 
 	/**
 	 * The tail of the list nobody will reach. Ordered the way the team works — highest
 	 * priority first, then oldest — so what slips is what was always going to be last,
 	 * not whatever the database returned last.
+	 *
+	 * Counted in tickets and not in points, deliberately, and it is the one number on this
+	 * screen that is. An unsized ticket has to be able to slip — it is real work somebody
+	 * committed to — and a points capacity has nothing to weigh it with, so it would
+	 * silently promise every unestimated ticket in the cycle. The points answer "how much
+	 * is left" in the burn-down beside it; this list answers "which ones", and that
+	 * question is about rows.
 	 */
 	private fun slipping(open: List<TicketDetail>, rate: Double?, daysLeft: Int): List<TicketDetail> {
 		val capacity = capacity(rate, daysLeft) ?: return emptyList()

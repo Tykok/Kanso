@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Ticket } from "@/lib/api";
+import type { Ticket, WorkloadRow } from "@/lib/api";
 import { groupTickets, workloadNote } from "./grouping";
 
 /**
@@ -98,10 +98,21 @@ describe("groupTickets", () => {
 });
 
 describe("workloadNote", () => {
+  /**
+   * The note is about counts and ages, so every row here leaves the load unsized: a
+   * sentence that changed with the estimate would be a second reading of the chart, and
+   * this one deliberately is not.
+   */
+  const carrying = (row: Omit<WorkloadRow, "points" | "unestimated">): WorkloadRow => ({
+    ...row,
+    points: 0,
+    unestimated: row.total,
+  });
+
   it("names the person carrying urgent work that has been open too long", () => {
     const rows = [
-      { person: { id: "u1", displayName: "M. Rey" }, total: 7, byStatus: {}, urgentOverThreeDays: 3, oldestOpenDays: 9 },
-      { person: { id: "u2", displayName: "A. Okonkwo" }, total: 4, byStatus: {}, urgentOverThreeDays: 1, oldestOpenDays: 2 },
+      carrying({ person: { id: "u1", displayName: "M. Rey" }, total: 7, byStatus: {}, urgentOverThreeDays: 3, oldestOpenDays: 9 }),
+      carrying({ person: { id: "u2", displayName: "A. Okonkwo" }, total: 4, byStatus: {}, urgentOverThreeDays: 1, oldestOpenDays: 2 }),
     ];
 
     expect(workloadNote(rows)).toBe(
@@ -111,7 +122,7 @@ describe("workloadNote", () => {
 
   it("says it in the singular when there is one", () => {
     const rows = [
-      { person: { id: "u1", displayName: "J. Salas" }, total: 2, byStatus: {}, urgentOverThreeDays: 1, oldestOpenDays: 4 },
+      carrying({ person: { id: "u1", displayName: "J. Salas" }, total: 2, byStatus: {}, urgentOverThreeDays: 1, oldestOpenDays: 4 }),
     ];
 
     expect(workloadNote(rows)).toBe(
@@ -123,7 +134,7 @@ describe("workloadNote", () => {
   // rendered when there is a note, so the empty case has to be distinguishable.
   it("says nothing when nobody is carrying anything urgent and old", () => {
     const rows = [
-      { person: { id: "u1", displayName: "M. Rey" }, total: 7, byStatus: {}, urgentOverThreeDays: 0, oldestOpenDays: 1 },
+      carrying({ person: { id: "u1", displayName: "M. Rey" }, total: 7, byStatus: {}, urgentOverThreeDays: 0, oldestOpenDays: 1 }),
     ];
 
     expect(workloadNote(rows)).toBeUndefined();
@@ -132,7 +143,7 @@ describe("workloadNote", () => {
   // The unassigned pile has no name to put in a sentence, and "nobody is carrying three
   // urgent tickets" is exactly the wrong reading of an unowned backlog.
   it("skips the unassigned pile, which is not a person to warn about", () => {
-    const rows = [{ total: 6, byStatus: {}, urgentOverThreeDays: 4, oldestOpenDays: 20 }];
+    const rows = [carrying({ total: 6, byStatus: {}, urgentOverThreeDays: 4, oldestOpenDays: 20 })];
 
     expect(workloadNote(rows)).toBeUndefined();
   });

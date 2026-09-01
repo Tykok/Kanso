@@ -1,6 +1,7 @@
 package dev.kanso.sync.inbound
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.domain.EffortPoints
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.Ticket
@@ -141,6 +142,12 @@ class NotionPoller(
 		val status = select(props, NotionProps.STATUS)?.let { TicketStatus.fromLabel(it) ?: unknown("status", it) }
 		val priority = select(props, NotionProps.PRIORITY)?.let { TicketPriority.fromLabel(it) ?: unknown("priority", it) }
 
+		// Read back like a status, and refused the same way: the scale is closed, so a 7
+		// somebody typed into the mirror is logged and dropped rather than adopted — the
+		// corrective push puts Kanso's own value back on the page.
+		val estimate = number(props, NotionProps.ESTIMATE)
+			?.let { if (it in EffortPoints.SCALE) it else unknown("estimate", it.toString()) }
+
 		val start = instant(props, NotionProps.START) ?: ticket.start
 		val due = instant(props, NotionProps.DUE) ?: ticket.due
 
@@ -151,6 +158,9 @@ class NotionPoller(
 			description = text(props, NotionProps.DESCRIPTION) ?: ticket.description,
 			status = status ?: ticket.status,
 			priority = priority ?: ticket.priority,
+			// A property Notion sends empty is absent here, as everywhere else in this
+			// method: clearing an estimate is done in Kanso, where `unset` can say it.
+			estimate = estimate ?: ticket.estimate,
 			start = start,
 			due = due,
 			// Carried through untouched: the mirror does not decide when a ticket was
@@ -361,6 +371,9 @@ class NotionPoller(
 	private fun text(props: JsonNode?, name: String): String? =
 		props?.path(name)?.path("rich_text")?.joinToString("") { it.path("plain_text").asText("") }
 			?.takeIf { it.isNotBlank() }
+
+	private fun number(props: JsonNode?, name: String): Int? =
+		props?.path(name)?.path("number")?.takeIf { it.isNumber }?.asInt()
 
 	private fun select(props: JsonNode?, name: String): String? =
 		props?.path(name)?.path("select")?.path("name")?.asText(null)?.takeIf { it.isNotBlank() }

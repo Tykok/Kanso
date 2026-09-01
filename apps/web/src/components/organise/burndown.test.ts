@@ -10,9 +10,10 @@ import { bars, progressSegments } from "./burndown";
  * that comes back wrong is the kind of bug that is invisible in a screenshot and obvious
  * in a number.
  */
-const day = (open: number, projected = false): RemainingDay => ({
+const day = (open: number, projected = false, openPoints = open * 2): RemainingDay => ({
   day: "2026-08-04",
   open,
+  openPoints,
   projected,
 });
 
@@ -39,6 +40,30 @@ describe("bars", () => {
   // out as an empty chart rather than as NaN heights the browser silently drops.
   it("survives a cycle with nothing left in it", () => {
     expect(bars([day(0), day(0)]).map((bar) => bar.height)).toEqual([0, 0]);
+  });
+});
+
+describe("bars, in points", () => {
+  // The same geometry over the other reading. Asserted separately because the unit is the
+  // one thing a caller can get wrong here, and a chart drawn in rows under a header that
+  // says points is a lie no test of the heights alone would catch.
+  it("scales against the tallest day's points, not its tickets", () => {
+    const remaining = [day(2, false, 13), day(2, false, 5), day(1, false, 0)];
+
+    expect(bars(remaining, "points").map((bar) => bar.open)).toEqual([13, 5, 0]);
+    expect(bars(remaining, "points").map((bar) => bar.height)).toEqual([100, (5 / 13) * 100, 0]);
+  });
+
+  // A team that estimates nothing has a points series of zeros. That has to draw an empty
+  // chart — which is what tells the screen to fall back on the rows — and never NaN.
+  it("comes out empty for a cycle nobody estimated, rather than as NaN", () => {
+    expect(bars([day(4, false, 0), day(3, false, 0)], "points").map((bar) => bar.height)).toEqual([
+      0, 0,
+    ]);
+  });
+
+  it("still reads tickets when nothing asks for points", () => {
+    expect(bars([day(4, false, 13)]).map((bar) => bar.open)).toEqual([4]);
   });
 });
 

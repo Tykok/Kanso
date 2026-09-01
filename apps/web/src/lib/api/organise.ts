@@ -58,13 +58,39 @@ export type Cycle = {
 };
 
 /** One bar of the burn-down. `projected` is what the chart hatches. */
-export type RemainingDay = { day: string; open: number; projected: boolean };
+/**
+ * One bar of the burn-down, in both units: `open` is the rows left that day, `openPoints`
+ * the points. Neither is derivable from the other — a cycle can be half-estimated — so
+ * the server sends both and the chart picks the one the cycle can actually be read in.
+ */
+export type RemainingDay = {
+  day: string;
+  open: number;
+  openPoints: number;
+  projected: boolean;
+};
+
+/**
+ * The cycle's effort in points, and how many of its tickets the sum cannot speak for.
+ *
+ * `unestimated` travels with the sum everywhere it is drawn: a total that quietly leaves
+ * out a third of the cycle reads as the whole of it, and that is the one thing a
+ * burn-down must not do.
+ */
+export type CyclePoints = {
+  total: number;
+  done: number;
+  percent: number;
+  unestimated: number;
+};
 
 export type CycleReport = {
   cycle: Cycle;
   total: number;
   done: number;
   percent: number;
+  /** The same three questions in points. The counts stay: not every team estimates. */
+  points: CyclePoints;
   /** Keyed by the status wire value, and every counted status is present, including zeros. */
   byStatus: Record<string, number>;
   daysLeft: number;
@@ -159,6 +185,10 @@ export type WorkloadRow = {
   /** Absent for the unassigned bucket, which is a pile and not an account. */
   person?: Person;
   total: number;
+  /** The points of their open tickets. Unsized ones are not in it, and not zeroes. */
+  points: number;
+  /** How many of `total` carry no estimate — what `points` cannot speak for. */
+  unestimated: number;
   byStatus: Record<string, number>;
   urgentOverThreeDays: number;
   oldestOpenDays: number;

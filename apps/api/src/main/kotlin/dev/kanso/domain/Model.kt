@@ -241,6 +241,37 @@ data class Project(
 	val updatedAt: OffsetDateTime,
 )
 
+/**
+ * The effort scale: a truncated Fibonacci sequence, and nothing between its values.
+ *
+ * A closed vocabulary like the statuses, but of numbers, so it is a [SCALE] and a check
+ * rather than an enum — `THIRTEEN` would name nothing the number does not already say,
+ * and every reader of this column adds it up. The gaps are the point: a free integer
+ * invites someone to write 7, and 7 is an argument about half a point rather than an
+ * estimate, while a short scale forces the choice and keeps two people's 5 comparable.
+ *
+ * Enforced here so a bad value is one sentence with the vocabulary in it, and again by
+ * `tickets_estimate_chk` so a writer that never came through Kotlin is refused too — the
+ * same two-sided guard the statuses have.
+ *
+ * Null is not on the scale and is not zero. "Not estimated yet" and "estimated at zero"
+ * are different states, and the day they are conflated every average computed out of
+ * this column starts reading as measured when it is invented.
+ */
+object EffortPoints {
+
+	val SCALE = listOf(1, 2, 3, 5, 8, 13)
+
+	/** Null passes: an absent estimate is a legitimate value, and the only way back to one. */
+	fun from(value: Int?): Int? = value?.also {
+		if (it !in SCALE) {
+			throw IllegalArgumentException(
+				"Unknown estimate '$it' (expected one of ${SCALE.joinToString()})",
+			)
+		}
+	}
+}
+
 data class Ticket(
 	val id: UUID,
 	val number: Int,
@@ -249,6 +280,8 @@ data class Ticket(
 	val description: String?,
 	val status: TicketStatus,
 	val priority: TicketPriority,
+	/** Points, off [EffortPoints.SCALE]. Null means nobody has sized it — never zero. */
+	val estimate: Int?,
 	val start: KansoInstant?,
 	val due: KansoInstant?,
 	val completedAt: OffsetDateTime?,
