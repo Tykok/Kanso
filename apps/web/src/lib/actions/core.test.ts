@@ -87,6 +87,7 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     tickets: [ticket],
     selected: undefined,
     canConfigure: true,
+    canWrite: true,
     view: "list",
     zoom: "day",
     open: vi.fn(),

@@ -66,6 +66,7 @@ export const organiseActions: readonly Action[] = [
   },
   {
     id: "organise.saveView",
+    writes: true,
     label: "Save this question as a view",
     group: "view",
     /**

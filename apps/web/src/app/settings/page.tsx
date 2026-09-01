@@ -12,6 +12,7 @@ import { NotionPeopleSection } from "@/components/settings/notion-people-section
 import { PeopleSection } from "@/components/settings/people-section";
 import { ApiError } from "@/lib/api";
 import { useMe, useSetupState } from "@/lib/queries";
+import { canConfigure as configures } from "@/lib/seat";
 
 type SectionId = "appearance" | "account" | "people" | "connections" | "agents";
 
@@ -38,7 +39,7 @@ export default function SettingsPage() {
   if (me.isLoading) return <div className="centered">Loading…</div>;
   if (signedOut || !me.data) return <div className="centered">Signing in…</div>;
 
-  const canConfigure = me.data.user.instanceRole !== "member";
+  const canConfigure = configures(me.data.user.instanceRole);
   // "agents" is in both arrays, and that is the point: a grant belongs to the person who
   // made it, so every member manages their own — there is nothing here for an admin to
   // administer, and no list of anyone else's for them to see.

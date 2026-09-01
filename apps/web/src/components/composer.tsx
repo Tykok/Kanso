@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { creationSeed } from "@/lib/creation-seed";
 import { keys, useMe } from "@/lib/queries";
+import { mayWrite } from "@/lib/seat";
 import { PRIORITY_LABELS } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import type { Scope } from "@/store/ui";
@@ -384,6 +385,26 @@ export function Composer({ scope, onClose }: { scope: Scope; onClose: () => void
    * `tickets.tsx`. Prefilling them afterwards would take an effect, which would
    * overwrite whatever somebody had already changed.
    */
+  /**
+   * The seat, before anything else this component does.
+   *
+   * `TicketAccess.editableTeams` already empties the team select for a reader, so the
+   * form would open offering nothing — but it stays usable for *drafts*, and a draft is a
+   * write like any other. The registry no longer offers `ticket.create` to a reader, and
+   * this catches the two buttons that open the composer directly plus whatever opens it
+   * next: one refusal at the thing being opened beats a hunt for every door into it.
+   *
+   * Undefined while `/api/me` is in flight reads as "may write", the same direction every
+   * other loading state here falls in — the server is the one that actually says no.
+   */
+  if (!mayWrite(me.data?.user.instanceRole)) {
+    return (
+      <Backdrop onClose={onClose}>
+        <div className="empty">Your seat on this instance reads; it does not write.</div>
+      </Backdrop>
+    );
+  }
+
   if (!teams.data || !projects.data) {
     return (
       <Backdrop onClose={onClose}>

@@ -23,6 +23,15 @@ export type ActionContext = {
   tickets: Ticket[];
   selected?: Ticket;
   canConfigure: boolean;
+  /**
+   * Whether this person's seat writes at all — false only for `InstanceRole.VIEWER`.
+   *
+   * A courtesy, not a permission: the server refuses the request whatever this says
+   * (`ReadOnlySeat` and `TicketAccess`). What it buys is honesty — a reader shown a
+   * composer that 403s has been lied to, and a menu of things that will all fail is
+   * worse than a shorter menu.
+   */
+  canWrite: boolean;
   /** Which drawing of the same rows is on screen — the list, or the chart. */
   view: View;
   zoom: Zoom;
@@ -116,6 +125,24 @@ export type Action = {
    */
   mode?: View;
   group: ActionGroup;
+  /**
+   * Whether running this changes something the whole instance shares.
+   *
+   * Declared rather than inferred, the same way `McpTool.writes` is on the server and
+   * for the same reason: a `run` that eventually reaches a mutation is not something a
+   * predicate can read, and an action that answered the question itself would be a
+   * second place to keep in step. `permits` in `./index` is the only reader.
+   *
+   * Absent means false, and false is the right default here even though it is the
+   * permissive one — the alternative hides *reads* from a read-only seat, which is the
+   * product inverted. `core.test.ts` is what stops a new write from being forgotten: it
+   * classifies every id in the registry and fails on one it has never seen.
+   *
+   * Toggling a favourite is deliberately not a write. It changes one person's sidebar,
+   * the server allows it on a read-only seat (`ReadOnlySeat.OWN_SCREEN`), and hiding it
+   * here would take away something the API is happy to answer.
+   */
+  writes?: boolean;
   when: (ctx: ActionContext) => boolean;
   run: (ctx: ActionContext) => void;
 };

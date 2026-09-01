@@ -18,6 +18,7 @@ import type { Action } from "./types";
 export const inboxActions: readonly Action[] = [
   {
     id: "notion.import",
+    writes: true,
     label: "Import from Notion…",
     group: "app",
     // Instance configuration, so the same gate every other configuration action uses.

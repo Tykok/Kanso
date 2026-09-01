@@ -454,7 +454,18 @@ class TeamService(
 	fun addMember(actor: User, teamId: UUID, userId: UUID, role: MemberRole): List<TeamMember> {
 		requireConfigurator(actor)
 		get(teamId)
-		users.findById(userId) ?: throw BadRequestException("No user $userId")
+		val member = users.findById(userId) ?: throw BadRequestException("No user $userId")
+		// The two axes can express "a read-only seat that administers a team", and the
+		// combination should not exist. `MemberRole.ADMIN` gates nothing today, which is
+		// exactly why the refusal belongs here now rather than later: a title that promises
+		// administration to somebody who cannot write is a lie the product would be free to
+		// tell right up until the day the title starts meaning something, and then it would
+		// be a permissions bug with a year of rows behind it.
+		if (role == MemberRole.ADMIN && !member.instanceRole.mayWrite) {
+			throw BadRequestException(
+				"${member.displayName} holds a read-only seat and cannot administer a team; add them as a member"
+			)
+		}
 		teams.addMember(teamId, userId, role)
 		syncJobs.enqueue(SyncEntityType.TEAM, teamId, SyncOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.UPDATED, teamId))

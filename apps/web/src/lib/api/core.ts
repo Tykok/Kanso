@@ -262,7 +262,7 @@ export type DispositionPlan = {
   counts?: DispositionCounts;
 };
 
-export type InstanceRole = "owner" | "admin" | "member";
+export type InstanceRole = "owner" | "admin" | "member" | "viewer";
 
 export type User = {
   id: string;

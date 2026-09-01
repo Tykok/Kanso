@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo } from "react";
 import { dayValue, ticketAddress, ticketHref, type Project, type Ticket } from "@/lib/api";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
-import { useDocs, useProjectTickets, useProjects, useTeams, useUsers } from "@/lib/queries";
+import { useDocs, useMe, useProjectTickets, useProjects, useTeams, useUsers } from "@/lib/queries";
+import { mayWrite } from "@/lib/seat";
 import { useUi } from "@/store/ui";
 import { StatusPill, SyncBadge, TicketIdentifier } from "../pills";
 import { GroupLabel } from "../ui/group-label";
@@ -74,7 +75,10 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
   const teams = useTeams();
   const users = useUsers();
   const docs = useDocs();
+  const me = useMe();
   const { setScope, open } = useUi();
+
+  const canWrite = mayWrite(me.data?.user.instanceRole);
 
   const team = teams.data?.find((candidate) => candidate.id === project.teamId);
   const lead = users.data?.find((candidate) => candidate.id === project.leadUserId);
@@ -121,10 +125,14 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
           Edit
         </button>
         {/* The scope is already this project — the effect above set it — so the composer
-            seeds itself from it and no argument has to be threaded through. */}
-        <button type="button" className="button button-primary" onClick={() => open("composer")}>
-          New ticket
-        </button>
+            seeds itself from it and no argument has to be threaded through. Absent for a
+            reader: the composer would refuse them, and a button that opens an apology is
+            worse than no button. */}
+        {canWrite && (
+          <button type="button" className="button button-primary" onClick={() => open("composer")}>
+            New ticket
+          </button>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-12 py-9">

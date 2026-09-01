@@ -139,7 +139,14 @@ data class UserResponse(
 	val avatarUrl: String?,
 	/** Null when this person has no Notion account, so `people` can't mirror them. */
 	val notionPersonId: String?,
-	/** Whether this person may configure the instance. Not a role inside a team. */
+	/**
+	 * What this person may do to the instance — configure it, write in it, or only read
+	 * it. Not a role inside a team.
+	 *
+	 * The client draws from this and the server does not trust it: `viewer` is what makes
+	 * the web app leave out a composer it knows will be refused, and `ReadOnlySeat` is what
+	 * refuses it whether or not the composer was drawn.
+	 */
 	val instanceRole: String,
 	/** The two ways in. The settings screen refuses to remove the last one. */
 	val hasPassword: Boolean,
