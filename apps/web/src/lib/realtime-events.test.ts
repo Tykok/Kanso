@@ -306,6 +306,8 @@ describe("finding a row the cache already holds", () => {
   it("answers nothing for a row nobody has loaded", () => {
     const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
     expect(findTicket(store.cache, "t9")).toBeUndefined();
+  });
+});
 
 /**
  * A filtered list is a different question, and nothing in this module can answer it.
