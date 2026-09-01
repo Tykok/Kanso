@@ -522,6 +522,12 @@ class TicketService(
 			// Both directions: coming back out of the archive is a decision too.
 			log(ActivityKind.ARCHIVED, mapOf("from" to before.archived, "to" to after.archived))
 		}
+		if (after.estimate != before.estimate) {
+			// Null on either end is left in the payload as an absent key, which is how a
+			// reader tells "sized at 13" from "un-sized": both directions are real edits,
+			// and `unset` is the only way back to nobody having sized it.
+			log(ActivityKind.ESTIMATED, mapOf("from" to before.estimate, "to" to after.estimate))
+		}
 		if (after.start != before.start) {
 			log(ActivityKind.SCHEDULED, bound("start", before.start, after.start))
 		}
@@ -533,10 +539,10 @@ class TicketService(
 	/**
 	 * The one scalar move somebody who is not looking at the ticket has to hear about.
 	 *
-	 * Only the status, of the six [recordScalarChanges] logs. A rename, a priority and a
-	 * date are all worth a line in the feed under the ticket; none of them is worth an
-	 * unread count on somebody's sidebar, and an inbox that filled up with them is one
-	 * nobody would open to find the assignment underneath.
+	 * Only the status, of the seven [recordScalarChanges] logs. A rename, a priority, an
+	 * estimate and a date are all worth a line in the feed under the ticket; none of them
+	 * is worth an unread count on somebody's sidebar, and an inbox that filled up with
+	 * them is one nobody would open to find the assignment underneath.
 	 *
 	 * Called before the patch's own assignee change is applied, so the recipients are the
 	 * assignees as they were when the status moved. Somebody added in the same request is

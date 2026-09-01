@@ -148,7 +148,16 @@ enum class ActivityKind(override val wire: String) : Wire {
 	 * a second `CREATED`: nothing about the ticket changed, only the plan it belongs
 	 * to, and the feed has to be able to say that in the ticket's own history.
 	 */
-	CARRIED_OVER("carried_over");
+	CARRIED_OVER("carried_over"),
+
+	/**
+	 * A ticket re-sized. Its own kind for the reason there is no generic `updated`:
+	 * `estimate` is a scalar of a ticket like the status and the priority, and going
+	 * from a 3 to a 13 is the decision somebody comes back looking for three weeks
+	 * later. Both directions and both ends of the range, including un-sizing — an
+	 * estimate withdrawn is as much a judgement as one made.
+	 */
+	ESTIMATED("estimated");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
