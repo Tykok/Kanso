@@ -235,11 +235,28 @@ data class Team(
 /**
  * Who may configure the instance itself — distinct from [MemberRole], which is
  * about belonging to a team. The owner is whoever completed the first-run setup.
+ *
+ * [VIEWER] is the free seat: it reads everything a member of the same teams reads and
+ * writes nothing. It is a fourth value on this axis rather than a third axis, because
+ * "may this person change the instance" and "may this person change anything at all" are
+ * the same question asked at two heights, and a `read_only BOOLEAN` beside this enum
+ * would be a second thing to keep in step with it.
  */
 enum class InstanceRole(override val wire: String) : Wire {
-	OWNER("owner"), ADMIN("admin"), MEMBER("member");
+	OWNER("owner"), ADMIN("admin"), MEMBER("member"), VIEWER("viewer");
 
 	val canConfigureInstance: Boolean get() = this == OWNER || this == ADMIN
+
+	/**
+	 * **The whole of the read-only seat, in one line.**
+	 *
+	 * Everything that refuses a viewer reads this property and nothing else: `TicketAccess`
+	 * for the domain, `ReadOnlySeat` for the HTTP surface. A second spelling of it anywhere
+	 * — a role list, a `!= VIEWER` written out longhand, an MCP-only rule — is a second
+	 * answer to a question that has one, and the two would eventually disagree about
+	 * whatever value gets added next.
+	 */
+	val mayWrite: Boolean get() = this != VIEWER
 
 	companion object {
 		fun from(raw: String): InstanceRole = parse(entries.toTypedArray(), raw)
@@ -311,6 +328,15 @@ data class Preferences(
 	val openTicket: OpenTicket = OpenTicket.PANEL,
 	val defaultTeamId: UUID? = null,
 	val onboardedAt: OffsetDateTime? = null,
+	/**
+	 * Points per working day, as this person estimates their own pace. Null means they
+	 * have not said — never zero, which would be a claim that they deliver nothing.
+	 *
+	 * A seed, not a setting: `EffectiveVelocityService` stops consulting it once two
+	 * closed cycles can measure the same person, and nothing in Kanso ever writes it
+	 * except the person themselves. `V24` argues both halves.
+	 */
+	val declaredVelocity: Double? = null,
 )
 
 data class TeamMember(val teamId: UUID, val user: User, val role: MemberRole)

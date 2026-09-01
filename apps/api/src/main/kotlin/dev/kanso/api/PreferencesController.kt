@@ -22,6 +22,14 @@ data class PreferencesResponse(
 	val openTicket: String,
 	val defaultTeamId: UUID?,
 	val onboardedAt: OffsetDateTime?,
+	/**
+	 * Points per working day, as declared. Null means never declared — the settings field
+	 * renders empty for that, not as a 0 the person would then have to correct.
+	 *
+	 * Whether it is the number actually in force is a different question, and not one this
+	 * response answers: it depends on a team's closed cycles. `/api/me/velocity` answers it.
+	 */
+	val declaredVelocity: Double?,
 ) {
 	companion object {
 		fun of(preferences: Preferences) = PreferencesResponse(
@@ -34,6 +42,7 @@ data class PreferencesResponse(
 			openTicket = preferences.openTicket.wire,
 			defaultTeamId = preferences.defaultTeamId,
 			onboardedAt = preferences.onboardedAt,
+			declaredVelocity = preferences.declaredVelocity,
 		)
 	}
 }

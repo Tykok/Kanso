@@ -3,16 +3,17 @@ package dev.kanso.service
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.DependencyRepository
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.schedule.Cascade
 import dev.kanso.schedule.Node
-import dev.kanso.sync.SyncEntityType
-import dev.kanso.sync.SyncOperation
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -31,7 +32,7 @@ import java.util.UUID
 class ScheduleService(
 	private val tickets: TicketRepository,
 	private val dependencies: DependencyRepository,
-	private val syncJobs: SyncJobRepository,
+	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val access: TicketAccess,
 ) {
@@ -63,7 +64,7 @@ class ScheduleService(
 				start = placement.start.takeIf { before.start != null },
 				end = placement.end.takeIf { before.due != null },
 			)
-			syncJobs.enqueue(SyncEntityType.TICKET, placement.id, SyncOperation.UPSERT)
+			outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, placement.id, OutboundOperation.UPSERT)
 		}
 		return result.moved.map { it.id }
 	}
@@ -93,8 +94,8 @@ class ScheduleService(
 		if (dependencies.exists(predecessorId, successorId)) return emptyList()
 
 		dependencies.insert(predecessorId, successorId)
-		syncJobs.enqueue(SyncEntityType.TICKET, predecessorId, SyncOperation.UPSERT)
-		syncJobs.enqueue(SyncEntityType.TICKET, successorId, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, predecessorId, OutboundOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, successorId, OutboundOperation.UPSERT)
 		events.publish(
 			KansoEvent.ticket(ChangeKind.UPDATED, successorId, successor.teamId, successor.projectId)
 		)
@@ -135,8 +136,8 @@ class ScheduleService(
 		if (!dependencies.delete(predecessorId, successorId)) {
 			throw NotFoundException("No dependency $predecessorId -> $successorId")
 		}
-		syncJobs.enqueue(SyncEntityType.TICKET, predecessorId, SyncOperation.UPSERT)
-		syncJobs.enqueue(SyncEntityType.TICKET, successorId, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, predecessorId, OutboundOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, successorId, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, successor.id, successor.teamId, successor.projectId))
 	}
 

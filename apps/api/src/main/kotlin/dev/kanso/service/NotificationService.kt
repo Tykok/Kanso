@@ -174,6 +174,12 @@ class NotificationService(private val notifications: NotificationRepository) {
 	 * `id` stays null: there is no `notifications` row behind this and the client must
 	 * not be able to send it to [markRead]. `createdAt` is when the queue gave up,
 	 * which is what "4 minutes ago" on the drawn row means.
+	 *
+	 * `destination` is in the payload because the outbox is no longer Notion's alone
+	 * and the sentence has to stop saying so. The kind stays [NotificationKind.SYNC_FAILED]:
+	 * it is a wire value in `V13`'s `CHECK` and in the web client's closed list, and
+	 * "a push failed" is still exactly what it means — renaming it would cost a
+	 * migration and a client release to say the same thing.
 	 */
 	private fun asRow(push: FailedPush) = NotificationRow(
 		id = null,
@@ -185,6 +191,7 @@ class NotificationService(private val notifications: NotificationRepository) {
 		actor = null,
 		payload = mapOf(
 			"jobId" to push.jobId,
+			"destination" to push.destination,
 			"attempts" to push.attempts,
 			"error" to push.error,
 		),

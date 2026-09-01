@@ -21,7 +21,7 @@ se réconcilie plus tard.
                               chaque instance d'API
                                           │
                                           ▼
-                              sync_jobs (outbox) ──▶ Notion   (miroir)
+                          outbound_jobs (outbox) ──▶ Notion   (miroir)
                                           ▲             │
                                           └── poller ◀───┘
 ```
@@ -211,12 +211,20 @@ ces lignes est une entrée de `follow-ups.md`, pas un trigger.
 
 ### L'outbox
 
-Les lignes `sync_jobs` sont insérées **dans la transaction métier**, si bien qu'un
+Les lignes `outbound_jobs` sont insérées **dans la transaction métier**, si bien qu'un
 crash juste après le commit ne peut pas perdre un push.
 
-- Un index unique partiel n'autorise au plus qu'un job `pending` par entité. Comme un
-  push écrit la ligne entière, cinq pushs en file sont redondants — l'insert
-  fusionne.
+La file est générale : un job dit vers quelle `destination` il part et sur quel
+`entity_type` il porte, deux axes plutôt qu'un genre composé. `OutboundWorker` draine
+et réessaie, un `OutboundJobHandler` par destination dit ce qu'un job veut dire, et
+Notion est pour l'instant le seul. Ajouter un consommateur, c'est un handler et une
+valeur dans le vocabulaire `destination`, pas une deuxième file.
+
+- Un index unique partiel n'autorise au plus qu'un job `pending` par
+  `(destination, entité)`. Comme un push écrit la ligne entière, cinq pushs en file
+  sont redondants — l'insert fusionne. `destination` est en tête de l'index pour
+  qu'un ticket en file vers un système n'avale pas le même ticket en file vers un
+  autre.
 - La prise de job bascule la ligne en `running`, ce qui libère ce slot : une édition
   faite pendant qu'un push est en vol est quand même mise en file.
 - Les prises utilisent `FOR UPDATE SKIP LOCKED`, donc plusieurs workers ou instances
@@ -433,7 +441,7 @@ Exposed ne peut pas les exprimer et que chacune est porteuse :
 6. `WITH RECURSIVE` accumulant un `uuid[]` pour le chemin qu'une dépendance refusée
    refermerait. « Cycle détecté » tout seul n'est pas actionnable.
 7. `CAST(:payload AS jsonb)` sur l'insertion d'activité. Le driver envoie une chaîne
-   Kotlin en `varchar`, ce que Postgres refuse pour une colonne `jsonb` ; `sync_jobs`
+   Kotlin en `varchar`, ce que Postgres refuse pour une colonne `jsonb` ; `outbound_jobs`
    caste de la même façon. Les lectures repassent par Exposed.
 
 Elles tournent sur la connexion que Spring détient déjà, dans la même transaction que

@@ -9,17 +9,18 @@ import dev.kanso.domain.Team
 import dev.kanso.domain.TeamMember
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
-import dev.kanso.sync.SyncEntityType
-import dev.kanso.sync.deletePayload
-import dev.kanso.sync.SyncOperation
+import dev.kanso.sync.outbound.deletePayload
 import dev.kanso.trash.TrashDisposal
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
@@ -32,7 +33,7 @@ class TeamService(
 	private val projects: ProjectRepository,
 	private val tickets: TicketRepository,
 	private val users: UserRepository,
-	private val syncJobs: SyncJobRepository,
+	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val trash: TrashDisposal,
 ) {
@@ -110,7 +111,7 @@ class TeamService(
 		val doomed = disperse(team, plan, ticketsTarget, destructive = false)
 		teams.setArchived(doomed, true)
 		doomed.forEach {
-			syncJobs.enqueue(SyncEntityType.TEAM, it, SyncOperation.ARCHIVE)
+			outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, it, OutboundOperation.ARCHIVE)
 			events.publish(KansoEvent.team(ChangeKind.UPDATED, it))
 		}
 		return get(id)
@@ -129,7 +130,7 @@ class TeamService(
 		val restored = teams.findAllById(chain).filter { it.archived }.map { it.id }
 		teams.setArchived(restored, false)
 		restored.forEach {
-			syncJobs.enqueue(SyncEntityType.TEAM, it, SyncOperation.UPSERT)
+			outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, it, OutboundOperation.UPSERT)
 			events.publish(KansoEvent.team(ChangeKind.UPDATED, it))
 		}
 		return get(id)
@@ -180,7 +181,7 @@ class TeamService(
 			// grandparent exists.
 			teams.directChildIds(team.id).forEach { child ->
 				teams.setParent(child, team.parentTeamId)
-				syncJobs.enqueue(SyncEntityType.TEAM, child, SyncOperation.UPSERT)
+				outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, child, OutboundOperation.UPSERT)
 				events.publish(KansoEvent.team(ChangeKind.UPDATED, child))
 			}
 			listOf(team.id)
@@ -205,7 +206,7 @@ class TeamService(
 		when {
 			plan.projects == DispositionChoice.KEEP -> held.forEach {
 				projects.setTeam(it.id, team.parentTeamId)
-				syncJobs.enqueue(SyncEntityType.PROJECT, it.id, SyncOperation.UPSERT)
+				outbox.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, it.id, OutboundOperation.UPSERT)
 				events.publish(KansoEvent.project(ChangeKind.UPDATED, it.id, team.parentTeamId))
 			}
 
@@ -214,10 +215,11 @@ class TeamService(
 				// time the worker runs there is no row left to look it up from.
 				projects.deleteByTeams(doomed)
 				held.forEach {
-					syncJobs.enqueue(
-						SyncEntityType.PROJECT,
+					outbox.enqueue(
+						Destination.NOTION,
+						OutboundEntityType.PROJECT,
 						it.id,
-						SyncOperation.DELETE,
+						OutboundOperation.DELETE,
 						payload = deletePayload(it.mirror.notionPageId),
 					)
 					events.publish(KansoEvent.project(ChangeKind.DELETED, it.id, it.teamId))
@@ -227,7 +229,7 @@ class TeamService(
 			else -> {
 				val teamOf = held.associate { it.id to it.teamId }
 				projects.setArchivedByTeams(doomed, true).forEach {
-					syncJobs.enqueue(SyncEntityType.PROJECT, it, SyncOperation.ARCHIVE)
+					outbox.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, it, OutboundOperation.ARCHIVE)
 					events.publish(KansoEvent.project(ChangeKind.UPDATED, it, teamOf[it]))
 				}
 			}
@@ -255,7 +257,7 @@ class TeamService(
 				val numbers = teams.nextTicketNumbers(target, held.size)
 				held.forEachIndexed { index, ticket ->
 					tickets.moveToTeam(ticket.id, target, numbers[index])
-					syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+					outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, ticket.id, OutboundOperation.UPSERT)
 					events.publish(
 						KansoEvent.ticket(
 							ChangeKind.UPDATED,
@@ -270,10 +272,11 @@ class TeamService(
 			destructive -> {
 				tickets.deleteByTeams(doomed)
 				held.forEach {
-					syncJobs.enqueue(
-						SyncEntityType.TICKET,
+					outbox.enqueue(
+						Destination.NOTION,
+						OutboundEntityType.TICKET,
 						it.id,
-						SyncOperation.DELETE,
+						OutboundOperation.DELETE,
 						payload = deletePayload(it.mirror.notionPageId),
 					)
 					events.publish(KansoEvent.ticket(ChangeKind.DELETED, it.id, it.teamId, it.projectId))
@@ -293,7 +296,7 @@ class TeamService(
 				// again, but losing its project is a change the mirror has to hear about.
 				touched += stranded
 				touched.forEach { ticketId ->
-					syncJobs.enqueue(SyncEntityType.TICKET, ticketId, SyncOperation.ARCHIVE)
+					outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, ticketId, OutboundOperation.ARCHIVE)
 					events.publish(
 						KansoEvent.ticket(
 							ChangeKind.UPDATED,
@@ -338,7 +341,7 @@ class TeamService(
 			throw BadRequestException("Parent team $parentTeamId does not exist")
 		}
 		val team = teams.insert(name, resolveKey(name, key), parentTeamId)
-		syncJobs.enqueue(SyncEntityType.TEAM, team.id, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, team.id, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.CREATED, team.id))
 		return team
 	}
@@ -357,7 +360,7 @@ class TeamService(
 
 		val updated = teams.update(id, name, key, parentTeamId, existing.archived)
 			?: throw NotFoundException("No team $id")
-		syncJobs.enqueue(SyncEntityType.TEAM, id, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, id, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.UPDATED, id))
 		return updated
 	}
@@ -424,10 +427,11 @@ class TeamService(
 
 		val rows = teams.findAllById(doomed)
 		rows.forEach {
-			syncJobs.enqueue(
-				SyncEntityType.TEAM,
+			outbox.enqueue(
+				Destination.NOTION,
+				OutboundEntityType.TEAM,
 				it.id,
-				SyncOperation.DELETE,
+				OutboundOperation.DELETE,
 				payload = deletePayload(it.mirror.notionPageId),
 			)
 		}
@@ -454,9 +458,20 @@ class TeamService(
 	fun addMember(actor: User, teamId: UUID, userId: UUID, role: MemberRole): List<TeamMember> {
 		requireConfigurator(actor)
 		get(teamId)
-		users.findById(userId) ?: throw BadRequestException("No user $userId")
+		val member = users.findById(userId) ?: throw BadRequestException("No user $userId")
+		// The two axes can express "a read-only seat that administers a team", and the
+		// combination should not exist. `MemberRole.ADMIN` gates nothing today, which is
+		// exactly why the refusal belongs here now rather than later: a title that promises
+		// administration to somebody who cannot write is a lie the product would be free to
+		// tell right up until the day the title starts meaning something, and then it would
+		// be a permissions bug with a year of rows behind it.
+		if (role == MemberRole.ADMIN && !member.instanceRole.mayWrite) {
+			throw BadRequestException(
+				"${member.displayName} holds a read-only seat and cannot administer a team; add them as a member"
+			)
+		}
 		teams.addMember(teamId, userId, role)
-		syncJobs.enqueue(SyncEntityType.TEAM, teamId, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, teamId, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.UPDATED, teamId))
 		return teams.members(teamId)
 	}
@@ -468,7 +483,7 @@ class TeamService(
 		if (!teams.removeMember(teamId, userId)) {
 			throw NotFoundException("User $userId is not a member of team $teamId")
 		}
-		syncJobs.enqueue(SyncEntityType.TEAM, teamId, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TEAM, teamId, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.UPDATED, teamId))
 	}
 

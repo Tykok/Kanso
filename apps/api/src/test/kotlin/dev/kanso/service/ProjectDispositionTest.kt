@@ -10,9 +10,10 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundOperation
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.UserRepository
-import dev.kanso.sync.SyncOperation
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
@@ -30,7 +31,7 @@ class ProjectDispositionTest : PostgresTest() {
 	@Autowired lateinit var teams: TeamService
 	@Autowired lateinit var projects: ProjectService
 	@Autowired lateinit var tickets: TicketService
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 
@@ -113,7 +114,7 @@ class ProjectDispositionTest : PostgresTest() {
 		val project = newProject(team.id)
 		val ticket = newTicket(team.id, project.id)
 
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		projects.delete(admin, project.id, DispositionPlan(counts = projects.contents(project.id).direct))
 
@@ -125,10 +126,10 @@ class ProjectDispositionTest : PostgresTest() {
 		// actually says the service did the work is the mirror push: without the
 		// explicit clear there is no job for the ticket at all, and Notion keeps a page
 		// still related to a project that no longer exists.
-		val queued = jobs.claimBatch(200, "test")
-		assertEquals(SyncOperation.DELETE, queued.single { it.entityId == project.id }.operation)
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test")
+		assertEquals(OutboundOperation.DELETE, queued.single { it.entityId == project.id }.operation)
 		assertEquals(
-			SyncOperation.UPSERT,
+			OutboundOperation.UPSERT,
 			queued.single { it.entityId == ticket.ticket.id }.operation,
 			"the kept ticket is pushed as it now stands, not deleted and not archived",
 		)
@@ -139,7 +140,7 @@ class ProjectDispositionTest : PostgresTest() {
 		val team = newTeam()
 		val project = newProject(team.id)
 		val ticket = newTicket(team.id, project.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		projects.delete(
 			admin,
@@ -148,9 +149,9 @@ class ProjectDispositionTest : PostgresTest() {
 		)
 
 		assertFailsWith<NotFoundException> { tickets.get(ticket.ticket.id) }
-		val queued = jobs.claimBatch(200, "test")
-		assertEquals(SyncOperation.DELETE, queued.single { it.entityId == project.id }.operation)
-		assertEquals(SyncOperation.DELETE, queued.single { it.entityId == ticket.ticket.id }.operation)
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test")
+		assertEquals(OutboundOperation.DELETE, queued.single { it.entityId == project.id }.operation)
+		assertEquals(OutboundOperation.DELETE, queued.single { it.entityId == ticket.ticket.id }.operation)
 	}
 
 	@Test

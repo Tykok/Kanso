@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { inOrder, isOpen, LOAD_ORDER, statusesWhere } from "@/lib/status-order";
 import type { WorkloadRow } from "@/lib/api";
 import { useCycles, useWorkload } from "@/lib/queries";
 import { workloadNote } from "./grouping";
@@ -20,7 +21,18 @@ import { OrganiseShell, useOrganiseTeam } from "./shell";
  * the unsized half of a plate is worse than a count that never claimed to weigh anything.
  * Every row that shows a total in points also shows how many of its tickets are not in it.
  */
-const PLOTTED = ["in_progress", "in_review", "todo", "backlog"] as const;
+
+/**
+ * The segments of one person's bar: everything still open, in the order it is moving.
+ *
+ * This used to be four names spelled out, and it was the clearest case in the app of two
+ * questions wearing one answer. The membership *is* the open statuses — `WorkloadRow`
+ * arrives keyed by `WorkloadService.OPEN_STATUSES` and nothing else can appear in it — so
+ * it is read off the category now, and a seventh open status draws itself. The sequence is
+ * not derivable from anything: [LOAD_ORDER] puts `in_progress` before `in_review`, which
+ * no filter over the category and no other order in the app reproduces.
+ */
+const PLOTTED = inOrder(statusesWhere(isOpen), LOAD_ORDER);
 
 export function WorkloadView() {
   const { team } = useOrganiseTeam();

@@ -10,12 +10,13 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundOperation
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
-import dev.kanso.sync.SyncOperation
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -33,7 +34,7 @@ class TeamDeleteTest : PostgresTest() {
 	@Autowired lateinit var teams: TeamService
 	@Autowired lateinit var projects: ProjectService
 	@Autowired lateinit var tickets: TicketService
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 	@Autowired lateinit var teamRows: TeamRepository
@@ -249,7 +250,7 @@ class TeamDeleteTest : PostgresTest() {
 		val growth = newTeam("Growth")
 		val project = newProject(mobile.id)
 		val ticket = newTicketIn(mobile.id, project.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		// Projects go to the parent, tickets go to Growth: two different teams, by
 		// design. What survives the split may not keep pointing across it.
@@ -273,8 +274,8 @@ class TeamDeleteTest : PostgresTest() {
 		)
 		// And the mirror is told, so the Notion page stops relating to a project of a
 		// team this ticket is not in.
-		val queued = jobs.claimBatch(200, "test")
-		assertEquals(SyncOperation.UPSERT, queued.single { it.entityId == ticket.ticket.id }.operation)
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test")
+		assertEquals(OutboundOperation.UPSERT, queued.single { it.entityId == ticket.ticket.id }.operation)
 	}
 
 	@Test
@@ -306,7 +307,7 @@ class TeamDeleteTest : PostgresTest() {
 		val core = newTeam("Core")
 		val project = newProject(core.id)
 		val ticket = newTicket(core.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.delete(
 			admin,
@@ -318,11 +319,11 @@ class TeamDeleteTest : PostgresTest() {
 			),
 		)
 
-		val queued = jobs.claimBatch(200, "test")
-		assertEquals(SyncOperation.DELETE, queued.single { it.entityId == core.id }.operation)
-		assertEquals(SyncOperation.DELETE, queued.single { it.entityId == project.id }.operation)
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test")
+		assertEquals(OutboundOperation.DELETE, queued.single { it.entityId == core.id }.operation)
+		assertEquals(OutboundOperation.DELETE, queued.single { it.entityId == project.id }.operation)
 		assertEquals(
-			SyncOperation.DELETE,
+			OutboundOperation.DELETE,
 			queued.single { it.entityId == ticket.ticket.id }.operation,
 			"ON DELETE CASCADE would have destroyed it in Postgres and left the Notion page behind",
 		)
@@ -347,7 +348,7 @@ class TeamDeleteTest : PostgresTest() {
 			project.id to projects.get(project.id).project.mirror.notionPageId,
 			ticket.ticket.id to tickets.get(ticket.ticket.id).ticket.mirror.notionPageId,
 		)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.delete(
 			admin,
@@ -359,7 +360,7 @@ class TeamDeleteTest : PostgresTest() {
 			),
 		)
 
-		val queued = jobs.claimBatch(200, "test").associateBy { it.entityId }
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test").associateBy { it.entityId }
 		for ((id, pageId) in pages) {
 			val payload = queued[id]?.payload
 			assertTrue(

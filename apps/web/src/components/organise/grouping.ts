@@ -1,4 +1,5 @@
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import { WORKFLOW_ORDER } from "@/lib/status-order";
 import type {
   Ticket,
   TicketGroup as ServerGroup,
@@ -32,16 +33,14 @@ export type Group = {
   tickets: Ticket[];
 };
 
-/** Downwards as the work flows: what is waiting at the top, what is finished at the bottom. */
-const STATUS_ORDER: TicketStatus[] = [
-  "backlog",
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-  "canceled",
-];
-
+/**
+ * Priority is read in one order, in one place, and its membership is the whole vocabulary,
+ * so it stays here beside the only function that asks. The status order that used to sit
+ * next to it did not qualify on any of the three: four screens read a status order, three
+ * of them read a *different* one, and `TicketQueryRepository` renders a fifth copy into
+ * SQL. It lives in `lib/status-order.ts` now — [WORKFLOW_ORDER] is the one this file
+ * stacks by, and the one the server has to agree with.
+ */
 const PRIORITY_ORDER: TicketPriority[] = ["urgent", "high", "medium", "low", "none"];
 
 /**
@@ -146,9 +145,9 @@ function rank(key: string, groupBy: Exclude<ViewGroupBy, "none">): number {
   if (key === "") return Number.MAX_SAFE_INTEGER;
   switch (groupBy) {
     case "status":
-      return indexOr(STATUS_ORDER as string[], key);
+      return indexOr(WORKFLOW_ORDER, key);
     case "priority":
-      return indexOr(PRIORITY_ORDER as string[], key);
+      return indexOr(PRIORITY_ORDER, key);
     // Nothing orders people or projects but the order they arrived in, which is the order
     // the server sorted the rows in — so a stable zero rather than an invented one.
     case "assignee":
@@ -157,7 +156,7 @@ function rank(key: string, groupBy: Exclude<ViewGroupBy, "none">): number {
   }
 }
 
-const indexOr = (order: string[], key: string) => {
+const indexOr = (order: readonly string[], key: string) => {
   const at = order.indexOf(key);
   return at === -1 ? order.length : at;
 };

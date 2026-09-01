@@ -13,6 +13,7 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     projects: [],
     tickets: [],
     canConfigure: true,
+    canWrite: true,
     view: "list",
     zoom: "day",
     dependencies: [],

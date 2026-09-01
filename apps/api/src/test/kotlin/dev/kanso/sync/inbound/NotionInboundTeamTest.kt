@@ -7,20 +7,21 @@ import dev.kanso.domain.DispositionChoice
 import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.repo.NotionMetaRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.NotificationService
 import dev.kanso.service.ScheduleService
 import dev.kanso.service.TeamService
-import dev.kanso.sync.SyncOperation
 import dev.kanso.sync.notion.NotionClient
-import dev.kanso.sync.notion.NotionDatabase
 import dev.kanso.sync.notion.NotionDataSource
+import dev.kanso.sync.notion.NotionDatabase
 import dev.kanso.sync.notion.NotionMember
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionQueryPage
@@ -51,7 +52,7 @@ class NotionInboundTeamTest : PostgresTest() {
 	@Autowired lateinit var projectRows: ProjectRepository
 	@Autowired lateinit var ticketRows: TicketRepository
 	@Autowired lateinit var meta: NotionMetaRepository
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var schedule: ScheduleService
 	@Autowired lateinit var notifications: NotificationService
 	@Autowired lateinit var events: EventPublisher
@@ -144,7 +145,7 @@ class NotionInboundTeamTest : PostgresTest() {
 	fun `archiving a team in Notion does not archive it in Kanso`() {
 		val core = newTeam("Core")
 		val mobile = newTeam("Mobile", core.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		pollWith(core.id, notionArchived = true)
 
@@ -157,8 +158,8 @@ class NotionInboundTeamTest : PostgresTest() {
 			"and letting it through would have left this one live under an archived ancestor",
 		)
 		assertEquals(
-			SyncOperation.UPSERT,
-			jobs.claimBatch(200, "test").single { it.entityId == core.id }.operation,
+			OutboundOperation.UPSERT,
+			jobs.claimBatch(Destination.NOTION, 200, "test").single { it.entityId == core.id }.operation,
 			"Notion is pushed back to Kanso's truth rather than left disagreeing forever",
 		)
 	}
@@ -168,7 +169,7 @@ class NotionInboundTeamTest : PostgresTest() {
 		val core = newTeam("Core")
 		val mobile = newTeam("Mobile", core.id)
 		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		pollWith(mobile.id, notionArchived = false)
 
@@ -177,20 +178,20 @@ class NotionInboundTeamTest : PostgresTest() {
 			"the other direction breaks the same invariant: a live team under an archived one",
 		)
 		assertEquals(
-			SyncOperation.ARCHIVE,
-			jobs.claimBatch(200, "test").single { it.entityId == mobile.id }.operation,
+			OutboundOperation.ARCHIVE,
+			jobs.claimBatch(Destination.NOTION, 200, "test").single { it.entityId == mobile.id }.operation,
 		)
 	}
 
 	@Test
 	fun `a page that already agrees queues nothing`() {
 		val core = newTeam("Core")
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		pollWith(core.id, notionArchived = false)
 
 		assertTrue(
-			jobs.claimBatch(200, "test").none { it.entityId == core.id },
+			jobs.claimBatch(Destination.NOTION, 200, "test").none { it.entityId == core.id },
 			"nothing disagrees, so there is nothing to correct",
 		)
 	}

@@ -78,9 +78,26 @@ export function resolveShortcut(key: string, mode: View): Action | undefined {
   return BY_KEY.get(bucket(mode, key)) ?? BY_KEY.get(bucket(undefined, key));
 }
 
+/**
+ * Whether [action] is offered at all, right now.
+ *
+ * The one place `when` is consulted, and the one place the read-only seat is applied to
+ * the registry — every surface goes through it: the palette, the row and sidebar menus,
+ * and the keyboard. A per-action `when: ctx.canWrite && …` would have been thirty-five
+ * chances to forget the thirty-sixth, which is the same argument `ReadOnlySeat` makes
+ * against a `@PreAuthorize` per controller.
+ *
+ * The seat is asked *before* `when`, so a writing action is not merely hidden but
+ * unreachable — a shortcut that resolved to it would still be refused here.
+ */
+export function permits(action: Action, ctx: ActionContext): boolean {
+  if (action.writes && !ctx.canWrite) return false;
+  return action.when(ctx);
+}
+
 /** Everything currently permitted — what the palette lists and menus filter. */
 export function availableActions(ctx: ActionContext): Action[] {
-  return ACTIONS.filter((action) => action.when(ctx));
+  return ACTIONS.filter((action) => permits(action, ctx));
 }
 
 /** Throws on an unknown id: a menu referencing a dead action is a bug, not a no-op. */

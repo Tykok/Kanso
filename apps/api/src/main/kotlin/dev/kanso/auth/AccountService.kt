@@ -2,6 +2,7 @@ package dev.kanso.auth
 
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.User
+import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
@@ -21,6 +22,7 @@ import java.util.UUID
 @Service
 class AccountService(
 	private val users: UserRepository,
+	private val teams: TeamRepository,
 	private val encoder: PasswordEncoder,
 	private val sessions: UserSessions,
 ) {
@@ -108,8 +110,26 @@ class AccountService(
 		if (target.instanceRole == InstanceRole.OWNER) {
 			throw ConflictException("The instance owner's role cannot be changed")
 		}
-		if (target.id == actor.id && actor.instanceRole == InstanceRole.ADMIN && role == InstanceRole.MEMBER) {
+		// Any step down, not just the one to `member`. `viewer` is the worse version of the
+		// same trap — an admin who set themselves to it could not even open the screen that
+		// would undo it — and writing the destination out by name is how this guard would
+		// have gone on being right about three roles and wrong about the fourth.
+		if (target.id == actor.id && actor.instanceRole == InstanceRole.ADMIN && !role.canConfigureInstance) {
 			throw ConflictException("Stepping down would leave you unable to undo it; ask the owner")
+		}
+		// The other half of the rule `TeamService.addMember` states: a read-only seat is
+		// never a team's administrator. Refused rather than fixed up, because quietly
+		// rewriting `team_members` on the way past would be this method doing something
+		// nobody asked it for, to rows the caller is not looking at. The teams are named so
+		// that "go and fix it" is one screen and not a search.
+		if (!role.mayWrite) {
+			val titled = teams.adminTeamIdsFor(targetId).mapNotNull { teams.findById(it)?.name }
+			if (titled.isNotEmpty()) {
+				throw ConflictException(
+					"${target.displayName} administers ${titled.sorted().joinToString()}. " +
+						"Make them a plain member of those teams first."
+				)
+			}
 		}
 
 		users.setInstanceRole(targetId, role)

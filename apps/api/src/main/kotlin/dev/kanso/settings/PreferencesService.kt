@@ -27,6 +27,11 @@ data class PreferencesPatch(
 	val defaultTeamId: UUID? = null,
 	/** True stamps the moment the wizard was finished; false sends the user back through it. */
 	val onboarded: Boolean? = null,
+	/**
+	 * Points per working day, declared. Clearable via [unset], because withdrawing a
+	 * guess about yourself has to be possible and an omitted key cannot say it.
+	 */
+	val declaredVelocity: Double? = null,
 	val unset: Set<String> = emptySet(),
 ) {
 
@@ -52,7 +57,29 @@ data class PreferencesPatch(
 				true -> current.onboardedAt ?: OffsetDateTime.now()
 				false -> null
 			},
+			declaredVelocity = if ("declaredVelocity" in unset) {
+				null
+			} else {
+				declaredVelocity?.also(::checkVelocity) ?: current.declaredVelocity
+			},
 		)
+	}
+
+	/**
+	 * The same bargain [parse] strikes with the enums, for the same reason:
+	 * `user_preferences_declared_velocity_chk` refuses these values anyway, and a
+	 * constraint violation surfacing as a 500 hides a 400 the caller could have fixed.
+	 *
+	 * Zero is refused rather than treated as "withdraw it" — a rate of zero divides into
+	 * an infinite duration, and the way to withdraw a declaration is to unset it.
+	 */
+	private fun checkVelocity(rate: Double) {
+		if (rate <= 0 || rate > MAX_DECLARED) {
+			throw BadRequestException(
+				"declaredVelocity must be above 0 and at most $MAX_DECLARED points per working day," +
+					" or unset; got $rate"
+			)
+		}
 	}
 
 	/**
@@ -67,7 +94,10 @@ data class PreferencesPatch(
 	}
 
 	private companion object {
-		val CLEARABLE = setOf("defaultTeamId")
+		val CLEARABLE = setOf("defaultTeamId", "declaredVelocity")
+
+		/** Mirrors the CHECK. See `V24` for why a ceiling exists at all. */
+		const val MAX_DECLARED = 100.0
 	}
 }
 

@@ -4,6 +4,7 @@ import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.ProjectHealth
 import dev.kanso.domain.User
+import dev.kanso.outbox.OutboundEntityType
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.ProjectUpdateRecord
 import dev.kanso.repo.ProjectUpdateRepository
@@ -111,7 +112,7 @@ class ProjectUpdateService(
 			mapOf("updateId" to record.id.toString(), "to" to health.wire, "from" to previous?.wire),
 		)
 
-		// Nothing is enqueued for Notion and no `KansoEvent` is published. `SyncEntityType`
+		// Nothing is enqueued for Notion and no `KansoEvent` is published. `OutboundEntityType`
 		// has no project-update member and the mirror has no column for one, so a job would
 		// be a row the worker could only fail on; the event channel is the same story on the
 		// client side. Both are additions, not omissions, and neither is this slice's.

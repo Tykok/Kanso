@@ -5,6 +5,7 @@ import { useUi } from "@/store/ui";
 import type { ActionContext } from "./actions";
 import { api, setDevUser, type Ticket } from "./api";
 import { actionErrorMessage } from "./errors";
+import { canConfigure as configures, mayWrite } from "./seat";
 import {
   useDeleteTicket,
   useFavourites,
@@ -118,7 +119,12 @@ export function useActionContext(local: {
   );
 
   const role = me.data?.user.instanceRole;
-  const canConfigure = role === "owner" || role === "admin";
+  const canConfigure = configures(role);
+  // Undefined while `/api/me` is in flight, and `mayWrite` answers true for it: an
+  // unknown seat draws the full app and lets the server say no, which is the same
+  // direction every other loading state in here falls in. Guessing the other way would
+  // blank the composer for a second on every cold load.
+  const canWrite = mayWrite(role);
 
   const { tickets, selected, move, startRename, startLink, startUnlink, reportError } = local;
 
@@ -130,6 +136,7 @@ export function useActionContext(local: {
       tickets,
       selected,
       canConfigure,
+      canWrite,
       view,
       zoom,
       open,
@@ -175,6 +182,7 @@ export function useActionContext(local: {
       tickets,
       selected,
       canConfigure,
+      canWrite,
       view,
       zoom,
       open,

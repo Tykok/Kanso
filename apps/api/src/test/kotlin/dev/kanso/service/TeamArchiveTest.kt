@@ -9,10 +9,11 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundOperation
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
-import dev.kanso.sync.SyncOperation
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -31,7 +32,7 @@ class TeamArchiveTest : PostgresTest() {
 	@Autowired lateinit var teams: TeamService
 	@Autowired lateinit var projects: ProjectService
 	@Autowired lateinit var tickets: TicketService
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 	@Autowired lateinit var teamRows: TeamRepository
@@ -193,7 +194,7 @@ class TeamArchiveTest : PostgresTest() {
 		val mobile = newTeam("Mobile", core.id)
 		val project = newProject(mobile.id)
 		val ticket = newTicketIn(mobile.id, project.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.archive(
 			admin,
@@ -210,8 +211,8 @@ class TeamArchiveTest : PostgresTest() {
 			"the project belongs to Core now, and this ticket does not",
 		)
 		assertEquals(
-			SyncOperation.ARCHIVE,
-			jobs.claimBatch(200, "test").single { it.entityId == ticket.ticket.id }.operation,
+			OutboundOperation.ARCHIVE,
+			jobs.claimBatch(Destination.NOTION, 200, "test").single { it.entityId == ticket.ticket.id }.operation,
 		)
 	}
 
@@ -233,7 +234,7 @@ class TeamArchiveTest : PostgresTest() {
 			tickets.get(ticket.ticket.id).ticket.projectId,
 			"the ordinary archive keypress leaves a matching project alone",
 		)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.archive(
 			admin,
@@ -243,8 +244,8 @@ class TeamArchiveTest : PostgresTest() {
 
 		assertNull(tickets.get(ticket.ticket.id).ticket.projectId)
 		assertEquals(
-			SyncOperation.ARCHIVE,
-			jobs.claimBatch(200, "test").single { it.entityId == ticket.ticket.id }.operation,
+			OutboundOperation.ARCHIVE,
+			jobs.claimBatch(Destination.NOTION, 200, "test").single { it.entityId == ticket.ticket.id }.operation,
 			"nothing about its archived flag changed, but its project did",
 		)
 	}
@@ -297,7 +298,7 @@ class TeamArchiveTest : PostgresTest() {
 		val mobile = newTeam("Mobile", core.id)
 		val ios = newTeam("iOS", mobile.id)
 		teams.archive(admin, mobile.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.archive(admin, mobile.id, DispositionPlan(subTeams = DispositionChoice.KEEP))
 
@@ -308,7 +309,7 @@ class TeamArchiveTest : PostgresTest() {
 		)
 		assertTrue(teams.get(ios.id).archived)
 		assertTrue(
-			jobs.claimBatch(200, "test").isEmpty(),
+			jobs.claimBatch(Destination.NOTION, 200, "test").isEmpty(),
 			"nothing changed, so there is nothing for the mirror to hear about",
 		)
 	}
@@ -369,7 +370,7 @@ class TeamArchiveTest : PostgresTest() {
 		val mobile = newTeam("Mobile", core.id)
 		val project = newProject(core.id)
 		val ticket = newTicket(core.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.archive(
 			admin,
@@ -381,15 +382,15 @@ class TeamArchiveTest : PostgresTest() {
 			),
 		)
 
-		val queued = jobs.claimBatch(200, "test")
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test")
 		assertEquals(1, queued.count { it.entityId == core.id })
 		assertEquals(1, queued.count { it.entityId == mobile.id })
-		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == project.id }.operation)
-		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == ticket.ticket.id }.operation)
+		assertEquals(OutboundOperation.ARCHIVE, queued.single { it.entityId == project.id }.operation)
+		assertEquals(OutboundOperation.ARCHIVE, queued.single { it.entityId == ticket.ticket.id }.operation)
 		// The team rows too: nothing else in the suite says which operation they carry,
 		// so ARCHIVE could be written UPSERT here and nothing would notice.
-		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == core.id }.operation)
-		assertEquals(SyncOperation.ARCHIVE, queued.single { it.entityId == mobile.id }.operation)
+		assertEquals(OutboundOperation.ARCHIVE, queued.single { it.entityId == core.id }.operation)
+		assertEquals(OutboundOperation.ARCHIVE, queued.single { it.entityId == mobile.id }.operation)
 	}
 
 	@Test
@@ -397,13 +398,13 @@ class TeamArchiveTest : PostgresTest() {
 		val core = newTeam("Core")
 		val mobile = newTeam("Mobile", core.id)
 		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.unarchive(admin, mobile.id)
 
-		val queued = jobs.claimBatch(200, "test").associateBy { it.entityId }
-		assertEquals(SyncOperation.UPSERT, queued[mobile.id]?.operation)
-		assertEquals(SyncOperation.UPSERT, queued[core.id]?.operation, "the ancestor comes back too")
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test").associateBy { it.entityId }
+		assertEquals(OutboundOperation.UPSERT, queued[mobile.id]?.operation)
+		assertEquals(OutboundOperation.UPSERT, queued[core.id]?.operation, "the ancestor comes back too")
 	}
 
 	@Test
@@ -414,7 +415,7 @@ class TeamArchiveTest : PostgresTest() {
 		val growth = newTeam("Growth")
 		val project = newProject(mobile.id)
 		val ticket = newTicket(mobile.id)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		teams.archive(
 			admin,
@@ -427,11 +428,11 @@ class TeamArchiveTest : PostgresTest() {
 			),
 		)
 
-		val queued = jobs.claimBatch(200, "test").associateBy { it.entityId }
-		assertEquals(SyncOperation.ARCHIVE, queued[mobile.id]?.operation)
-		assertEquals(SyncOperation.UPSERT, queued[ios.id]?.operation, "reparented to the grandparent")
-		assertEquals(SyncOperation.UPSERT, queued[project.id]?.operation, "re-homed to the parent team")
-		assertEquals(SyncOperation.UPSERT, queued[ticket.ticket.id]?.operation, "moved and renumbered")
+		val queued = jobs.claimBatch(Destination.NOTION, 200, "test").associateBy { it.entityId }
+		assertEquals(OutboundOperation.ARCHIVE, queued[mobile.id]?.operation)
+		assertEquals(OutboundOperation.UPSERT, queued[ios.id]?.operation, "reparented to the grandparent")
+		assertEquals(OutboundOperation.UPSERT, queued[project.id]?.operation, "re-homed to the parent team")
+		assertEquals(OutboundOperation.UPSERT, queued[ticket.ticket.id]?.operation, "moved and renumbered")
 		assertNull(queued[core.id], "the grandparent changed in no way and needs no push")
 	}
 

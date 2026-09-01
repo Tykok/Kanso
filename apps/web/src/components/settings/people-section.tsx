@@ -6,10 +6,17 @@ import { ApiError, api, type InstanceRole } from "@/lib/api";
 import { keys, usePendingInvitations, usePeople } from "@/lib/queries";
 import { SettingsFormField, SettingsInline, SettingsNote } from "./field";
 
+/**
+ * Exhaustive on purpose: a role added to `InstanceRole` and not named here fails `tsc`,
+ * and this is the one map in the client that has to know all of them. "Reader" rather
+ * than "Viewer" because the dropdown is read as a sentence about a person, and nobody
+ * describes a colleague as a viewer.
+ */
 const ROLE_LABELS: Record<InstanceRole, string> = {
   owner: "Owner",
   admin: "Admin",
   member: "User",
+  viewer: "Reader",
 };
 
 function message(error: unknown) {
@@ -105,13 +112,16 @@ export function PeopleSection() {
                 >
                   <option value="admin">{ROLE_LABELS.admin}</option>
                   <option value="member">{ROLE_LABELS.member}</option>
+                  <option value="viewer">{ROLE_LABELS.viewer}</option>
                 </select>
               )}
             </li>
           ))}
         </ul>
         <SettingsNote>
-          An admin can configure the instance and invite people. A user can do neither.
+          An admin can configure the instance and invite people. A user can do neither. A
+          reader can do neither and cannot change anything either — they see every board
+          their teams see, and no seat is charged for them.
         </SettingsNote>
         {setUserRole.isError && <SettingsNote error>{message(setUserRole.error)}</SettingsNote>}
       </SettingsFormField>
@@ -131,6 +141,7 @@ export function PeopleSection() {
           <select value={role} onChange={(event) => setRole(event.target.value as InstanceRole)}>
             <option value="member">{ROLE_LABELS.member}</option>
             <option value="admin">{ROLE_LABELS.admin}</option>
+            <option value="viewer">{ROLE_LABELS.viewer}</option>
           </select>
           <button
             className="button button-primary"
