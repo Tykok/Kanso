@@ -301,7 +301,10 @@ class McpToolsTest : PostgresTest() {
 			call("kanso_get_ticket", """{"ticket":"${filed.identifier}"}""", bearer(alice)),
 		)
 
-		assertTrue(answer.contains(filed.identifier), "the identifier: $answer")
+		// `!!` and not a fallback: this ticket was filed into a team, so it has an identifier,
+		// and the day that stops being true this test should fail rather than quietly assert
+		// something weaker.
+		assertTrue(answer.contains(filed.identifier!!), "the identifier: $answer")
 		assertTrue(answer.contains("Timeline drags past its cycle"), "the title: $answer")
 		assertTrue(answer.contains("todo"), "and the status, in the vocabulary the wire uses: $answer")
 	}

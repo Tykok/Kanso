@@ -80,7 +80,13 @@ internal object TicketLines {
 	 * The columns are the ones a person scans a backlog by.
 	 */
 	fun line(detail: TicketDetail, assignees: List<String>): String = buildString {
-		append(detail.identifier.padEnd(12))
+		// A ticket no team has claimed has no identifier to print — KAN-9 mints one only when
+		// a team arrives — and its id is the address it answers on until then. Printed rather
+		// than blanked for the same reason the assignee column carries bare emails: what a
+		// reading tool prints in this column is what a writing tool takes back, so it has to
+		// be copyable into `kanso_get_ticket`. Wider than the column, and that is the honest
+		// cost of an address that is a UUID.
+		append((detail.identifier ?: detail.ticket.id.toString()).padEnd(12))
 		append("  ")
 		append(detail.ticket.status.wire.padEnd(12))
 		append(detail.ticket.priority.wire.padEnd(7))
