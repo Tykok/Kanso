@@ -9,6 +9,7 @@ import dev.kanso.domain.Theme
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
+import java.math.BigDecimal
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -31,6 +32,10 @@ class PreferencesRepository {
 			it[openTicket] = preferences.openTicket.wire
 			it[defaultTeamId] = preferences.defaultTeamId
 			it[onboardedAt] = preferences.onboardedAt
+			// The only place a BigDecimal exists. `NUMERIC(5, 2)` is what the column is
+			// and `Double` is what every rate above here is, so the conversion happens
+			// once, at the edge, rather than leaking either type into the other's half.
+			it[declaredVelocity] = preferences.declaredVelocity?.let { rate -> BigDecimal.valueOf(rate) }
 			it[updatedAt] = OffsetDateTime.now()
 		}
 	}
@@ -46,4 +51,5 @@ private fun ResultRow.toPreferences() = Preferences(
 	openTicket = OpenTicket.from(this[UserPreferences.openTicket]),
 	defaultTeamId = this[UserPreferences.defaultTeamId],
 	onboardedAt = this[UserPreferences.onboardedAt],
+	declaredVelocity = this[UserPreferences.declaredVelocity]?.toDouble(),
 )

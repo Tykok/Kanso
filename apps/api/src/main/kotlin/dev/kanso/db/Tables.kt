@@ -96,6 +96,15 @@ object UserPreferences : Table("user_preferences") {
 
 	/** Which of the two ways `↵` opens a ticket. Same `default` reasoning as above. */
 	val openTicket = text("open_ticket").default("panel")
+
+	/**
+	 * Points per working day, as the person declared it. Null means they never said —
+	 * which is not zero, and `V24` says why the difference is the whole column.
+	 *
+	 * `NUMERIC(5, 2)` and so a `BigDecimal` here; the repository is the only place that
+	 * sees one. Everything above it works in `Double`, like `VelocityService`.
+	 */
+	val declaredVelocity = decimal("declared_velocity", 5, 2).nullable()
 	val updatedAt = timestampWithTimeZone("updated_at")
 	override val primaryKey = PrimaryKey(userId)
 }
