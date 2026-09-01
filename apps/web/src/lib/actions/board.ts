@@ -1,4 +1,5 @@
 import { boardColumns, boardMove, deltaTo, type BoardDirection } from "@/components/board/columns";
+import { ticketAddress } from "@/lib/api";
 import { useBoard } from "@/store/board";
 import type { Action, ActionContext } from "./types";
 
@@ -90,7 +91,7 @@ const openCard: Action = {
    * `store/board.ts` carries the one value between them.
    */
   run: (ctx) => {
-    if (ctx.selected) useBoard.getState().requestOpen(ctx.selected.identifier);
+    if (ctx.selected) useBoard.getState().requestOpen(ticketAddress(ctx.selected));
   },
 };
 

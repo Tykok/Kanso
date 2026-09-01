@@ -37,17 +37,26 @@ export function TicketLabels({
   ticket,
 }: {
   /** The whole ticket is not needed; these three are. `identifier` names the menu. */
-  ticket: { id: string; teamId: string; identifier: string };
+  ticket: { id: string; teamId?: string | null; identifier?: string | null };
 }) {
   const worn = useTicketLabels(ticket.id);
-  const available = useTeamLabels(ticket.teamId);
+  // A label is team-scoped — two teams may both own `sync` without arguing about which
+  // of them means it — so a ticket with no team has no vocabulary to pick from and no
+  // team to create one in. The hooks are still called: React counts them, and the early
+  // return below is what draws nothing.
+  const available = useTeamLabels(ticket.teamId ?? undefined);
   const set = useSetTicketLabels();
-  const create = useCreateLabel(ticket.teamId);
+  const create = useCreateLabel(ticket.teamId ?? "");
   const [naming, setNaming] = useState(false);
 
   const current = worn.data ?? [];
   const ids = current.map((label) => label.id);
   const busy = set.isPending || create.isPending;
+
+  // Nothing to draw, and nowhere to put what somebody typed: the "+ Label" affordance
+  // would open a menu of an empty vocabulary and a "create" that has no team to create in.
+  // After the hooks, so the count is the same on every render.
+  if (ticket.teamId == null) return null;
 
   const write = (labelIds: string[]) => set.mutate({ ticketId: ticket.id, labelIds });
 

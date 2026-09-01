@@ -17,6 +17,7 @@ import {
   type Preferences,
   type Project,
   type Team,
+  type Ticket,
   type TicketPriority,
   type TicketStatus,
   type ViewFilters,
@@ -210,6 +211,33 @@ export const useProjects = () => {
 };
 
 /**
+ * The caller's own drafts, folded into the unscoped list and into nothing else.
+ *
+ * The server keeps tickets with no team out of every list it serves, and that is right for
+ * all but one of them: a board, a saved view, a cycle, a triage queue and a timeline are
+ * each a room a team owns, and a draft is in none of those rooms. "All" is not a room. It
+ * is the only place a draft can be seen at all, so leaving it out would make the feature
+ * write-only — you could file a thought and never find it again.
+ *
+ * Merged here rather than widened on the server, because the two halves answer to two
+ * different rules: the list is scoped by team, and the drafts are scoped by who wrote them.
+ * One query cannot honestly be both, and a predicate that tried would be one every other
+ * caller of it inherits.
+ *
+ * Not for a composed question: the facets are validated and run server-side, and a client
+ * that appended rows the filter never saw would show a list that does not match its chips.
+ */
+const withOwnDrafts =
+  (scope: Scope, asked: string) =>
+  async (rows: Ticket[]): Promise<Ticket[]> => {
+    if (scope.kind !== "all" || asked !== "") return rows;
+    const drafts = await api.drafts().catch(() => [] as Ticket[]);
+    // Newest first, ahead of the rest: a draft is the thing most recently typed and least
+    // likely to be found by scrolling for a name it does not have.
+    return [...drafts, ...rows];
+  };
+
+/**
  * The main list — a saved view nobody saved.
  *
  * Two doors onto one question, and which one is used is decided by whether anything has
@@ -227,7 +255,7 @@ export const useTickets = () => {
     queryKey: keys.tickets(scope, showArchived, asked),
     queryFn: () =>
       asked === ""
-        ? api.tickets(scope, showArchived)
+        ? api.tickets(scope, showArchived).then(withOwnDrafts(scope, asked))
         : organiseApi.ticketsMatching(scopedFilters(filters, scope), {
             // The same scope the unfiltered door sends, so the two answer about the same
             // room: a team scope reaches its descendants, a project scope names no team.

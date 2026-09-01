@@ -165,3 +165,21 @@ describe("locateCard", () => {
     expect(locateCard(columns, undefined)).toBeUndefined();
   });
 });
+
+describe("cardLabel, for a ticket no team has claimed", () => {
+  /**
+   * The card reads out the identifier first, and a ticket with none would have opened the
+   * sentence with the word "null" — worse than silence, because a screen reader says it.
+   * The badge the sighted reader sees is the same fact, so the two agree.
+   */
+  it("opens with the fact instead of with a name it does not have", () => {
+    // Absent, not null: the server omits a null field, so this is the shape that arrives.
+    const draft = ticket("KAN-1", "todo", {
+      identifier: undefined,
+      number: undefined,
+      teamId: undefined,
+    });
+
+    expect(cardLabel(draft)).toBe("No team, Todo: Title of KAN-1");
+  });
+});

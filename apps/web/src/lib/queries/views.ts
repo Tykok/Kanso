@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Scope } from "@/store/ui";
 import { api } from "../api";
-import { parseTicketKey, viewsApi, type OpenTicketMode } from "../api/views";
+import { isTicketId, parseTicketKey, viewsApi, type OpenTicketMode } from "../api/views";
 import { keys, useSavePreferences } from "./core";
 
 /**
@@ -32,10 +32,14 @@ const EVERYTHING: Scope = { kind: "all" };
  */
 export function useTicketByKey(key: string) {
   const parsed = parseTicketKey(key);
+  // The other address a ticket answers to. A ticket no team has claimed has no
+  // identifier to put in a URL, so its id is the link — and the id keeps working
+  // afterwards, which the identifier that did not exist yet could not have done.
+  const byId = parsed === null && isTicketId(key);
   return useQuery({
     queryKey: ["tickets", "by-key", parsed?.teamKey ?? key, parsed?.number ?? 0] as const,
-    queryFn: () => viewsApi.ticketByKey(parsed!),
-    enabled: parsed !== null,
+    queryFn: () => (parsed ? viewsApi.ticketByKey(parsed) : viewsApi.ticketById(key)),
+    enabled: parsed !== null || byId,
     retry: false,
   });
 }

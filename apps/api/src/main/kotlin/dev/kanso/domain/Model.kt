@@ -360,10 +360,24 @@ object EffortPoints {
 	}
 }
 
+/**
+ * A unit of work, which may not belong to anybody yet.
+ *
+ * [teamId] and [number] are null together or not at all — `tickets_team_number_together_chk`
+ * refuses every other pairing, because `KAN-142` is the pair and neither half names
+ * anything alone. A ticket in that state is a draft: it has no identifier to print, it is
+ * in no team-scoped list, and [createdBy] is the only thing left that says who may touch
+ * it. Attaching a team takes that team's next number and ends all three at once.
+ *
+ * [createdBy] is history rather than a permission once a team is named — see `TicketAccess`,
+ * which stops reading it the moment [teamId] is set — and null for every row written before
+ * `V20`, which no rule can hand to anyone.
+ */
 data class Ticket(
 	val id: UUID,
-	val number: Int,
-	val teamId: UUID,
+	val number: Int?,
+	val teamId: UUID?,
+	val createdBy: UUID?,
 	val title: String,
 	val description: String?,
 	val status: TicketStatus,

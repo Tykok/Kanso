@@ -8,6 +8,7 @@ import {
   TICKET_STATUSES,
   dayValue,
   fromDayValue,
+  ticketAddress,
   ticketHref,
   type EffortPoints,
   type Project,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
 import { Menu, type MenuItem } from "./menu";
+import { TicketIdentifier } from "./pills";
 import { Backdrop } from "./overlays";
 import { TicketLabels } from "./ticket-labels";
 import { Kbd } from "./ui/kbd";
@@ -77,20 +79,20 @@ export function DetailPanel({
   return (
     <Backdrop onClose={onClose} panelClassName="w-[640px]">
       <div data-testid="panel-header" className="flex items-center gap-2 px-5 py-3">
-        <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
+        <TicketIdentifier ticket={ticket} className="font-mono text-11 text-faint" />
         <span className="flex-1" />
         {/* Screen 02's ⤢: the same ticket at page width. It expands *this* ticket without
             touching the `openTicket` preference, which is what the drawing says the glyph
             is for — the preference decides the default, the glyph overrides it once. */}
         <Link
           className="flex size-6 items-center justify-center rounded-sm text-faint hover:bg-accent hover:text-foreground"
-          href={ticketHref(ticket.identifier)}
-          aria-label={`Open ${ticket.identifier} in a full page`}
+          href={ticketHref(ticketAddress(ticket))}
+          aria-label={`Open ${ticket.identifier ?? ticket.title} in a full page`}
           title="Open in a full page — ⇧↵"
         >
           ⤢
         </Link>
-        <Menu label={`Actions for ${ticket.identifier}`} items={actions} />
+        <Menu label={`Actions for ${ticket.identifier ?? ticket.title}`} items={actions} />
         <Kbd>esc</Kbd>
       </div>
 

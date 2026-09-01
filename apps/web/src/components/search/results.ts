@@ -77,7 +77,7 @@ export function search({
   const matchedTickets =
     needle && wants("tickets")
       ? tickets.filter(
-          (ticket) => contains(ticket.title, needle) || contains(ticket.identifier, needle),
+          (ticket) => contains(ticket.title, needle) || contains(ticket.identifier ?? "", needle),
         )
       : [];
 

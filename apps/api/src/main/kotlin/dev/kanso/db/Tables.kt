@@ -170,8 +170,17 @@ object ProjectUpdates : Table("project_updates") {
 
 object Tickets : Table("tickets") {
 	val id = javaUUID("id")
-	val number = integer("number")
-	val teamId = javaUUID("team_id")
+
+	/**
+	 * Null together or not at all, which `tickets_team_number_together_chk` is what
+	 * actually enforces: the number comes from the team's counter and is unique only
+	 * within it, so half the pair names nothing.
+	 */
+	val number = integer("number").nullable()
+	val teamId = javaUUID("team_id").nullable()
+
+	/** Who may edit a ticket no team is deciding for. Null for every row older than `V20`. */
+	val createdBy = javaUUID("created_by").nullable()
 	val title = text("title")
 	val description = text("description").nullable()
 	val status = text("status")

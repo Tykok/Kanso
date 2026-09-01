@@ -72,6 +72,7 @@ fun ResultRow.toTicket() = Ticket(
 	id = this[Tickets.id],
 	number = this[Tickets.number],
 	teamId = this[Tickets.teamId],
+	createdBy = this[Tickets.createdBy],
 	title = this[Tickets.title],
 	description = this[Tickets.description],
 	status = TicketStatus.from(this[Tickets.status]),

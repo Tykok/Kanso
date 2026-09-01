@@ -46,21 +46,25 @@ class TicketTrashSource(
 	 */
 	private fun itemsOf(found: List<Ticket>): List<TrashItem> {
 		if (found.isEmpty()) return emptyList()
-		val keys = teams.findAllById(found.map { it.teamId }.toSet()).associate { it.id to it }
+		val keys = teams.findAllById(found.mapNotNull { it.teamId }.toSet()).associate { it.id to it }
 		val projectsById = projects.findAllById(found.mapNotNull { it.projectId }.toSet()).associateBy { it.id }
 		val docsByTicket = rows.docIdsFor(found.map { it.id })
 
 		return found.map { ticket ->
-			val team = keys[ticket.teamId]
+			val team = ticket.teamId?.let(keys::get)
 			val project = ticket.projectId?.let(projectsById::get)
 			TrashItem(
 				kind = kind,
 				id = ticket.id,
 				// The identifier is how anybody refers to a ticket out loud, and the title
-				// alone would leave two rows called "Old composer" indistinguishable.
-				label = "${team?.key ?: "?"}-${ticket.number} · ${ticket.title}",
-				// A project when it has one, its team otherwise — a ticket always has a
-				// team, so this is never absent and "Restore" never has to say "somewhere".
+				// alone would leave two rows called "Old composer" indistinguishable. A
+				// ticket that never reached a team has no identifier to print, and its title
+				// is the whole of what it was ever called — so it stands alone rather than
+				// behind a dash with nothing in front of it.
+				label = team?.let { "${it.key}-${ticket.number} · ${ticket.title}" } ?: ticket.title,
+				// A project when it has one, its team otherwise. Both can now be absent: a
+				// draft thrown away belonged nowhere, and "Restore" puts it back into the
+				// drafts, which is a place even though it is not a parent.
 				parent = when {
 					project != null -> TrashParent("project", project.id, project.name)
 					team != null -> TrashParent("team", team.id, team.name)

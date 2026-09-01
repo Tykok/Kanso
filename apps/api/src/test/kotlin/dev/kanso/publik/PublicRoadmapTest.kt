@@ -65,8 +65,8 @@ class PublicRoadmapTest : PostgresTest() {
 			docIds = emptyList(),
 		)
 		publication.publish(owner, created.ticket.id, public = true)
-		repeat(voters) { votes.vote(created.teamKey, created.ticket.number, "voter-$title-$it") }
-		return created.identifier
+		repeat(voters) { votes.vote(created.teamKey!!, created.ticket.number!!, "voter-$title-$it") }
+		return created.identifier!!
 	}
 
 	private fun groups() = roadmap.roadmap().groups.associateBy { it.status }

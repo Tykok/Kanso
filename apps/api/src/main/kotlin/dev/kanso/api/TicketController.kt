@@ -145,8 +145,23 @@ class TicketController(
 		)
 	}
 
+	/**
+	 * The tickets no team has claimed, which are in no other list this API serves.
+	 *
+	 * Before `/{id}` for the reason `filters` is: Spring matches a literal segment ahead of
+	 * a template, and `drafts` is not a UUID, so the two cannot collide.
+	 */
+	@GetMapping("/drafts")
+	fun drafts(@RequestParam(defaultValue = "200") limit: Int): List<TicketResponse> =
+		tickets.drafts(currentUser.require(), limit.coerceIn(1, 500)).map(TicketResponse::of)
+
+	/**
+	 * By id, which is the only address a ticket with no team has — and the one address that
+	 * survives it gaining one, since the identifier is minted at that moment.
+	 */
 	@GetMapping("/{id}")
-	fun get(@PathVariable id: UUID): TicketResponse = TicketResponse.of(tickets.get(id))
+	fun get(@PathVariable id: UUID): TicketResponse =
+		TicketResponse.of(tickets.get(currentUser.require(), id))
 
 	/** Lookup by the identifier people actually use: `/api/tickets/by-key/KAN/142`. */
 	@GetMapping("/by-key/{teamKey}/{number}")

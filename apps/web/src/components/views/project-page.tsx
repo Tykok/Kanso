@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
-import { dayValue, ticketHref, type Project, type Ticket } from "@/lib/api";
+import { dayValue, ticketAddress, ticketHref, type Project, type Ticket } from "@/lib/api";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { useDocs, useProjectTickets, useProjects, useTeams, useUsers } from "@/lib/queries";
 import { useUi } from "@/store/ui";
-import { StatusPill, SyncBadge } from "../pills";
+import { StatusPill, SyncBadge, TicketIdentifier } from "../pills";
 import { GroupLabel } from "../ui/group-label";
 import { PriorityMark } from "../ui/priority-mark";
 import { Row } from "../ui/row";
@@ -238,9 +238,9 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
             </div>
             {tickets.length === 0 && <span className="text-12 text-faint">No tickets yet.</span>}
             {tickets.slice(0, FIRST_TICKETS).map((ticket) => (
-              <Link key={ticket.id} href={ticketHref(ticket.identifier)} className="contents">
+              <Link key={ticket.id} href={ticketHref(ticketAddress(ticket))} className="contents">
                 <Row data-testid="project-ticket" className={`grid ${COLS}`}>
-                  <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
+                  <TicketIdentifier ticket={ticket} className="font-mono text-11 text-faint" />
                   <PriorityMark priority={ticket.priority} />
                   <StatusPill status={ticket.status} />
                   <span className="truncate">{ticket.title}</span>

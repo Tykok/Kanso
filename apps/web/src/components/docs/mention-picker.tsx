@@ -40,7 +40,7 @@ export function MentionPicker({
   const matchingTickets = tickets
     .filter(
       (ticket) =>
-        ticket.identifier.toLowerCase().includes(needle) ||
+        (ticket.identifier?.toLowerCase().includes(needle) ?? false) ||
         ticket.title.toLowerCase().includes(needle),
     )
     .slice(0, 8);

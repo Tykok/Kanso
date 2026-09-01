@@ -126,7 +126,16 @@ class TriageService(
 		// fourth, `accepted`, is checked by `addTickets` on both the cycle and the ticket.
 		when (decision) {
 			TriageDecision.ACCEPTED -> {
-				val cycle = cycles.findActive(ticket.teamId)
+				// A cycle belongs to a team, so a ticket with none cannot be accepted into
+				// one. Unreachable from the queue — `TriageRepository` scopes by `team_id`,
+				// so a draft is never in it — and said here anyway, because the alternative
+				// is this reading as "no cycle in progress" for a ticket that could never
+				// have had one.
+				val teamId = ticket.teamId
+					?: throw ConflictException(
+						"That ticket belongs to no team, so there is no cycle to accept it into",
+					)
+				val cycle = cycles.findActive(teamId)
 					?: throw ConflictException(
 						"That team has no cycle in progress to accept into",
 					)
@@ -163,10 +172,15 @@ class TriageService(
 	@Transactional(readOnly = true)
 	fun similar(ticketId: UUID, limit: Int = 5): List<SimilarTicket> {
 		val ticket = tickets.findById(ticketId) ?: throw NotFoundException("No ticket $ticketId")
+		// The search is scoped to a team's board, so a ticket with no team has no board to
+		// look for a duplicate on. Empty rather than "every team": widening the scope here
+		// would show the author of a private draft a slice of work they may not otherwise
+		// see, which is a disclosure dressed as a suggestion.
+		val teamId = ticket.teamId ?: return emptyList()
 		val scored = triage.similarTitles(
 			ticketId = ticketId,
 			title = ticket.title,
-			teamIds = teams.descendantIds(ticket.teamId),
+			teamIds = teams.descendantIds(teamId),
 			limit = limit,
 		)
 		if (scored.isEmpty()) return emptyList()
