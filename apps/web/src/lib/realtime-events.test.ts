@@ -474,6 +474,26 @@ describe("what a screen subscribes to", () => {
     expect(topicsFor({ kind: "team", id: "team-a" }, "list", [])).toContain("/topic/tickets");
   });
 
+  it("takes an archived sub-team too, because the server's descendant walk does", () => {
+    const archived = { ...team("team-d", "team-a"), archived: true };
+
+    // `TeamRepository.descendantIds` does not skip archived teams, so a parent's list can
+    // hold their rows. Leaving them off the subscription is being deaf on rows that are
+    // on screen — which is why the tree handed in here has to be the whole tree, archived
+    // teams included, and not the one the sidebar's toggle has filtered.
+    expect(topicsFor({ kind: "team", id: "team-a" }, "list", [...tree, archived])).toContain(
+      "/topic/teams/team-d/tickets",
+    );
+  });
+
+  it("walks through an archived team to the live work underneath it", () => {
+    const archived = { ...team("team-d", "team-a"), archived: true };
+    const grandchild = team("team-e", "team-d");
+
+    expect(
+      topicsFor({ kind: "team", id: "team-a" }, "list", [...tree, archived, grandchild]),
+    ).toContain("/topic/teams/team-e/tickets");
+  });
 });
 
 describe("coming back from an outage", () => {

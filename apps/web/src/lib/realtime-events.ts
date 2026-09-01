@@ -47,6 +47,13 @@ export type KansoEvent = {
  * timeline, because it is the one drawing that shows work from *outside* its scope: the
  * far end of a dependency that crosses into another team arrives as a context bar, and a
  * subscription narrowed to the scope would never hear that bar move.
+ *
+ * [teams] must be the whole tree, archived teams included — not the one the sidebar's
+ * toggle has filtered. That toggle is about what is *drawn*, and a subscription is about
+ * what can *arrive*: `TeamRepository.descendantIds` walks straight through an archived
+ * team, so a parent's list can hold an archived sub-team's rows, and a subtree computed
+ * without them is deaf on exactly those. The caller in `app/providers.tsx` is what
+ * guarantees it.
  */
 export function topicsFor(scope: Scope, view: View, teams: readonly Team[]): string[] {
   return ["/topic/projects", "/topic/teams", ...ticketTopics(scope, view, teams)];

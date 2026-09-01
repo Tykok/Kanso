@@ -1,11 +1,16 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { ticketGuesses } from "@/lib/optimistic";
-import { useMe, useTeams } from "@/lib/queries";
+import { keys, useMe } from "@/lib/queries";
 import { connectRealtime, type RealtimeConnection } from "@/lib/realtime";
 import {
   queryCache,
@@ -36,19 +41,39 @@ const isAnonymousRoute = (pathname: string | null) =>
   );
 
 /**
+ * The team tree a subscription has to be computed from: the whole of it, archived teams
+ * included, whatever the reader has chosen to look at.
+ *
+ * Not `useTeams()`, which hides archived teams when the sidebar's toggle is off. That
+ * toggle is about what is *drawn*; this is about what can *arrive*. The server's
+ * descendant walk does not skip archived teams, so a parent's ticket list can hold an
+ * archived sub-team's rows — and a subtree computed from the filtered tree would leave
+ * exactly those rows with no topic subscribed to them. No visible symptom while archived
+ * work is hidden too, which is what makes it worth closing now: it is a hole waiting for
+ * the first view that shows archived work without showing the archived team.
+ *
+ * Free when the toggle is on, where it is the same cache entry `useTeams` already holds,
+ * and one small request when it is off. It pays that back twice over: `knownTeams` picks
+ * the most complete tree in the cache, so the archived-included copy being loaded is also
+ * what stops `placement` having to answer "unknown" about a sub-team the reader hid.
+ */
+const useTeamTree = () =>
+  useQuery({ queryKey: keys.teams(true), queryFn: () => api.teams(true) });
+
+/**
  * The change feed, wired to the cache.
  *
  * Two lifetimes, two effects. The socket is opened once per session; the topics follow
  * whatever the list is scoped to, which changes every time someone clicks a team in the
- * sidebar. Reading `useTeams` here is not a spare query — it is the hierarchy
+ * sidebar. Reading the team tree here is not a spare query — it is the hierarchy
  * [topicsFor] needs to subscribe to a scoped team's descendants as well as itself, and
- * every screen that can be scoped has already loaded it.
+ * every screen that can be scoped has already loaded a copy of it.
  */
 function Realtime() {
   const queryClient = useQueryClient();
   const scope = useUi((state) => state.scope);
   const view = useUi((state) => state.view);
-  const teams = useTeams().data;
+  const teams = useTeamTree().data;
   const topics = useMemo(() => topicsFor(scope, view, teams ?? []), [scope, view, teams]);
 
   // Hoisted out of the applier because the resume needs the same one: a sweep and a patch
