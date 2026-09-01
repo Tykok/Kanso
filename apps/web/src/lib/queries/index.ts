@@ -9,3 +9,4 @@ export * from "./trash";
 export * from "./inbox";
 export * from "./views";
 export * from "./organise";
+export * from "./oauth";
