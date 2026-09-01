@@ -16,7 +16,10 @@ import dev.kanso.repo.DocRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketFilters
+import dev.kanso.repo.TicketQueryRepository
 import dev.kanso.repo.TicketRepository
+import dev.kanso.repo.TicketScope
 import dev.kanso.repo.UserRepository
 import dev.kanso.sync.SyncEntityType
 import dev.kanso.sync.deletePayload
@@ -63,6 +66,12 @@ data class TicketPatch(
 @Service
 class TicketService(
 	private val tickets: TicketRepository,
+	/**
+	 * The one predicate, reached directly rather than through [tickets]: the list is the
+	 * caller that wants all twelve filters, and `TicketRepository.search` is the narrow
+	 * call shape over the same query for the callers that want four.
+	 */
+	private val ticketQuery: TicketQueryRepository,
 	private val teams: TeamRepository,
 	private val projects: ProjectRepository,
 	private val users: UserRepository,
@@ -88,6 +97,37 @@ class TicketService(
 	private val trash: TrashRepository,
 ) {
 
+	/**
+	 * The main list, which is a saved view nobody saved.
+	 *
+	 * It takes the same [TicketFilters] a stored question parses to and runs the same
+	 * predicate, so a filter reaching the list and a filter reaching a view are the same
+	 * filter. Resolving [includeDescendants] here rather than in the repository keeps the
+	 * hierarchy walk on the service side, where every other one lives.
+	 */
+	@Transactional(readOnly = true)
+	fun list(
+		teamId: UUID?,
+		includeDescendants: Boolean,
+		includeArchived: Boolean,
+		filters: TicketFilters,
+		sortBy: ViewSortBy,
+		limit: Int,
+		offset: Long,
+	): List<TicketDetail> {
+		val teamIds = teamId?.let { if (includeDescendants) teams.descendantIds(it) else listOf(it) }
+		return decorate(
+			ticketQuery.matching(
+				scope = TicketScope(teamIds = teamIds, includeArchived = includeArchived),
+				filters = filters,
+				sortBy = sortBy,
+				limit = limit,
+				offset = offset,
+			)
+		)
+	}
+
+	/** The four-filter shape, kept for the callers and the tests that only ever wanted it. */
 	@Transactional(readOnly = true)
 	fun search(
 		teamId: UUID?,
@@ -98,11 +138,19 @@ class TicketService(
 		includeArchived: Boolean,
 		limit: Int,
 		offset: Long,
-	): List<TicketDetail> {
-		val teamIds = teamId?.let { if (includeDescendants) teams.descendantIds(it) else listOf(it) }
-		val found = tickets.search(teamIds, projectId, statuses, assigneeId, includeArchived, limit, offset)
-		return decorate(found)
-	}
+	): List<TicketDetail> = list(
+		teamId = teamId,
+		includeDescendants = includeDescendants,
+		includeArchived = includeArchived,
+		filters = TicketFilters(
+			statuses = statuses,
+			projectIds = listOfNotNull(projectId),
+			assigneeIds = listOfNotNull(assigneeId),
+		),
+		sortBy = ViewSortBy.UPDATED,
+		limit = limit,
+		offset = offset,
+	)
 
 	@Transactional(readOnly = true)
 	fun get(id: UUID): TicketDetail {
