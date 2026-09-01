@@ -8,6 +8,7 @@ import org.springframework.security.oauth2.server.authorization.OAuth2TokenType
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientAuthenticationToken
 import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings
 import org.springframework.security.oauth2.server.authorization.token.DefaultOAuth2TokenContext
 import java.time.Duration
@@ -53,13 +54,17 @@ class PublicClientRefreshTest {
 		.build()
 
 	private val clients = InMemoryRegisteredClientRepository(publicClient, confidentialClient)
-	private val converter = PublicClientRefreshConverter()
+
+	/** The library's own defaults, which is what `AuthorizationServerConfig` declares. */
+	private val settings = AuthorizationServerSettings.builder().build()
+	private val converter = PublicClientRefreshConverter(settings)
 	private val provider = PublicClientRefreshProvider(clients)
 
 	private fun refreshRequest(
 		clientId: String? = "claude-code",
 		extra: Map<String, String> = emptyMap(),
-	) = MockHttpServletRequest("POST", "/oauth2/token").apply {
+		at: String = settings.tokenEndpoint,
+	) = MockHttpServletRequest("POST", at).apply {
 		addParameter("grant_type", "refresh_token")
 		addParameter("refresh_token", "a-refresh-token")
 		if (clientId != null) addParameter("client_id", clientId)
@@ -177,6 +182,60 @@ class PublicClientRefreshTest {
 		}
 
 		assertNull(converter.convert(get), "the token endpoint is a POST, and a credential-free GET is a link")
+	}
+
+	/**
+	 * The four endpoints this converter is installed beside, and must not answer for.
+	 *
+	 * `OAuth2ClientAuthenticationFilter`'s matcher is an OR of five POST endpoints, not one:
+	 * the token endpoint, plus introspection, revocation, device authorization and pushed
+	 * authorization requests. `grant_type` is meaningless on all four, and nothing stops a
+	 * caller adding it as decoration — so a converter that reads only the method and the
+	 * parameters authenticates a bare `client_id` at `/oauth2/introspect`, which
+	 * `anyRequest().authenticated()` refused outright before this file existed. Registration
+	 * is open, so a `client_id` costs one request to get.
+	 *
+	 * Read off the settings rather than typed out, so this list cannot fall behind the
+	 * filter's.
+	 */
+	@Test
+	fun `the four endpoints beside the token endpoint are not this converter's`() {
+		val beside = mapOf(
+			settings.tokenIntrospectionEndpoint to "introspection answers about a token the caller already holds",
+			settings.tokenRevocationEndpoint to "revocation is the library's, and it checks the token's owner itself",
+			settings.deviceAuthorizationEndpoint to "the device flow starts here and this server does not run it",
+			settings.pushedAuthorizationRequestEndpoint to "a pushed request is an authorisation request, not a grant",
+		)
+
+		for ((endpoint, why) in beside) {
+			assertNull(
+				converter.convert(refreshRequest(at = endpoint)),
+				"$endpoint takes no grant_type, so a refresh body arriving there is decoration around a client_id — $why",
+			)
+		}
+	}
+
+	/**
+	 * Which endpoint, asked of [AuthorizationServerSettings] rather than written down here.
+	 *
+	 * A path constant would agree with the library today and drift the moment the setting
+	 * moves — and it drifts in the dangerous direction: the converter would keep opening on
+	 * the old path, which is by then somebody else's endpoint or nothing at all.
+	 */
+	@Test
+	fun `the endpoint it binds to is the one the server was configured to serve`() {
+		val moved = PublicClientRefreshConverter(
+			AuthorizationServerSettings.builder().tokenEndpoint("/oauth2/v2/token").build(),
+		)
+
+		assertNotNull(
+			moved.convert(refreshRequest(at = "/oauth2/v2/token")),
+			"the token endpoint is wherever the settings put it, and refusing there is the connector dead at an hour",
+		)
+		assertNull(
+			moved.convert(refreshRequest(at = "/oauth2/token")),
+			"and nothing is served at the default path any more, so a converter still opening on it is a hole",
+		)
 	}
 
 	// ---- the provider ------------------------------------------------------------------

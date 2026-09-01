@@ -24,7 +24,10 @@ import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.security.oauth2.server.authorization.token.DelegatingOAuth2TokenGenerator
 import org.springframework.security.oauth2.server.authorization.token.JwtGenerator
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext
 import org.springframework.security.oauth2.server.authorization.token.OAuth2AccessTokenGenerator
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenClaimsContext
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.preauth.AbstractPreAuthenticatedProcessingFilter
@@ -90,7 +93,11 @@ class AuthorizationServerConfig {
 	@Bean
 	@Order(Ordered.HIGHEST_PRECEDENCE)
 	@ConditionalOnExpression("!'\${kanso.auth.mode:oidc}'.equalsIgnoreCase('dev')")
-	fun authorizationServerChain(http: HttpSecurity, clients: RegisteredClientRepository): SecurityFilterChain {
+	fun authorizationServerChain(
+		http: HttpSecurity,
+		clients: RegisteredClientRepository,
+		settings: AuthorizationServerSettings,
+	): SecurityFilterChain {
 		LoggerFactory.getLogger(javaClass).info("Authorisation server enabled — agents may connect by consent")
 		val configurer = OAuth2AuthorizationServerConfigurer()
 		http
@@ -102,8 +109,13 @@ class AuthorizationServerConfig {
 				// `anyRequest().authenticated()` below refuses it, and the answer is a bare 401.
 				// Verified against a running instance. [PublicClientRefresh] argues the shape and
 				// names the rule this does *not* satisfy.
+				//
+				// The settings go in because this filter fronts five POST endpoints and only
+				// one of them is a grant. The converter reads `tokenEndpoint` off the same bean
+				// the configurer builds its own matcher from, so the two cannot disagree about
+				// where that endpoint is.
 				server.clientAuthentication { clientAuth ->
-					clientAuth.authenticationConverter(PublicClientRefreshConverter())
+					clientAuth.authenticationConverter(PublicClientRefreshConverter(settings))
 					// Added first, which is what the configurer does with anything added here, and
 					// harmless: it answers null for every request that is not its own.
 					clientAuth.authenticationProvider(PublicClientRefreshProvider(clients))
@@ -189,21 +201,47 @@ class AuthorizationServerConfig {
 	 * `OAuth2ConfigurerUtils.getTokenGenerator` builds a
 	 * `DelegatingOAuth2TokenGenerator(jwt?, access, refresh)` when no bean of this type
 	 * exists, and its refresh delegate is the one that refuses a public client. This is
-	 * that list with [PublicClientRefreshTokenGenerator] in its place and nothing else
-	 * changed — the JWT half is kept exactly because it is not this file's business:
-	 * Boot autoconfigures a `JwtEncoder` from the JWKS this server publishes, and
-	 * dropping it would silently take self-contained access tokens away from a future
-	 * client that asked for one.
+	 * that list with [PublicClientRefreshTokenGenerator] in its place — the JWT half is
+	 * kept exactly because it is not this file's business: Boot autoconfigures a
+	 * `JwtEncoder` from the JWKS this server publishes, and dropping it would silently
+	 * take self-contained access tokens away from a future client that asked for one.
+	 *
+	 * Declaring this bean switches that default *off*, so whatever it did has to be done
+	 * here or it is gone. The two customizers are that: `getTokenGenerator` calls
+	 * `setAccessTokenCustomizer` and `getJwtGenerator` calls `setJwtCustomizer`, and
+	 * `OAuth2TokenCustomizer` is how this library adds a claim to a token — the obvious
+	 * next bean whoever puts tools behind this door declares. Constructing the two
+	 * generators bare would leave such a bean silently inert, which reads as a claim
+	 * missing from a token and gets debugged from the wrong end. There is no such bean
+	 * today; the wiring is here so that the day there is one, nothing has to be remembered.
+	 *
+	 * One thing is **not** carried, and it is named rather than hidden behind "nothing else
+	 * changed": the library composes its own `DefaultOAuth2TokenCustomizers` ahead of the
+	 * bean, and that class is package-private, so there is no way to call it from here. It
+	 * adds one claim — the `x5t#S256` certificate thumbprint — and only for a client that
+	 * authenticated with mTLS *and* registered `x509CertificateBoundAccessTokens`.
+	 * `ClientRegistrationService` registers neither, so it is inert on this server. It
+	 * would stop being inert the day an mTLS client is registered, and this paragraph is
+	 * where that day starts.
 	 *
 	 * Outside the dev-mode gate, with the three below it and for the same reason: with no
 	 * chain in front of it there is nothing to generate a token for.
 	 */
 	@Bean
-	fun tokenGenerator(jwtEncoder: ObjectProvider<JwtEncoder>): OAuth2TokenGenerator<out OAuth2Token> {
+	fun tokenGenerator(
+		jwtEncoder: ObjectProvider<JwtEncoder>,
+		accessTokenCustomizer: ObjectProvider<OAuth2TokenCustomizer<OAuth2TokenClaimsContext>>,
+		jwtCustomizer: ObjectProvider<OAuth2TokenCustomizer<JwtEncodingContext>>,
+	): OAuth2TokenGenerator<out OAuth2Token> {
 		val access = OAuth2AccessTokenGenerator()
+		accessTokenCustomizer.ifAvailable(access::setAccessTokenCustomizer)
 		val refresh = PublicClientRefreshTokenGenerator()
 		return jwtEncoder.getIfAvailable()
-			?.let { DelegatingOAuth2TokenGenerator(JwtGenerator(it), access, refresh) }
+			?.let { encoder ->
+				val jwt = JwtGenerator(encoder)
+				jwtCustomizer.ifAvailable(jwt::setJwtCustomizer)
+				DelegatingOAuth2TokenGenerator(jwt, access, refresh)
+			}
 			?: DelegatingOAuth2TokenGenerator(access, refresh)
 	}
 

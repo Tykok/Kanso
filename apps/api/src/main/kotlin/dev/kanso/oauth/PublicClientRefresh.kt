@@ -15,9 +15,11 @@ import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientAuthenticationToken
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenContext
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator
 import org.springframework.security.web.authentication.AuthenticationConverter
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
 import java.time.Instant
 import java.util.Base64
 
@@ -104,11 +106,36 @@ class PublicClientRefreshTokenGenerator : OAuth2TokenGenerator<OAuth2RefreshToke
  * What is left is the case OAuth 2.1 describes: a client with no credential to present,
  * whose evidence is the refresh token itself. That token is checked by the library, and
  * checked against the client named here.
+ *
+ * @param settings read for one string, and read rather than written because the endpoint
+ *   this opens on has to be the endpoint the library serves. A path constant would agree
+ *   with it today and drift the day the setting moves, in the direction that leaves the
+ *   converter answering on a path that is by then somebody else's.
  */
-class PublicClientRefreshConverter : AuthenticationConverter {
+class PublicClientRefreshConverter(settings: AuthorizationServerSettings) : AuthenticationConverter {
+
+	/**
+	 * Which endpoint, and it is the first question rather than an afterthought.
+	 *
+	 * `OAuth2ClientAuthenticationFilter` stands in front of *five* POST endpoints, not one:
+	 * the token endpoint, plus introspection, revocation, device authorization and pushed
+	 * authorization requests. `grant_type` means nothing on the other four and nothing
+	 * refuses it there, so a converter reading only the method and the parameters
+	 * authenticates a bare `client_id` at `/oauth2/introspect` — a request
+	 * `anyRequest().authenticated()` refused outright before this file existed, and one
+	 * `OAuth2TokenIntrospectionAuthenticationProvider` does not check the ownership of. It
+	 * costs an attacker one open `/connect/register` call to hold a `client_id`.
+	 *
+	 * `PathPatternRequestMatcher` for [McpBearerFilter][dev.kanso.mcp.McpBearerFilter]'s
+	 * reason and built the way the library builds its own: the path Spring routes on, not
+	 * the URI Tomcat received. The method is folded in here because it is the same
+	 * question — a credential-free GET carrying these parameters is a link.
+	 */
+	private val tokenEndpoint = PathPatternRequestMatcher.withDefaults()
+		.matcher(HttpMethod.POST, settings.tokenEndpoint)
 
 	override fun convert(request: HttpServletRequest): Authentication? {
-		if (!HttpMethod.POST.matches(request.method)) return null
+		if (!tokenEndpoint.matches(request)) return null
 		if (request.getParameter(OAuth2ParameterNames.GRANT_TYPE) != AuthorizationGrantType.REFRESH_TOKEN.value) {
 			return null
 		}
@@ -145,10 +172,19 @@ class PublicClientRefreshConverter : AuthenticationConverter {
  * reaches `PublicClientAuthenticationProvider` untouched. `ProviderManager` moves on when
  * a provider returns null, so being first costs nothing.
  *
- * The one check that is not bookkeeping is the second: a client that did not register
- * [ClientAuthenticationMethod.NONE] is refused rather than let through. Without it this
- * provider would be a way for a confidential client to authenticate with no secret, on a
- * request shape it never has to use.
+ * The one check that is not bookkeeping is the second, and it is worth stating in the
+ * direction the code actually runs: a client is **accepted** when
+ * [ClientAuthenticationMethod.NONE] is among the methods it registered — not refused for
+ * having registered anything besides. A client declaring both `NONE` and
+ * `client_secret_post` would pass here. That is the library's own reading of that column:
+ * it is the set of methods a client *may* present, so a client that registered `NONE` has
+ * been told it may present nothing, and narrowing it here would be one rule about a fact
+ * the rest of the server settles elsewhere. `ClientRegistrationService` is the only place
+ * a client is created and it registers `NONE` alone, so no such client exists to try it.
+ *
+ * What the check does refuse is the client that registered a credential and not `NONE` —
+ * without it this provider is a way for a confidential client to authenticate with no
+ * secret, on a request shape it never has to use.
  */
 class PublicClientRefreshProvider(private val clients: RegisteredClientRepository) : AuthenticationProvider {
 
