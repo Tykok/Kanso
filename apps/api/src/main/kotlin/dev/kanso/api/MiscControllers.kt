@@ -8,6 +8,8 @@ import dev.kanso.settings.PreferencesService
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.NotFoundException
+import dev.kanso.sync.notion.NotionPeople
 import jakarta.validation.Valid
 import org.springframework.boot.info.BuildProperties
 import org.springframework.http.HttpStatus
@@ -17,7 +19,11 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/api/users")
-class UserController(private val users: UserRepository) {
+class UserController(
+	private val users: UserRepository,
+	private val people: NotionPeople,
+	private val currentUser: CurrentUser,
+) {
 
 	@GetMapping
 	@Transactional(readOnly = true)
@@ -27,11 +33,28 @@ class UserController(private val users: UserRepository) {
 	 * Binding a Kanso user to their Notion workspace identity. Without it the
 	 * mirror cannot fill the `people` property for that person and falls back to
 	 * plain text.
+	 *
+	 * Through [NotionPeople.link] rather than straight at the column, and that indirection
+	 * is the whole of it: `link` is where "only an owner or an admin decides whose work a
+	 * Notion edit lands on" is written, and it says of itself that nothing reaches
+	 * [UserRepository.setNotionPersonId] without passing it first. This route was the
+	 * counter-example — no actor, no check, a user id straight off the path — so any
+	 * signed-in member could rewrite a colleague's Notion identity and have the mirror
+	 * attribute that colleague's work to somebody else. One row is the batch of one `link`
+	 * already speaks, so there was no second rule to write, and the one-to-one
+	 * correspondence it keeps between Notion people and Kanso accounts now holds through
+	 * this door too rather than being quietly breakable through it.
 	 */
 	@PutMapping("/{id}/notion-person")
 	@Transactional
 	fun setNotionPerson(@PathVariable id: UUID, @RequestBody body: Map<String, String?>): UserResponse {
-		users.setNotionPersonId(id, body["notionPersonId"]?.takeIf { it.isNotBlank() })
+		val target = users.findById(id) ?: throw NotFoundException("No user $id")
+		val asked = body["notionPersonId"]?.trim()?.takeIf { it.isNotEmpty() }
+		// `link` is keyed by the *Notion* id, so a clear has to be said as "the id this
+		// account is holding now belongs to nobody"; an account holding none has nothing to
+		// say, and asks for nothing — the same no-op `link` already lets through unguarded.
+		val assignment = asked?.let { it to id } ?: target.notionPersonId?.let { it to null }
+		assignment?.let { people.link(currentUser.require(), mapOf(it)) }
 		return UserResponse.of(requireNotNull(users.findById(id)))
 	}
 }
