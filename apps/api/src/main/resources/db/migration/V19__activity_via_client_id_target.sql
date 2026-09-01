@@ -1,6 +1,6 @@
 -- Point provenance at the client id that actually reaches a service.
 --
--- `V16` declared `activity.via_client_id REFERENCES oauth2_registered_client(id)` — the
+-- `V18` declared `activity.via_client_id REFERENCES oauth2_registered_client(id)` — the
 -- library's *surrogate* key. `McpBearerFilter` deliberately puts the **public**
 -- `client_id` on the principal instead, and argues correctly for it: the surrogate means
 -- nothing outside its own table, while the public id is what the client presents, what
@@ -24,15 +24,15 @@
 --
 -- It is also the one statement here that can fail on *data* rather than on schema. A
 -- unique index over a table that already has rows refuses to build if two of them share a
--- `client_id`, and a migration that fails leaves the instance stopped on `V16`. No
--- instance can hold such a pair: `V16` is on this same unmerged branch, so the table
+-- `client_id`, and a migration that fails leaves the instance stopped on `V18`. No
+-- instance can hold such a pair: `V18` is on this same unmerged branch, so the table
 -- exists only where this branch has run, and the only thing that has ever written to it is
 -- `ClientRegistrationService` through `JdbcRegisteredClientRepository` — which reads
 -- `client_id` back with a single-result select, so it has assumed this uniqueness from its
 -- first row. Where that were not true the duplicates would have to be found and resolved
 -- before this file could run, and this is where a reader in that position finds out.
 --
--- A new migration rather than an edit to `V16`: `V16` has run — on every test container
+-- A new migration rather than an edit to `V18`: `V18` has run — on every test container
 -- and on any instance that has already brought this branch up — and changing its checksum
 -- costs a repair on each of them for two statements' worth of history.
 
@@ -42,7 +42,7 @@ CREATE UNIQUE INDEX oauth2_registered_client_client_id_key
 ALTER TABLE activity
     DROP CONSTRAINT activity_via_client_id_fkey;
 
--- ON DELETE SET NULL for the reason `V16` gave, unchanged: a revoked client must not take
+-- ON DELETE SET NULL for the reason `V18` gave, unchanged: a revoked client must not take
 -- the history of what it did with it. Nothing in Kanso deletes a client row today —
 -- `GrantService.revoke` removes the consent and the tokens and leaves the registration —
 -- so this is the shape of a promise rather than a path that runs.

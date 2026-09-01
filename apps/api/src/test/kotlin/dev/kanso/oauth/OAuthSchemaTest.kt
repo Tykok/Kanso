@@ -44,7 +44,7 @@ class OAuthSchemaTest : PostgresTest() {
 	/**
 	 * The column and the only value that can reach it have to name the same thing.
 	 *
-	 * `V16` pointed this key at `oauth2_registered_client(id)` — the library's surrogate —
+	 * `V18` pointed this key at `oauth2_registered_client(id)` — the library's surrogate —
 	 * while `McpBearerFilter` puts the public `client_id` on the principal, so the one
 	 * value a service holds would have failed the constraint on insert. Neither
 	 * `AgentRightsTest`'s tripwire nor anything else could catch that, because nothing

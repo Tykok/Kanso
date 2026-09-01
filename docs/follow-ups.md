@@ -1046,7 +1046,7 @@ and because `sessionManagement { it.sessionCreationPolicy(STATELESS) }` on that 
 end it — untried here because chain 1 also serves `/oauth2/authorize`, which is a browser
 flow that wants its session.
 
-**`activity.via_client_id` is writable now and still unwritten.** `V17` moved the foreign
+**`activity.via_client_id` is writable now and still unwritten.** `V19` moved the foreign
 key onto `oauth2_registered_client(client_id)`, the public id that is the only one reaching
 a service layer — see the migration for why the column moved rather than the principal.
 Nothing under `src/main` writes it yet; `AgentRightsTest` carries a tripwire that fails on

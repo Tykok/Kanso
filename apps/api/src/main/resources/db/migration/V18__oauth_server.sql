@@ -15,9 +15,15 @@
 -- library ships no PostgreSQL variant of these files; it ships one file plus that
 -- header. Nothing else is touched, and nothing is hand-translated.
 --
--- `V16` rather than `V15`: `V15__notion_import_origin.sql` is the import branch's, now
--- merged. The ordering constraint the plan carried is therefore already satisfied, and
--- Flyway has no gap to tolerate.
+-- `V18`, and it has been renumbered twice. The plan wrote it as `V16` to leave `V15` to
+-- the then-unmerged import branch; that branch merged, and while this one was in review
+-- `main` took `V16__ticket_estimates.sql` and `V17__cycle_rollover.sql` as well. Flyway
+-- tolerates a gap and rejects a collision, so a version is not a name a branch owns until
+-- it merges — it is a claim on a number somebody else may take first, and the check is
+-- worth repeating on the day of the merge rather than on the day of the design.
+--
+-- Nothing about the version encodes ordering: `V18` and `V19` add tables of their own and
+-- one column to `activity`, and depend on nothing either of `main`'s two touch.
 
 
 -- ---------------------------------------------------------------------------

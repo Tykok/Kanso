@@ -30,7 +30,7 @@ class OAuthScopesTest {
 	}
 
 	/**
-	 * `V16` adds `activity.via_client_id` and nothing under `src/main` writes it, so a
+	 * `V18` adds `activity.via_client_id` and nothing under `src/main` writes it, so a
 	 * sentence promising that a change is recorded as coming from the application was
 	 * false — next to an Authorise button, and repeated on the settings screen through
 	 * `GrantService.scopeProse`. `AgentRightsTest` pins the missing column; this pins the

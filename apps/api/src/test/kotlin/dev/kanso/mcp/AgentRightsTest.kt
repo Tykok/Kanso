@@ -301,7 +301,7 @@ class AgentRightsTest : PostgresTest() {
 		assertEquals(CLIENT, principal.clientId, "which application typed it is not lost on the way in")
 		assertEquals(alice.id, principal.kansoUserId, "and it is carried alongside her, not instead of her")
 
-		// The gap, pinned rather than described. `V16__oauth_server.sql` added
+		// The gap, pinned rather than described. `V18__oauth_server.sql` added
 		// `activity.via_client_id` and `OAuthSchemaTest` pins that the column exists;
 		// nothing under `src/main` writes it. This assertion is expected to *fail* on the
 		// day somebody fills it in — which is the point. A gap recorded only in a report

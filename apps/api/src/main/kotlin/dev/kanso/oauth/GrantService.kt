@@ -47,7 +47,7 @@ data class GrantSummary(
  * Read through `JdbcClient` because the library exposes no listing API at all — its
  * services answer "the consent for this client and this principal", never "everything
  * this principal consented to". Reading tables Kanso copied but does not own is a smaller
- * liberty than it looks: `V16` already binds this codebase to their shape, and
+ * liberty than it looks: `V18` already binds this codebase to their shape, and
  * `GrantServiceTest` writes every row through the library's own services so the formats
  * this SQL assumes are asserted rather than believed — `authorities` in particular, whose
  * `SCOPE_` prefix is the library's and not a thing we chose.
