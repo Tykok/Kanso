@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { dayValue, type Ticket } from "@/lib/api";
-import { STATUS_COLORS } from "@/lib/status";
+import { categoryOf, STATUS_COLORS } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { SyncBadge } from "../pills";
 import { PriorityMark } from "../ui/priority-mark";
@@ -84,10 +84,10 @@ export function BoardCard({
       <span
         className={cn(
           "text-12 leading-[1.45] text-pretty",
-          // Done recedes and canceled is struck through — the two states that are over,
-          // drawn the way the list already draws an archived row.
-          ticket.status === "done" && "text-muted-foreground",
-          ticket.status === "canceled" && "text-faint line-through",
+          // Done recedes and canceled is struck through — the two categories that are
+          // over, drawn the way the list already draws an archived row.
+          categoryOf(ticket.status) === "completed" && "text-muted-foreground",
+          categoryOf(ticket.status) === "canceled" && "text-faint line-through",
         )}
       >
         {ticket.title}

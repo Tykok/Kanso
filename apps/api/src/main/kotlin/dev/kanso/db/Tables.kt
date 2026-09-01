@@ -159,6 +159,14 @@ object Tickets : Table("tickets") {
 	val description = text("description").nullable()
 	val status = text("status")
 	val priority = text("priority").nullable()
+
+	/**
+	 * Points, on a closed scale `tickets_estimate_chk` refuses anything off. Nullable
+	 * because "not estimated yet" is its own state, and `SMALLINT` because the largest
+	 * value the constraint admits is 13 — hence `Short` here and `Int?` in the domain,
+	 * where nothing wants to widen a sum by hand.
+	 */
+	val estimate = short("estimate").nullable()
 	val startAt = timestampWithTimeZone("start_at").nullable()
 	val startHasTime = bool("start_has_time")
 	val dueAt = timestampWithTimeZone("due_at").nullable()

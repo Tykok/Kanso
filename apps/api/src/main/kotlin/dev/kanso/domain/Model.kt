@@ -18,6 +18,26 @@ internal inline fun <reified E> parse(values: Array<E>, raw: String): E where E 
 			"Unknown ${E::class.simpleName} '$raw' (expected one of ${values.joinToString { it.wire }})"
 		)
 
+/**
+ * What a status *means*, as opposed to what it is called.
+ *
+ * Not a [Wire]: nothing writes a category to the database or sends one to Notion, so
+ * there is no raw string to parse back and no `CHECK` constraint to keep honest. It is a
+ * reading of the status column, and the status column already has both.
+ *
+ * The point is that "is this finished", "has anybody started" and "is this still open"
+ * are questions four screens ask — the burndown, the board, the workload chart, the
+ * public roadmap — and each one used to answer by naming statuses. Naming a category
+ * instead is what lets a seventh status exist without those four quietly going wrong.
+ */
+enum class StatusCategory {
+	BACKLOG,
+	UNSTARTED,
+	STARTED,
+	COMPLETED,
+	CANCELED,
+}
+
 enum class TicketStatus(override val wire: String) : Wire {
 	BACKLOG("backlog"),
 	TODO("todo"),
@@ -28,6 +48,20 @@ enum class TicketStatus(override val wire: String) : Wire {
 
 	/** Label shown in the Notion mirror, where humans read it. */
 	val label: String get() = wire.split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+
+	/**
+	 * Derived, never stored: the mapping is the definition, so there is no second copy on
+	 * disk that could disagree with this one. `in_review` is [StatusCategory.STARTED]
+	 * because somebody is holding it — a reviewer is work in flight, and a burndown that
+	 * called review "not started" would draw the wrong day.
+	 */
+	val category: StatusCategory get() = when (this) {
+		BACKLOG -> StatusCategory.BACKLOG
+		TODO -> StatusCategory.UNSTARTED
+		IN_PROGRESS, IN_REVIEW -> StatusCategory.STARTED
+		DONE -> StatusCategory.COMPLETED
+		CANCELED -> StatusCategory.CANCELED
+	}
 
 	companion object {
 		fun from(raw: String): TicketStatus = parse(entries.toTypedArray(), raw)
@@ -107,7 +141,14 @@ enum class ActivityKind(override val wire: String) : Wire {
 	ARCHIVED("archived"),
 	COMMENTED("commented"),
 	LABELLED("labelled"),
-	MIRROR_PUSHED("mirror_pushed");
+	MIRROR_PUSHED("mirror_pushed"),
+
+	/**
+	 * Work that outlived the cycle it was committed to. Not a `STATUS_CHANGED` and not
+	 * a second `CREATED`: nothing about the ticket changed, only the plan it belongs
+	 * to, and the feed has to be able to say that in the ticket's own history.
+	 */
+	CARRIED_OVER("carried_over");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
@@ -241,6 +282,37 @@ data class Project(
 	val updatedAt: OffsetDateTime,
 )
 
+/**
+ * The effort scale: a truncated Fibonacci sequence, and nothing between its values.
+ *
+ * A closed vocabulary like the statuses, but of numbers, so it is a [SCALE] and a check
+ * rather than an enum — `THIRTEEN` would name nothing the number does not already say,
+ * and every reader of this column adds it up. The gaps are the point: a free integer
+ * invites someone to write 7, and 7 is an argument about half a point rather than an
+ * estimate, while a short scale forces the choice and keeps two people's 5 comparable.
+ *
+ * Enforced here so a bad value is one sentence with the vocabulary in it, and again by
+ * `tickets_estimate_chk` so a writer that never came through Kotlin is refused too — the
+ * same two-sided guard the statuses have.
+ *
+ * Null is not on the scale and is not zero. "Not estimated yet" and "estimated at zero"
+ * are different states, and the day they are conflated every average computed out of
+ * this column starts reading as measured when it is invented.
+ */
+object EffortPoints {
+
+	val SCALE = listOf(1, 2, 3, 5, 8, 13)
+
+	/** Null passes: an absent estimate is a legitimate value, and the only way back to one. */
+	fun from(value: Int?): Int? = value?.also {
+		if (it !in SCALE) {
+			throw IllegalArgumentException(
+				"Unknown estimate '$it' (expected one of ${SCALE.joinToString()})",
+			)
+		}
+	}
+}
+
 data class Ticket(
 	val id: UUID,
 	val number: Int,
@@ -249,6 +321,8 @@ data class Ticket(
 	val description: String?,
 	val status: TicketStatus,
 	val priority: TicketPriority,
+	/** Points, off [EffortPoints.SCALE]. Null means nobody has sized it — never zero. */
+	val estimate: Int?,
 	val start: KansoInstant?,
 	val due: KansoInstant?,
 	val completedAt: OffsetDateTime?,

@@ -231,6 +231,9 @@ class SavedViewService(
 			cycleIds = strings(map["cycle"]).map(UUID::fromString),
 			labelIds = strings(map["label"]).map(UUID::fromString),
 			openedMoreThanDaysAgo = (map["openedForDays"] as? Number)?.toInt(),
+			unestimated = map["unestimated"] == true,
+			estimateMin = (map["estimateMin"] as? Number)?.toInt(),
+			estimateMax = (map["estimateMax"] as? Number)?.toInt(),
 		)
 	}
 
@@ -288,6 +291,16 @@ class SavedViewService(
 			"cycle",
 			"label",
 			"openedForDays",
+			// The three the estimate answers. `unestimated` is separate from the two bounds
+			// because null is not a small number: "not sized yet" is the question a planning
+			// session opens with, and no `estimateMax` can express it.
+			//
+			// The bounds are not checked against `EffortPoints.SCALE` on the way in, unlike
+			// `status` and `priority` beside them: they are comparisons, not vocabulary, and
+			// `estimateMin: 4` is the legitimate question "bigger than a 3".
+			"unestimated",
+			"estimateMin",
+			"estimateMax",
 		)
 	}
 }

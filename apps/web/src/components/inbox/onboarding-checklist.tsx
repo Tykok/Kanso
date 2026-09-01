@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useSetupState, useTeams, useTickets } from "@/lib/queries";
+import { categoryOf } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { checklist } from "./first-session";
 
@@ -32,7 +33,10 @@ export function OnboardingChecklist() {
       tickets: rows.length,
       // "Moved it along" against the status the composer leaves a ticket in. See
       // `first-session.ts` for why this is the honest approximation available.
-      advanced: rows.some((ticket) => ticket.status !== "backlog" && ticket.status !== "todo"),
+      advanced: rows.some((ticket) => {
+        const category = categoryOf(ticket.status);
+        return category !== "backlog" && category !== "unstarted";
+      }),
       notionConfigured: setup.data?.notion.configured ?? false,
     });
   }, [teams.data, tickets.data, setup.data]);

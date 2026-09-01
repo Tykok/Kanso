@@ -10,6 +10,7 @@ import { useUi, type Scope } from "@/store/ui";
 import {
   api,
   DEFAULT_PREFERENCES,
+  type EffortPoints,
   type KansoInstant,
   type Me,
   type MemberRole,
@@ -233,6 +234,8 @@ export type PatchInput = {
   id: string;
   status?: TicketStatus;
   priority?: TicketPriority;
+  /** Not nullable either, and for the same reason: `unset: ["estimate"]` is the only clear. */
+  estimate?: EffortPoints;
   title?: string;
   description?: string;
   archived?: boolean;

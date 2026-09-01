@@ -7,6 +7,7 @@ import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
 import dev.kanso.trash.TrashKind
 import dev.kanso.domain.KansoInstant
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
@@ -136,6 +137,7 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
+		estimate: Int?,
 		start: KansoInstant?,
 		due: KansoInstant?,
 		projectId: UUID?,
@@ -149,6 +151,9 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
+			// No default and no zero: a ticket arrives unsized unless somebody said a
+			// number, and that absence is what every later average has to be able to see.
+			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at
@@ -156,7 +161,7 @@ class TicketRepository {
 			// A ticket can be created already done — logging work that is finished is a
 			// normal thing to do. Leaving this null would hide it from the project bounds,
 			// which fall back on completion dates precisely when nobody planned anything.
-			it[Tickets.completedAt] = if (status == TicketStatus.DONE) now else null
+			it[Tickets.completedAt] = if (status.category == StatusCategory.COMPLETED) now else null
 			it[Tickets.projectId] = projectId
 			it[archived] = false
 			it[syncState] = SyncState.PENDING.wire
@@ -173,6 +178,7 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
+		estimate: Int?,
 		start: KansoInstant?,
 		due: KansoInstant?,
 		completedAt: OffsetDateTime?,
@@ -185,6 +191,7 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
+			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at

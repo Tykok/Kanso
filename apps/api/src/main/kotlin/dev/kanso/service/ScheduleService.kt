@@ -1,7 +1,7 @@
 package dev.kanso.service
 
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
-import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
@@ -144,6 +144,6 @@ class ScheduleService(
 		id = ticket.id,
 		start = ticket.start?.at,
 		end = ticket.due?.at,
-		done = ticket.status == TicketStatus.DONE,
+		done = ticket.status.category == StatusCategory.COMPLETED,
 	)
 }

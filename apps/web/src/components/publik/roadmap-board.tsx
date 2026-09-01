@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRoadmap } from "@/lib/queries/publik";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { categoryOf, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import type { RoadmapEntry, RoadmapGroup } from "@/lib/api/publik";
 import { deliveredOn } from "./delivered";
 import { VoteButton } from "./vote-button";
@@ -80,7 +80,7 @@ function Column({ group, now }: { group: RoadmapGroup; now: Date }) {
  * progress" findable without a legend.
  */
 function RoadmapCard({ entry, now }: { entry: RoadmapEntry; now: Date }) {
-  const moving = entry.status === "in_progress" || entry.status === "in_review";
+  const moving = categoryOf(entry.status) === "started";
   const delivered = entry.deliveredAt ? deliveredOn(entry.deliveredAt, now) : "";
 
   return (

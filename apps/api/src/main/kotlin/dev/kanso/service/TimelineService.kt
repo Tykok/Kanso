@@ -1,6 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.KansoInstant
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
@@ -235,7 +236,7 @@ class TimelineService(
 			if (predecessorEnd == null || successorStart == null) return@mapNotNull null
 			if (!successorStart.isBefore(predecessorEnd)) return@mapNotNull null
 			// The value is "is this one the cascade cannot repair".
-			edge to (successor.status == TicketStatus.DONE)
+			edge to (successor.status.category == StatusCategory.COMPLETED)
 		}.toMap()
 
 	/**
@@ -301,7 +302,7 @@ class TimelineService(
 		id = ticket.id,
 		start = ticket.start?.at,
 		end = ticket.due?.at,
-		done = ticket.status == TicketStatus.DONE,
+		done = ticket.status.category == StatusCategory.COMPLETED,
 	)
 
 	private companion object {

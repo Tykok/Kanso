@@ -1,5 +1,8 @@
 package dev.kanso.service
 
+import dev.kanso.domain.ActivityEntity
+import dev.kanso.domain.ActivityKind
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
@@ -36,8 +39,26 @@ data class Cycle(
 /** A cycle and how much work is in it — one sidebar row. */
 data class CycleSummary(val cycle: Cycle, val ticketCount: Int)
 
-/** One bar of the burn-down. [projected] is what the drawing hatches. */
-data class RemainingDay(val day: LocalDate, val open: Int, val projected: Boolean)
+/**
+ * One bar of the burn-down, in both units. [projected] is what the drawing hatches.
+ *
+ * Two numbers rather than one because a cycle can be estimated, half-estimated or not
+ * estimated at all, and the chart has to stay readable in all three: [openPoints] is the
+ * work left, [open] is the rows left, and neither is derivable from the other. A response
+ * carrying only points would draw a flat empty chart for a team that does not estimate.
+ */
+data class RemainingDay(val day: LocalDate, val open: Int, val openPoints: Int, val projected: Boolean)
+
+/**
+ * The cycle's effort, in points — and the size of what the points cannot speak for.
+ *
+ * A type of its own rather than three more Ints on [CycleReport], because [unestimated]
+ * has to travel with the sum wherever it goes. A ticket nobody has sized is left out of
+ * [total] rather than added as a zero, so a sum on its own reads as the whole cycle while
+ * describing part of it — and a burn-down that silently ignores a third of the work is
+ * worse than one that counts rows.
+ */
+data class CyclePoints(val total: Int, val done: Int, val percent: Int, val unestimated: Int)
 
 /**
  * Everything screen 19 draws, computed on read.
@@ -51,6 +72,12 @@ data class CycleReport(
 	val total: Int,
 	val done: Int,
 	val percent: Int,
+	/**
+	 * The same three questions asked in points. Kept beside the counts rather than
+	 * replacing them: the counts are what a team that has not estimated anything reads,
+	 * and [CyclePoints.unestimated] is what says which of the two to believe.
+	 */
+	val points: CyclePoints,
 	val byStatus: Map<TicketStatus, Int>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDay>,
@@ -72,6 +99,7 @@ class CycleService(
 	private val tickets: TicketRepository,
 	private val details: TicketDetails,
 	private val access: TicketAccess,
+	private val activity: ActivityService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -135,6 +163,12 @@ class CycleService(
 			}
 		}
 		cycles.updateState(id, state.wire)
+		// The *transition* carries the work, not the state. Setting a closed cycle closed
+		// again is the same button pressed twice, and it must not walk a ticket that has
+		// already moved on into a third cycle.
+		if (state == CycleState.CLOSED && CycleState.from(cycle.state) != CycleState.CLOSED) {
+			carryOver(actor, cycle)
+		}
 		return require(id).toDomain()
 	}
 
@@ -174,70 +208,188 @@ class CycleService(
 	@Transactional(readOnly = true)
 	fun report(cycleId: UUID, today: LocalDate = LocalDate.now()): CycleReport {
 		val cycle = require(cycleId).toDomain()
-		val counted = cycles.ticketsIn(cycleId).filter { it.status != TicketStatus.CANCELED }
+		val counted = cycles.ticketsIn(cycleId).filter { it.status.category != StatusCategory.CANCELED }
 		val loaded = details.of(counted)
 
 		val byStatus = COUNTED_STATUSES.associateWith { status -> counted.count { it.status == status } }
 		val total = counted.size
-		val done = byStatus[TicketStatus.DONE] ?: 0
-		val open = loaded.filter { it.ticket.status != TicketStatus.DONE }
+		val done = counted.count { it.status.category == StatusCategory.COMPLETED }
+		val open = loaded.filter { it.ticket.status.category != StatusCategory.COMPLETED }
+
+		// Summed, never counted as zero: a ticket nobody has sized is missing from both
+		// halves of this and present in `unestimated` instead, which is the only honest way
+		// to report a fraction whose numerator and denominator are both incomplete.
+		val totalPoints = counted.sumOf { it.estimate ?: 0 }
+		val donePoints = counted.filter { it.status == TicketStatus.DONE }.sumOf { it.estimate ?: 0 }
 
 		val daysLeft = ChronoUnit.DAYS.between(today, cycle.endsOn).toInt().coerceAtLeast(0)
 		// Inclusive of today: a cycle on its first day has measured one day, not zero, and
 		// dividing by zero is the only other option.
 		val measured = ChronoUnit.DAYS.between(cycle.startsOn, minOf(today, cycle.endsOn)).toInt() + 1
 		val rate = if (measured <= 0) null else done.toDouble() / measured
+		// The same observed rate in the other unit — points closed per day so far. Not
+		// derived from `rate`: a team that closes one 13 and three 1s in a week has two
+		// rates that say different things, which is the whole reason the points exist.
+		val pointsRate = if (measured <= 0) null else donePoints.toDouble() / measured
 
 		return CycleReport(
 			cycle = cycle,
 			total = total,
 			done = done,
 			percent = if (total == 0) 0 else (done * 100.0 / total).roundToInt(),
+			points = CyclePoints(
+				total = totalPoints,
+				done = donePoints,
+				percent = if (totalPoints == 0) 0 else (donePoints * 100.0 / totalPoints).roundToInt(),
+				unestimated = counted.count { it.estimate == null },
+			),
 			byStatus = byStatus,
 			daysLeft = daysLeft,
-			remaining = burnDown(cycle, counted, total, today, rate, open.size),
+			remaining = burnDown(cycle, counted, today, rate, pointsRate),
 			slipping = slipping(open, rate, daysLeft),
 			tickets = loaded,
+		)
+	}
+
+	// --- closing ---------------------------------------------------------------
+
+	/**
+	 * What a closed cycle does with the work that did not fit.
+	 *
+	 * It moves. Leaving it behind would make every closed cycle a place work goes to
+	 * stop being looked at: the next cycle starts empty and reads as healthy, and the
+	 * four tickets that slipped are only findable by opening a cycle nobody has a reason
+	 * to open again. The burn-down already names them — `report().slipping` is the list
+	 * this method acts on the moment the cycle ends.
+	 *
+	 * Done and cancelled stay. A finished ticket is the closed cycle's own record of
+	 * what the team achieved, and moving it would rewrite that history into the next
+	 * cycle's; a cancelled one is a decision not to do the work, so carrying it forward
+	 * would silently re-open it.
+	 *
+	 * Only the team is checked, not each ticket: [setState] has already established that
+	 * the actor may plan this team, and refusing to close a cycle because one ticket in
+	 * it belongs elsewhere would leave the cycle stuck open with no cure the closer can
+	 * apply. It is the same act either way — the tickets are the cycle's contents.
+	 */
+	private fun carryOver(actor: User, closing: CycleRow) {
+		val unfinished = cycles.ticketsIn(closing.id).filterNot { it.status in FINISHED_STATUSES }
+		// Before the destination is resolved, so a cycle that finished everything closes
+		// without an empty cycle 25 appearing beside the plan the team actually made.
+		if (unfinished.isEmpty()) return
+
+		val target = cycles.findNextUpcoming(closing.teamId, closing.number) ?: plan(closing)
+		cycles.carryOver(unfinished.map { it.id }, target.id)
+		for (ticket in unfinished) {
+			activity.record(
+				ActivityEntity.TICKET, ticket.id, actor.id, ActivityKind.CARRIED_OVER,
+				// The numbers because they are what the sentence reads ("carried from 24
+				// into 25"), the id because the feed links to where the work went and a
+				// number is only unique within a team.
+				mapOf("from" to closing.number, "to" to target.number, "cycleId" to target.id.toString()),
+			)
+		}
+	}
+
+	/**
+	 * The cycle the team has not planned yet, planned for them.
+	 *
+	 * Its dates are the closing cycle's own cadence: it starts the day after that one
+	 * ends, and runs for the same number of days. Both halves are choices worth stating.
+	 * Starting the next day leaves no gap — a day belonging to no cycle is a day whose
+	 * work has nowhere to be committed, and the burn-down of the new cycle would open
+	 * with days already spent. Reusing the length rather than defaulting to a fortnight
+	 * means the guess is the team's own rhythm: a team on one-week cycles gets a week,
+	 * and nobody has to correct a number Kanso invented. It is a *guess* either way,
+	 * which is why the cycle is created `upcoming` — somebody will look at it before it
+	 * starts, and moving two dates is a smaller correction than finding lost work.
+	 *
+	 * Its number is the next free one in the team rather than `closing.number + 1`,
+	 * which `cycles_team_number_uniq` would refuse the moment a team closed a cycle out
+	 * of order.
+	 */
+	private fun plan(closing: CycleRow): CycleRow {
+		val length = ChronoUnit.DAYS.between(closing.startsOn, closing.endsOn)
+		val startsOn = closing.endsOn.plusDays(1)
+		return cycles.insert(
+			id = UUID.randomUUID(),
+			teamId = closing.teamId,
+			number = (cycles.maxNumber(closing.teamId) ?: closing.number) + 1,
+			startsOn = startsOn,
+			endsOn = startsOn.plusDays(length),
+			state = CycleState.UPCOMING.wire,
 		)
 	}
 
 	// --- helpers -------------------------------------------------------------
 
 	/**
-	 * One bar per day of the cycle. Measured days read `completed_at`; the days that have
-	 * not happened yet fall by the observed rate and are marked so the chart can hatch
-	 * them. The projection stops at the work that will not fit rather than at zero —
-	 * drawing a line to zero would contradict the list of slipping tickets beside it.
+	 * One bar per day of the cycle, in both units at once.
+	 *
+	 * The two series are the same [descent] over two weights — one ticket each, or its
+	 * points — rather than two pieces of arithmetic that could drift apart. Written that
+	 * way because they *must* agree about which days are measured and which are hatched: a
+	 * chart whose two readings disagree about where today is describes two cycles.
 	 */
 	private fun burnDown(
 		cycle: Cycle,
 		counted: List<dev.kanso.domain.Ticket>,
-		total: Int,
 		today: LocalDate,
 		rate: Double?,
-		openNow: Int,
+		pointsRate: Double?,
 	): List<RemainingDay> {
-		val closedOn = counted.mapNotNull { it.completedAt?.toLocalDate() }.sorted()
-		val floor = slipCount(openNow, rate, ChronoUnit.DAYS.between(today, cycle.endsOn).toInt())
-		var day = cycle.startsOn
-		val bars = mutableListOf<RemainingDay>()
-		while (!day.isAfter(cycle.endsOn)) {
+		val days = generateSequence(cycle.startsOn) { it.plusDays(1) }
+			.takeWhile { !it.isAfter(cycle.endsOn) }
+			.toList()
+		val rows = descent(days, counted, today, rate) { 1 }
+		// An unsized ticket weighs nothing here, and is reported by `CyclePoints.unestimated`
+		// instead: giving it a 1, or the median of the scale, would be inventing the very
+		// number somebody declined to give.
+		val points = descent(days, counted, today, pointsRate) { it.estimate ?: 0 }
+		return days.mapIndexed { index, day ->
+			RemainingDay(day, rows[index], points[index], projected = day.isAfter(today))
+		}
+	}
+
+	/**
+	 * One unit's descent. Measured days read `completed_at`; the days that have not
+	 * happened yet fall by the observed rate and are marked so the chart can hatch them.
+	 * The projection stops at the work that will not fit rather than at zero — drawing a
+	 * line to zero would contradict the list of slipping tickets beside it.
+	 */
+	private fun descent(
+		days: List<LocalDate>,
+		counted: List<dev.kanso.domain.Ticket>,
+		today: LocalDate,
+		rate: Double?,
+		weight: (dev.kanso.domain.Ticket) -> Int,
+	): List<Int> {
+		val total = counted.sumOf(weight)
+		val closed = counted.mapNotNull { ticket -> ticket.completedAt?.let { it.toLocalDate() to weight(ticket) } }
+		val openNow = counted.filter { it.status != TicketStatus.DONE }.sumOf(weight)
+		val floorAt = slipCount(openNow, rate, ChronoUnit.DAYS.between(today, days.last()).toInt())
+		return days.map { day ->
 			if (!day.isAfter(today)) {
-				bars += RemainingDay(day, total - closedOn.count { !it.isAfter(day) }, projected = false)
+				total - closed.filter { !it.first.isAfter(day) }.sumOf { it.second }
 			} else {
 				val ahead = ChronoUnit.DAYS.between(today, day).toInt()
 				val projectedOpen = if (rate == null) openNow else openNow - floor(rate * ahead).toInt()
-				bars += RemainingDay(day, projectedOpen.coerceAtLeast(floor), projected = true)
+				projectedOpen.coerceAtLeast(floorAt)
 			}
-			day = day.plusDays(1)
 		}
-		return bars
 	}
 
 	/**
 	 * The tail of the list nobody will reach. Ordered the way the team works — highest
 	 * priority first, then oldest — so what slips is what was always going to be last,
 	 * not whatever the database returned last.
+	 *
+	 * Counted in tickets and not in points, deliberately, and it is the one number on this
+	 * screen that is. An unsized ticket has to be able to slip — it is real work somebody
+	 * committed to — and a points capacity has nothing to weigh it with, so it would
+	 * silently promise every unestimated ticket in the cycle. The points answer "how much
+	 * is left" in the burn-down beside it; this list answers "which ones", and that
+	 * question is about rows.
 	 */
 	private fun slipping(open: List<TicketDetail>, rate: Double?, daysLeft: Int): List<TicketDetail> {
 		val capacity = capacity(rate, daysLeft) ?: return emptyList()
@@ -273,13 +425,22 @@ class CycleService(
 	)
 
 	companion object {
-		/** The five the drawing plots. `canceled` is not work, so it is not counted. */
-		val COUNTED_STATUSES = listOf(
-			TicketStatus.BACKLOG,
-			TicketStatus.TODO,
-			TicketStatus.IN_PROGRESS,
-			TicketStatus.IN_REVIEW,
-			TicketStatus.DONE,
-		)
+		/**
+		 * Where work stops. Neither is carried into the next cycle when this one closes:
+		 * one is the closed cycle's record of what got done, the other of what the team
+		 * decided against. Everything else is unfinished, backlog included — a ticket
+		 * nobody started is still a commitment nobody has withdrawn.
+		 *
+		 * Read off the category rather than spelled as two names: "finished" is a meaning,
+		 * and the day a seventh status means it, the rollover has to stop carrying it
+		 * without anybody remembering this line exists.
+		 */
+		val FINISHED_STATUSES = TicketStatus.entries
+			.filterTo(mutableSetOf()) {
+				it.category == StatusCategory.COMPLETED || it.category == StatusCategory.CANCELED
+			}
+
+		/** What the drawing plots. `canceled` is not work, so it is not counted. */
+		val COUNTED_STATUSES = TicketStatus.entries.filter { it.category != StatusCategory.CANCELED }
 	}
 }
