@@ -132,6 +132,14 @@ describe("activitySentence", () => {
     );
   });
 
+  /** Closing a cycle writes this row on every ticket that did not fit into it. */
+  it("says where work carried out of a closed cycle went", () => {
+    expect(activitySentence(row("carried_over", { ref: "KAN-142", from: 24, to: 25 }))).toBe(
+      "Tykok carried KAN-142 into cycle 25",
+    );
+    expect(activitySentence(row("carried_over"))).toBe("Tykok carried work into the next cycle");
+  });
+
   /** The mirror is not a person, and "nobody pushed 2 pages" is not a sentence. */
   it("leaves the actor out when there was not one", () => {
     expect(activitySentence({ ...row("mirror_pushed"), actor: null })).toBe("Pushed to Notion");

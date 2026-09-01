@@ -1,5 +1,7 @@
 package dev.kanso.service
 
+import dev.kanso.domain.ActivityEntity
+import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
@@ -97,6 +99,7 @@ class CycleService(
 	private val tickets: TicketRepository,
 	private val details: TicketDetails,
 	private val access: TicketAccess,
+	private val activity: ActivityService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -160,6 +163,12 @@ class CycleService(
 			}
 		}
 		cycles.updateState(id, state.wire)
+		// The *transition* carries the work, not the state. Setting a closed cycle closed
+		// again is the same button pressed twice, and it must not walk a ticket that has
+		// already moved on into a third cycle.
+		if (state == CycleState.CLOSED && CycleState.from(cycle.state) != CycleState.CLOSED) {
+			carryOver(actor, cycle)
+		}
 		return require(id).toDomain()
 	}
 
@@ -239,6 +248,76 @@ class CycleService(
 			remaining = burnDown(cycle, counted, today, rate, pointsRate),
 			slipping = slipping(open, rate, daysLeft),
 			tickets = loaded,
+		)
+	}
+
+	// --- closing ---------------------------------------------------------------
+
+	/**
+	 * What a closed cycle does with the work that did not fit.
+	 *
+	 * It moves. Leaving it behind would make every closed cycle a place work goes to
+	 * stop being looked at: the next cycle starts empty and reads as healthy, and the
+	 * four tickets that slipped are only findable by opening a cycle nobody has a reason
+	 * to open again. The burn-down already names them — `report().slipping` is the list
+	 * this method acts on the moment the cycle ends.
+	 *
+	 * Done and cancelled stay. A finished ticket is the closed cycle's own record of
+	 * what the team achieved, and moving it would rewrite that history into the next
+	 * cycle's; a cancelled one is a decision not to do the work, so carrying it forward
+	 * would silently re-open it.
+	 *
+	 * Only the team is checked, not each ticket: [setState] has already established that
+	 * the actor may plan this team, and refusing to close a cycle because one ticket in
+	 * it belongs elsewhere would leave the cycle stuck open with no cure the closer can
+	 * apply. It is the same act either way — the tickets are the cycle's contents.
+	 */
+	private fun carryOver(actor: User, closing: CycleRow) {
+		val unfinished = cycles.ticketsIn(closing.id).filterNot { it.status in FINISHED_STATUSES }
+		// Before the destination is resolved, so a cycle that finished everything closes
+		// without an empty cycle 25 appearing beside the plan the team actually made.
+		if (unfinished.isEmpty()) return
+
+		val target = cycles.findNextUpcoming(closing.teamId, closing.number) ?: plan(closing)
+		cycles.carryOver(unfinished.map { it.id }, target.id)
+		for (ticket in unfinished) {
+			activity.record(
+				ActivityEntity.TICKET, ticket.id, actor.id, ActivityKind.CARRIED_OVER,
+				// The numbers because they are what the sentence reads ("carried from 24
+				// into 25"), the id because the feed links to where the work went and a
+				// number is only unique within a team.
+				mapOf("from" to closing.number, "to" to target.number, "cycleId" to target.id.toString()),
+			)
+		}
+	}
+
+	/**
+	 * The cycle the team has not planned yet, planned for them.
+	 *
+	 * Its dates are the closing cycle's own cadence: it starts the day after that one
+	 * ends, and runs for the same number of days. Both halves are choices worth stating.
+	 * Starting the next day leaves no gap — a day belonging to no cycle is a day whose
+	 * work has nowhere to be committed, and the burn-down of the new cycle would open
+	 * with days already spent. Reusing the length rather than defaulting to a fortnight
+	 * means the guess is the team's own rhythm: a team on one-week cycles gets a week,
+	 * and nobody has to correct a number Kanso invented. It is a *guess* either way,
+	 * which is why the cycle is created `upcoming` — somebody will look at it before it
+	 * starts, and moving two dates is a smaller correction than finding lost work.
+	 *
+	 * Its number is the next free one in the team rather than `closing.number + 1`,
+	 * which `cycles_team_number_uniq` would refuse the moment a team closed a cycle out
+	 * of order.
+	 */
+	private fun plan(closing: CycleRow): CycleRow {
+		val length = ChronoUnit.DAYS.between(closing.startsOn, closing.endsOn)
+		val startsOn = closing.endsOn.plusDays(1)
+		return cycles.insert(
+			id = UUID.randomUUID(),
+			teamId = closing.teamId,
+			number = (cycles.maxNumber(closing.teamId) ?: closing.number) + 1,
+			startsOn = startsOn,
+			endsOn = startsOn.plusDays(length),
+			state = CycleState.UPCOMING.wire,
 		)
 	}
 
@@ -346,6 +425,21 @@ class CycleService(
 	)
 
 	companion object {
+		/**
+		 * Where work stops. Neither is carried into the next cycle when this one closes:
+		 * one is the closed cycle's record of what got done, the other of what the team
+		 * decided against. Everything else is unfinished, backlog included — a ticket
+		 * nobody started is still a commitment nobody has withdrawn.
+		 *
+		 * Read off the category rather than spelled as two names: "finished" is a meaning,
+		 * and the day a seventh status means it, the rollover has to stop carrying it
+		 * without anybody remembering this line exists.
+		 */
+		val FINISHED_STATUSES = TicketStatus.entries
+			.filterTo(mutableSetOf()) {
+				it.category == StatusCategory.COMPLETED || it.category == StatusCategory.CANCELED
+			}
+
 		/** What the drawing plots. `canceled` is not work, so it is not counted. */
 		val COUNTED_STATUSES = TicketStatus.entries.filter { it.category != StatusCategory.CANCELED }
 	}

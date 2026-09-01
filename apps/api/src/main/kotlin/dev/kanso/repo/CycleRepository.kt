@@ -42,6 +42,30 @@ class CycleRepository {
 		Cycles.selectAll().where { (Cycles.teamId eq teamId) and (Cycles.state eq "active") }
 			.singleOrNull()?.toCycleRow()
 
+	/**
+	 * Where work carried out of cycle [after] goes: the nearest cycle the team has
+	 * already planned beyond it. Ascending, unlike every other read here — the sidebar
+	 * looks backwards from today, but a carry-over looks forwards, and the *nearest*
+	 * upcoming cycle is the one whose dates the slipped work still stands a chance in.
+	 *
+	 * Strictly greater than [after], so a cycle numbered below the one being closed is
+	 * never a destination. A team that renumbered its plan is not a team that wants its
+	 * unfinished work sent backwards.
+	 */
+	fun findNextUpcoming(teamId: UUID, after: Int): CycleRow? =
+		Cycles.selectAll()
+			.where { (Cycles.teamId eq teamId) and (Cycles.state eq "upcoming") and (Cycles.number greater after) }
+			.orderBy(Cycles.number to SortOrder.ASC)
+			.limit(1)
+			.singleOrNull()?.toCycleRow()
+
+	/** The highest number the team has used, so a new cycle can take the next free one. */
+	fun maxNumber(teamId: UUID): Int? =
+		Cycles.select(Cycles.number).where { Cycles.teamId eq teamId }
+			.orderBy(Cycles.number to SortOrder.DESC)
+			.limit(1)
+			.singleOrNull()?.get(Cycles.number)
+
 	fun insert(
 		id: UUID,
 		teamId: UUID,
@@ -110,6 +134,27 @@ class CycleRepository {
 			this[TicketCycles.ticketId] = ticketId
 			this[TicketCycles.cycleId] = cycleId
 			this[TicketCycles.addedAt] = OffsetDateTime.now()
+		}
+	}
+
+	/**
+	 * The whole cycle's unfinished tail, moved in one statement.
+	 *
+	 * `ticket_cycles.ticket_id` is the primary key, so each of these tickets already has
+	 * exactly one row: changing which cycle it names is an UPDATE. [place] deletes first
+	 * because it accepts tickets that may be in no cycle at all and has to insert for
+	 * those; here every ticket came out of [ticketsIn], so there is nothing to insert and
+	 * the delete would only be a second round trip that briefly loses the membership.
+	 *
+	 * `added_at` moves with it, for the reason [place] states: a ticket carried into the
+	 * next cycle joined that cycle today, not whenever it first entered the old one.
+	 */
+	fun carryOver(ticketIds: Collection<UUID>, cycleId: UUID) {
+		if (ticketIds.isEmpty()) return
+		val now = OffsetDateTime.now()
+		TicketCycles.update({ TicketCycles.ticketId inList ticketIds.distinct() }) {
+			it[TicketCycles.cycleId] = cycleId
+			it[addedAt] = now
 		}
 	}
 

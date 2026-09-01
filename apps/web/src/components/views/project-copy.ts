@@ -134,7 +134,7 @@ export function activitySentence(row: ActivityRow): string {
   const what = ref(row.payload);
 
   // Written as the verb phrase first, so the actor is prepended once rather than in
-  // eleven branches that could each get the spacing wrong.
+  // twelve branches that could each get the spacing wrong.
   const phrase = ((): string => {
     switch (row.kind) {
       case "created":
@@ -163,6 +163,15 @@ export function activitySentence(row: ActivityRow): string {
         return what ? `labelled ${what}` : "labelled a ticket";
       case "mirror_pushed":
         return "pushed to Notion";
+      case "carried_over": {
+        // The only branch that names a *cycle* rather than a field of the ticket, and
+        // the only one whose "to" is a number: closing a cycle moves what did not fit,
+        // and the sentence has to say where it went or the reader has to go looking.
+        const to = typeof row.payload.to === "number" ? row.payload.to : undefined;
+        if (what && to) return `carried ${what} into cycle ${to}`;
+        if (to) return `carried unfinished work into cycle ${to}`;
+        return what ? `carried ${what} into the next cycle` : "carried work into the next cycle";
+      }
     }
   })();
 
