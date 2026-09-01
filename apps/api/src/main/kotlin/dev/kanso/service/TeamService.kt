@@ -345,20 +345,12 @@ class TeamService(
 	fun update(actor: User, id: UUID, name: String, key: String, parentTeamId: UUID?): Team {
 		requireConfigurator(actor)
 		val existing = get(id)
-		if (parentTeamId != existing.parentTeamId) {
-			if (parentTeamId == id) throw ConflictException("A team cannot be its own parent")
-			val parent = parentTeamId?.let {
-				teams.findById(it) ?: throw BadRequestException("Parent team $it does not exist")
-			}
-			if (teams.wouldCreateCycle(id, parentTeamId)) {
-				throw ConflictException("Moving team $id under $parentTeamId would create a cycle")
-			}
-			// An unarchived team never has an archived ancestor: it would be invisible
-			// in every view while still counting as live work.
-			if (parent != null && parent.archived && !existing.archived) {
-				throw ConflictException("Team ${parent.id} is archived; unarchive it before moving a team under it")
-			}
+		// Before [moveRefusal] and with its own exception type: an id naming no team at all
+		// is a malformed request, not a move Kanso declines on the tree's behalf.
+		if (parentTeamId != existing.parentTeamId && parentTeamId != null && teams.findById(parentTeamId) == null) {
+			throw BadRequestException("Parent team $parentTeamId does not exist")
 		}
+		moveRefusal(existing, parentTeamId)?.let { throw ConflictException(it) }
 		if (key != existing.key) validateKey(key)
 
 		val updated = teams.update(id, name, key, parentTeamId, existing.archived)
@@ -366,6 +358,36 @@ class TeamService(
 		syncJobs.enqueue(SyncEntityType.TEAM, id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.team(ChangeKind.UPDATED, id))
 		return updated
+	}
+
+	/**
+	 * Why [update] would decline to put [team] under [parentTeamId], or null when it would
+	 * not. Never throws.
+	 *
+	 * [update]'s own guards rather than a second copy of them — it raises whatever this
+	 * answers — so the two cannot drift into disagreeing about what a legal move is.
+	 *
+	 * Public because a caller can be obliged to *decide* rather than react.
+	 * `TeamImport.settleParents` is one: it drops the single arrow a workspace's relation
+	 * cycle produced and imports the other four hundred pages, and it cannot learn the
+	 * arrow is refused by catching [ConflictException] out of [update] — see
+	 * [dev.kanso.sync.importer.ImportWriter] for what a `catch` there costs.
+	 */
+	@Transactional(readOnly = true)
+	fun moveRefusal(team: Team, parentTeamId: UUID?): String? {
+		// Nothing moves, so [update] asks none of the questions below either.
+		if (parentTeamId == team.parentTeamId) return null
+		if (parentTeamId == team.id) return "A team cannot be its own parent"
+		val parent = parentTeamId?.let { teams.findById(it) ?: return "Parent team $it does not exist" }
+		if (teams.wouldCreateCycle(team.id, parentTeamId)) {
+			return "Moving team ${team.id} under $parentTeamId would create a cycle"
+		}
+		// An unarchived team never has an archived ancestor: it would be invisible in
+		// every view while still counting as live work.
+		if (parent != null && parent.archived && !team.archived) {
+			return "Team ${parent.id} is archived; unarchive it before moving a team under it"
+		}
+		return null
 	}
 
 	/**
@@ -468,6 +490,28 @@ class TeamService(
 			throw BadRequestException("Team key '$key' must be 2-8 characters, A-Z or 0-9")
 		}
 		if (teams.findByKey(key) != null) throw ConflictException("Team key '$key' is already taken")
+	}
+
+	/**
+	 * The key [create] would derive for [name], or null when the search comes up empty.
+	 * Never throws.
+	 *
+	 * [resolveKey]'s search, exposed rather than duplicated: a caller that has to know
+	 * whether a name can be keyed at all must not have a second spelling of the rule, and
+	 * two spellings of a key rule is how they drift.
+	 *
+	 * It exists because `TeamImport` cannot learn the answer by catching
+	 * [ConflictException] out of [create] — see [dev.kanso.sync.importer.ImportWriter].
+	 * The `catch` here is *inside* this bean rather than across its boundary: [resolveKey]
+	 * is a private call on `this`, so the throw never reaches Spring's interceptor and
+	 * nothing is ever marked rollback-only. That is the whole difference between this and
+	 * the call site that used to catch.
+	 */
+	@Transactional(readOnly = true)
+	fun derivableKey(name: String): String? = try {
+		resolveKey(name, null)
+	} catch (_: ConflictException) {
+		null
 	}
 
 	/**

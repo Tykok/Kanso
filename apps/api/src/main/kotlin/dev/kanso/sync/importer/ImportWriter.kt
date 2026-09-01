@@ -35,6 +35,24 @@ import java.util.UUID
  * to somebody's own database would make Kanso's "Kanso wins" rule overwrite the workspace
  * they just imported, and screen 24 promises nothing in Notion is changed at any step.
  *
+ * One bad page must never roll back the run, and that promise is why not one of the writers
+ * below catches an exception out of a service. `write` *is* the transaction, and every
+ * service it calls is `@Transactional` too, so those calls only **participate** in this one.
+ * Spring marks a participating transaction rollback-only the instant an exception leaves the
+ * bean that raised it — `globalRollbackOnParticipationFailure`, true by default — and no
+ * `catch` on this side clears that flag: the run would carry on happily, write its other
+ * four hundred pages, and then die at the outermost commit with an
+ * `UnexpectedRollbackException`, losing everything over the one page it meant to drop. That
+ * is the whole shape of the bug, and it is invisible in a `@Transactional` test, which never
+ * reaches a commit — `ImportCommitTest` is the one that does.
+ *
+ * So a page this import cannot write is refused by *asking first*:
+ * [dev.kanso.service.TeamService.derivableKey], [dev.kanso.service.TeamService.moveRefusal],
+ * [dev.kanso.service.ScheduleService.linkRefusal], and [existingAccounts] for an assignee's
+ * account. Each answers the same question the service's own guard asks, without throwing and
+ * from inside the service that owns the rule, so the two cannot drift. A `try`/`catch` around
+ * a service call in any of the four writers is this bug coming back.
+ *
  * The [ImportOriginRepository.record] calls are not here but in the four writers, each next
  * to the insert it belongs to: the row a writer created and the page it came from are the
  * two ends of the one fact `notion_import_origin` exists to hold, and a central pass that
@@ -65,9 +83,10 @@ class ImportWriter(
 
 		val teamBases = bases.filter { it.target == ImportTarget.TEAMS }
 		var teamCount = 0
-		// Pages the *writer* refused, as opposed to the ones the reader did: a team whose
-		// name yields no free key is only discovered at the insert. They join the same list
-		// below rather than a second one — see [TeamsWritten].
+		// Pages the *writer* refused, as opposed to the ones the reader did: whether a team's
+		// name yields a free key is a question only the database can answer, so it is asked
+		// here rather than before a transaction is open. They join the same list below rather
+		// than a second one — see [TeamsWritten].
 		val refusedByWriter = mutableListOf<SkippedPage>()
 		// Two loops over the same bases rather than one: a parent can be listed after its
 		// child, and can even live in another teams base of the same plan.

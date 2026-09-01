@@ -86,16 +86,11 @@ class ScheduleService(
 		// which commits nobody else; drawing one *out of* it imposes a constraint on
 		// work that is not mine.
 		access.require(actor, successor)
-		if (predecessorId == successorId) {
-			throw ConflictException("A ticket cannot depend on itself")
-		}
+		linkRefusal(predecessorId, successorId)?.let { throw ConflictException(it) }
+		// Asked again here even when the caller already asked: an arrow already stored is
+		// never one [linkRefusal] would decline — no refused arrow was ever inserted — so
+		// re-drawing one still ends in this idempotent exit rather than in a 409.
 		if (dependencies.exists(predecessorId, successorId)) return emptyList()
-
-		dependencies.pathBetween(successorId, predecessorId)?.let { chain ->
-			throw ConflictException(
-				"That dependency would close a loop: ${chain.joinToString(" -> ")}"
-			)
-		}
 
 		dependencies.insert(predecessorId, successorId)
 		syncJobs.enqueue(SyncEntityType.TICKET, predecessorId, SyncOperation.UPSERT)
@@ -104,6 +99,27 @@ class ScheduleService(
 			KansoEvent.ticket(ChangeKind.UPDATED, successorId, successor.teamId, successor.projectId)
 		)
 		return cascadeFrom(predecessor.id)
+	}
+
+	/**
+	 * Why [link] would refuse the arrow [predecessorId] -> [successorId], or null when it
+	 * would draw it. Never throws.
+	 *
+	 * [link]'s own two refusals rather than a second copy of them — it raises whatever this
+	 * answers — so nothing can drift into calling an arrow legal that [link] would decline.
+	 * It says nothing about who may draw the arrow: access is the caller's own question,
+	 * asked against the successor, and [link] still asks it.
+	 *
+	 * Public because a caller can be obliged to *decide* rather than react. `TicketLinks`
+	 * is one: it drops the one imported relation Kanso refuses and keeps the other four
+	 * hundred, and it cannot learn the arrow is refused by catching [ConflictException] out
+	 * of [link] — see [dev.kanso.sync.importer.ImportWriter] for what a `catch` there costs.
+	 */
+	@Transactional(readOnly = true)
+	fun linkRefusal(predecessorId: UUID, successorId: UUID): String? {
+		if (predecessorId == successorId) return "A ticket cannot depend on itself"
+		return dependencies.pathBetween(successorId, predecessorId)
+			?.let { chain -> "That dependency would close a loop: ${chain.joinToString(" -> ")}" }
 	}
 
 	/**

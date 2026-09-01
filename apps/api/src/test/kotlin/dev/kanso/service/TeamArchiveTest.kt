@@ -339,6 +339,31 @@ class TeamArchiveTest : PostgresTest() {
 	}
 
 	@Test
+	fun `a team cannot be moved under itself`() {
+		val team = newTeam("Only")
+
+		assertFailsWith<ConflictException> {
+			teams.update(admin, team.id, team.name, team.key, team.id)
+		}
+	}
+
+	/**
+	 * Pinned separately from the refusals around it because the *type* is the point: an id
+	 * naming no team at all is a malformed request, not a move Kanso declines on the tree's
+	 * behalf, and [TeamService.moveRefusal] answers both in one string. A refactor that let
+	 * this one become a [ConflictException] would turn a caller's typo into a 409 saying the
+	 * tree forbids something it has no opinion about.
+	 */
+	@Test
+	fun `moving a team under a parent that does not exist is a bad request, not a conflict`() {
+		val team = newTeam("Orphan")
+
+		assertFailsWith<BadRequestException> {
+			teams.update(admin, team.id, team.name, team.key, UUID.randomUUID())
+		}
+	}
+
+	@Test
 	fun `one mirror push per entity touched, whichever plan ran`() {
 		val core = newTeam("Core")
 		val mobile = newTeam("Mobile", core.id)
