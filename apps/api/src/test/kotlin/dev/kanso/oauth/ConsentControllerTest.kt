@@ -26,11 +26,13 @@ import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -147,16 +149,43 @@ class ConsentControllerTest : PostgresTest() {
 
 		val session = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes)
 			.request.getSession(false)
-		val stashed = session?.getAttribute(RETURN_URL_ATTRIBUTE) as? String
+		val stashed = session?.getAttribute(RETURN_URL_ATTRIBUTE) as? ReturnAddress
 		assertEquals(
 			URLDecoder.decode(location.substringAfter("next="), StandardCharsets.UTF_8),
-			stashed,
+			stashed?.url,
 			"the two halves of the round trip must agree on where back is",
 		)
 		assertTrue(
-			stashed!!.startsWith("http://kanso.example.test:8080$CONSENT_PAGE"),
+			stashed!!.url.startsWith("http://kanso.example.test:8080$CONSENT_PAGE"),
 			"and it is this page on the API's own origin, not a route in the app",
 		)
+		assertFalse(
+			stashed.expiredAt(Instant.now().plus(RETURN_URL_TTL).minusSeconds(1)),
+			"it has to outlive a login screen, a provider page and a callback",
+		)
+		assertTrue(
+			stashed.expiredAt(Instant.now().plus(RETURN_URL_TTL).plusSeconds(1)),
+			"and nothing beyond that, or it becomes a way of redirecting the next sign-in",
+		)
+	}
+
+	/**
+	 * The order of the two refusals is the security property. `signIn` mints a session and
+	 * plants a return address in it, so reaching it with any `client_id` at all let a
+	 * stranger — `/connect/register` is open — leave a consent screen for their own client
+	 * waiting in a member's session, to be sprung on them the moment they next sign in.
+	 */
+	@Test
+	fun `an unknown client is refused before an anonymous visitor gets a session`() {
+		SecurityContextHolder.clearContext()
+
+		assertFailsWith<BadRequestException> {
+			controller.consent(clientId = "never-registered", scope = "kanso:read", state = "s")
+		}
+
+		val session = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes)
+			.request.getSession(false)
+		assertNull(session, "a stranger's URL must not be able to mint a session, let alone furnish it")
 	}
 
 	/**

@@ -18,6 +18,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 
 /**
  * The HTTP around [ConsentPage] — and nothing else, so the page stays testable as a
@@ -46,13 +47,22 @@ class ConsentController(
 		@RequestParam("scope") scope: String,
 		@RequestParam("state") state: String,
 	): ResponseEntity<String> {
+		// The client is looked up *before* the anonymous branch, and the order is the
+		// point. `signIn` mints a session and plants a return address in it; leaving that
+		// reachable for any `client_id` at all meant an attacker could register a client
+		// through the open `/connect/register`, get a member to open one consent URL, and
+		// have the member's *next* provider sign-in land on a consent screen for that
+		// client — arriving right after they typed their own credentials, which is when a
+		// consent prompt looks most legitimate. The authorisation endpoint only ever
+		// redirects here for a registered client, so nothing legitimate is refused by
+		// asking first.
+		val client = clients.findByClientId(clientId)
+			?: throw BadRequestException("No application is registered as '$clientId'")
+
 		// `principalOrNull`, not `require`: arriving here with no session is the normal
 		// first step of the flow, not a violation, and the answer to it is a round trip
 		// through the login screen rather than a 403.
 		val member = currentUser.principalOrNull() ?: return signIn(clientId, scope, state)
-
-		val client = clients.findByClientId(clientId)
-			?: throw BadRequestException("No application is registered as '$clientId'")
 
 		// Space-delimited by RFC 6749, and `distinct` because a client may repeat one —
 		// the same permission listed twice reads as two different asks.
@@ -89,8 +99,11 @@ class ConsentController(
 		// round trip leaves the app and comes back to `/login/oauth2/code/{provider}` on
 		// the API, where nothing in the URL remembers this page. `true` creates the
 		// session on purpose — there is none yet, and the cookie it sets is the only
-		// thread that survives a trip through Google.
-		currentRequest().getSession(true).setAttribute(RETURN_URL_ATTRIBUTE, back)
+		// thread that survives a trip through Google. It carries an expiry because a way
+		// back that outlives its own flow is a way of redirecting somebody else's
+		// sign-in; see [RETURN_URL_TTL].
+		currentRequest().getSession(true)
+			.setAttribute(RETURN_URL_ATTRIBUTE, ReturnAddress.validFrom(back, Instant.now()))
 
 		val next = URLEncoder.encode(back, StandardCharsets.UTF_8)
 		val target = "${props.webOrigin.trimEnd('/')}/login?next=$next"

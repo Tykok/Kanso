@@ -3,8 +3,10 @@ package dev.kanso.oauth
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
@@ -29,15 +31,27 @@ class ReturnUrlSuccessHandlerTest {
 	private val webOrigin = "http://localhost:3000"
 	private val handler = ReturnUrlSuccessHandler(webOrigin)
 
-	/** As the provider's callback arrives: `GET /login/oauth2/code/google` on the API. */
-	private fun callback(stashed: String? = null): MockHttpServletRequest {
+	/**
+	 * As the provider's callback arrives: `GET /login/oauth2/code/google` on the API.
+	 *
+	 * The session is created whether or not anything is stashed in it, because "a session
+	 * with no return address" and "no session at all" are two different branches and the
+	 * first is the one nearly every member takes. A helper that only created the session
+	 * when it had something to put in it would collapse them into one and leave the common
+	 * case untested.
+	 */
+	private fun callback(stashed: ReturnAddress? = null): MockHttpServletRequest {
 		val request = MockHttpServletRequest("GET", "/login/oauth2/code/google")
 		request.scheme = "https"
 		request.serverName = "api.example.com"
 		request.serverPort = 443
+		request.getSession(true)
 		if (stashed != null) request.session!!.setAttribute(RETURN_URL_ATTRIBUTE, stashed)
 		return request
 	}
+
+	/** As `ConsentController` writes it: valid from now, for [RETURN_URL_TTL]. */
+	private fun stash(url: String) = ReturnAddress.validFrom(url, Instant.now())
 
 	private fun landing(request: MockHttpServletRequest): String? {
 		val response = MockHttpServletResponse()
@@ -50,8 +64,10 @@ class ReturnUrlSuccessHandlerTest {
 	}
 
 	@Test
-	fun `a member with nothing stashed lands where they always landed`() {
-		assertEquals(webOrigin, landing(callback()), "an ordinary sign-in must not change destination")
+	fun `a member with a session and nothing stashed lands where they always landed`() {
+		val request = callback()
+		assertNotNull(request.getSession(false), "the branch under test is the one where a session exists")
+		assertEquals(webOrigin, landing(request), "an ordinary sign-in must not change destination")
 	}
 
 	@Test
@@ -65,13 +81,29 @@ class ReturnUrlSuccessHandlerTest {
 	@Test
 	fun `a member who started at the consent page is sent back to it`() {
 		val consent = "https://api.example.com/oauth/consent?client_id=claude-code&scope=kanso%3Aread&state=s"
-		assertEquals(consent, landing(callback(consent)), "otherwise the agent's authorisation is abandoned in silence")
+		assertEquals(
+			consent,
+			landing(callback(stash(consent))),
+			"otherwise the agent's authorisation is abandoned in silence",
+		)
+	}
+
+	/**
+	 * It has to survive a login screen, a provider page and a callback, and nothing
+	 * longer: what an expired address is good for is redirecting a sign-in that had
+	 * nothing to do with it.
+	 */
+	@Test
+	fun `a way back older than its own flow is dropped`() {
+		val consent = "https://api.example.com/oauth/consent?client_id=claude-code&state=s"
+		val stale = ReturnAddress.validFrom(consent, Instant.now().minus(RETURN_URL_TTL).minusSeconds(1))
+		assertEquals(webOrigin, landing(callback(stale)), "an address this old belongs to an abandoned flow")
 	}
 
 	@Test
 	fun `the way back is consumed, so it cannot redirect a later sign-in`() {
 		val consent = "https://api.example.com/oauth/consent?client_id=claude-code&scope=kanso%3Aread&state=s"
-		val request = callback(consent)
+		val request = callback(stash(consent))
 		landing(request)
 		assertNull(
 			request.session!!.getAttribute(RETURN_URL_ATTRIBUTE),
@@ -87,9 +119,16 @@ class ReturnUrlSuccessHandlerTest {
 	 */
 	@Test
 	fun `a stashed value on another origin is refused, not followed`() {
-		assertEquals(webOrigin, landing(callback("https://evil.example.com/steal")))
-		assertEquals(webOrigin, landing(callback("https://api.example.com.evil.example.com/steal")))
-		assertEquals(webOrigin, landing(callback("//evil.example.com/steal")))
-		assertEquals(webOrigin, landing(callback("javascript:alert(1)")))
+		val refused = { url: String ->
+			assertEquals(webOrigin, landing(callback(stash(url))), "$url must never be followed out of a sign-in")
+		}
+		refused("https://evil.example.com/steal")
+		// Reads as this origin to a prefix comparison, and to a person, respectively.
+		refused("https://api.example.com.evil.example.com/steal")
+		refused("https://api.example.com@evil.example.com/steal")
+		// Protocol-relative, in the two spellings `URI` disagrees with a browser about.
+		refused("//evil.example.com/steal")
+		refused("///evil.example.com/steal")
+		refused("javascript:alert(1)")
 	}
 }

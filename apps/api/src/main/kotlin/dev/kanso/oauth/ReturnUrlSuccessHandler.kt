@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.core.Authentication
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler
+import java.time.Instant
 
 /**
  * Where a member lands when a provider hands them back.
@@ -27,6 +28,11 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
  * every sign-in through a provider ends up in this method, and a member who cannot get in
  * at all is a far worse outcome than a member whose agent authorisation was abandoned.
  * With nothing stashed, `super` is the previous behaviour unchanged.
+ *
+ * The three-argument `determineTargetUrl` rather than the two-argument one it delegates to:
+ * either would be dispatched, since the pair is virtual all the way down, and this one is
+ * the one that carries the `Authentication` — a later reason to send a member somewhere
+ * else is far likelier to be about who they are than about the callback they arrived on.
  */
 class ReturnUrlSuccessHandler(defaultTarget: String) : SimpleUrlAuthenticationSuccessHandler(defaultTarget) {
 
@@ -40,28 +46,36 @@ class ReturnUrlSuccessHandler(defaultTarget: String) : SimpleUrlAuthenticationSu
 		// consult, and creating one here to find nothing in it would be its own small bug.
 		val session = request.getSession(false) ?: return default()
 
-		// Consumed whether or not it survives validation. A return address that outlives
+		// Consumed whether or not it survives what follows. A return address that outlives
 		// its own flow is a trap for the *next* sign-in in this session, which would be
 		// silently redirected somewhere it never asked to go.
-		val stashed = session.getAttribute(RETURN_URL_ATTRIBUTE) as? String
+		val stashed = session.getAttribute(RETURN_URL_ATTRIBUTE) as? ReturnAddress
 		session.removeAttribute(RETURN_URL_ATTRIBUTE)
+		if (stashed == null || stashed.expiredAt(Instant.now())) return default()
 
 		// Validated on the way out and not only on the way in. Today the only writer is
 		// `ConsentController`, which built the URL rather than copying one; the check is
 		// here because this value goes into a `Location` header a member follows without
 		// reading, and the day it acquires a second writer nothing else will notice.
-		return ReturnUrl.parse(stashed, originOf(request))?.toString() ?: default()
+		return ReturnUrl.parse(stashed.url, originOf(request))?.toString() ?: default()
 	}
 
 	/**
 	 * The API's own origin as this request saw it — always with a port, because
 	 * [ReturnUrl] normalises the default ones on both sides of the comparison. Read off
-	 * the request rather than from configuration: `ServletUriComponentsBuilder` cannot be
-	 * used here because `RequestContextHolder` is populated by the `DispatcherServlet`,
-	 * which runs *after* the security filter chain this handler lives in. Behind a reverse
-	 * proxy these three reflect `X-Forwarded-*` only if forwarded headers are honoured —
-	 * the same deployment note `ConsentController` carries, and the same one that decides
-	 * what that controller wrote into the session in the first place.
+	 * the request rather than through `ServletUriComponentsBuilder`, which would throw:
+	 * `RequestContextHolder` is populated by the `DispatcherServlet`, and that runs *after*
+	 * the security filter chain this handler lives in.
+	 *
+	 * These three reflect `X-Forwarded-*` only where forwarded headers are honoured, and
+	 * this application does not configure them: there is no `server.forward-headers-strategy`
+	 * and no `ForwardedHeaderFilter`, so Boot's default of `NONE` applies. Behind a
+	 * TLS-terminating proxy that does not mean the two ends disagree — `ConsentController`
+	 * read the same unwrapped request when it wrote the stash, so both say `http`, the
+	 * comparison passes, and the member is redirected from an `https` page to
+	 * `http://…/oauth/consent`. A scheme downgrade rather than an open redirect, and one
+	 * the `?next=` half of the round trip already has; setting the strategy fixes both at
+	 * once, which is why it belongs in deployment rather than here.
 	 */
 	private fun originOf(request: HttpServletRequest): String =
 		"${request.scheme}://${request.serverName}:${request.serverPort}"

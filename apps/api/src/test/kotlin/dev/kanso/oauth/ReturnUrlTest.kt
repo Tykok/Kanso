@@ -61,6 +61,12 @@ class ReturnUrlTest {
 		// Protocol-relative: the browser resolves `//evil.example.com` against the current
 		// scheme and leaves the application entirely.
 		refused("//evil.example.com/")
+		// `URI` only sees an authority after *exactly* two slashes, so it reports these two
+		// as ordinary paths. Browsers do not: WHATWG's special-authority-ignore-slashes
+		// state skips every leading slash, and Tomcat's `toAbsolute` takes its
+		// scheme-relative branch on the `//` prefix. Both land on `evil.example.com`.
+		refused("///evil.example.com/")
+		refused("////evil.example.com")
 		refused("/\\evil.example.com/")
 		refused("\\\\evil.example.com/")
 		// Browsers strip tab and newline before resolving, so this is `//evil.example.com`

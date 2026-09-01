@@ -2,10 +2,17 @@ package dev.kanso.oauth
 
 import dev.kanso.MockMvcTest
 import dev.kanso.config.KansoProperties
+import org.junit.jupiter.api.BeforeEach
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.security.oauth2.core.AuthorizationGrantType
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -29,11 +36,36 @@ class ConsentRouteTest : MockMvcTest() {
 
 	@Autowired lateinit var mvc: MockMvc
 	@Autowired lateinit var props: KansoProperties
+	@Autowired lateinit var clients: RegisteredClientRepository
+
+	/**
+	 * The controller refuses an unregistered client before it offers anybody a login
+	 * screen — that ordering is what stops a stranger planting a return address in a fresh
+	 * session — so this test has to register one or it would be asserting the refusal
+	 * rather than the rule it exists for. A fresh id each run because this class is not
+	 * `@Transactional` and the row outlives the test.
+	 */
+	private val clientId = "route-test-${UUID.randomUUID()}"
+
+	@BeforeEach
+	fun register() {
+		clients.save(
+			RegisteredClient.withId(UUID.randomUUID().toString())
+				.clientId(clientId)
+				.clientName("Claude Code")
+				.clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+				.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+				.redirectUri("http://127.0.0.1:8765/callback")
+				.apply { OAuthScopes.ALL.forEach { scope(it) } }
+				.clientSettings(ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(true).build())
+				.build(),
+		)
+	}
 
 	@Test
 	fun `an anonymous visitor is sent to log in rather than refused`() {
 		val response = mvc.get(CONSENT_PAGE) {
-			param("client_id", "claude-code")
+			param("client_id", clientId)
 			param("scope", OAuthScopes.READ)
 			param("state", "s")
 			with(anonymous())

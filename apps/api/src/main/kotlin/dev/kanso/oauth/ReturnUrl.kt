@@ -1,7 +1,10 @@
 package dev.kanso.oauth
 
+import java.io.Serializable
 import java.net.URI
 import java.net.URISyntaxException
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Where the session remembers the way back, for the length of one provider round trip.
@@ -15,6 +18,41 @@ import java.net.URISyntaxException
  * being made. So: the smallest thing that works, written by exactly one caller.
  */
 const val RETURN_URL_ATTRIBUTE: String = "dev.kanso.oauth.RETURN_URL"
+
+/**
+ * How long the way back is worth remembering. It has to survive one provider round trip —
+ * a login screen, a Google page, a callback — and nothing longer, because what it is good
+ * for after that is redirecting an unrelated sign-in.
+ *
+ * The reason it is a TTL and not a nonce: `/oauth/consent` is reachable without a session
+ * (it has to be), and `/connect/register` is open, so an attacker can register a client
+ * and get a member to open one consent URL. Validating the client before stashing means
+ * the planted address at least names a real client; expiring it means the window in which
+ * it can be handed to the member's *next* sign-in is minutes rather than the life of their
+ * browser session. Ten minutes is generous for a person who is already mid-flow.
+ */
+val RETURN_URL_TTL: Duration = Duration.ofMinutes(10)
+
+/**
+ * The stashed address and the moment it stops being one.
+ *
+ * `Serializable` because a session attribute may be written to disk by a container
+ * configured to persist sessions across a restart — Boot's default is not to, but an
+ * attribute that cannot be serialised turns that configuration into a startup failure
+ * somebody else has to debug.
+ *
+ * @param expiresAt epoch millis, so the serialised form is two primitives and no
+ *   dependency on a time library's own serialisation.
+ */
+data class ReturnAddress(val url: String, val expiresAt: Long) : Serializable {
+
+	fun expiredAt(now: Instant): Boolean = now.toEpochMilli() >= expiresAt
+
+	companion object {
+		fun validFrom(url: String, now: Instant): ReturnAddress =
+			ReturnAddress(url, now.plus(RETURN_URL_TTL).toEpochMilli())
+	}
+}
 
 /**
  * A URL this application is willing to put in a `Location` header and let a member
@@ -70,11 +108,19 @@ object ReturnUrl {
 		if (uri.isOpaque || uri.rawUserInfo != null) return null
 
 		if (!uri.isAbsolute) {
-			// A relative reference is only inside this application if it is rooted and has
-			// no authority of its own: `URI` parses `//evil.com/x` as host `evil.com` with
-			// no scheme, which is exactly the protocol-relative escape, so a parsed host
-			// here is disqualifying however the string was spelled.
-			return if (uri.host == null && uri.authority == null && value.startsWith("/")) uri else null
+			// Rooted, and not an authority wearing a path's clothes. **The string check is
+			// the load-bearing one and `URI` is not**: Java sees an authority after
+			// *exactly* two slashes, so it reports `///evil.com/` as host `null` with path
+			// `/evil.com/` and `////evil.com` as path `//evil.com`. Browsers disagree —
+			// WHATWG's *special-authority-ignore-slashes* state skips every leading slash,
+			// so `///evil.com/` resolves to `https://evil.com/`; and Tomcat's `toAbsolute`
+			// takes its `startsWith("//")` scheme-relative branch and emits
+			// `https:///evil.com/`, which resolves the same way. `safeNext` in `apps/web`
+			// had this right by refusing the prefix outright, so this refuses the prefix
+			// outright: a parser's opinion about where an authority begins is not the
+			// property being defended.
+			if (!value.startsWith("/") || value.startsWith("//")) return null
+			return if (uri.host == null && uri.authority == null) uri else null
 		}
 
 		if (uri.scheme?.lowercase() !in HTTP_SCHEMES) return null
