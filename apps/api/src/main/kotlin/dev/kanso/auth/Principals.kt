@@ -70,3 +70,27 @@ class KansoDevUser(
 
 	val authorities: Collection<GrantedAuthority> = listOf(SimpleGrantedAuthority("ROLE_USER"))
 }
+
+/**
+ * A member, as reached through a token their agent holds.
+ *
+ * It implements the same interface the other four do, and that is the entire point of
+ * this class: `CurrentUser` reads `kansoUserId` off whatever is in the security context,
+ * so every service downstream sees a `User` and `TicketAccess` applies unchanged. An
+ * agent is not a new kind of user — it is a member with a different way in.
+ *
+ * What it adds is provenance: the client that presented the token, so the activity feed
+ * can say which application typed a change, and the scopes, so a writing tool can refuse
+ * a read-only grant before it does anything.
+ */
+class KansoAgentUser(
+	override val kansoUserId: UUID,
+	override val kansoEmail: String,
+	private val displayName: String,
+	val clientId: String,
+	val scopes: Set<String>,
+) : Principal, KansoAuthenticatedUser {
+	override fun getName(): String = displayName
+
+	val authorities: Collection<GrantedAuthority> = listOf(SimpleGrantedAuthority("ROLE_USER"))
+}

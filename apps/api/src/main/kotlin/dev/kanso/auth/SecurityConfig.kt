@@ -1,8 +1,10 @@
 package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.mcp.McpBearerFilter
 import dev.kanso.oauth.OAuthRoutes
 import dev.kanso.publik.PublicRoutes
+import dev.kanso.repo.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -13,6 +15,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
@@ -55,7 +59,12 @@ class SecurityConfig(
 	 */
 	@Bean
 	@Order(2)
-	fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+	fun securityFilterChain(
+		http: HttpSecurity,
+		authorizations: OAuth2AuthorizationService,
+		clients: RegisteredClientRepository,
+		users: UserRepository,
+	): SecurityFilterChain {
 		http
 			.cors { }
 			.csrf { it.disable() }
@@ -109,6 +118,15 @@ class SecurityConfig(
 					.successHandler(SimpleUrlAuthenticationSuccessHandler(props.webOrigin))
 					.failureHandler(SimpleUrlAuthenticationFailureHandler("${props.webOrigin}/?login_error=1"))
 			}
+
+		// Before the session filter, so a bearer on /api/mcp is answered without ever
+		// touching a cookie, and before dev mode's filter, so an instance that cannot have
+		// an authorisation server says so rather than handing an agent a header identity.
+		// It filters itself down to that one path; see its `shouldNotFilter`.
+		http.addFilterBefore(
+			McpBearerFilter(authorizations, clients, users, props.auth.effectiveMode),
+			UsernamePasswordAuthenticationFilter::class.java,
+		)
 
 		when (props.auth.mode.lowercase()) {
 			"oidc" -> {

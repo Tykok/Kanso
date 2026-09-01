@@ -1,5 +1,6 @@
 package dev.kanso.mcp
 
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 
 /**
@@ -32,6 +33,21 @@ object McpResource {
 	 * Throws outside a request, deliberately. There is no correct answer without one, and
 	 * a fallback origin would be a plausible wrong answer written into every token.
 	 */
-	fun fromCurrentRequest(): String =
-		canonical(ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString())
+	fun fromCurrentRequest(): String = canonical(origin())
+
+	/**
+	 * The same answer for a request held in the hand rather than bound to the thread.
+	 *
+	 * A filter has the request as an argument and runs before anything publishes it to
+	 * `RequestContextHolder`, so [fromCurrentRequest] would throw there. Two entry points,
+	 * one derivation — which is the whole reason this object exists.
+	 */
+	fun fromRequest(request: HttpServletRequest): String = canonical(origin(request))
+
+	/** Scheme, host, port and context path: what a URL on this instance begins with. */
+	fun origin(request: HttpServletRequest): String =
+		ServletUriComponentsBuilder.fromContextPath(request).build().toUriString().trimEnd('/')
+
+	private fun origin(): String =
+		ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString().trimEnd('/')
 }

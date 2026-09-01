@@ -40,20 +40,12 @@ class ResourceValidator(
 		default.accept(context)
 
 		val token: OAuth2AuthorizationCodeRequestAuthenticationToken = context.getAuthentication()
-		val asked = values(token.additionalParameters["resource"])
+		val asked = ResourceParameter.values(token.additionalParameters[ResourceParameter.NAME])
 		val ours = expected()
 
 		// One value, and it is ours. Two bind a token to neither; none binds it to
 		// everything, and treating absence as permission is how this check gets undone.
 		if (asked.size != 1 || asked.single() != ours) refuse(token, asked, ours)
-	}
-
-	/** The spike found one value arrives as a `String` and repeated ones as an `Array`. */
-	private fun values(raw: Any?): List<String> = when (raw) {
-		null -> emptyList()
-		is Array<*> -> raw.mapNotNull { it?.toString() }
-		is Collection<*> -> raw.mapNotNull { it?.toString() }
-		else -> listOf(raw.toString())
 	}
 
 	private fun refuse(
@@ -76,5 +68,27 @@ class ResourceValidator(
 			),
 			token,
 		)
+	}
+}
+
+/**
+ * Reading RFC 8707's parameter, in the one place both enforcement points read it from.
+ *
+ * The parameter may repeat, so its value is not a `String`: the spike found one arrives
+ * as a `String` and repeated ones as an `Array`, and a stored authorisation that has been
+ * through the library's JSON round trip hands back a `Collection`. Three shapes for one
+ * parameter is exactly the kind of detail that gets remembered at one call site and
+ * forgotten at the other — [ResourceValidator] refuses at the authorisation endpoint and
+ * `McpBearerFilter` refuses at `/api/mcp`, and a disagreement between them is a hole.
+ */
+internal object ResourceParameter {
+
+	const val NAME = "resource"
+
+	fun values(raw: Any?): List<String> = when (raw) {
+		null -> emptyList()
+		is Array<*> -> raw.mapNotNull { it?.toString() }
+		is Collection<*> -> raw.mapNotNull { it?.toString() }
+		else -> listOf(raw.toString())
 	}
 }
