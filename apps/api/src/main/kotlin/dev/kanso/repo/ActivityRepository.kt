@@ -28,7 +28,7 @@ class ActivityRepository(private val jdbc: JdbcClient) {
 	/**
 	 * The one raw statement in this file, and only because of the column type: `payload`
 	 * is `jsonb`, and the driver sends a Kotlin string as `varchar`, which Postgres
-	 * refuses for a jsonb column. `sync_jobs` casts the same way, for the same reason.
+	 * refuses for a jsonb column. `outbound_jobs` casts the same way, for the same reason.
 	 * It runs on the connection Spring already holds, inside the caller's transaction.
 	 *
 	 * [createdAt] is passed in rather than left to the column default: `now()` is the

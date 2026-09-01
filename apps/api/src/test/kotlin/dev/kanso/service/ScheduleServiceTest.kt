@@ -7,8 +7,9 @@ import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
 import dev.kanso.repo.DependencyRepository
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -29,7 +30,7 @@ class ScheduleServiceTest : PostgresTest() {
 	@Autowired lateinit var schedule: ScheduleService
 	@Autowired lateinit var repo: TicketRepository
 	@Autowired lateinit var deps: DependencyRepository
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 
@@ -84,11 +85,11 @@ class ScheduleServiceTest : PostgresTest() {
 		val b = ticket("B", 10, 15)
 		val untouched = ticket("Elsewhere", 1, 2)
 		deps.insert(a, b)
-		jobs.claimBatch(100, "drain")
+		jobs.claimBatch(Destination.NOTION, 100, "drain")
 
 		tickets.patch(admin, a, TicketPatch(due = day(12)))
 
-		val queued = jobs.claimBatch(100, "test").map { it.entityId }.toSet()
+		val queued = jobs.claimBatch(Destination.NOTION, 100, "test").map { it.entityId }.toSet()
 		assertEquals(setOf(a, b), queued, "the moved successor needs its own push; nothing else does")
 		assertEquals(false, untouched in queued)
 	}

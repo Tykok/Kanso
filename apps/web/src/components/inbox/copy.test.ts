@@ -88,7 +88,12 @@ describe("what an inbox row says", () => {
         id: undefined,
         kind: "sync_failed",
         actor: undefined,
-        payload: { jobId: 41, attempts: 5, error: "The target page is locked by another workspace" },
+        payload: {
+          jobId: 41,
+          destination: "notion",
+          attempts: 5,
+          error: "The target page is locked by another workspace",
+        },
       }),
     );
     expect(copy).toEqual({
@@ -100,6 +105,21 @@ describe("what an inbox row says", () => {
   it("still says something when the mirror gave no reason", () => {
     const copy = rowCopy(row({ kind: "sync_failed", actor: undefined, payload: {} }));
     expect(copy.detail).toBe("The change is kept in the queue.");
+  });
+
+  // The outbox serves more than Notion now, so the row has to name who refused —
+  // "the Notion mirror refused this" on a push that never went near Notion sends
+  // somebody to the wrong settings page.
+  it("names the destination that refused, when it is not Notion", () => {
+    const copy = rowCopy(
+      row({ kind: "sync_failed", actor: undefined, payload: { destination: "github" } }),
+    );
+    expect(copy.sentence).toBe("The github refused this write");
+  });
+
+  it("falls back to Notion for a server too old to say where the push was going", () => {
+    const copy = rowCopy(row({ kind: "sync_failed", actor: undefined, payload: {} }));
+    expect(copy.sentence).toBe("The Notion mirror refused this write");
   });
 
   it("names the field two versions disagree about", () => {

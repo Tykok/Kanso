@@ -19,7 +19,7 @@ The app stays fully usable when Notion is unreachable, and reconciles later.
                               every API instance
                                        │
                                        ▼
-                            sync_jobs (outbox) ──▶ Notion   (mirror)
+                        outbound_jobs (outbox) ──▶ Notion   (mirror)
                                        ▲                │
                                        └─── poller ◀────┘
 ```
@@ -199,11 +199,19 @@ and falls back. Cleaning those rows up is a `follow-ups.md` line, not a trigger.
 
 ### The outbox
 
-`sync_jobs` rows are inserted **in the business transaction**, so a crash right
+`outbound_jobs` rows are inserted **in the business transaction**, so a crash right
 after the commit cannot lose a push.
 
-- A partial unique index allows at most one `pending` job per entity. Since a push
-  writes the whole row, five queued pushes are redundant — the insert coalesces.
+The queue is general: a job says which `destination` it is going to and which
+`entity_type` it is about, two axes rather than one compound kind. `OutboundWorker`
+drains and retries, an `OutboundJobHandler` per destination says what a job means, and
+Notion is currently the only one. Adding a consumer is a handler and a value in the
+`destination` vocabulary, not a second queue.
+
+- A partial unique index allows at most one `pending` job per `(destination, entity)`.
+  Since a push writes the whole row, five queued pushes are redundant — the insert
+  coalesces. `destination` leads the index so a ticket queued for one system does not
+  swallow the same ticket queued for another.
 - Claiming flips the row to `running`, which frees that slot: an edit made while a
   push is in flight still gets queued.
 - Claims use `FOR UPDATE SKIP LOCKED`, so several workers or API instances take
@@ -421,7 +429,7 @@ cannot express them and each is load-bearing:
 6. `WITH RECURSIVE` accumulating a `uuid[]` for the path a refused dependency would
    close. "Cycle detected" on its own is not something anyone can act on.
 7. `CAST(:payload AS jsonb)` on the activity insert. The driver sends a Kotlin string
-   as `varchar`, which Postgres refuses for a `jsonb` column; `sync_jobs` casts the
+   as `varchar`, which Postgres refuses for a `jsonb` column; `outbound_jobs` casts the
    same way. Reads come back through Exposed.
 
 They run on the connection Spring already holds, inside the same transaction as the

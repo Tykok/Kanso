@@ -8,11 +8,12 @@ import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.NotionMetaRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
@@ -21,8 +22,8 @@ import dev.kanso.service.ScheduleService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionClient
-import dev.kanso.sync.notion.NotionDatabase
 import dev.kanso.sync.notion.NotionDataSource
+import dev.kanso.sync.notion.NotionDatabase
 import dev.kanso.sync.notion.NotionMember
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionQueryPage
@@ -58,7 +59,7 @@ class NotionInboundTicketTest : PostgresTest() {
 	@Autowired lateinit var ticketRows: TicketRepository
 	@Autowired lateinit var deps: DependencyRepository
 	@Autowired lateinit var meta: NotionMetaRepository
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var schedule: ScheduleService
 	@Autowired lateinit var notifications: NotificationService
 	@Autowired lateinit var events: EventPublisher
@@ -189,14 +190,14 @@ class NotionInboundTicketTest : PostgresTest() {
 		// ticket on the strength of a title change.
 		val b = ticket("B", 5, 8)
 		deps.insert(a, b)
-		jobs.claimBatch(200, "drain")
+		jobs.claimBatch(Destination.NOTION, 200, "drain")
 
 		pollWithDue(a, "2026-08-10")
 
 		assertEquals(day(5).at, ticketRows.findById(b)!!.start!!.at, "B stays where it was")
 		assertEquals(
 			emptySet(),
-			jobs.claimBatch(200, "test").map { it.entityId }.toSet(),
+			jobs.claimBatch(Destination.NOTION, 200, "test").map { it.entityId }.toSet(),
 			"and no push is queued, or the mirror argues with itself over an edit that changed no date",
 		)
 	}

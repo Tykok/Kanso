@@ -152,14 +152,14 @@ class ImportCommitTest : ImportTestBase() {
 	 *
 	 * Scoped by name rather than truncating: the container is shared with every other
 	 * class in the suite, and a `DELETE FROM teams` here would take out whatever a
-	 * non-`@Transactional` neighbour had committed for its own run. `sync_jobs` is the one
+	 * non-`@Transactional` neighbour had committed for its own run. `outbound_jobs` is the one
 	 * table this cannot scope — a job carries an entity id and no name — and it is emptied
 	 * wholesale on purpose: the queue tests are `@Transactional`, so nothing of theirs is
 	 * ever committed for this to delete, but the rows *this* class commits would otherwise
-	 * be visible to `SyncJobQueueTest`'s own claim.
+	 * be visible to `OutboundJobQueueTest`'s own claim.
 	 */
 	private fun wipe() {
-		jdbc.sql("DELETE FROM sync_jobs").update()
+		jdbc.sql("DELETE FROM outbound_jobs").update()
 		jdbc.sql("DELETE FROM notion_import_origin").update()
 		// Tickets and projects before their teams: a ticket is `ON DELETE CASCADE` from
 		// `teams` but a project is `ON DELETE SET NULL`, so deleting the team first would

@@ -158,7 +158,7 @@ cd apps/web && pnpm install && pnpm dev      # http://localhost:3000
                               every API instance
                                        │
                                        ▼
-                            sync_jobs (outbox) ──▶ Notion  (mirror)
+                        outbound_jobs (outbox) ──▶ Notion  (mirror)
                                        ▲                │
                                        └── poller ◀─────┘
 ```

@@ -319,14 +319,17 @@ object Activity : Table("activity") {
 
 	// jsonb, read as text — Postgres hands it back as a PGobject whose toString is the
 	// document. Written through raw SQL, which casts explicitly, because the driver
-	// refuses a varchar parameter for a jsonb column: same split as `sync_jobs.payload`.
+	// refuses a varchar parameter for a jsonb column: same split as `outbound_jobs.payload`.
 	val payload = text("payload")
 	val createdAt = timestampWithTimeZone("created_at")
 	override val primaryKey = PrimaryKey(id)
 }
 
-object SyncJobs : Table("sync_jobs") {
+object OutboundJobs : Table("outbound_jobs") {
 	val id = long("id").autoIncrement()
+	// Which system the job is going to; `entityType` says what it is about. Two axes,
+	// not one compound kind — see `V26`.
+	val destination = text("destination")
 	val entityType = text("entity_type")
 	val entityId = javaUUID("entity_id")
 	val operation = text("operation")
@@ -347,7 +350,7 @@ object SyncJobs : Table("sync_jobs") {
 /**
  * One row per person who has to be told, not one per change — see `V13`.
  *
- * `payload` is jsonb, declared here as text for the same reason `SyncJobs.payload`
+ * `payload` is jsonb, declared here as text for the same reason `OutboundJobs.payload`
  * is: it is written only through raw SQL, which casts explicitly, and read back with
  * `::text` so Jackson parses it rather than Exposed.
  */
@@ -444,7 +447,7 @@ object SavedViews : Table("saved_views") {
 	val shared = bool("shared")
 
 	// jsonb, read as text and written through raw SQL that casts explicitly — the same
-	// split `sync_jobs.payload` already lives with, for the same reason: the driver
+	// split `outbound_jobs.payload` already lives with, for the same reason: the driver
 	// refuses a varchar parameter for a jsonb column.
 	val filters = text("filters")
 	val groupBy = text("group_by")

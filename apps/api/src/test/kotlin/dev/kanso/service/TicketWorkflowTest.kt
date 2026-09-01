@@ -8,7 +8,9 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundOperation
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -29,7 +31,7 @@ class TicketWorkflowTest : PostgresTest() {
 	@Autowired lateinit var teams: TeamService
 	@Autowired lateinit var projects: ProjectService
 	@Autowired lateinit var tickets: TicketService
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 
@@ -103,7 +105,7 @@ class TicketWorkflowTest : PostgresTest() {
 		tickets.patch(admin, ticket.ticket.id, TicketPatch(priority = TicketPriority.HIGH))
 		tickets.patch(admin, ticket.ticket.id, TicketPatch(title = "Renamed"))
 
-		val queued = jobs.claimBatch(50, "test").filter { it.entityId == ticket.ticket.id }
+		val queued = jobs.claimBatch(Destination.NOTION, 50, "test").filter { it.entityId == ticket.ticket.id }
 		assertEquals(1, queued.size, "the mirror needs one push carrying the final state, not four")
 	}
 
@@ -254,13 +256,13 @@ class TicketWorkflowTest : PostgresTest() {
 			assigneeIds = emptyList(),
 			docIds = emptyList(),
 		)
-		jobs.claimBatch(50, "drain")
+		jobs.claimBatch(Destination.NOTION, 50, "drain")
 
 		tickets.patch(admin, ticket.ticket.id, TicketPatch(archived = true))
 
-		val queued = jobs.claimBatch(50, "test").single { it.entityId == ticket.ticket.id }
+		val queued = jobs.claimBatch(Destination.NOTION, 50, "test").single { it.entityId == ticket.ticket.id }
 		assertEquals(
-			dev.kanso.sync.SyncOperation.ARCHIVE,
+			dev.kanso.outbox.OutboundOperation.ARCHIVE,
 			queued.operation,
 			"Notion archives rather than deletes, so archiving is its own operation",
 		)

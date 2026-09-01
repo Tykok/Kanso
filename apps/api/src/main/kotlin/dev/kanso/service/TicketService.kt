@@ -10,21 +10,22 @@ import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.DocRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.TicketQueryRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.TicketScope
 import dev.kanso.repo.UserRepository
-import dev.kanso.sync.SyncEntityType
-import dev.kanso.sync.deletePayload
-import dev.kanso.sync.SyncOperation
+import dev.kanso.sync.outbound.deletePayload
 import dev.kanso.trash.TrashKind
 import dev.kanso.trash.TrashRepository
 import org.springframework.stereotype.Service
@@ -85,7 +86,7 @@ class TicketService(
 	private val projects: ProjectRepository,
 	private val users: UserRepository,
 	private val docs: DocRepository,
-	private val syncJobs: SyncJobRepository,
+	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val schedule: ScheduleService,
 	private val access: TicketAccess,
@@ -352,7 +353,9 @@ class TicketService(
 		// relation, and it has neither — the page would be a blank nothing could reconcile,
 		// and it would have to be found and rewritten the day the ticket is attached. The
 		// attach is the push, and `patch` makes it.
-		if (effectiveTeamId != null) syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+		if (effectiveTeamId != null) {
+			outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, ticket.id, OutboundOperation.UPSERT)
+		}
 		// No payload: a creation has no before, and the title a feed wants to print is on
 		// the row it is already reading. What the log adds is who, and when.
 		activity.record(ActivityEntity.TICKET, ticket.id, actor.id, ActivityKind.CREATED)
@@ -490,10 +493,11 @@ class TicketService(
 		// argument `create` makes. The first push is the one that follows the attach, and
 		// by then this row carries both.
 		if (updated.teamId != null) {
-			syncJobs.enqueue(
-				SyncEntityType.TICKET,
+			outbox.enqueue(
+				Destination.NOTION,
+				OutboundEntityType.TICKET,
 				id,
-				if (updated.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+				if (updated.archived) OutboundOperation.ARCHIVE else OutboundOperation.UPSERT,
 			)
 		}
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, updated.teamId, updated.projectId))
@@ -532,7 +536,7 @@ class TicketService(
 		access.require(actor, ticket)
 		if (trash.find(TrashKind.TICKET, id) != null) return
 		trash.add(TrashKind.TICKET, id, actor.id)
-		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.ARCHIVE)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.ARCHIVE)
 		events.publish(KansoEvent.ticket(ChangeKind.DELETED, id, ticket.teamId, ticket.projectId))
 	}
 
@@ -550,10 +554,11 @@ class TicketService(
 	fun restore(actor: User, id: UUID) {
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
 		access.require(actor, ticket)
-		syncJobs.enqueue(
-			SyncEntityType.TICKET,
+		outbox.enqueue(
+			Destination.NOTION,
+			OutboundEntityType.TICKET,
 			id,
-			if (ticket.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+			if (ticket.archived) OutboundOperation.ARCHIVE else OutboundOperation.UPSERT,
 		)
 		events.publish(KansoEvent.ticket(ChangeKind.CREATED, id, ticket.teamId, ticket.projectId))
 	}
@@ -572,7 +577,7 @@ class TicketService(
 		val ticket = tickets.findById(id) ?: throw NotFoundException("No ticket $id")
 		access.require(actor, ticket)
 		tickets.setArchived(id, true)
-		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.ARCHIVE)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.ARCHIVE)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
 	}
 
@@ -588,10 +593,11 @@ class TicketService(
 		actor?.let { access.require(it, ticket) }
 		// Read before the delete: the job carries the Notion page id, and by the time the
 		// worker runs there is no row left to look it up from.
-		syncJobs.enqueue(
-			SyncEntityType.TICKET,
+		outbox.enqueue(
+			Destination.NOTION,
+			OutboundEntityType.TICKET,
 			id,
-			SyncOperation.DELETE,
+			OutboundOperation.DELETE,
 			payload = deletePayload(ticket.mirror.notionPageId),
 		)
 		tickets.delete(id)
@@ -606,7 +612,7 @@ class TicketService(
 		val before = tickets.assigneeIds(id)
 		tickets.setAssignees(id, userIds)
 		recordAssigneeChanges(actor, id, before, userIds)
-		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
 		return decorate(listOf(ticket)).single()
 	}
@@ -617,7 +623,7 @@ class TicketService(
 		access.require(actor, ticket)
 		requireDocs(docIds)
 		tickets.setDocs(id, docIds)
-		syncJobs.enqueue(SyncEntityType.TICKET, id, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
 		return decorate(listOf(ticket)).single()
 	}

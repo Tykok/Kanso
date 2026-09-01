@@ -495,7 +495,7 @@ call.
 **Notifications have call sites now, and `project_slipped` still has none.** Assignment,
 status moves, mentions, replies and the mirror's conflicts are all recorded, each in the
 transaction of the change it is about; the failures tab needs none, being derived from
-`sync_jobs`, because the queue is already where "the mirror refused this" is true and a
+`outbound_jobs`, because the queue is already where "the mirror refused this" is true and a
 stored copy keeps saying so after a retry succeeds. `PROJECT_SLIPPED` is the one kind of the
 seven with no writer, and not for want of looking: a project's end is *derived* —
 `TimelineService.projectRows` computes it from its tickets' bounds on every read, and

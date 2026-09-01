@@ -83,7 +83,7 @@ class SavedViewRepository(private val jdbc: JdbcClient) {
 	/**
 	 * Raw SQL for the insert and the update because `filters` is jsonb: the driver refuses
 	 * a varchar parameter for that column, so the cast has to be written out. The same
-	 * split `sync_jobs.payload` already lives with.
+	 * split `outbound_jobs.payload` already lives with.
 	 */
 	fun insert(
 		id: UUID,
