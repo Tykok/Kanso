@@ -1,6 +1,7 @@
 package dev.kanso.oauth
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -67,6 +68,32 @@ class ConsentPageTest {
 			page().contains("prefers-color-scheme: dark"),
 			"served from the API, it has no app CSS to inherit",
 		)
+	}
+
+	/**
+	 * The consequential half of the pair below, and the one this file first left out:
+	 * every other assertion here stays green with the scope inputs deleted, while
+	 * Authorise quietly becomes a post the library reads as `access_denied` — the button
+	 * says yes and the flow says no, on the one screen a person actually reads.
+	 *
+	 * `client_id` and `state` are folded in because they belong to the same contract,
+	 * though they are lower stakes: without them the library answers `invalid_request`,
+	 * which fails loudly rather than silently.
+	 */
+	@Test
+	fun `the authorise form carries the client, the state, and one input per scope asked for`() {
+		val authorise = page().substringAfter("<form").substringBefore("</form>")
+
+		assertTrue(authorise.contains("""name="client_id""""), "the library refuses a decision with no client")
+		assertTrue(authorise.contains("""name="state""""), "and refuses one with no consent nonce")
+		assertEquals(
+			OAuthScopes.ALL.size,
+			Regex("""name="scope"""").findAll(authorise).count(),
+			"one input per permission — a scope shown and not posted is a permission not granted",
+		)
+		for (scope in OAuthScopes.ALL) {
+			assertTrue(authorise.contains("""value="$scope""""), "the page must post the scope it read out")
+		}
 	}
 
 	/**
