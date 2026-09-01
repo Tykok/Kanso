@@ -120,6 +120,22 @@ class CycleService(
 	fun active(teamId: UUID): Cycle =
 		findActive(teamId) ?: throw NotFoundException("Team $teamId has no cycle in progress")
 
+	/**
+	 * The team's finished cycles, most recently finished first — the only ones anything
+	 * may be measured over, since a cycle still running is a partial sum of itself.
+	 *
+	 * Ordered by end date rather than by number, unlike everything else here. A number is
+	 * a label the team chose and [plan] hands out the next free one, so a team that
+	 * renumbered its plan, or planned cycle 30 before closing 28, would otherwise see its
+	 * own history reshuffled. What "the last three cycles" means is a calendar fact.
+	 */
+	@Transactional(readOnly = true)
+	fun closed(teamId: UUID): List<Cycle> =
+		cycles.findByTeam(teamId)
+			.filter { CycleState.from(it.state) == CycleState.CLOSED }
+			.map { it.toDomain() }
+			.sortedWith(compareByDescending<Cycle> { it.endsOn }.thenByDescending { it.number })
+
 	@Transactional(readOnly = true)
 	fun byNumber(teamId: UUID, number: Int): Cycle =
 		cycles.findByTeamAndNumber(teamId, number)?.toDomain()
