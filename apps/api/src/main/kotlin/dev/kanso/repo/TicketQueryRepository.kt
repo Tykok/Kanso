@@ -6,6 +6,7 @@ import dev.kanso.db.TicketLabels
 import dev.kanso.db.Tickets
 import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
+import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -287,14 +288,15 @@ class TicketQueryRepository {
 	 * inside one are, and answered by different things.
 	 *
 	 * `status` and `priority` are closed vocabularies with a reading order the screen has
-	 * always drawn: waiting at the top, finished at the bottom. It is written out here as
-	 * a `CASE` for the reason [priorityRank] gives about its own — the order of a closed
+	 * always drawn: waiting at the top, finished at the bottom. It is written out as a
+	 * list for the reason [priorityRank] gives about its own — the order of a closed
 	 * vocabulary is a product decision, and deriving it from the enum's declaration or
 	 * from `StatusCategory` would make an unrelated edit silently restack every grouped
-	 * view. It is deliberately a second copy of `STATUS_ORDER` in the web app's
-	 * `organise/grouping.ts` rather than a derivation from the category, which is what
-	 * `KAN-42` is open about; that ticket owns reconciling the two, and this one leaves
-	 * both constants exactly as it found them.
+	 * view.
+	 *
+	 * The status half of that list moved to [StatusOrder], which is where the argument for
+	 * it still being a second copy of the web app's `WORKFLOW_ORDER` is now written; this
+	 * file renders it, and has no opinion left about what the order is.
 	 *
 	 * `project` and `assignee` have no such order, and this query cannot invent one: a
 	 * project's name and a person's name live in other tables, and sorting people by
@@ -339,15 +341,20 @@ class TicketQueryRepository {
 			.where { TicketAssignees.ticketId eq Tickets.id }
 	)
 
-	/** Downwards as the work flows — the web app's `STATUS_ORDER`, and see [groupOrder]. */
-	private val statusRank: Expression<Int> = Case()
-		.When(Tickets.status eq TicketStatus.BACKLOG.wire, intLiteral(1))
-		.When(Tickets.status eq TicketStatus.TODO.wire, intLiteral(2))
-		.When(Tickets.status eq TicketStatus.IN_PROGRESS.wire, intLiteral(3))
-		.When(Tickets.status eq TicketStatus.IN_REVIEW.wire, intLiteral(4))
-		.When(Tickets.status eq TicketStatus.DONE.wire, intLiteral(5))
-		.When(Tickets.status eq TicketStatus.CANCELED.wire, intLiteral(6))
-		.Else(intLiteral(7))
+	/**
+	 * [StatusOrder.WORKFLOW], rendered into SQL — and rendered *from* it rather than
+	 * spelled out a second time here, so this file has an opinion about how to write a
+	 * `CASE` and none at all about what order statuses read in.
+	 *
+	 * The `Else` is a real branch and it has to be a number: a status the list has not
+	 * been told about must sort after every one it has, and a missing `WHEN` would yield
+	 * `NULL`, which Postgres sorts *first*.
+	 */
+	private val statusRank: Expression<Int> = StatusOrder.WORKFLOW
+		.fold(CaseWhen<Int>()) { case, status ->
+			case.When(Tickets.status eq status.wire, intLiteral(StatusOrder.rankOf(status)))
+		}
+		.Else(intLiteral(StatusOrder.UNPLACED))
 
 	/**
 	 * Urgent first, as the screen reads downwards. Written out rather than folded over

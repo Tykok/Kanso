@@ -1,4 +1,5 @@
 import type { RemainingDay, TicketStatus } from "@/lib/api";
+import { inOrder, isCounted, PROGRESS_ORDER, statusesWhere } from "@/lib/status-order";
 
 /**
  * Screen 19's two charts, as geometry rather than as markup.
@@ -58,9 +59,16 @@ export type ProgressSegment = { status: TicketStatus; count: number; width: numb
  *
  * The drawing runs it left to right from `done`: what is finished is behind you. That is
  * the opposite of the order the *list* stacks its groups in, and deliberately so — one is
- * a history and the other is a queue.
+ * a history and the other is a queue. The same [PROGRESS_ORDER] the project page's bar
+ * reads, because it is the same question asked of a different set of tickets.
+ *
+ * Which set is not this file's opinion. `CycleReport.byStatus` arrives keyed by
+ * `CycleService.COUNTED_STATUSES` and `total` is counted over the same tickets, so a
+ * `canceled` segment here would be a width over a denominator that never included it. The
+ * membership is therefore read off the category, as the server reads it, rather than
+ * spelled as five names that were right in 2026.
  */
-const BAR_ORDER: TicketStatus[] = ["done", "in_review", "in_progress", "todo", "backlog"];
+const BAR_ORDER = inOrder(statusesWhere(isCounted), PROGRESS_ORDER);
 
 export function progressSegments(
   byStatus: Record<string, number>,

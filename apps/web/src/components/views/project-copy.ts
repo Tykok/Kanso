@@ -1,5 +1,6 @@
 import {
   dayValue,
+  TICKET_STATUSES,
   type ActivityRow,
   type KansoInstant,
   type ProjectHealth,
@@ -12,6 +13,7 @@ import {
   STATUS_LABELS,
   type StatusCategory,
 } from "@/lib/status";
+import { inOrder, PROGRESS_ORDER } from "@/lib/status-order";
 
 /**
  * Everything screen 05 says in words, with no React in it.
@@ -32,15 +34,13 @@ export type StatusCount = { status: TicketStatus; count: number };
  * Not `TICKET_STATUSES` order, which runs the other way. The bar answers one question —
  * how much of this is done — and the reader reads it left to right, so the answer has to
  * start at the left. The drawing does exactly this.
+ *
+ * Every status there is, and not a membership question at all: a project's bar is the
+ * whole of its work, `canceled` included, which is exactly what makes [donePercent] below
+ * a different sum from this list. The cycle's bar on screen 19 reads the same
+ * [PROGRESS_ORDER] over a narrower set, and that is the only difference between them.
  */
-const BAR_ORDER: readonly TicketStatus[] = [
-  "done",
-  "in_review",
-  "in_progress",
-  "todo",
-  "backlog",
-  "canceled",
-];
+const BAR_ORDER = inOrder(TICKET_STATUSES, PROGRESS_ORDER);
 
 /** All six, always, so a segment that empties leaves a gap rather than reordering the bar. */
 export function statusCounts(tickets: Ticket[]): StatusCount[] {
