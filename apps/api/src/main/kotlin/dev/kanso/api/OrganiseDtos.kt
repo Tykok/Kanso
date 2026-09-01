@@ -53,13 +53,27 @@ data class CycleResponse(
 	}
 }
 
-data class RemainingDayResponse(val day: LocalDate, val open: Int, val projected: Boolean)
+data class RemainingDayResponse(
+	val day: LocalDate,
+	val open: Int,
+	val openPoints: Int,
+	val projected: Boolean,
+)
+
+/** The cycle's points, and how many of its tickets they cannot speak for. */
+data class CyclePointsResponse(
+	val total: Int,
+	val done: Int,
+	val percent: Int,
+	val unestimated: Int,
+)
 
 data class CycleReportResponse(
 	val cycle: CycleResponse,
 	val total: Int,
 	val done: Int,
 	val percent: Int,
+	val points: CyclePointsResponse,
 	val byStatus: Map<String, Int>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDayResponse>,
@@ -72,9 +86,17 @@ data class CycleReportResponse(
 			total = report.total,
 			done = report.done,
 			percent = report.percent,
+			points = CyclePointsResponse(
+				total = report.points.total,
+				done = report.points.done,
+				percent = report.points.percent,
+				unestimated = report.points.unestimated,
+			),
 			byStatus = report.byStatus.mapKeys { it.key.wire },
 			daysLeft = report.daysLeft,
-			remaining = report.remaining.map { RemainingDayResponse(it.day, it.open, it.projected) },
+			remaining = report.remaining.map {
+				RemainingDayResponse(it.day, it.open, it.openPoints, it.projected)
+			},
 			slipping = report.slipping.map(TicketResponse::of),
 			tickets = report.tickets.map(TicketResponse::of),
 		)
@@ -218,6 +240,8 @@ data class BulkEditResponse(val changed: Int)
 data class WorkloadRowResponse(
 	val person: PersonResponse?,
 	val total: Int,
+	val points: Int,
+	val unestimated: Int,
 	val byStatus: Map<String, Int>,
 	val urgentOverThreeDays: Int,
 	val oldestOpenDays: Int,
@@ -226,6 +250,8 @@ data class WorkloadRowResponse(
 		fun of(row: WorkloadRow) = WorkloadRowResponse(
 			person = row.person?.let(PersonResponse::of),
 			total = row.total,
+			points = row.points,
+			unestimated = row.unestimated,
 			byStatus = row.byStatus.mapKeys { it.key.wire },
 			urgentOverThreeDays = row.urgentOverThreeDays,
 			oldestOpenDays = row.oldestOpenDays,

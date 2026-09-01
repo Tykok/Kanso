@@ -33,6 +33,15 @@ data class SavedViewFilters(
 	val labelIds: List<UUID> = emptyList(),
 	/** "Blocked for 3 days", from the drawing's own list of saved views. */
 	val openedMoreThanDaysAgo: Int? = null,
+	/**
+	 * "Not estimated" — the chip a planning session is run off, and the reason the
+	 * estimate is nullable at all. Its own flag rather than a bound of [estimateMin] and
+	 * [estimateMax]: null is not a small number, it is the absence of one.
+	 */
+	val unestimated: Boolean = false,
+	/** Bounds on the points, inclusive. Both may be asked at once. */
+	val estimateMin: Int? = null,
+	val estimateMax: Int? = null,
 )
 
 /**
@@ -104,6 +113,16 @@ class ViewTicketRepository {
 						.where { TicketLabels.labelId inList filters.labelIds }
 				)
 			}
+			// "Sans estimation", the counterpart of `unassigned` above and asked the same way:
+			// both can be combined with a bound, and the answer is then empty, which is the
+			// honest reading of "unsized and bigger than a 3".
+			if (filters.unestimated) add(Tickets.estimate.isNull())
+			// A bound never matches an unsized ticket, and this is on purpose rather than by
+			// accident of SQL's null comparison: a ticket nobody has estimated is not known
+			// to be small, so neither `≥ 5` nor `≤ 5` may claim it. The `unestimated` chip is
+			// how it is asked for.
+			filters.estimateMin?.let { add(Tickets.estimate greaterEq it.toShort()) }
+			filters.estimateMax?.let { add(Tickets.estimate lessEq it.toShort()) }
 			// Age is measured from creation, not from `updated_at`: "blocked for 3 days" is
 			// about how long the thing has been open, and a rename would reset the other one.
 			filters.openedMoreThanDaysAgo?.let {

@@ -9,9 +9,9 @@ import { PriorityMark, StatusPill, SyncBadge } from "./pills";
 import { Menu } from "./menu";
 import { menuItems } from "./menu-items";
 
-/** The list's own grid: id, priority, status, title, project, due, mirror, actions.
- *  Shared between the column header and every row so the two always line up. */
-const COLS = "grid-cols-[70px_20px_108px_1fr_112px_60px_64px_24px]";
+/** The list's own grid: id, priority, status, title, project, points, due, mirror,
+ *  actions. Shared between the column header and every row so the two always line up. */
+const COLS = "grid-cols-[70px_20px_108px_1fr_112px_32px_60px_64px_24px]";
 
 function ColumnHeader() {
   return (
@@ -21,6 +21,9 @@ function ColumnHeader() {
       <span>Status</span>
       <span>Title</span>
       <span>Project</span>
+      {/* Abbreviated because the column is 32px: the number is one or two digits, and
+          `Estimate` would be wider than everything it labels. */}
+      <span title="Estimate in points">Pts</span>
       <span>Due</span>
       <span>Sync</span>
       <span />
@@ -140,6 +143,11 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       ) : (
         <span />
       )}
+
+      {/* Blank, not `0` and not `—`: an unsized ticket has no estimate, and printing a
+          zero would make it read as the smallest work on the list rather than the
+          unmeasured work it is. */}
+      <span className="text-right font-mono text-11 text-faint">{ticket.estimate ?? ""}</span>
 
       {/* `MM-DD`, sliced off the ISO string: a day is never run through a Date. */}
       <span className="text-11 text-faint">{ticket.due ? dayValue(ticket.due).slice(5) : ""}</span>

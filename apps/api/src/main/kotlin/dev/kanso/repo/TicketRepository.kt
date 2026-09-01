@@ -137,6 +137,7 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
+		estimate: Int?,
 		start: KansoInstant?,
 		due: KansoInstant?,
 		projectId: UUID?,
@@ -150,6 +151,9 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
+			// No default and no zero: a ticket arrives unsized unless somebody said a
+			// number, and that absence is what every later average has to be able to see.
+			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at
@@ -174,6 +178,7 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
+		estimate: Int?,
 		start: KansoInstant?,
 		due: KansoInstant?,
 		completedAt: OffsetDateTime?,
@@ -186,6 +191,7 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
+			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at

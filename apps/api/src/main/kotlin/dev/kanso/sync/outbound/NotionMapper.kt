@@ -87,6 +87,10 @@ class NotionMapper(
 			put(NotionProps.IDENTIFIER, NotionProps.richText("${team?.key ?: "?"}-${ticket.number}"))
 			put(NotionProps.STATUS, NotionProps.select(ticket.status.label))
 			put(NotionProps.PRIORITY, NotionProps.select(ticket.priority.label))
+			// An unestimated ticket writes an explicit null, like every absent date does:
+			// leaving the key out would let the mirror keep a number the ticket no longer
+			// carries, and this map is always the full set of properties.
+			put(NotionProps.ESTIMATE, NotionProps.number(ticket.estimate))
 			put(NotionProps.DESCRIPTION, NotionProps.richText(ticket.description))
 			put(NotionProps.START, NotionProps.date(ticket.start))
 			put(NotionProps.DUE, NotionProps.date(ticket.due))

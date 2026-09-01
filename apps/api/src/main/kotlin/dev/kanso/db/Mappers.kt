@@ -76,6 +76,7 @@ fun ResultRow.toTicket() = Ticket(
 	description = this[Tickets.description],
 	status = TicketStatus.from(this[Tickets.status]),
 	priority = this[Tickets.priority]?.let(TicketPriority::from) ?: TicketPriority.NONE,
+	estimate = this[Tickets.estimate]?.toInt(),
 	start = instant(this[Tickets.startAt], this[Tickets.startHasTime]),
 	due = instant(this[Tickets.dueAt], this[Tickets.dueHasTime]),
 	completedAt = this[Tickets.completedAt],

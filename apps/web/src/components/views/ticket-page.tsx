@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import {
+  EFFORT_POINTS,
   TICKET_PRIORITIES,
   TICKET_STATUSES,
   dayValue,
   fromDayValue,
   ticketHref,
+  type EffortPoints,
   type Ticket,
   type TicketPriority,
   type TicketStatus,
@@ -230,6 +232,32 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
                   </option>
                 ))}
               </select>
+            </label>
+
+            {/* Reads as `5 pts` at rest and picks from the same six values the panel
+                offers: one vocabulary, two measures of the same screen. The unit is on the
+                chip rather than in the option, because a chip has no label beside it. */}
+            <label className={CHIP}>
+              <span className="sr-only">Estimate in points</span>
+              <select
+                className={CHIP_SELECT}
+                value={ticket.estimate ?? ""}
+                onChange={(event) =>
+                  set(
+                    event.target.value
+                      ? { id: ticket.id, estimate: Number(event.target.value) as EffortPoints }
+                      : { id: ticket.id, unset: ["estimate"] },
+                  )
+                }
+              >
+                <option value="">— pts —</option>
+                {EFFORT_POINTS.map((points) => (
+                  <option key={points} value={points}>
+                    {points}
+                  </option>
+                ))}
+              </select>
+              {ticket.estimate !== undefined && <span aria-hidden>pts</span>}
             </label>
 
             <label className={CHIP}>

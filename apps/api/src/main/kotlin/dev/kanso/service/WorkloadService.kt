@@ -16,16 +16,28 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
- * One person's load: how many open tickets, cut by status, and how old the oldest is.
+ * One person's load: how many open tickets, how many points, cut by status, and how old
+ * the oldest is. [person] is null for the unassigned bucket.
  *
- * There is no estimate here and there is not going to be one. The drawing says it in as
- * many words — "aucune estimation en points : la charge se lit au nombre et à
- * l'ancienneté" — and a points column would not merely be extra, it would replace the
- * thing the screen is arguing for. [person] is null for the unassigned bucket.
+ * This shape used to refuse [points] outright — the drawing said "aucune estimation en
+ * points : la charge se lit au nombre et à l'ancienneté", and a points column would have
+ * replaced the thing the screen was arguing for. Tickets now carry an estimate, so the
+ * refusal has become the lie: a person holding three 13s and a person holding three 1s
+ * were reading as the same load, which is precisely what the count cannot see.
+ *
+ * The count did not go away, and that is the whole of the compromise. [total] is every
+ * open ticket on their plate; [points] is the part of it somebody has sized; and
+ * [unestimated] is the difference, so a bar drawn in points can say what it is not
+ * showing. A sum that quietly leaves out half a plate is worse than a count that never
+ * claimed to weigh anything.
  */
 data class WorkloadRow(
 	val person: User?,
 	val total: Int,
+	/** Their open tickets' points. Unsized ones are absent from it, never added as zero. */
+	val points: Int,
+	/** How many of [total] carry no estimate — what [points] cannot speak for. */
+	val unestimated: Int,
 	val byStatus: Map<TicketStatus, Int>,
 	/** What the sentence under the chart is about. Strictly more than three, not at least. */
 	val urgentOverThreeDays: Int,
@@ -35,10 +47,12 @@ data class WorkloadRow(
 data class Workload(val cycleId: UUID?, val rows: List<WorkloadRow>)
 
 /**
- * Screen 23. Open tickets per person, counted.
+ * Screen 23. Open tickets per person, counted and weighed.
  *
- * A ticket with two assignees is counted once for each of them. It is on both their
- * plates, and dividing it in half would be an estimate in everything but name.
+ * A ticket with two assignees counts once for each of them, and its points land whole on
+ * each plate too. It is on both their plates, and halving either number would invent a
+ * split of the work that nobody agreed to — 4 points each out of an 8 is a claim about
+ * how the pair will divide it, which is not a thing this table knows.
  */
 @Service
 class WorkloadService(
@@ -92,6 +106,8 @@ class WorkloadService(
 	private fun row(person: User?, carried: List<Ticket>, now: OffsetDateTime) = WorkloadRow(
 		person = person,
 		total = carried.size,
+		points = carried.sumOf { it.estimate ?: 0 },
+		unestimated = carried.count { it.estimate == null },
 		byStatus = OPEN_STATUSES.associateWith { status -> carried.count { it.status == status } },
 		urgentOverThreeDays = carried.count {
 			it.priority == TicketPriority.URGENT && daysOpen(it, now) > 3

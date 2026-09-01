@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import {
+  EFFORT_POINTS,
   TICKET_PRIORITIES,
   TICKET_STATUSES,
   dayValue,
   fromDayValue,
   ticketHref,
+  type EffortPoints,
   type Project,
   type Ticket,
   type TicketPriority,
@@ -121,6 +123,32 @@ export function DetailPanel({
               {TICKET_PRIORITIES.map((priority) => (
                 <option key={priority} value={priority}>
                   {priority}
+                </option>
+              ))}
+            </select>
+          </MetaRow>
+
+          {/* The same dressed-down `<select>` as the two rows above, for the same reason:
+              six values and an empty one are a native control's whole job, and a bespoke
+              one here would be a third way to pick from a closed list. `— none —` is not
+              a seventh point value: it clears the estimate, which is a decision of its
+              own and is why `estimate` is in the wire's `unset` list. */}
+          <MetaRow label="Estimate">
+            <select
+              className={META_SELECT}
+              value={ticket.estimate ?? ""}
+              onChange={(event) =>
+                onPatch(
+                  event.target.value
+                    ? { estimate: Number(event.target.value) as EffortPoints }
+                    : { unset: ["estimate"] },
+                )
+              }
+            >
+              <option value="">— none —</option>
+              {EFFORT_POINTS.map((points) => (
+                <option key={points} value={points}>
+                  {points}
                 </option>
               ))}
             </select>
