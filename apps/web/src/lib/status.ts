@@ -1,4 +1,4 @@
-import type { ProjectStatus, TicketPriority, TicketStatus } from "./api";
+import type { ProjectHealth, ProjectStatus, TicketPriority, TicketStatus } from "./api";
 
 /**
  * How a status is written and coloured, wherever it is drawn.
@@ -95,4 +95,38 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   paused: "Paused",
   completed: "Completed",
   canceled: "Canceled",
+};
+
+/**
+ * The third vocabulary on a project, and the one that is not a status.
+ *
+ * Kept in this module beside `PROJECT_STATUS_LABELS` so the two are read together and
+ * never confused — but they are separate maps on purpose, and nothing here maps one onto
+ * the other. A project can be `in_progress` and `off_track` at the same time.
+ *
+ * There is no entry for "not assessed": that is the absence of a health, so it has no key
+ * to hold a label under. `healthLabel` in `views/project-copy.ts` is where the absent case
+ * gets its words, and where the argument for not defaulting it to `on_track` is written.
+ */
+export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
+  on_track: "On track",
+  at_risk: "At risk",
+  off_track: "Off track",
+};
+
+/**
+ * Green, amber, red — reusing the three semantic tokens the app already has rather than
+ * naming three more. `--success` and `--warning` back the `Badge` variants of the same
+ * names, and `--urgent` is the red `tokens.css` keeps distinct from `--destructive`
+ * ("an urgent ticket is not a failed one"), which is exactly the distinction wanted here:
+ * a project that is off track is in trouble, not broken.
+ *
+ * The hue is never the only signal. Every place these are drawn also prints
+ * `PROJECT_HEALTH_LABELS` beside them, for the reason `ui/status-dot.tsx` sets out at
+ * length: a reader who cannot resolve the tint must lose nothing.
+ */
+export const PROJECT_HEALTH_COLORS: Record<ProjectHealth, string> = {
+  on_track: "var(--success)",
+  at_risk: "var(--warning)",
+  off_track: "var(--urgent)",
 };

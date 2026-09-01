@@ -151,6 +151,23 @@ object Projects : Table("projects") {
 	override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * How a project is going, said on a date. No `updatedAt` because there is no writer for
+ * one: an update is a dated statement, and the correction for a wrong one is the next
+ * update. There is no `projects.health` to go with this — the current health is the
+ * latest row here, and `V23` argues why a stored copy would be wrong on arrival.
+ */
+object ProjectUpdates : Table("project_updates") {
+	val id = javaUUID("id")
+	val projectId = javaUUID("project_id")
+	val health = text("health")
+	val body = text("body")
+	/** Null once the account is gone. What was known about the project in August is not. */
+	val authorId = javaUUID("author_id").nullable()
+	val at = timestampWithTimeZone("at")
+	override val primaryKey = PrimaryKey(id)
+}
+
 object Tickets : Table("tickets") {
 	val id = javaUUID("id")
 	val number = integer("number")
