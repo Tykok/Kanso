@@ -20,6 +20,16 @@ object NotionProps {
 	const val IDENTIFIER = "Identifier"
 	const val STATUS = "Status"
 	const val PRIORITY = "Priority"
+
+	/**
+	 * Effort in points, mirrored as a `number` rather than a `select` of the six values.
+	 *
+	 * A select would round-trip the vocabulary the way the statuses do, and would also make
+	 * the column unsummable in Notion — the one thing a reader over there would want to do
+	 * with it. The scale is guarded on the way back in instead, where an off-scale number
+	 * is dropped exactly like an unknown status label is.
+	 */
+	const val ESTIMATE = "Estimate"
 	const val DESCRIPTION = "Description"
 	const val START = "Start"
 	const val DUE = "Due"
@@ -65,6 +75,9 @@ object NotionProps {
 
 	fun richText(text: String?): Map<String, Any?> =
 		mapOf("rich_text" to (text?.takeIf { it.isNotBlank() }?.let(::chunks) ?: emptyList<Any>()))
+
+	/** Null clears the property, which is what an unestimated ticket has to write. */
+	fun number(value: Int?): Map<String, Any?> = mapOf("number" to value)
 
 	fun select(label: String?): Map<String, Any?> =
 		mapOf("select" to label?.let { mapOf("name" to it) })
@@ -126,6 +139,7 @@ object NotionSchema {
 		NotionProps.IDENTIFIER to mapOf("rich_text" to emptyMap<String, Any>()),
 		NotionProps.STATUS to selectOf(TicketStatus.entries.map { it.label }),
 		NotionProps.PRIORITY to selectOf(TicketPriority.entries.map { it.label }),
+		NotionProps.ESTIMATE to mapOf("number" to emptyMap<String, Any>()),
 		NotionProps.DESCRIPTION to mapOf("rich_text" to emptyMap<String, Any>()),
 		NotionProps.START to mapOf("date" to emptyMap<String, Any>()),
 		NotionProps.DUE to mapOf("date" to emptyMap<String, Any>()),

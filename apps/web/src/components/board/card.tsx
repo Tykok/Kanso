@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { dayValue, type Ticket } from "@/lib/api";
-import { STATUS_COLORS } from "@/lib/status";
+import { categoryOf, STATUS_COLORS } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { SyncBadge } from "../pills";
 import { PriorityMark } from "../ui/priority-mark";
@@ -24,6 +23,11 @@ import { cardLabel } from "./columns";
  * with `border-t` and an inline `borderTopColor` from `STATUS_COLORS` — the same token
  * map `StatusDot` reads, rather than six Tailwind classes that would have to be kept in
  * step with the vocabulary by hand.
+ *
+ * A card no longer scrolls itself into view when the cursor lands on it. It cannot: the
+ * column is virtualised, so `j` down a long column selects a card that has no element and
+ * the effect would simply never run. `column.tsx` scrolls to the index instead — for both
+ * axes, since `h` and `l` can move the cursor into a column that is off the right edge.
  */
 export function BoardCard({
   ticket,
@@ -41,20 +45,10 @@ export function BoardCard({
   onOpen: () => void;
   onDragStart: () => void;
 }) {
-  const ref = useRef<HTMLButtonElement>(null);
-
-  // Keeps the cursor on screen when it moves by keyboard rather than by wheel — the same
-  // contract `TicketRow` holds, and it matters more here: `h` and `l` can move the cursor
-  // into a column that is scrolled out of view sideways.
-  useEffect(() => {
-    if (selected) ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selected]);
-
   const due = ticket.due ? dayValue(ticket.due).slice(5) : "";
 
   return (
     <button
-      ref={ref}
       type="button"
       data-testid="board-card"
       data-ticket={ticket.identifier}
@@ -76,7 +70,14 @@ export function BoardCard({
       onClick={onSelect}
       onDoubleClick={onOpen}
       className={cn(
-        "flex cursor-pointer flex-col gap-2 rounded-md border-t-2 bg-card p-2.5 text-left shadow-flat",
+        // `w-full` and not the column's doing: a form control's `width: auto` is
+        // shrink-to-fit, `display: flex` included, so this button is only ever as wide as
+        // its longest line unless something outside it says otherwise. Until the column
+        // was virtualised something did — the card was a flex item of the column's
+        // `flex-col`, and `align-items: stretch` filled it out. Virtualising put two
+        // blocks between the two, and the cards went back to their titles' widths. Owning
+        // the width here is what makes the card draw the same wherever it is put.
+        "flex w-full cursor-pointer flex-col gap-2 rounded-md border-t-2 bg-card p-2.5 text-left shadow-flat",
         selected && "ring-1 ring-primary",
       )}
       style={{ borderTopColor: STATUS_COLORS[ticket.status] }}
@@ -84,10 +85,10 @@ export function BoardCard({
       <span
         className={cn(
           "text-12 leading-[1.45] text-pretty",
-          // Done recedes and canceled is struck through — the two states that are over,
-          // drawn the way the list already draws an archived row.
-          ticket.status === "done" && "text-muted-foreground",
-          ticket.status === "canceled" && "text-faint line-through",
+          // Done recedes and canceled is struck through — the two categories that are
+          // over, drawn the way the list already draws an archived row.
+          categoryOf(ticket.status) === "completed" && "text-muted-foreground",
+          categoryOf(ticket.status) === "canceled" && "text-faint line-through",
         )}
       >
         {ticket.title}

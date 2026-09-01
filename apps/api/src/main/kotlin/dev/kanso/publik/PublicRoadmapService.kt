@@ -1,5 +1,6 @@
 package dev.kanso.publik
 
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TicketStatus
 import dev.kanso.repo.TeamRepository
 import dev.kanso.service.NotFoundException
@@ -85,7 +86,7 @@ class PublicRoadmapService(
 	 * with it gets an empty list, not the fallback: they said there are none.
 	 */
 	private fun firstSteps(): FirstSteps {
-		val unclaimed = published.findPublished(listOf(TicketStatus.BACKLOG, TicketStatus.TODO), LIMIT)
+		val unclaimed = published.findPublished(NOT_STARTED_STATUSES, LIMIT)
 			.filter { it.unclaimed }
 		val narrowing = published.labelDefined(FIRST_STEP_LABEL)
 		val rows = if (narrowing) {
@@ -108,7 +109,7 @@ class PublicRoadmapService(
 		votes = votes,
 		// Only where it means something. A `completed_at` on a ticket that came back out
 		// of `done` would print a delivery date beside work in progress.
-		completedAt = completedAt.takeIf { status == TicketStatus.DONE },
+		completedAt = completedAt.takeIf { status.category == StatusCategory.COMPLETED },
 	)
 
 	/**
@@ -118,7 +119,7 @@ class PublicRoadmapService(
 	 * question a visitor is asking changed from "will you" to "when did you".
 	 */
 	private fun List<RoadmapEntry>.sorted(status: TicketStatus) =
-		if (status == TicketStatus.DONE) sortedWith(byDelivery) else sortedWith(byVotes)
+		if (status.category == StatusCategory.COMPLETED) sortedWith(byDelivery) else sortedWith(byVotes)
 
 	private companion object {
 		/**
@@ -130,13 +131,17 @@ class PublicRoadmapService(
 		 * the drawing rules out. Groups with nothing in them are dropped, so an instance
 		 * whose published work sits in four of these draws four columns.
 		 */
-		val ROADMAP_STATUSES = listOf(
-			TicketStatus.BACKLOG,
-			TicketStatus.TODO,
-			TicketStatus.IN_PROGRESS,
-			TicketStatus.IN_REVIEW,
-			TicketStatus.DONE,
-		)
+		val ROADMAP_STATUSES = TicketStatus.entries.filter { it.category != StatusCategory.CANCELED }
+
+		/**
+		 * Nobody has picked these up yet, which is what makes them a first step. Two
+		 * categories rather than one: `backlog` is "we might" and `unstarted` is "we
+		 * will", and a newcomer can start on either — what rules a ticket out here is
+		 * somebody having begun it, not how sure the team is that it should happen.
+		 */
+		val NOT_STARTED_STATUSES = TicketStatus.entries.filter {
+			it.category == StatusCategory.BACKLOG || it.category == StatusCategory.UNSTARTED
+		}
 
 		/**
 		 * The label screen 28 narrows to, in the words the rest of the project already

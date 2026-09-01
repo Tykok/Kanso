@@ -8,12 +8,17 @@ import { workloadNote } from "./grouping";
 import { OrganiseShell, useOrganiseTeam } from "./shell";
 
 /**
- * Screen 23 — open tickets per person, cut by status, counted.
+ * Screen 23 — open tickets per person, cut by status, counted and weighed.
  *
- * There is no estimate on this screen and there is no field for one on the wire. The
- * drawing says why in as many words: "la charge se lit au nombre et à l'ancienneté". What
- * a bar is long in proportion to is the heaviest person's count, so the chart answers "who
- * is carrying more than whom" and refuses to answer "how much work is this".
+ * The drawing refused points outright — "la charge se lit au nombre et à l'ancienneté" —
+ * and this screen held to it until tickets had an estimate to read. What the refusal was
+ * protecting is kept: the bar is still cut by status and still long in proportion to the
+ * *heaviest person's count*, so it answers "who is carrying more than whom" rather than
+ * pretending to measure hours.
+ *
+ * The points sit beside the count instead of replacing it, because a sum that leaves out
+ * the unsized half of a plate is worse than a count that never claimed to weigh anything.
+ * Every row that shows a total in points also shows how many of its tickets are not in it.
  */
 const PLOTTED = ["in_progress", "in_review", "todo", "backlog"] as const;
 
@@ -44,8 +49,8 @@ export function WorkloadView() {
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
         <div className="flex max-w-[560px] flex-col gap-2">
           <p className="m-0 text-12 text-muted-foreground">
-            Open tickets per person, cut by status. No estimate in points: load is read from
-            the count and the age.
+            Open tickets per person, cut by status. The points beside each row are the part
+            of that load somebody has sized — the rest is counted, not weighed.
           </p>
           {active && (
             <div className="segmented" role="group" aria-label="Scope">
@@ -91,7 +96,7 @@ function PersonRow({ row, heaviest }: { row: WorkloadRow; heaviest: number }) {
 
   return (
     <div
-      className="grid grid-cols-[140px_1fr_54px] items-center gap-3.5 max-[720px]:grid-cols-[110px_1fr_44px]"
+      className="grid grid-cols-[140px_1fr_82px] items-center gap-3.5 max-[720px]:grid-cols-[110px_1fr_72px]"
       data-testid="workload-row"
     >
       <span className="flex items-center gap-2.5 text-12">
@@ -102,7 +107,11 @@ function PersonRow({ row, heaviest }: { row: WorkloadRow; heaviest: number }) {
       <div
         className="flex h-3.5 overflow-hidden rounded-sm bg-accent"
         role="img"
-        aria-label={`${name}: ${row.total} open, oldest ${row.oldestOpenDays} days`}
+        aria-label={
+          `${name}: ${row.total} open, ${row.points} points` +
+          `${row.unestimated > 0 ? ` and ${row.unestimated} unestimated` : ""}` +
+          `, oldest ${row.oldestOpenDays} days`
+        }
       >
         {row.person === undefined
           ? // The unassigned pile is hatched rather than coloured: it is not somebody's load,
@@ -131,7 +140,18 @@ function PersonRow({ row, heaviest }: { row: WorkloadRow; heaviest: number }) {
             })}
       </div>
 
-      <span className="text-right font-mono text-11 text-muted-foreground">{row.total}</span>
+      {/* The count, then the points under it. Two lines rather than one number, because
+          they are two different claims: `12` is how many things are on this plate and
+          `34 pts` is how big the sized part of it is. A row whose points cannot cover its
+          whole load says so — `+2 ?` is the tickets the sum could not see, and it is never
+          a zero, which would read as "two tickets worth nothing". */}
+      <span className="flex flex-col items-end font-mono text-11 leading-tight text-muted-foreground">
+        <span>{row.total}</span>
+        <span className="text-faint">
+          {row.points > 0 ? `${row.points} pts` : "—"}
+          {row.unestimated > 0 ? ` +${row.unestimated} ?` : ""}
+        </span>
+      </span>
     </div>
   );
 }

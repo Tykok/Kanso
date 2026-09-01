@@ -228,6 +228,8 @@ data class TicketCreateRequest(
 	val description: String? = null,
 	val status: String = TicketStatus.TODO.wire,
 	val priority: String = TicketPriority.NONE.wire,
+	/** Points, off `EffortPoints.SCALE`. Absent means unsized, which is not zero. */
+	val estimate: Int? = null,
 	val start: InstantDto? = null,
 	val due: InstantDto? = null,
 	val projectId: UUID? = null,
@@ -245,6 +247,7 @@ data class TicketPatchRequest(
 	val description: String? = null,
 	val status: String? = null,
 	val priority: String? = null,
+	val estimate: Int? = null,
 	val start: InstantDto? = null,
 	val due: InstantDto? = null,
 	val projectId: UUID? = null,
@@ -255,7 +258,12 @@ data class TicketPatchRequest(
 	val unset: Set<String> = emptySet(),
 ) {
 	companion object {
-		val CLEARABLE = setOf("description", "start", "due", "projectId")
+		/**
+		 * `estimate` is here because it is nullable and its null carries a meaning of its
+		 * own: un-estimating a ticket is a decision — "we no longer know how big this is" —
+		 * and without a name to put in `unset` there would be no way back to it.
+		 */
+		val CLEARABLE = setOf("description", "start", "due", "projectId", "estimate")
 	}
 
 	fun validated(): TicketPatchRequest {
@@ -279,6 +287,8 @@ data class TicketResponse(
 	val description: String?,
 	val status: String,
 	val priority: String,
+	/** Null means nobody has sized it. Never 0 — see `EffortPoints`. */
+	val estimate: Int?,
 	val start: InstantDto?,
 	val due: InstantDto?,
 	val projectId: UUID?,
@@ -301,6 +311,7 @@ data class TicketResponse(
 				description = t.description,
 				status = t.status.wire,
 				priority = t.priority.wire,
+				estimate = t.estimate,
 				start = InstantDto.of(t.start),
 				due = InstantDto.of(t.due),
 				projectId = t.projectId,
@@ -314,6 +325,15 @@ data class TicketResponse(
 		}
 	}
 }
+
+/**
+ * The filter names `GET /api/tickets` and a saved view both answer to, sorted.
+ *
+ * A list and not a map of shapes: what a facet takes is already enforced by the parser
+ * that reads it, and a second description of it here would be a second thing to keep
+ * true. A client that wants to draw a control for `status` knows what a status is.
+ */
+data class ServedFiltersResponse(val served: List<String>)
 
 // --- timeline ----------------------------------------------------------------
 

@@ -1,15 +1,14 @@
 package dev.kanso.service
 
-import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
-import dev.kanso.repo.SavedViewFilters
 import dev.kanso.repo.SavedViewRepository
 import dev.kanso.repo.SavedViewRow
 import dev.kanso.repo.TeamRepository
-import dev.kanso.repo.ViewTicketRepository
+import dev.kanso.repo.TicketFilters
+import dev.kanso.repo.TicketQueryRepository
+import dev.kanso.repo.TicketScope
 import dev.kanso.trash.TrashKind
 import dev.kanso.trash.TrashRepository
 import org.springframework.stereotype.Service
@@ -61,7 +60,7 @@ data class SavedViewSummary(val view: SavedView, val count: Int)
 @Service
 class SavedViewService(
 	private val views: SavedViewRepository,
-	private val rows: ViewTicketRepository,
+	private val rows: TicketQueryRepository,
 	private val teams: TeamRepository,
 	private val details: TicketDetails,
 	private val access: TicketAccess,
@@ -71,7 +70,7 @@ class SavedViewService(
 
 	@Transactional(readOnly = true)
 	fun list(teamId: UUID): List<SavedViewSummary> {
-		val scope = teams.descendantIds(teamId)
+		val scope = TicketScope(teams.descendantIds(teamId))
 		return views.findByTeam(teamId).map { row ->
 			SavedViewSummary(row.toDomain(), rows.count(scope, parseFilters(row.filters)))
 		}
@@ -89,7 +88,10 @@ class SavedViewService(
 	fun tickets(id: UUID, limit: Int = 200): List<TicketDetail> {
 		val row = requireLive(id)
 		val found = rows.matching(
-			teamIds = scopeOf(row.teamId),
+			// `includeArchived` is left at its default and always will be: an archived
+			// ticket is out of every saved view, whatever the view asks. The main list is
+			// the caller that has a choice about it, because the Archives tab is a screen.
+			scope = TicketScope(scopeOf(row.teamId)),
 			filters = parseFilters(row.filters),
 			sortBy = ViewSortBy.from(row.sortBy),
 			limit = limit,
@@ -203,41 +205,17 @@ class SavedViewService(
 	 */
 	private fun scopeOf(teamId: UUID): List<UUID> = teams.descendantIds(teamId)
 
-	private fun validate(filters: Map<String, Any?>) {
-		val unknown = filters.keys - SERVED_FILTERS
-		if (unknown.isNotEmpty()) {
-			throw BadRequestException(
-				"These filters are not served: ${unknown.sorted().joinToString()}." +
-					" Served: ${SERVED_FILTERS.sorted().joinToString()}",
-			)
-		}
-		// Parsed here rather than at match time, so an unknown status is a 400 on the write
-		// that introduced it instead of an empty list every time the view is opened.
-		strings(filters["status"]).forEach(TicketStatus::from)
-		strings(filters["statusNot"]).forEach(TicketStatus::from)
-		strings(filters["priority"]).forEach(TicketPriority::from)
-	}
+	/**
+	 * The gate, and it is not this service's own any more: `GET /api/tickets` asks the same
+	 * question and is held to the same names. A key served here and refused there — or the
+	 * other way round — would be the divergence this file used to be one half of.
+	 */
+	private fun validate(filters: Map<String, Any?>) = TicketFilterVocabulary.validate(filters)
 
-	private fun parseFilters(raw: String): SavedViewFilters {
+	private fun parseFilters(raw: String): TicketFilters {
 		@Suppress("UNCHECKED_CAST")
 		val map = json.readValue(raw, Map::class.java) as Map<String, Any?>
-		return SavedViewFilters(
-			statuses = strings(map["status"]).map(TicketStatus::from),
-			statusesExcluded = strings(map["statusNot"]).map(TicketStatus::from),
-			priorities = strings(map["priority"]).map(TicketPriority::from),
-			projectIds = strings(map["project"]).map(UUID::fromString),
-			assigneeIds = strings(map["assignee"]).map(UUID::fromString),
-			unassigned = map["unassigned"] == true,
-			cycleIds = strings(map["cycle"]).map(UUID::fromString),
-			labelIds = strings(map["label"]).map(UUID::fromString),
-			openedMoreThanDaysAgo = (map["openedForDays"] as? Number)?.toInt(),
-		)
-	}
-
-	private fun strings(value: Any?): List<String> = when (value) {
-		null -> emptyList()
-		is List<*> -> value.mapNotNull { it?.toString() }
-		else -> listOf(value.toString())
+		return TicketFilterVocabulary.parse(map)
 	}
 
 	/**
@@ -268,26 +246,11 @@ class SavedViewService(
 
 	companion object {
 		/**
-		 * The facets the matcher actually implements.
-		 *
-		 * `label` was deliberately absent while `V8` had not landed: the drawing's third
-		 * chip is `Étiquette synchro`, and a chip stored and drawn but never honoured is
-		 * worse than one refused, because the reader cannot tell the list is wrong. `V8`
-		 * landed with `labels` and `ticket_labels`, so it is served — this entry plus the
-		 * one clause in `ViewTicketRepository` the old comment promised. It holds label
-		 * *ids*, like `project`, `assignee` and `cycle`: labels are team-scoped, a view
-		 * reaches into descendant teams, and two of them may both own the name `sync`.
+		 * Where the gate went. It lived here while a saved view was the only thing holding
+		 * one; `GET /api/tickets` validates through it too now, so it belongs to neither of
+		 * them and sits in [TicketFilterVocabulary] with the parser it guards. Kept as an
+		 * alias because this is the name the rest of the codebase already points at.
 		 */
-		val SERVED_FILTERS = setOf(
-			"status",
-			"statusNot",
-			"priority",
-			"project",
-			"assignee",
-			"unassigned",
-			"cycle",
-			"label",
-			"openedForDays",
-		)
+		val SERVED_FILTERS get() = TicketFilterVocabulary.SERVED
 	}
 }

@@ -34,8 +34,14 @@ export function boardColumns(tickets: Ticket[]): BoardColumn[] {
   return columns;
 }
 
-/** Where [id] sits on the board, or `undefined` if it is not on it. */
-function locate(
+/**
+ * Where [id] sits on the board, or `undefined` if it is not on it.
+ *
+ * Exported since the columns were virtualised. A card below the fold has no element, so
+ * the card can no longer scroll itself into view when the cursor lands on it — the column
+ * has to be asked which index it is and told to scroll there, and this is the question.
+ */
+export function locateCard(
   columns: BoardColumn[],
   id: string | undefined,
 ): { column: number; row: number } | undefined {
@@ -61,7 +67,7 @@ export function boardMove(
   selectedId: string | undefined,
   direction: BoardDirection,
 ): string | undefined {
-  const at = locate(columns, selectedId);
+  const at = locateCard(columns, selectedId);
   if (!at) return undefined;
 
   if (direction === "up" || direction === "down") {

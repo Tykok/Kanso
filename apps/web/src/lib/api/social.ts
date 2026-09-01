@@ -20,6 +20,7 @@ export const ACTIVITY_KINDS = [
   "commented",
   "labelled",
   "mirror_pushed",
+  "carried_over",
 ] as const;
 
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
@@ -30,7 +31,7 @@ export type ActivityEntity = "ticket" | "project" | "team" | "doc";
  *
  * `payload` is deliberately loose: its shape depends on `kind` — `{ from, to }` for a
  * scalar, `{ field, from, to }` for a date, `{ userId }` for an assignment, `{ labelId,
- * name, attached }` for a label. A discriminated union per kind would be eleven types to
+ * name, attached }` for a label. A discriminated union per kind would be twelve types to
  * hold one sentence each, and the renderer switches on `kind` regardless. Absent keys read
  * as undefined: the server's mapper omits nulls rather than sending them.
  */

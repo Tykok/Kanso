@@ -7,6 +7,7 @@ import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
 import dev.kanso.trash.TrashKind
 import dev.kanso.domain.KansoInstant
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
@@ -18,7 +19,13 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @Repository
-class TicketRepository {
+class TicketRepository(
+	/**
+	 * The one predicate. Injected rather than reimplemented: [search] below is a call shape
+	 * over it, and the day a tenth filter lands it lands in one place.
+	 */
+	private val query: TicketQueryRepository,
+) {
 
 	/**
 	 * A row here is soft-deleted exactly when `trash_entries` names it — there is no
@@ -78,6 +85,15 @@ class TicketRepository {
 		Tickets.selectAll().where { (Tickets.teamId eq teamId) and (Tickets.number eq number) }
 			.singleOrNull()?.toTicket()
 
+	/**
+	 * The narrow call shape, over the one predicate in [TicketQueryRepository].
+	 *
+	 * It used to build its own, four filters wide, while the saved view's ran to nine. Six
+	 * callers here want exactly these four and say so in one readable line — a scheduler
+	 * loading a team's open work has no use for `openedForDays` — so the shape survives the
+	 * merge and only the clauses underneath it went away. Two call shapes over one query is
+	 * not duplication; two predicates was.
+	 */
 	fun search(
 		teamIds: Collection<UUID>? = null,
 		projectId: UUID? = null,
@@ -86,29 +102,21 @@ class TicketRepository {
 		includeArchived: Boolean = false,
 		limit: Int = 200,
 		offset: Long = 0,
-	): List<Ticket> {
-		val conditions = buildList {
-			// Unconditional, and not behind `includeArchived`: deleted is not archived, and
-			// showing the archived work must not also surface what is in the trash.
-			add(Tickets.id notInSubQuery trashed)
-			if (!includeArchived) add(Tickets.archived eq false)
-			if (teamIds != null) add(Tickets.teamId inList teamIds)
-			if (projectId != null) add(Tickets.projectId eq projectId)
-			if (statuses.isNotEmpty()) add(Tickets.status inList statuses.map { it.wire })
-			if (assigneeId != null) {
-				add(
-					Tickets.id inSubQuery TicketAssignees
-						.select(TicketAssignees.ticketId)
-						.where { TicketAssignees.userId eq assigneeId }
-				)
-			}
-		}
-		val where = if (conditions.isEmpty()) Op.TRUE else conditions.compoundAnd()
-		return Tickets.selectAll().where(where)
-			.orderBy(Tickets.updatedAt to SortOrder.DESC)
-			.limit(limit).offset(offset)
-			.map { it.toTicket() }
-	}
+	): List<Ticket> = query.matching(
+		scope = TicketScope(teamIds = teamIds, includeArchived = includeArchived),
+		filters = TicketFilters(
+			statuses = statuses.toList(),
+			projectIds = listOfNotNull(projectId),
+			assigneeIds = listOfNotNull(assigneeId),
+		),
+		// What this method has always ordered by. It gains `number DESC` behind it, which
+		// no caller can lose by: the order was previously undefined between two rows saved
+		// in the same transaction, and `offset` paging over an undefined order can show one
+		// row twice and another not at all.
+		sortBy = dev.kanso.service.ViewSortBy.UPDATED,
+		limit = limit,
+		offset = offset,
+	)
 
 	/**
 	 * Every unarchived ticket in these projects, whatever team owns it.
@@ -136,6 +144,7 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
+		estimate: Int?,
 		start: KansoInstant?,
 		due: KansoInstant?,
 		projectId: UUID?,
@@ -149,6 +158,9 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
+			// No default and no zero: a ticket arrives unsized unless somebody said a
+			// number, and that absence is what every later average has to be able to see.
+			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at
@@ -156,7 +168,7 @@ class TicketRepository {
 			// A ticket can be created already done — logging work that is finished is a
 			// normal thing to do. Leaving this null would hide it from the project bounds,
 			// which fall back on completion dates precisely when nobody planned anything.
-			it[Tickets.completedAt] = if (status == TicketStatus.DONE) now else null
+			it[Tickets.completedAt] = if (status.category == StatusCategory.COMPLETED) now else null
 			it[Tickets.projectId] = projectId
 			it[archived] = false
 			it[syncState] = SyncState.PENDING.wire
@@ -173,6 +185,7 @@ class TicketRepository {
 		description: String?,
 		status: TicketStatus,
 		priority: TicketPriority,
+		estimate: Int?,
 		start: KansoInstant?,
 		due: KansoInstant?,
 		completedAt: OffsetDateTime?,
@@ -185,6 +198,7 @@ class TicketRepository {
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
 			it[Tickets.priority] = priority.wire
+			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
 			it[Tickets.startHasTime] = start?.hasTime ?: false
 			it[Tickets.dueAt] = due?.at

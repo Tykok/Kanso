@@ -3,8 +3,10 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  EFFORT_POINTS,
   TICKET_PRIORITIES,
   api,
+  type EffortPoints,
   type Project,
   type Team,
   type TicketPriority,
@@ -53,6 +55,50 @@ export function composerEmptyReason(teamCount: number): "no-teams" | "not-editab
 }
 
 /**
+ * The estimate select's value as the wire's `estimate`. Absent stays absent: `Number("")`
+ * is `0`, and `0` on this field is not "unsized" but "somebody sized this at nothing" —
+ * a number the cycle and workload screens would go on to sum. The membership test is what
+ * keeps the two apart, and it costs nothing to let it also refuse a value that never came
+ * from the select at all. The detail panel and the ticket page get away with
+ * `Number(value) as EffortPoints` because they branch on truthiness first, and because
+ * they only ever clear an estimate that already exists; creation is the one surface where
+ * "nothing chosen" is the overwhelmingly common answer.
+ */
+export function chosenEstimate(value: string): EffortPoints | undefined {
+  const points = Number(value);
+  return (EFFORT_POINTS as readonly number[]).includes(points)
+    ? (points as EffortPoints)
+    : undefined;
+}
+
+/**
+ * What [submit] posts, lifted out of the component because the interesting half of it is
+ * what it leaves out. Three of these fields are absent rather than empty when nobody
+ * chose one, and for `estimate` that difference is the ticket: a backlog of honestly
+ * unsized tickets is readable, and one full of zeros is not.
+ *
+ * `title` arrives trimmed — the caller has already refused an empty one, so the trim is
+ * a precondition here rather than a step.
+ */
+export function newTicketBody(form: {
+  teamId: string;
+  title: string;
+  priority: TicketPriority;
+  projectId: string;
+  assigneeId: string;
+  estimate: string;
+}) {
+  return {
+    teamId: form.teamId,
+    title: form.title,
+    priority: form.priority,
+    estimate: chosenEstimate(form.estimate),
+    projectId: form.projectId ? form.projectId : undefined,
+    assigneeIds: form.assigneeId ? [form.assigneeId] : undefined,
+  };
+}
+
+/**
  * One title field, Enter creates — the speed that made this worth building. Below it,
  * the target: team, project, priority and assignee, prefilled from the current scope,
  * clickable and reachable with Tab.
@@ -91,6 +137,9 @@ function ComposerForm({
   const [projectId, setProjectId] = useState(seed.projectId);
   const [priority, setPriority] = useState<TicketPriority>("none");
   const [assigneeId, setAssigneeId] = useState(meId ?? "");
+  // Deliberately not seeded, and deliberately a string rather than an `EffortPoints`:
+  // the empty string is the select's own "no choice", and every ticket starts there.
+  const [estimate, setEstimate] = useState("");
   const [blocked, setBlocked] = useState(false);
 
   /**
@@ -133,13 +182,9 @@ function ComposerForm({
       teamRef.current?.focus();
       return;
     }
-    create.mutate({
-      teamId,
-      title: trimmed,
-      priority,
-      projectId: projectId ? projectId : undefined,
-      assigneeIds: assigneeId ? [assigneeId] : undefined,
-    });
+    create.mutate(
+      newTicketBody({ teamId, title: trimmed, priority, projectId, assigneeId, estimate }),
+    );
   };
 
   const teamName = teams.find((team) => team.id === teamId)?.name;
@@ -252,7 +297,60 @@ function ComposerForm({
             ))}
         </select>
 
-        <Button type="button" size="sm" disabled={create.isPending} onClick={submit}>
+        {/* Last of the five, and last on purpose. The other four answer "where does this
+            belong", which is known at the moment somebody types the title; sizing is a
+            decision a team takes later, in refinement, so it is the one chip that must
+            never stand between the fast path and anything. Tab from the title still
+            reaches the team first, ↵ still creates without any of this being touched,
+            and leaving it alone sends no `estimate` at all — see [chosenEstimate].
+
+            The same dressed-down `<select>` as its four neighbours, built from the same
+            `EFFORT_POINTS` the detail panel and the ticket page offer: one vocabulary,
+            now on all three surfaces. No entry in `lib/actions/`, and not for want of a
+            free key: the registry is a *list* keyboard, and `page.tsx` returns from its
+            handler before `resolveShortcut` whenever a dialog is open, so an action
+            registered for this could never fire. `1`–`6` are the selected ticket's
+            status besides. The native select's own arrows and typeahead are the
+            affordance, which is what the other four chips already rely on.
+
+            `grow-0` is the fifth chip's one departure from `CHIP_SELECT`, and it is what
+            the wrap costs. Five chips do not fit across 608px, so this one drops to a
+            second line — and `flex-1` there, alone beside [Create], grew it to 541px: a
+            "No estimate" select nearly four times its neighbours, which read as a defect
+            rather than as a row that wrapped. Making the five narrow enough to fit was
+            tried and is worse — 103px each clips "No estimate" and every team name in the
+            select above it, so four chips that were fine would pay for the fifth. Frozen
+            at its declared basis it is simply the same chip as the other four, on the
+            line below. */}
+        <select
+          aria-label="Estimate in points"
+          className={cn(CHIP_SELECT, "grow-0")}
+          value={estimate}
+          disabled={create.isPending}
+          onChange={(event) => setEstimate(event.target.value)}
+        >
+          <option value="">No estimate</option>
+          {EFFORT_POINTS.map((points) => (
+            // The unit is in the option, not beside the chip: unlabelled in a row of
+            // four other chips, a bare "3" says nothing about what it counts.
+            <option key={points} value={points}>
+              {points} {points === 1 ? "pt" : "pts"}
+            </option>
+          ))}
+        </select>
+
+        {/* `ml-auto` so the row's last line ends where every line ends. Until the fifth
+            chip stopped growing, the button was pushed to the right edge by a chip that
+            had swollen to fill the gap; now that nothing fills it, the button has to hold
+            that edge itself — otherwise the primary action of the dialog slides in to sit
+            against the estimate chip, mid-row, with 400px of nothing to its right. */}
+        <Button
+          type="button"
+          size="sm"
+          className="ml-auto"
+          disabled={create.isPending}
+          onClick={submit}
+        >
           Create
         </Button>
       </div>

@@ -24,6 +24,19 @@ export const TICKET_PRIORITIES = ["none", "low", "medium", "high", "urgent"] as 
  */
 export const PROJECT_STATUSES = ["planned", "in_progress", "paused", "completed", "canceled"] as const;
 
+/**
+ * The effort scale, and the whole of it: a truncated Fibonacci sequence the server
+ * refuses anything outside of, in Kotlin and again by `tickets_estimate_chk`. Restated
+ * here rather than fetched because it is a vocabulary, not data — the same reason
+ * `TICKET_STATUSES` is a literal — and because a `<select>` has to be built from it
+ * before any ticket has been loaded.
+ *
+ * Absent is not zero anywhere in this app: `estimate` is `undefined` for a ticket nobody
+ * has sized, cleared by naming it in `unset`, and left out of every sum.
+ */
+export const EFFORT_POINTS = [1, 2, 3, 5, 8, 13] as const;
+export type EffortPoints = (typeof EFFORT_POINTS)[number];
+
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
@@ -62,6 +75,8 @@ export type Ticket = {
   description?: string;
   status: TicketStatus;
   priority: TicketPriority;
+  /** Points. Absent means nobody has sized it — never 0, which would be a real estimate. */
+  estimate?: EffortPoints;
   start?: KansoInstant;
   due?: KansoInstant;
   projectId?: string;
@@ -619,11 +634,19 @@ export const api = {
       })}`,
     ),
 
+  /**
+   * One row. What a realtime event is worth fetching: the event names an id, and
+   * refetching the list it happens to be in to learn what changed about it is the
+   * round trip `lib/realtime-events.ts` exists to avoid.
+   */
+  ticket: (id: string) => request<Ticket>(`/api/tickets/${id}`),
+
   createTicket: (body: {
     teamId: string;
     title: string;
     status?: TicketStatus;
     priority?: TicketPriority;
+    estimate?: EffortPoints;
     projectId?: string;
     assigneeIds?: string[];
   }) => request<Ticket>("/api/tickets", { method: "POST", body: JSON.stringify(body) }),
@@ -635,6 +658,7 @@ export const api = {
       description: string;
       status: TicketStatus;
       priority: TicketPriority;
+      estimate: EffortPoints;
       start: KansoInstant;
       due: KansoInstant;
       projectId: string;

@@ -19,19 +19,34 @@ export type Bar = {
 };
 
 /**
+ * Which of the day's two readings the chart is drawn from.
+ *
+ * A parameter rather than a second function: the geometry is identical, and two copies of
+ * it would be two places for the scaling to drift. Which one the screen asks for is a
+ * property of the *cycle* — a team that estimates reads points, one that does not has
+ * nothing but rows — and never of the chart.
+ */
+export type BurndownUnit = "tickets" | "points";
+
+/**
  * One bar per day, scaled against the busiest day rather than against the cycle's total.
  * A cycle that opened at 24 and is down to 4 should read as a descent, and scaling against
  * a total nobody ever had would flatten it.
+ *
+ * `open` on the returned bar is whichever unit was asked for, so the label under a bar and
+ * its height can never disagree about what they are counting.
  */
-export function bars(remaining: readonly RemainingDay[]): Bar[] {
+export function bars(remaining: readonly RemainingDay[], unit: BurndownUnit = "tickets"): Bar[] {
   if (remaining.length === 0) return [];
-  const tallest = Math.max(...remaining.map((day) => day.open));
+  const value = (day: RemainingDay) => (unit === "points" ? day.openPoints : day.open);
+  const tallest = Math.max(...remaining.map(value));
   return remaining.map((day) => ({
     day: day.day,
-    open: day.open,
-    // A finished cycle is all zeros, and 0/0 has to come out as an empty chart rather than
-    // as NaN heights the browser silently drops.
-    height: tallest === 0 ? 0 : (day.open / tallest) * 100,
+    open: value(day),
+    // A finished cycle is all zeros — and so is a cycle nobody estimated, read in points.
+    // 0/0 has to come out as an empty chart rather than as NaN heights the browser
+    // silently drops.
+    height: tallest === 0 ? 0 : (value(day) / tallest) * 100,
     projected: day.projected,
   }));
 }

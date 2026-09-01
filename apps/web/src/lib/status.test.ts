@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { PRIORITY_COLORS, PRIORITY_GLYPHS, STATUS_COLORS, STATUS_LABELS } from "./status";
+import {
+  categoryOf,
+  PRIORITY_COLORS,
+  PRIORITY_GLYPHS,
+  STATUS_CATEGORIES,
+  STATUS_CATEGORY,
+  STATUS_COLORS,
+  STATUS_LABELS,
+} from "./status";
 import { TICKET_PRIORITIES, TICKET_STATUSES } from "./api";
 
 describe("status and priority tables", () => {
@@ -16,5 +24,26 @@ describe("status and priority tables", () => {
       expect(PRIORITY_COLORS[priority]).toMatch(/^var\(--(urgent|priority-)/);
     }
     expect(new Set(Object.values(PRIORITY_COLORS)).size).toBe(TICKET_PRIORITIES.length);
+  });
+});
+
+describe("status categories", () => {
+  it("files every status under exactly one category, the same way the API does", () => {
+    expect(STATUS_CATEGORY).toEqual({
+      backlog: "backlog",
+      todo: "unstarted",
+      in_progress: "started",
+      in_review: "started",
+      done: "completed",
+      canceled: "canceled",
+    });
+  });
+
+  it("calls review started work, which is the whole reason the category exists", () => {
+    expect(categoryOf("in_review")).toBe(categoryOf("in_progress"));
+  });
+
+  it("leaves no category nothing can be in", () => {
+    expect(new Set(TICKET_STATUSES.map(categoryOf))).toEqual(new Set(STATUS_CATEGORIES));
   });
 });

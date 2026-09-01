@@ -4,6 +4,7 @@ import { TimelineBar, type BarEdit } from "./bar";
 import type { Row } from "./view";
 import type { TimelineDependency } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
+import { categoryOf } from "@/lib/status";
 
 // This file reads two of the chart's own custom properties rather than a token:
 // --tl-names: the width of the sticky name column.
@@ -56,6 +57,23 @@ export function canSelectTicket(ticket: { context: boolean }) {
  * scope filter never excludes in the first place. */
 export function isContextRow(row: Row) {
   return row.kind === "ticket" && row.ticket.context;
+}
+
+/**
+ * Which lane the ticket [ticketId] is drawn in, or -1.
+ *
+ * The same count `arrows.tsx` makes when it walks the rows for its anchors: a lane is a
+ * position in the row list, and the project headings between two tickets are lanes too.
+ * Written once, here, because the chart positions a lane at `lane × --row-h` and the
+ * arrow layer draws into `lane × --row-h` — two places counting lanes their own way is
+ * one arrow missing the bar it points at by a whole row.
+ *
+ * -1 for a project row as much as for an absent one: a project is not a ticket, and the
+ * cursor the chart scrolls to is always a ticket's.
+ */
+export function laneOf(rows: readonly Row[], ticketId: string | undefined): number {
+  if (ticketId === undefined) return -1;
+  return rows.findIndex((row) => row.kind === "ticket" && row.ticket.id === ticketId);
 }
 
 /**
@@ -237,7 +255,7 @@ function bar(
       origin={origin}
       zoom={zoom}
       timezone={timezone}
-      done={ticket.status === "done"}
+      done={categoryOf(ticket.status) === "completed"}
       status={ticket.status}
       // The same fact the ⚠ badge next to this row's name reports — see the caller
       // in `TimelineRow`, which computes it once via `overlapNotice` for both.

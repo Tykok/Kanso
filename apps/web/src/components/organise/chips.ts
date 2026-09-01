@@ -1,5 +1,6 @@
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import type { TicketStatus, ViewFilters } from "@/lib/api";
+import { FACET_ORDER } from "./facets";
 
 /**
  * A saved view's filters, as the removable chips screen 21 draws across the top.
@@ -27,20 +28,17 @@ const LABELS: Record<keyof ViewFilters, string> = {
   cycle: "Cycle",
   label: "Label",
   openedForDays: "Open for",
+  unestimated: "Unestimated",
+  estimateMin: "Points",
+  estimateMax: "Points",
 };
 
-/** Left to right as the drawing has them, so the strip does not reshuffle on every edit. */
-const ORDER: (keyof ViewFilters)[] = [
-  "project",
-  "status",
-  "statusNot",
-  "priority",
-  "assignee",
-  "unassigned",
-  "cycle",
-  "label",
-  "openedForDays",
-];
+/**
+ * Left to right as the drawing has them, so the strip does not reshuffle on every edit —
+ * and read out of `facets.ts` rather than written again here, so the order a filter is
+ * *offered* in is the order it is drawn in once it has been asked.
+ */
+const ORDER = FACET_ORDER;
 
 /** Resolves the ids a filter stores into the names a reader recognises. */
 export type ChipNames = {
@@ -81,10 +79,19 @@ function valueOf(
       // A boolean facet is its own answer, so the chip is the label alone. `Unassigned true`
       // would read as a database row rather than as a question somebody asked.
       return filters.unassigned ? "" : undefined;
+    case "unestimated":
+      return filters.unestimated ? "" : undefined;
     case "openedForDays":
       return filters.openedForDays === undefined
         ? undefined
         : `more than ${filters.openedForDays} days`;
+    // Two keys rather than one range chip, because the server takes two and either may be
+    // asked alone. Each prints the sign it means, so a reader can tell `≥ 5` from `≤ 5`
+    // when both are on the strip under the same `Points` label.
+    case "estimateMin":
+      return filters.estimateMin === undefined ? undefined : `≥ ${filters.estimateMin}`;
+    case "estimateMax":
+      return filters.estimateMax === undefined ? undefined : `≤ ${filters.estimateMax}`;
     case "status":
       return joined(filters.status?.map(statusLabel));
     case "statusNot": {

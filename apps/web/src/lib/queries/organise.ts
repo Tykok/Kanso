@@ -30,6 +30,7 @@ export const organiseKeys = {
   view: (id: string) => ["views", "one", id] as const,
   viewTickets: (id: string) => ["views", "one", id, "tickets"] as const,
   workload: (teamId: string, cycleId?: string) => ["workload", teamId, cycleId ?? ""] as const,
+  servedFilters: ["servedFilters"] as const,
 };
 
 /**
@@ -38,8 +39,9 @@ export const organiseKeys = {
  * than have every mutation name every key, they all call this: the four organising
  * families plus the two `core` families that draw the same rows.
  *
- * Invalidating on the first segment only, which is what `applyEvent` in `core` already
- * does, so a key can grow a segment without this having to learn about it.
+ * Invalidating on the first segment only, which is how `applyEvents` in
+ * `lib/realtime-events.ts` finds these too, so a key can grow a segment without this
+ * having to learn about it.
  */
 function invalidateOrganise(queryClient: ReturnType<typeof useQueryClient>) {
   // `labels` because the strip's sixth button changes what the selected rows wear, and a
@@ -194,6 +196,26 @@ export function useDeleteView() {
     onSuccess: () => invalidateOrganise(queryClient),
   });
 }
+
+// --- the filter vocabulary ------------------------------------------------
+
+/**
+ * Which facets this server will answer — the list the "add a filter" control is built
+ * from, so that nothing in the client has to write the twelve names down a second time.
+ *
+ * `staleTime: Infinity` because the answer changes when the server is redeployed and at
+ * no other moment; refetching it would be a request per navigation for a constant. It is
+ * deliberately *not* seeded with a default: an empty list offers no facets, which is the
+ * honest state before the answer has landed, where a default would offer twelve facets
+ * on the strength of a guess about which server this is.
+ */
+export const useServedFilters = () =>
+  useQuery({
+    queryKey: organiseKeys.servedFilters,
+    queryFn: () => organiseApi.servedFilters(),
+    staleTime: Infinity,
+    select: (answer) => answer.served,
+  });
 
 // --- bulk edit ------------------------------------------------------------
 

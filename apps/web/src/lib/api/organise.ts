@@ -58,13 +58,39 @@ export type Cycle = {
 };
 
 /** One bar of the burn-down. `projected` is what the chart hatches. */
-export type RemainingDay = { day: string; open: number; projected: boolean };
+/**
+ * One bar of the burn-down, in both units: `open` is the rows left that day, `openPoints`
+ * the points. Neither is derivable from the other — a cycle can be half-estimated — so
+ * the server sends both and the chart picks the one the cycle can actually be read in.
+ */
+export type RemainingDay = {
+  day: string;
+  open: number;
+  openPoints: number;
+  projected: boolean;
+};
+
+/**
+ * The cycle's effort in points, and how many of its tickets the sum cannot speak for.
+ *
+ * `unestimated` travels with the sum everywhere it is drawn: a total that quietly leaves
+ * out a third of the cycle reads as the whole of it, and that is the one thing a
+ * burn-down must not do.
+ */
+export type CyclePoints = {
+  total: number;
+  done: number;
+  percent: number;
+  unestimated: number;
+};
 
 export type CycleReport = {
   cycle: Cycle;
   total: number;
   done: number;
   percent: number;
+  /** The same three questions in points. The counts stay: not every team estimates. */
+  points: CyclePoints;
   /** Keyed by the status wire value, and every counted status is present, including zeros. */
   byStatus: Record<string, number>;
   daysLeft: number;
@@ -106,8 +132,13 @@ export type ViewGroupBy = (typeof VIEW_GROUP_BYS)[number];
 export type ViewSortBy = (typeof VIEW_SORT_BYS)[number];
 
 /**
- * The facets the server actually matches on — `SavedViewService.SERVED_FILTERS`, key for
+ * The facets the server actually matches on — `TicketFilterVocabulary.SERVED`, key for
  * key. A key this type carries that the set does not is a 400 on the write, not a chip.
+ *
+ * It is no longer only a saved view's vocabulary: `GET /api/tickets` takes these same
+ * names as query parameters and is refused by the same gate, so the main list and a
+ * stored question are one query asked through two doors. The name stays `ViewFilters`
+ * because a chip is a chip wherever it is drawn.
  */
 export type ViewFilters = {
   status?: TicketStatus[];
@@ -126,7 +157,41 @@ export type ViewFilters = {
   label?: string[];
   /** "Blocked for 3 days", measured from creation. */
   openedForDays?: number;
+  /**
+   * "Sans estimation" — its own flag rather than a bound, because null is not a small
+   * number. Asked with a bound, the two contradict and the answer is empty, which is the
+   * honest reading of "unsized and bigger than a 3".
+   */
+  unestimated?: boolean;
+  /** Bounds on the points, inclusive. Neither of them ever matches an unsized ticket. */
+  estimateMin?: number;
+  estimateMax?: number;
 };
+
+/**
+ * A [ViewFilters] as `GET /api/tickets` takes it — the same names, in a query string.
+ *
+ * The list endpoint and a saved view are one question asked through two doors, so this is
+ * a spelling change and nothing more. A list-valued facet repeats its key rather than
+ * joining on a comma, because that is what `MultiValueMap` on the other side reads and
+ * because a comma is a legal character in nothing the values here hold.
+ *
+ * An empty list and `false` are written as absent. The server refuses a name it does not
+ * serve but says nothing about a facet asked with no answer, and sending `unassigned=
+ * false` would put a chip on the wire that the screen is not drawing.
+ */
+export function filterParams(filters: ViewFilters): URLSearchParams {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (Array.isArray(value)) {
+      for (const one of value) search.append(key, String(one));
+    } else {
+      search.append(key, String(value));
+    }
+  }
+  return search;
+}
 
 export type SavedView = {
   id: string;
@@ -159,6 +224,10 @@ export type WorkloadRow = {
   /** Absent for the unassigned bucket, which is a pile and not an account. */
   person?: Person;
   total: number;
+  /** The points of their open tickets. Unsized ones are not in it, and not zeroes. */
+  points: number;
+  /** How many of `total` carry no estimate — what `points` cannot speak for. */
+  unestimated: number;
   byStatus: Record<string, number>;
   urgentOverThreeDays: number;
   oldestOpenDays: number;
@@ -200,6 +269,44 @@ export const organiseApi = {
 
   decide: (body: { ticketId: string; decision: TriageDecision; duplicateOfId?: string }) =>
     request<TriageRuling>("/api/triage/decisions", { method: "POST", body: JSON.stringify(body) }),
+
+  /**
+   * The main list, asked with the saved view's vocabulary — an unsaved saved view.
+   *
+   * `api.tickets` in `core.ts` stays exactly as it is and keeps working: it sends
+   * `teamId`, `includeDescendants`, `projectId` and `includeArchived`, which the server
+   * still answers because the old names are aliases over these same filters. This is the
+   * door for the facets that door cannot spell.
+   */
+  ticketsMatching: (
+    filters: ViewFilters,
+    scope: {
+      teamId?: string;
+      includeDescendants?: boolean;
+      includeArchived?: boolean;
+      sort?: ViewSortBy;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) => {
+    const search = filterParams(filters);
+    for (const [key, value] of Object.entries(scope)) {
+      if (value !== undefined) search.set(key, String(value));
+    }
+    const encoded = search.toString();
+    return request<Ticket[]>(`/api/tickets${encoded ? `?${encoded}` : ""}`);
+  },
+
+  /**
+   * The facets the server will answer, from the server.
+   *
+   * There is no second list of them in this file and there must not be: `ViewFilters`
+   * above is a *type*, checked at compile time against a server that may since have been
+   * rolled back, and a control built from a list typed out here would offer a chip the
+   * server 400s on. This is what the "add a filter" control reads instead — see
+   * `components/organise/facets.ts`.
+   */
+  servedFilters: () => request<{ served: string[] }>("/api/tickets/filters"),
 
   views: (teamId: string) => request<SavedView[]>(`/api/teams/${teamId}/views`),
 

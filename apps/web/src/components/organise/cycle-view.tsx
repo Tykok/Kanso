@@ -79,20 +79,47 @@ function CycleBody({
   );
 }
 
+/**
+ * Whether this cycle can be read in points at all.
+ *
+ * One question asked in one place, because the header, the chart and the caption have to
+ * answer it the same way: a percentage in points over a chart in tickets would be two
+ * cycles on one screen. A cycle nobody has estimated reads in rows, which is the honest
+ * fallback and the reason the server still sends both.
+ */
+const readsInPoints = (report: CycleReport) => report.points.total > 0;
+
+/** `· 4 unestimated`, or nothing — a sum with no blind spot says nothing about one. */
+function unestimatedNote(report: CycleReport) {
+  return report.points.unestimated === 0 ? "" : ` · ${report.points.unestimated} unestimated`;
+}
+
 function Progress({ report }: { report: CycleReport }) {
   const segments = progressSegments(report.byStatus, report.total);
+  // The status bar underneath stays a bar of *rows*: it is a breakdown of the list, every
+  // ticket in the cycle has a status and only some have points, and a segmented bar that
+  // silently omitted the unestimated would not add up to the list beside it.
+  const points = readsInPoints(report);
 
   return (
     <section className="flex flex-col gap-3 border-r border-border pr-7 max-[720px]:border-r-0 max-[720px]:pr-0">
       <GroupLabel className="px-0 pt-0">Progress</GroupLabel>
       <div className="flex items-end gap-2.5">
-        <span className="text-30 font-medium leading-none tracking-[-0.02em]">{report.percent} %</span>
+        <span className="text-30 font-medium leading-none tracking-[-0.02em]">
+          {points ? report.points.percent : report.percent} %
+        </span>
         <span className="pb-1 text-12 text-muted-foreground">
-          {report.done} of {report.total} tickets
+          {points
+            ? `${report.points.done} of ${report.points.total} points${unestimatedNote(report)}`
+            : `${report.done} of ${report.total} tickets`}
         </span>
       </div>
 
-      <div className="flex h-2 overflow-hidden rounded-[4px] bg-accent" role="img" aria-label={`${report.percent} per cent done`}>
+      <div
+        className="flex h-2 overflow-hidden rounded-[4px] bg-accent"
+        role="img"
+        aria-label={`${report.done} of ${report.total} tickets done`}
+      >
         {segments.map((segment) => (
           <span
             key={segment.status}
@@ -118,17 +145,23 @@ function Progress({ report }: { report: CycleReport }) {
 }
 
 function Remaining({ report }: { report: CycleReport }) {
-  const chart = bars(report.remaining);
-  const open = report.total - report.done;
+  const points = readsInPoints(report);
+  const chart = bars(report.remaining, points ? "points" : "tickets");
+  const unit = points ? "points" : "tickets";
+  const open = points ? report.points.total - report.points.done : report.total - report.done;
 
   return (
     <section className="flex flex-col gap-3 border-r border-border px-7 max-[720px]:border-r-0 max-[720px]:px-0">
       <GroupLabel className="px-0 pt-0">Remaining</GroupLabel>
-      <div className="flex h-[78px] items-end gap-[5px]" role="img" aria-label={`${open} tickets open`}>
+      <div
+        className="flex h-[78px] items-end gap-[5px]"
+        role="img"
+        aria-label={`${open} ${unit} open`}
+      >
         {chart.map((bar) => (
           <span
             key={bar.day}
-            title={`${bar.day}: ${bar.open} open${bar.projected ? " (projected)" : ""}`}
+            title={`${bar.day}: ${bar.open} ${unit} open${bar.projected ? " (projected)" : ""}`}
             className={
               bar.projected
                 ? // The drawing hatches the projection rather than tinting it: a hatch reads
@@ -140,8 +173,12 @@ function Remaining({ report }: { report: CycleReport }) {
           />
         ))}
       </div>
+      {/* The unit is written out under every reading of this chart. A burn-down whose
+          caption does not say what it is counting is a chart two people read as two
+          different things — and the unestimated tickets are named here for the same
+          reason: the descent cannot see them. */}
       <span className="text-11 text-muted-foreground">
-        {open} tickets open · projection hatched
+        {open} {unit} open{points ? unestimatedNote(report) : ""} · projection hatched
       </span>
     </section>
   );

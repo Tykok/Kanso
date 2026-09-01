@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   openTicketMode,
   ticketHref,
@@ -11,7 +11,6 @@ import {
 import { creationSeed } from "@/lib/creation-seed";
 import { actionErrorMessage } from "@/lib/errors";
 import {
-  useCreateTicket,
   usePatchTicket,
   usePreferences,
   useProjects,
@@ -19,11 +18,9 @@ import {
   useTickets,
   useUsers,
 } from "@/lib/queries";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { useBoard } from "@/store/board";
 import { useUi } from "@/store/ui";
-import { StatusDot } from "../ui/status-dot";
-import { BoardCard } from "./card";
+import { BoardColumnView, type ColumnControl } from "./column";
 import { boardColumns } from "./columns";
 
 /**
@@ -48,6 +45,8 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
   const { scope, query, selectedId, select, open } = useUi();
   const { requestedOpen, openHandled } = useBoard();
   const [dragging, setDragging] = useState<string | null>(null);
+  /** The board sideways. Each column scrolls its own cards; this is the axis they share. */
+  const scroller = useRef<HTMLDivElement>(null);
 
   /**
    * The same predicate `page.tsx` applies to the list.
@@ -132,132 +131,47 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
   // rule, and the reason the per-column composer disappears rather than failing.
   const seed = creationSeed(scope, teams.data ?? [], projects.data ?? []);
 
+  const control: ColumnControl = {
+    selectedId,
+    nameOf,
+    onSelect: select,
+    onOpen: openTicket,
+    onDrop: moveTo,
+    onDragStart: setDragging,
+    onDragEnd: () => setDragging(null),
+  };
+
   return (
     <div
+      ref={scroller}
       data-testid="board"
       // Six equal columns that stop shrinking at 180px and scroll sideways instead:
       // `grid-cols-6` alone is `minmax(0, 1fr)`, and a 12px title in a 90px column wraps
       // to five lines. The floor is what makes the board readable on a laptop.
-      className="grid min-h-0 flex-1 grid-cols-[repeat(6,minmax(180px,1fr))] gap-2.5 overflow-auto p-4"
+      //
+      // Sideways only, and one row exactly as tall as the board: each column scrolls its
+      // own cards now (see `column.tsx` for why), so a vertical scrollbar here as well
+      // would be a second one saying something different about the same work. The
+      // `minmax(0, 1fr)` row is what lets a column be shorter than its contents at all —
+      // an `auto` row grows to the tallest column and nothing ever overflows.
+      className="grid min-h-0 flex-1 grid-cols-[repeat(6,minmax(180px,1fr))] grid-rows-[minmax(0,1fr)] gap-2.5 overflow-x-auto overflow-y-hidden p-4"
     >
       {columns.map((column) => (
-        <section
+        <BoardColumnView
           key={column.status}
-          data-testid="board-column"
-          data-status={column.status}
-          aria-label={`${STATUS_LABELS[column.status]}, ${column.tickets.length}`}
-          className="flex min-w-0 flex-col gap-2"
-          onDragOver={(event) => {
-            // Without this the browser refuses the drop and the card springs back with no
-            // explanation — the default for a region that has not said it accepts one.
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(null);
-            const id = event.dataTransfer.getData("text/plain");
-            if (id) moveTo(column.status, id);
-          }}
-        >
-          <header
-            className="flex items-center gap-[7px] rounded-md px-2 py-1.5"
-            // The hue at 12%, so the tint is a wash of the column's own colour rather
-            // than six new tokens — and `--status-backlog` and `--status-canceled` are
-            // already neutral, which is why those two headers come out plain, exactly as
-            // the drawing has them.
-            style={{ background: `color-mix(in oklch, ${STATUS_COLORS[column.status]} 12%, transparent)` }}
-          >
-            <StatusDot status={column.status} />
-            <span className="min-w-0 flex-1 truncate text-12 font-medium">
-              {STATUS_LABELS[column.status]}
-            </span>
-            <span className="font-mono text-11 text-faint">{column.tickets.length}</span>
-          </header>
-
-          {column.tickets.map((ticket) => (
-            <BoardCard
-              key={ticket.id}
-              ticket={ticket}
-              assignee={nameOf(ticket)}
-              selected={ticket.id === selectedId}
-              onSelect={() => select(ticket.id)}
-              onOpen={() => openTicket(ticket.identifier, ticket.id)}
-              onDragStart={() => setDragging(ticket.id)}
-            />
-          ))}
-
-          {dragging && !column.tickets.some((ticket) => ticket.id === dragging) && (
-            <div className="h-8 rounded-md border border-dashed border-border" aria-hidden />
-          )}
-
-          {!seed.ticket.blocked && (
-            <ColumnComposer
-              status={column.status}
-              teamId={seed.ticket.teamId}
-              projectId={seed.ticket.projectId}
-            />
-          )}
-        </section>
+          column={column}
+          board={scroller}
+          control={control}
+          // Empty when the scope names no team a ticket could be filed in — which is why
+          // the per-column composer disappears rather than failing.
+          seed={
+            seed.ticket.blocked
+              ? undefined
+              : { teamId: seed.ticket.teamId, projectId: seed.ticket.projectId }
+          }
+          dragging={dragging}
+        />
       ))}
     </div>
-  );
-}
-
-/**
- * The column's own `+ Add`.
- *
- * A one-line input rather than the shared composer, because the whole point of adding
- * from a column is that the column *is* the status — and `Composer` takes a scope and no
- * status, so routing through it would file every card in `todo` whichever column was
- * clicked. Everything else it would have asked for is already answered by the scope.
- */
-function ColumnComposer({
-  status,
-  teamId,
-  projectId,
-}: {
-  status: TicketStatus;
-  teamId: string;
-  projectId: string;
-}) {
-  const create = useCreateTicket();
-  const [title, setTitle] = useState<string | null>(null);
-
-  if (title === null) {
-    return (
-      <button
-        type="button"
-        className="px-2 py-1.5 text-left text-11 text-faint hover:text-foreground"
-        onClick={() => setTitle("")}
-      >
-        + Add
-      </button>
-    );
-  }
-
-  const submit = () => {
-    const next = title.trim();
-    setTitle(null);
-    if (!next) return;
-    create.mutate({ teamId, title: next, status, ...(projectId ? { projectId } : {}) });
-  };
-
-  return (
-    <input
-      autoFocus
-      aria-label={`New ticket in ${STATUS_LABELS[status]}`}
-      className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-12"
-      value={title}
-      onChange={(event) => setTitle(event.target.value)}
-      onBlur={submit}
-      onKeyDown={(event) => {
-        // The page answers bare keys on `window`; a title being typed must not also be
-        // moving the cursor or changing a status.
-        event.stopPropagation();
-        if (event.key === "Enter") submit();
-        if (event.key === "Escape") setTitle(null);
-      }}
-    />
   );
 }

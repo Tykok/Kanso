@@ -1,5 +1,5 @@
 import { dayValue, type ActivityRow, type KansoInstant, type Ticket, type TicketStatus } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+import { categoryOf, STATUS_LABELS, type StatusCategory } from "@/lib/status";
 
 /**
  * Everything screen 05 says in words, with no React in it.
@@ -50,13 +50,16 @@ export function statusCounts(tickets: Ticket[]): StatusCount[] {
  * placeholder rather than a definition, and this is the definition.)
  */
 export function donePercent(counts: StatusCount[]): number {
-  const at = (status: TicketStatus) => counts.find((entry) => entry.status === status)?.count ?? 0;
+  const inCategory = (category: StatusCategory) =>
+    counts
+      .filter((entry) => categoryOf(entry.status) === category)
+      .reduce((total, entry) => total + entry.count, 0);
   const counting = counts
-    .filter((entry) => entry.status !== "canceled")
+    .filter((entry) => categoryOf(entry.status) !== "canceled")
     .reduce((total, entry) => total + entry.count, 0);
   // Rounded rather than truncated: 2 of 3 is two thirds done and printing 66 would be
   // the one place in the interface that rounds work *down*.
-  return counting === 0 ? 0 : Math.round((at("done") / counting) * 100);
+  return counting === 0 ? 0 : Math.round((inCategory("completed") / counting) * 100);
 }
 
 // --- the period --------------------------------------------------------------
@@ -131,7 +134,7 @@ export function activitySentence(row: ActivityRow): string {
   const what = ref(row.payload);
 
   // Written as the verb phrase first, so the actor is prepended once rather than in
-  // eleven branches that could each get the spacing wrong.
+  // twelve branches that could each get the spacing wrong.
   const phrase = ((): string => {
     switch (row.kind) {
       case "created":
@@ -160,6 +163,15 @@ export function activitySentence(row: ActivityRow): string {
         return what ? `labelled ${what}` : "labelled a ticket";
       case "mirror_pushed":
         return "pushed to Notion";
+      case "carried_over": {
+        // The only branch that names a *cycle* rather than a field of the ticket, and
+        // the only one whose "to" is a number: closing a cycle moves what did not fit,
+        // and the sentence has to say where it went or the reader has to go looking.
+        const to = typeof row.payload.to === "number" ? row.payload.to : undefined;
+        if (what && to) return `carried ${what} into cycle ${to}`;
+        if (to) return `carried unfinished work into cycle ${to}`;
+        return what ? `carried ${what} into the next cycle` : "carried work into the next cycle";
+      }
     }
   })();
 

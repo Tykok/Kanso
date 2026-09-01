@@ -22,11 +22,15 @@ import kotlin.reflect.full.primaryConstructor
 import kotlin.test.assertTrue
 
 /**
- * Screen 23: open tickets per person, cut by status, counted.
+ * Screen 23: open tickets per person, cut by status, counted — and, since tickets carry
+ * an estimate, weighed.
  *
- * The drawing says the rule in as many words — "aucune estimation en points : la charge
- * se lit au nombre et à l'ancienneté" — so the test that matters most is the one asserting
- * the shape carries a count and an age and nothing that could be mistaken for an estimate.
+ * This file used to assert the opposite of its last test: the drawing said "aucune
+ * estimation en points : la charge se lit au nombre et à l'ancienneté", and the shape was
+ * held to a count and an age by a whitebox assertion. Tickets have points now, and the
+ * prohibition became the lie — three 13s and three 1s were reading as the same load. What
+ * survives of the old rule is that the count did not go away and the sum never pretends
+ * to cover what nobody sized.
  */
 @Transactional
 class WorkloadTest : PostgresTest() {
@@ -168,20 +172,24 @@ class WorkloadTest : PostgresTest() {
 	}
 
 	@Test
-	fun `nothing in the shape can be mistaken for an estimate`() {
+	fun `the shape weighs the load and still counts it, and says what it could not weigh`() {
 		val rey = person("M. Rey")
 		ticket("a", assignees = listOf(rey.id))
 
 		val row = workload.forTeam(team.id).rows.single { it.person?.id == rey.id }
 
-		// A whitebox assertion on purpose. The drawing's rule is a prohibition, and the only
-		// way to hold a prohibition is to fail the day somebody adds the field.
+		// Still a whitebox assertion, and still holding a rule rather than a behaviour — only
+		// the rule changed. `points` may sit beside `total`; it may not replace it, and
+		// `unestimated` has to travel with it, because a bar drawn in points has to be able
+		// to say what it is not showing.
 		assertEquals(
-			listOf("person", "total", "byStatus", "urgentOverThreeDays", "oldestOpenDays"),
+			listOf("person", "total", "points", "unestimated", "byStatus", "urgentOverThreeDays", "oldestOpenDays"),
 			WorkloadRow::class.primaryConstructor!!.parameters.map { it.name },
-			"la charge se lit au nombre et à l'ancienneté — a points column here throws away" +
-				" the whole screen's argument",
+			"a points column that arrives without the count, or without the tally of what it" +
+				" left out, throws away the screen's own argument",
 		)
+		assertEquals(0, row.points, "an unsized ticket weighs nothing; it is not a zero-point ticket")
+		assertEquals(1, row.unestimated)
 		assertTrue(row.oldestOpenDays >= 0)
 	}
 }
