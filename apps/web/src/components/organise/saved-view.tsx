@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Menu } from "@/components/menu";
 import { GroupLabel } from "@/components/ui/group-label";
 import { PriorityMark } from "@/components/ui/priority-mark";
@@ -26,7 +27,9 @@ import {
   useViewTickets,
 } from "@/lib/queries";
 import { useTeamLabels } from "@/lib/queries/social";
+import { useRowMetrics } from "@/lib/row-metrics";
 import { PRIORITY_LABELS } from "@/lib/status";
+import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
 import { BulkStrip } from "./bulk-strip";
 import { chipsOf, withoutChip } from "./chips";
 import { groupTickets } from "./grouping";
@@ -307,6 +310,17 @@ function Chips({
   );
 }
 
+/**
+ * The grouped list, virtualised over a **flattened index**: `groupTickets` answers with
+ * groups, and `flatten` lays those out as one sequence in which a header is an entry like
+ * any other.
+ *
+ * The alternative — a virtualiser per group — was rejected. It needs a scroller per
+ * group, and this screen's cursor walks the whole view: `j` off the bottom of `Todo` and
+ * into `In progress` would then have to scroll two elements to stay visible, with the
+ * header between them belonging to neither. One sequence means the cursor is one integer,
+ * which is what it was before any of this.
+ */
 function Rows({
   tickets,
   groupBy,
@@ -322,55 +336,106 @@ function Rows({
   cursor?: string;
   onRow: (id: string) => void;
 }) {
-  const groups = groupTickets(tickets, groupBy, names);
+  const scroller = useRef<HTMLDivElement>(null);
+  const metrics = useRowMetrics(scroller);
   const chosen = new Set(selected);
 
+  const flat = useMemo(
+    () => flatten(groupTickets(tickets, groupBy, names), (ticket) => ticket.id),
+    [tickets, groupBy, names],
+  );
+
+  const virtualizer = useVirtualizer({
+    count: metrics.height > 0 ? flat.length : 0,
+    getScrollElement: () => scroller.current,
+    // A header is taller than a row, so the two are estimated apart: one number for both
+    // would put the scrollbar wrong on every grouped view and make the thumb jump as
+    // each header came into view. Rows are exactly `--row-h`, so only the headers are
+    // ever re-measured, which is what `measureElement` is attached below for.
+    estimateSize: (index) =>
+      sizeAt(flat, index, { row: metrics.height + metrics.gap, header: HEADER_ESTIMATE }),
+    measureElement: (element) => element.getBoundingClientRect().height,
+    overscan: 8,
+    getItemKey: (index) => flat[index]?.key ?? index,
+  });
+
+  /**
+   * The cursor, kept on screen — which this list could not do at all before, and could
+   * not have gone on not doing: `j` now moves onto rows that have no element, so a
+   * cursor nobody scrolls to is a cursor nobody can find.
+   *
+   * `flatIndexOf` is what makes it answerable. The cursor is a ticket id and the
+   * virtualiser wants an integer, and the conversion has to count the headers the list
+   * draws between the groups — which is exactly what the flattened index already holds.
+   */
+  const cursorIndex = flatIndexOf(flat, cursor);
+  useEffect(() => {
+    if (cursorIndex >= 0) virtualizer.scrollToIndex(cursorIndex, { align: "auto" });
+  }, [cursorIndex, virtualizer]);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-row overflow-y-auto px-6 pb-24">
-      {groups.map((group) => (
-        <div key={group.key || "all"}>
-          {group.label && (
-            <GroupLabel>
-              {group.label} · {group.count}
-            </GroupLabel>
-          )}
-          <div className="flex flex-col gap-row">
-            {group.tickets.map((ticket) => (
-              <Row
-                key={ticket.id}
-                selected={chosen.has(ticket.id)}
-                data-testid="view-row"
-                data-cursor={ticket.id === cursor}
-                className="grid grid-cols-[18px_70px_1fr_20px_96px]"
-                onClick={() => onRow(ticket.id)}
-              >
-                <span
-                  aria-hidden
-                  className={
-                    chosen.has(ticket.id)
-                      ? "grid size-3.5 place-items-center rounded-sm bg-primary text-[9px] text-primary-foreground"
-                      : "size-3.5 rounded-sm border border-border"
-                  }
+    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-6 pb-24">
+      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((item) => {
+          const entry = flat[item.index];
+          return (
+            <div
+              key={item.key}
+              // Headers are measured, rows are not, so only a header carries the ref —
+              // `measureElement` on a fixed-height row is a layout read per scroll for
+              // an answer `--row-h` already gave.
+              ref={entry.kind === "header" ? virtualizer.measureElement : undefined}
+              data-index={item.index}
+              className="absolute left-0 top-0 w-full"
+              style={{ transform: `translateY(${item.start}px)` }}
+            >
+              {entry.kind === "header" ? (
+                <GroupLabel>
+                  {entry.label} · {entry.count}
+                </GroupLabel>
+              ) : (
+                <Row
+                  selected={chosen.has(entry.item.id)}
+                  data-testid="view-row"
+                  data-cursor={entry.item.id === cursor}
+                  className="grid grid-cols-[18px_70px_1fr_20px_96px]"
+                  onClick={() => onRow(entry.item.id)}
                 >
-                  {chosen.has(ticket.id) ? "✓" : ""}
-                </span>
-                <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
-                <span className="truncate">{ticket.title}</span>
-                <PriorityMark priority={ticket.priority} />
-                <span
-                  className={
-                    ticket.priority === "urgent"
-                      ? "truncate text-11 text-urgent"
-                      : "truncate text-11 text-muted-foreground"
-                  }
-                >
-                  {ticket.priority === "none" ? "" : PRIORITY_LABELS[ticket.priority]}
-                </span>
-              </Row>
-            ))}
-          </div>
-        </div>
-      ))}
+                  <span
+                    aria-hidden
+                    className={
+                      chosen.has(entry.item.id)
+                        ? "grid size-3.5 place-items-center rounded-sm bg-primary text-[9px] text-primary-foreground"
+                        : "size-3.5 rounded-sm border border-border"
+                    }
+                  >
+                    {chosen.has(entry.item.id) ? "✓" : ""}
+                  </span>
+                  <span className="font-mono text-11 text-faint">{entry.item.identifier}</span>
+                  <span className="truncate">{entry.item.title}</span>
+                  <PriorityMark priority={entry.item.priority} />
+                  <span
+                    className={
+                      entry.item.priority === "urgent"
+                        ? "truncate text-11 text-urgent"
+                        : "truncate text-11 text-muted-foreground"
+                    }
+                  >
+                    {entry.item.priority === "none" ? "" : PRIORITY_LABELS[entry.item.priority]}
+                  </span>
+                </Row>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
+
+/**
+ * A first guess at a `GroupLabel`'s height — `pt-group` above it, a line of 11px caption,
+ * `pb-2` under. Only ever a guess: every header is measured the moment it is drawn, which
+ * is why this being a few pixels out costs nothing but the scrollbar's first position.
+ */
+const HEADER_ESTIMATE = 41;

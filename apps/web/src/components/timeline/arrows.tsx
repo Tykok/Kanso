@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { barAt } from "./bar";
 import type { Row } from "./view";
 import type { TimelineDependency } from "@/lib/api";
+import { useRowMetrics } from "@/lib/row-metrics";
 import { widthOf, xOf, type Zoom } from "@/lib/timeline-geometry";
 import { useUi } from "@/store/ui";
 
@@ -201,39 +202,6 @@ function build(
   return arrows;
 }
 
-/**
- * `--row-h` in pixels, read off the layer itself.
- *
- * The SVG's own coordinates are pixels, so the lane a bar sits in has to be turned into
- * one — and the height is 36 or 27 depending on the density the reader chose. Copying
- * either number into TypeScript would be a second place to change it; the observer is
- * what notices when the setting flips, since a shorter row makes the layer shorter too.
- *
- * Reads `--row-h` directly. There used to be a `--row-height` alias in `globals.css`
- * for readers that hadn't migrated off it yet; this was the last of them, so the
- * alias has been deleted rather than kept for no reader.
- */
-function useRowHeight(ref: RefObject<SVGSVGElement | null>): number {
-  const [height, setHeight] = useState(0);
-
-  useLayoutEffect(() => {
-    const layer = ref.current;
-    if (!layer) return;
-
-    const read = () => {
-      const px = Number.parseFloat(getComputedStyle(layer).getPropertyValue("--row-h"));
-      setHeight(Number.isFinite(px) ? px : 0);
-    };
-
-    read();
-    const observer = new ResizeObserver(read);
-    observer.observe(layer);
-    return () => observer.disconnect();
-  }, [ref]);
-
-  return height;
-}
-
 /** Somewhere a Backspace means "delete a character", not "delete a dependency". */
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -259,7 +227,13 @@ export function TimelineArrows({
   onErase: (dep: TimelineDependency) => void;
 }) {
   const layer = useRef<SVGSVGElement>(null);
-  const rowHeight = useRowHeight(layer);
+  /**
+   * The SVG's own coordinates are pixels, so a lane has to be turned into one — and the
+   * same hook answers the chart itself, which is what positions the lanes now that they
+   * are virtualised. One reader of `--row-h`, because a lane drawn at one height and an
+   * arrow drawn into another is an arrow that misses its bar by a whole row.
+   */
+  const { height: rowHeight } = useRowMetrics(layer);
   const overlay = useUi((state) => state.overlay);
   const dialog = useUi((state) => state.dialog);
 

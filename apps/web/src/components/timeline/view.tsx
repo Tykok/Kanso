@@ -1,10 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { TimelineArrows } from "./arrows";
 import { barAt, type BarEdit } from "./bar";
 import { TimelineGrid } from "./grid";
-import { TimelineRow } from "./row";
+import { laneOf, TimelineRow } from "./row";
 import { TimelineTray } from "./tray";
 import type {
   KansoInstant,
@@ -14,6 +23,7 @@ import type {
   TimelineView as TimelineData,
 } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
+import { useRowMetrics } from "@/lib/row-metrics";
 import {
   useLinkDependency,
   usePatchTicket,
@@ -237,6 +247,56 @@ export function TimelineView({
     return [...grouped, ...orphans];
   }, [view]);
 
+  /**
+   * The chart's scroller and the block of lanes inside it.
+   *
+   * `--row-h` is read off the scroller by the same hook the arrow layer uses, so the
+   * height a lane is positioned at and the height an arrow is drawn into are one number.
+   */
+  const scroller = useRef<HTMLDivElement>(null);
+  const lanes = useRef<HTMLDivElement>(null);
+  const { height: laneHeight } = useRowMetrics(scroller);
+
+  /**
+   * How far below the top of the chart's content the first lane sits: the axis strip,
+   * which is in the flow above them. Measured rather than read back out of `--tl-axis`,
+   * because the number the virtualiser needs is where the element actually is.
+   */
+  const [laneMargin, setLaneMargin] = useState(0);
+  // The rule offers `[]`, which would measure once at mount. The chart renders "Loading…"
+  // until the query answers, so at mount there are no lanes to measure and the margin
+  // would stay zero for good. The updater compares before it writes, so a render that
+  // measures the same top schedules nothing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const top = lanes.current?.offsetTop ?? 0;
+    setLaneMargin((current) => (current === top ? current : top));
+  });
+
+  const laneVirtualizer = useVirtualizer({
+    // Nothing until `--row-h` is known: a lane of zero height has no place on a chart
+    // whose whole geometry is `lane × --row-h`.
+    count: laneHeight > 0 ? rows.length : 0,
+    getScrollElement: () => scroller.current,
+    estimateSize: () => laneHeight,
+    scrollMargin: laneMargin,
+    // Generous, because the arrows between two lanes are drawn whether or not either is
+    // mounted, but the *bars* they point at are not: a wider margin means fewer moments
+    // where an arrow's own endpoints have scrolled out from under it.
+    overscan: 12,
+    getItemKey: (index) => (rows[index] ? rowKey(rows[index]) : index),
+  });
+
+  /**
+   * The cursor, kept on screen. A lane below the fold has no element, so the bar cannot
+   * be scrolled to by looking it up — `laneOf` answers for every lane on the chart, drawn
+   * or not, and counts the project headings between them exactly as the arrow layer does.
+   */
+  const lane = laneOf(rows, selectedId);
+  useEffect(() => {
+    if (lane >= 0) laneVirtualizer.scrollToIndex(lane, { align: "auto" });
+  }, [lane, laneVirtualizer]);
+
   /** A ticket's identifier by id, for the sentence the ⚠ prints. */
   const nameOf = useMemo(() => {
     const byId = new Map((view?.tickets ?? []).map((ticket) => [ticket.id, ticket.identifier]));
@@ -438,6 +498,7 @@ export function TimelineView({
        * pointer.
        */}
       <div
+        ref={scroller}
         className="group/chart min-h-0 flex-1 overflow-auto"
         data-linking={linking ? "" : undefined}
         style={chart}
@@ -461,18 +522,47 @@ export function TimelineView({
             </div>
           )}
 
-          {rows.map((row) => (
-            <TimelineRow
-              key={rowKey(row)}
-              row={row}
-              deps={view?.dependencies ?? []}
-              nameOf={nameOf}
-              origin={bounds.origin}
-              zoom={zoom}
-              timezone={timezone}
-              control={control}
-            />
-          ))}
+          {/*
+           * The lanes, virtualised — and the arrows above them left exactly as they were.
+           *
+           * That is only safe because of how `arrows.tsx` already worked: it takes the
+           * whole `rows` array and turns a ticket's *position in it* into a y coordinate,
+           * in one SVG laid over the entire chart. It never asks the DOM where a bar is.
+           * So an arrow to a lane nobody has mounted is drawn at exactly the same place
+           * it always was, and nothing about an unmounted row can make a line vanish or
+           * point at nothing — which is the one outcome that would have made virtualising
+           * this chart worse than leaving it alone.
+           *
+           * What that costs is a rule: a lane is at `index × --row-h` and nowhere else.
+           * The arrow layer computes `lane × --row-h` from the same hook, and the spacer
+           * below is `rows.length × --row-h` tall, so the chart is the same height it
+           * would be with every lane in the document. `measureElement` is deliberately
+           * not used — a measured lane one pixel off the arithmetic is an arrow one pixel
+           * off its bar, and every lane here is `h-row` by construction anyway.
+           */}
+          <div
+            ref={lanes}
+            className="relative w-full"
+            style={{ height: laneHeight > 0 ? rows.length * laneHeight : undefined }}
+          >
+            {laneVirtualizer.getVirtualItems().map((item) => (
+              <div
+                key={item.key}
+                className="absolute left-0 top-0 w-full"
+                style={{ transform: `translateY(${item.start - laneMargin}px)` }}
+              >
+                <TimelineRow
+                  row={rows[item.index]}
+                  deps={view?.dependencies ?? []}
+                  nameOf={nameOf}
+                  origin={bounds.origin}
+                  zoom={zoom}
+                  timezone={timezone}
+                  control={control}
+                />
+              </div>
+            ))}
+          </div>
 
           <TimelineArrows
             rows={rows}
