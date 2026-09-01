@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
+import { ticketGuesses } from "@/lib/optimistic";
 import { useMe, useTeams } from "@/lib/queries";
 import { connectRealtime, type RealtimeConnection } from "@/lib/realtime";
 import { queryCache, RealtimeCache, topicsFor } from "@/lib/realtime-events";
@@ -52,6 +53,11 @@ function Realtime() {
         // A row this reader may not read is a refusal, not a failure: the applier reads
         // "no row" and widens, which is what the whole-key invalidation always did.
         fetchTicket: (id) => api.ticket(id).catch(() => undefined),
+        // The guesses this tab has in flight, folded back over whatever the server says.
+        // Without it an event about a row somebody else just touched would write the
+        // server's copy over a change of this reader's own that the server has not been
+        // told about yet, and the change would visibly un-happen mid-request.
+        overlay: ticketGuesses.fold,
       }),
     [queryClient],
   );

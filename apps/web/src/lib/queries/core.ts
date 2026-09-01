@@ -1,6 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { patchedTicket, removedTicket, ticketGuesses } from "@/lib/optimistic";
+import { queryCache } from "@/lib/realtime-events";
 import { useUi, type Scope } from "@/store/ui";
 import {
   api,
@@ -12,7 +15,6 @@ import {
   type Preferences,
   type Project,
   type Team,
-  type Ticket,
   type TicketPriority,
   type TicketStatus,
 } from "../api";
@@ -43,14 +45,33 @@ export const keys = {
 };
 
 /**
- * The scope and the archived toggle live in the store, not in props, so every
- * caller of these hooks agrees on what is being shown without passing it down.
+ * The cache as `lib/realtime-events.ts` and `lib/optimistic.ts` want it.
+ *
+ * The ticket mutations below write through those two rather than naming a key, because
+ * the row they change is in more places than the list on screen — other scopes' lists
+ * the reader has visited, and the ticket page's own single-row entry. Naming one key was
+ * why a status change on the board left the same ticket's page showing the old status
+ * until something refetched it.
  */
-const useTicketsKey = () =>
-  keys.tickets(
-    useUi((state) => state.scope),
-    useUi((state) => state.showArchived),
-  );
+const useEventCache = () => {
+  const queryClient = useQueryClient();
+  return useMemo(() => queryCache(queryClient), [queryClient]);
+};
+
+/**
+ * Stops the refetches that could land on top of a guess about to be painted.
+ *
+ * Every ticket key, not just the list on screen, because the guess is painted into all
+ * of them — but only the ones that already hold rows. A query still loading for the
+ * first time has nothing for the guess to overwrite and nothing to overwrite the guess
+ * with, so cancelling it would strand a first load to buy nothing: `writeTickets` skips
+ * an entry with no data anyway.
+ */
+const cancelTicketRefetches = (queryClient: ReturnType<typeof useQueryClient>) =>
+  queryClient.cancelQueries({
+    queryKey: ["tickets"],
+    predicate: (query) => query.state.data !== undefined,
+  });
 
 export const useAuthMode = () => useQuery({ queryKey: keys.authMode, queryFn: api.authMode });
 
@@ -243,13 +264,25 @@ export type PatchInput = {
 /**
  * Optimistic patch.
  *
- * The point of Kanso is that a status change feels instant, so the cache is
- * rewritten before the request leaves. On failure the snapshot is restored — the
- * row visibly snaps back, which is the honest signal that the change did not land.
+ * The point of Kanso is that a status change feels instant, so the cache is rewritten
+ * before the request leaves. Every field here is one the server stores as it is sent, so
+ * the guess is not a guess about behaviour — only about whether the write is allowed.
+ *
+ * The guess goes through `lib/optimistic.ts`, which paints it into every cached entry
+ * holding the row rather than into the one list this hook knows a key for, and which
+ * stacks two edits of the same row instead of snapshotting one on top of the other.
+ *
+ * The list is no longer refetched when the request comes back, and that is the change
+ * worth explaining. `/api/tickets` answers in `updatedAt DESC`, so a refetch moved the
+ * row that was just edited to the top of the list — a jump, a scroll-position change and
+ * a repaint, every time anyone pressed a status key. `applyEvents` deliberately patches
+ * a changed row *in place* rather than reordering, so the socket's version of this same
+ * edit does not move it; refetching here was the one thing that did. What the row now
+ * says is the response itself, which is the whole saved row and needs no second ask.
  */
 export function usePatchTicket() {
   const queryClient = useQueryClient();
-  const key = useTicketsKey();
+  const cache = useEventCache();
 
   return useMutation({
     mutationFn: ({ id, ...body }: PatchInput) => api.patchTicket(id, body),
@@ -258,37 +291,16 @@ export function usePatchTicket() {
     // it, the cached ticket has no such field, and spreading it would leave a stray
     // array on the row.
     onMutate: async ({ id, unset, ...body }) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Ticket[]>(key);
-
-      queryClient.setQueryData<Ticket[]>(key, (current) =>
-        (current ?? []).map((ticket) => {
-          if (ticket.id !== id) return ticket;
-          const patched: Ticket = { ...ticket, ...body };
-          // JSON cannot tell an absent key from an explicit null, so the server takes
-          // a list of fields to clear. The optimistic copy has to clear them too, or
-          // the value the person just removed sits there until the refetch lands.
-          for (const field of unset ?? []) {
-            delete (patched as Record<string, unknown>)[field];
-          }
-          // The mirror is asynchronous by design: the moment a row changes locally,
-          // Notion is behind. Show that rather than imply it landed.
-          patched.mirror = {
-            ...ticket.mirror,
-            state: ticket.mirror.state === "disabled" ? "disabled" : "pending",
-          };
-          return patched;
-        }),
-      );
-      return { previous };
+      await cancelTicketRefetches(queryClient);
+      return { handle: ticketGuesses.open(cache, id, patchedTicket(body, unset ?? [])) };
     },
 
-    onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(key, context.previous);
-    },
-
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: key });
+    // One call for both outcomes, which is the point of the ledger: the response row
+    // becomes the new base, and its absence — a refusal — leaves the base as it was.
+    // Either way what is repainted is the base with whatever else is still in flight
+    // folded back over it, so a second edit of the same row survives this one failing.
+    onSettled: (saved, _error, _input, context) => {
+      if (context) ticketGuesses.close(cache, context.handle, saved);
       // A patch may have cascaded into tickets this mutation never named, and it
       // changes slack and criticality for others that did not move at all.
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
@@ -300,6 +312,14 @@ export function usePatchTicket() {
  * Drawing an arrow. The response carries the tickets the new constraint moved, but the
  * timeline is refetched rather than patched from it: the same edit also changes slack
  * and criticality for tickets that did not move at all.
+ *
+ * Not optimistic, and this is the clearest case for leaving one alone. A dependency runs
+ * the scheduler: it moves the successor, then whatever waits on the successor, and it
+ * recomputes slack and criticality across the whole closure. Guessing at that means
+ * reimplementing the scheduler in the browser, and guessing at it *badly* means bars
+ * sliding to the wrong dates and then sliding again when the answer lands. The arrow
+ * itself would be the only honest part of the guess, and it is not the part anyone is
+ * waiting to see.
  */
 export function useLinkDependency() {
   const queryClient = useQueryClient();
@@ -336,36 +356,52 @@ export function useUnlinkDependency() {
   });
 }
 
+/**
+ * Deliberately not optimistic, and the clearest case of it.
+ *
+ * A ticket's identifier comes from a per-team counter the server owns — `KAN-142` is not
+ * something this client can invent, and a row drawn with a placeholder key that turns
+ * into a different one a moment later is worse than a row that appears a moment late.
+ * Its position is the server's too: the list is ordered on `updatedAt`, which does not
+ * exist yet either.
+ *
+ * So the row is not guessed, it is *placed*, from the response — through the same writer
+ * the socket uses, which refetches only the cached lists that have to gain it.
+ */
 export function useCreateTicket() {
   const queryClient = useQueryClient();
-  const key = useTicketsKey();
+  const cache = useEventCache();
   return useMutation({
     mutationFn: api.createTicket,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: key });
+    onSuccess: (created) => {
+      ticketGuesses.arrived(cache, created);
       // The team row carries a ticket count, so it is stale too.
       queryClient.invalidateQueries({ queryKey: ["teams"] });
     },
   });
 }
 
+/**
+ * Optimistic, because a deletion the person confirmed is one they have already decided:
+ * the row leaves every list holding it and the ticket page falls through to the 404 it
+ * was written for. A refusal puts it back — through a refetch of the keys that lost it,
+ * because where a row sorts back in is the server's order and not this client's guess.
+ */
 export function useDeleteTicket() {
   const queryClient = useQueryClient();
-  const key = useTicketsKey();
+  const cache = useEventCache();
   return useMutation({
     mutationFn: api.deleteTicket,
     onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Ticket[]>(key);
-      queryClient.setQueryData<Ticket[]>(key, (current) =>
-        (current ?? []).filter((ticket) => ticket.id !== id),
-      );
-      return { previous };
+      await cancelTicketRefetches(queryClient);
+      return { handle: ticketGuesses.open(cache, id, removedTicket) };
     },
-    onError: (_error, _id, context) => {
-      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    // `null` rather than "no answer": the endpoint returns nothing, so success has to say
+    // in so many words that the row is gone, or settling would put it back.
+    onSettled: (_data, error, _id, context) => {
+      if (context) ticketGuesses.close(cache, context.handle, error ? undefined : null);
+      queryClient.invalidateQueries({ queryKey: ["timeline"] });
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
 }
 
