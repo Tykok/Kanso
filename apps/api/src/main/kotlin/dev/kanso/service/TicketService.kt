@@ -3,6 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.KansoInstant
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -265,9 +266,10 @@ class TicketService(
 		// logic that owns it, and a trigger would be the only part of the transition
 		// invisible from this file.
 		val status = patch.status ?: current.status
+		val completed = status.category == StatusCategory.COMPLETED
 		val completedAt = when {
-			status == TicketStatus.DONE && current.status != TicketStatus.DONE -> OffsetDateTime.now()
-			status != TicketStatus.DONE -> null
+			completed && current.status.category != StatusCategory.COMPLETED -> OffsetDateTime.now()
+			!completed -> null
 			else -> current.completedAt
 		}
 

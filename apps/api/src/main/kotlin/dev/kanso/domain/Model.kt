@@ -18,6 +18,26 @@ internal inline fun <reified E> parse(values: Array<E>, raw: String): E where E 
 			"Unknown ${E::class.simpleName} '$raw' (expected one of ${values.joinToString { it.wire }})"
 		)
 
+/**
+ * What a status *means*, as opposed to what it is called.
+ *
+ * Not a [Wire]: nothing writes a category to the database or sends one to Notion, so
+ * there is no raw string to parse back and no `CHECK` constraint to keep honest. It is a
+ * reading of the status column, and the status column already has both.
+ *
+ * The point is that "is this finished", "has anybody started" and "is this still open"
+ * are questions four screens ask — the burndown, the board, the workload chart, the
+ * public roadmap — and each one used to answer by naming statuses. Naming a category
+ * instead is what lets a seventh status exist without those four quietly going wrong.
+ */
+enum class StatusCategory {
+	BACKLOG,
+	UNSTARTED,
+	STARTED,
+	COMPLETED,
+	CANCELED,
+}
+
 enum class TicketStatus(override val wire: String) : Wire {
 	BACKLOG("backlog"),
 	TODO("todo"),
@@ -28,6 +48,20 @@ enum class TicketStatus(override val wire: String) : Wire {
 
 	/** Label shown in the Notion mirror, where humans read it. */
 	val label: String get() = wire.split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+
+	/**
+	 * Derived, never stored: the mapping is the definition, so there is no second copy on
+	 * disk that could disagree with this one. `in_review` is [StatusCategory.STARTED]
+	 * because somebody is holding it — a reviewer is work in flight, and a burndown that
+	 * called review "not started" would draw the wrong day.
+	 */
+	val category: StatusCategory get() = when (this) {
+		BACKLOG -> StatusCategory.BACKLOG
+		TODO -> StatusCategory.UNSTARTED
+		IN_PROGRESS, IN_REVIEW -> StatusCategory.STARTED
+		DONE -> StatusCategory.COMPLETED
+		CANCELED -> StatusCategory.CANCELED
+	}
 
 	companion object {
 		fun from(raw: String): TicketStatus = parse(entries.toTypedArray(), raw)

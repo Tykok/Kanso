@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
@@ -174,13 +175,13 @@ class CycleService(
 	@Transactional(readOnly = true)
 	fun report(cycleId: UUID, today: LocalDate = LocalDate.now()): CycleReport {
 		val cycle = require(cycleId).toDomain()
-		val counted = cycles.ticketsIn(cycleId).filter { it.status != TicketStatus.CANCELED }
+		val counted = cycles.ticketsIn(cycleId).filter { it.status.category != StatusCategory.CANCELED }
 		val loaded = details.of(counted)
 
 		val byStatus = COUNTED_STATUSES.associateWith { status -> counted.count { it.status == status } }
 		val total = counted.size
-		val done = byStatus[TicketStatus.DONE] ?: 0
-		val open = loaded.filter { it.ticket.status != TicketStatus.DONE }
+		val done = counted.count { it.status.category == StatusCategory.COMPLETED }
+		val open = loaded.filter { it.ticket.status.category != StatusCategory.COMPLETED }
 
 		val daysLeft = ChronoUnit.DAYS.between(today, cycle.endsOn).toInt().coerceAtLeast(0)
 		// Inclusive of today: a cycle on its first day has measured one day, not zero, and
@@ -273,13 +274,7 @@ class CycleService(
 	)
 
 	companion object {
-		/** The five the drawing plots. `canceled` is not work, so it is not counted. */
-		val COUNTED_STATUSES = listOf(
-			TicketStatus.BACKLOG,
-			TicketStatus.TODO,
-			TicketStatus.IN_PROGRESS,
-			TicketStatus.IN_REVIEW,
-			TicketStatus.DONE,
-		)
+		/** What the drawing plots. `canceled` is not work, so it is not counted. */
+		val COUNTED_STATUSES = TicketStatus.entries.filter { it.category != StatusCategory.CANCELED }
 	}
 }

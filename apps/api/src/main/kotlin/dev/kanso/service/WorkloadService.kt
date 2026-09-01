@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -108,13 +109,10 @@ class WorkloadService(
 		ChronoUnit.DAYS.between(ticket.createdAt, now).toInt().coerceAtLeast(0)
 
 	companion object {
-		/** Open means not settled. `done` and `canceled` are both out. */
-		val OPEN_STATUSES = listOf(
-			TicketStatus.BACKLOG,
-			TicketStatus.TODO,
-			TicketStatus.IN_PROGRESS,
-			TicketStatus.IN_REVIEW,
-		)
+		/** Open means not settled: neither category that ends a ticket is in here. */
+		val OPEN_STATUSES = TicketStatus.entries.filter {
+			it.category != StatusCategory.COMPLETED && it.category != StatusCategory.CANCELED
+		}
 
 		/**
 		 * The read is a count, so it has to see everything to be right. Capped anyway: a

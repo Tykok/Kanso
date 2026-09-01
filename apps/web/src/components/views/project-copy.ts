@@ -1,5 +1,5 @@
 import { dayValue, type ActivityRow, type KansoInstant, type Ticket, type TicketStatus } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+import { categoryOf, STATUS_LABELS, type StatusCategory } from "@/lib/status";
 
 /**
  * Everything screen 05 says in words, with no React in it.
@@ -50,13 +50,16 @@ export function statusCounts(tickets: Ticket[]): StatusCount[] {
  * placeholder rather than a definition, and this is the definition.)
  */
 export function donePercent(counts: StatusCount[]): number {
-  const at = (status: TicketStatus) => counts.find((entry) => entry.status === status)?.count ?? 0;
+  const inCategory = (category: StatusCategory) =>
+    counts
+      .filter((entry) => categoryOf(entry.status) === category)
+      .reduce((total, entry) => total + entry.count, 0);
   const counting = counts
-    .filter((entry) => entry.status !== "canceled")
+    .filter((entry) => categoryOf(entry.status) !== "canceled")
     .reduce((total, entry) => total + entry.count, 0);
   // Rounded rather than truncated: 2 of 3 is two thirds done and printing 66 would be
   // the one place in the interface that rounds work *down*.
-  return counting === 0 ? 0 : Math.round((at("done") / counting) * 100);
+  return counting === 0 ? 0 : Math.round((inCategory("completed") / counting) * 100);
 }
 
 // --- the period --------------------------------------------------------------
