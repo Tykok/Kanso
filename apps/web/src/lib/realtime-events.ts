@@ -155,11 +155,42 @@ export async function applyEvents(
   if (batch.some((event) => event.entity === "teams")) cache.invalidate(["teams"]);
   if (projects) cache.invalidate(["projects"]);
 
+  // A create moves the team's counter, and nothing else here would go and read it.
+  if (tickets.some((event) => event.kind === "CREATED")) invalidateTeamLists(cache);
+
   // A project's derived bounds change when its tickets do, its explicit ones when it is
   // edited, and its explicit end is a deadline the critical path reads. Once for the
   // batch: fifty notifications are still one stale chart.
   if (projects || tickets.length) cache.invalidate(["timeline"]);
   if (tickets.length) await applyTickets(target, tickets);
+}
+
+/**
+ * The teams query, and only the list of them.
+ *
+ * `Team.ticketCount` is not a count of the tickets a team currently has — it is
+ * `ticket_counter`, `nextTicketNumber`'s allocator, the thing that makes KAN-14 the
+ * fourteenth. It climbs on a create and stays put on a delete, so a delete has nothing to
+ * refetch *for*: the server would hand back the same number, one round trip later. Only
+ * `CREATED`, therefore, and this is the whole of why the obvious "invalidate on CREATED
+ * and DELETED" would have been half a no-op.
+ *
+ * Derived from the tickets already in cache instead would be narrower and is wrong twice
+ * over. The one reader of this field asks "has anything ever been filed anywhere", which
+ * no scoped list can answer — a client scoped to one team holds only that subtree — and
+ * a live count would answer "no" for an instance whose work has all been deleted, which
+ * is a first-run welcome screen shown to someone on their hundredth ticket.
+ *
+ * The list and not `keys.teamMembers`, which a bare `["teams"]` would sweep up by prefix:
+ * a team's roster does not change because somebody filed a ticket, and a create is the
+ * commonest write there is.
+ */
+function invalidateTeamLists(cache: EventCache): void {
+  for (const entry of cache.entries("teams")) {
+    // The flag is what tells `keys.teams(includeArchived)` from `keys.teamMembers(id)`,
+    // read exactly as [knownTeams] below reads it.
+    if (typeof entry.key[1] === "boolean") cache.invalidate(entry.key);
+  }
 }
 
 async function applyTickets(target: CacheTarget, events: readonly KansoEvent[]): Promise<void> {

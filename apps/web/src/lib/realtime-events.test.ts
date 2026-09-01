@@ -500,3 +500,64 @@ describe("coming back from an outage", () => {
     expect(store.sweeps()).toBe(1);
   });
 });
+
+describe("what a create does to the teams query", () => {
+  it("refreshes the team list, which carries the counter a create moved", async () => {
+    const store = fakeCache([{ key: ["teams", false], data: [team("team-a")] }]);
+
+    await applyEvents(
+      { cache: store.cache, ...server([ticket("t1")]) },
+      [event({ kind: "CREATED" })],
+    );
+
+    expect(store.was(["teams", false])).toBe(true);
+  });
+
+  it("refreshes every copy of the list, archived-included as well", async () => {
+    const store = fakeCache([
+      { key: ["teams", false], data: [team("team-a")] },
+      { key: ["teams", true], data: [team("team-a")] },
+    ]);
+
+    await applyEvents(
+      { cache: store.cache, ...server([ticket("t1")]) },
+      [event({ kind: "CREATED" })],
+    );
+
+    expect(store.was(["teams", true])).toBe(true);
+  });
+
+  it("leaves a team's roster alone, which no ticket has ever changed", async () => {
+    const store = fakeCache([
+      { key: ["teams", false], data: [team("team-a")] },
+      { key: ["teams", "team-a", "members"], data: [] },
+    ]);
+
+    await applyEvents(
+      { cache: store.cache, ...server([ticket("t1")]) },
+      [event({ kind: "CREATED" })],
+    );
+
+    // A bare `["teams"]` would sweep this up by prefix, on the commonest write there is.
+    expect(store.was(["teams", "team-a", "members"])).toBe(false);
+  });
+
+  it("says nothing on a delete, which the counter does not answer to", async () => {
+    const store = fakeCache([{ key: ["teams", false], data: [team("team-a")] }]);
+
+    await applyEvents({ cache: store.cache, ...server() }, [event({ kind: "DELETED" })]);
+
+    // `ticket_counter` is `nextTicketNumber`'s allocator — the thing that makes KAN-14 the
+    // fourteenth — so it only ever climbs. Refetching after a delete spends a round trip
+    // to be told the same number.
+    expect(store.was(["teams", false])).toBe(false);
+  });
+
+  it("says nothing on an update either", async () => {
+    const store = fakeCache([{ key: ["teams", false], data: [team("team-a")] }]);
+
+    await applyEvents({ cache: store.cache, ...server([ticket("t1")]) }, [event()]);
+
+    expect(store.was(["teams", false])).toBe(false);
+  });
+});
