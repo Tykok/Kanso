@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.server.authorization.JdbcOAuth2Author
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository
+import org.springframework.security.oauth2.server.authorization.context.AuthorizationServerContextHolder
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.security.web.SecurityFilterChain
@@ -114,7 +115,16 @@ class AuthorizationServerConfig {
 					}
 				}
 				server.authorizationServerMetadataEndpoint { metadata ->
-					metadata.authorizationServerMetadataCustomizer(ISS_PARAMETER_ADVERTISED)
+					metadata.authorizationServerMetadataCustomizer { document ->
+						ISS_PARAMETER_ADVERTISED.accept(document)
+						// The library omits `registration_endpoint` because its own
+						// registration is disabled — verified on the running server. Ours
+						// is not, and a client that cannot discover the endpoint will not
+						// use it.
+						document.clientRegistrationEndpoint(
+							AuthorizationServerContextHolder.getContext().issuer.trimEnd('/') + "/connect/register",
+						)
+					}
 				}
 			}
 			// Disabled for the same bounded reason `SecurityConfig` gives, and because
