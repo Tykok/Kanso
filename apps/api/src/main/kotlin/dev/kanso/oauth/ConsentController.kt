@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -38,6 +39,7 @@ class ConsentController(
 	private val currentUser: CurrentUser,
 	private val clients: RegisteredClientRepository,
 	private val props: KansoProperties,
+	private val settings: AuthorizationServerSettings,
 ) {
 
 	@GetMapping(CONSENT_PAGE, produces = [MediaType.TEXT_HTML_VALUE])
@@ -88,6 +90,18 @@ class ConsentController(
 						scopes = scopes,
 						clientId = clientId,
 						state = state,
+						// The library's own path, read off the settings bean rather than
+						// written here: a client finds it in the metadata document, so a
+						// second copy of the string is a copy that can drift from what the
+						// server serves. With the context path in front of it — see
+						// [ConsentPage.render]'s note on the third instance of that bug.
+						authorizeAction = ServletUriComponentsBuilder.fromCurrentContextPath()
+							.path(settings.authorizationEndpoint)
+							.build()
+							// `UriComponents.getPath()` is @Nullable and cannot be null for a
+							// builder given a path; the fallback is the un-prefixed endpoint,
+							// which is what this page did before and is right at the root.
+							.path ?: settings.authorizationEndpoint,
 						evidence = ClientEvidence.of(
 							redirectUris = client.redirectUris,
 							registeredAt = client.clientIdIssuedAt,

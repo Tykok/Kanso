@@ -24,7 +24,16 @@ class ConsentPageTest {
 		email: String = "elie@example.com",
 		scopes: List<String> = OAuthScopes.ALL,
 		evidence: ClientEvidence = fresh,
-	) = ConsentPage.render(clientName, email, scopes, clientId = "claude-code", state = "st4te", evidence = evidence)
+		authorizeAction: String = "/oauth2/authorize",
+	) = ConsentPage.render(
+		clientName,
+		email,
+		scopes,
+		clientId = "claude-code",
+		state = "st4te",
+		evidence = evidence,
+		authorizeAction = authorizeAction,
+	)
 
 	@Test
 	fun `it names the client and the member, because approving the wrong one is the failure`() {
@@ -52,6 +61,28 @@ class ConsentPageTest {
 		assertTrue(html.contains("value=\"st4te\""))
 	}
 
+	/**
+	 * Under `server.servlet.context-path=/kanso` the library redirects the browser to
+	 * `/kanso/oauth/consent` — `resolveConsentUri` calls `setContextPath` — while
+	 * `AuthorizationServerSettings`' `/oauth2/authorize` is relative to that same context
+	 * path. A root-absolute action therefore posts both buttons at a URL that 404s, on the
+	 * one screen a person clicks. Two other files on this branch record the same bug.
+	 */
+	@Test
+	fun `both buttons post where the caller says, context path and all`() {
+		val html = page(authorizeAction = "/kanso/oauth2/authorize")
+
+		assertEquals(
+			2,
+			Regex("""action="/kanso/oauth2/authorize"""").findAll(html).count(),
+			"Authorise and Decline are two forms, and a member can press either",
+		)
+		assertFalse(
+			html.contains("""action="/oauth2/authorize""""),
+			"a root-absolute action is the deployment this page cannot see deciding it is mounted at /",
+		)
+	}
+
 	@Test
 	fun `a client name containing markup is escaped, not rendered`() {
 		// A client registers itself, unauthenticated, and picks its own name. Rendering
@@ -63,7 +94,7 @@ class ConsentPageTest {
 
 	@Test
 	fun `a state containing a quote cannot break out of its attribute`() {
-		val html = ConsentPage.render("C", "e@x.test", OAuthScopes.ALL, "c", "\" onload=\"x", fresh)
+		val html = ConsentPage.render("C", "e@x.test", OAuthScopes.ALL, "c", "\" onload=\"x", fresh, "/oauth2/authorize")
 		assertFalse(html.contains("onload=\"x\""))
 	}
 

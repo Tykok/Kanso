@@ -6,6 +6,13 @@
  * `--k-*` palette is gone — every surface reads from here now. `data-theme` narrows
  * the legacy `color-scheme`, and `.dark` selects the block below; both are driven
  * from the same preference, so they cannot disagree. See lib/theme.ts.
+ *
+ * One copy of the values below lives outside this repository's CSS:
+ * `apps/api/.../oauth/ConsentPage.kt` inlines the `:root` and dark blocks, because that
+ * page is served by the API on another origin and has no stylesheet to link. It is the
+ * screen a member reads before handing an agent their work, so a palette edited here and
+ * not there is a consent screen that stops looking like Kanso — and `ConsentPageTest`
+ * checks that it renders in both themes, not that it matches this file.
  */
 
 /* Dark mode by class, the shadcn standard. */

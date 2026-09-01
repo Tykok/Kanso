@@ -81,4 +81,31 @@ class ConsentRouteTest : MockMvcTest() {
 			"and the way out is the app's login screen, carrying the way back",
 		)
 	}
+
+	/**
+	 * The one screen in Kanso where being framed is an attack.
+	 *
+	 * Everything else here answers a `fetch` with JSON; this answers a browser with two
+	 * buttons, and a page that can be loaded in an invisible iframe over somebody else's
+	 * site is a page whose Authorise button can be clicked by a mis-aimed cursor. The
+	 * header comes from the framework default and was pinned by nothing — a `.headers { }`
+	 * added to this chain for any other reason replaces the whole set and would drop it
+	 * with no test to notice. Asserted through the chain, because a default is exactly the
+	 * kind of thing a controller test cannot see.
+	 */
+	@Test
+	fun `the consent page refuses to be framed`() {
+		val response = mvc.get(CONSENT_PAGE) {
+			param("client_id", clientId)
+			param("scope", OAuthScopes.READ)
+			param("state", "s")
+			with(anonymous())
+		}.andReturn().response
+
+		assertEquals(
+			"DENY",
+			response.getHeader("X-Frame-Options"),
+			"a consent button that can be framed is a consent button somebody else can aim at",
+		)
+	}
 }

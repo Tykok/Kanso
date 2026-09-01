@@ -251,6 +251,29 @@ class ConsentControllerTest : PostgresTest() {
 	}
 
 	/**
+	 * The other half of the same deployment: the buttons.
+	 *
+	 * The library sends the browser here *with* the context path and its
+	 * `/oauth2/authorize` is relative to that same path, so a root-absolute form action
+	 * posts a member's decision at a URL that 404s. [ConsentPage] holds the render side of
+	 * this; what is asserted here is that the controller puts the deployment's own prefix
+	 * in front of the library's own endpoint name.
+	 */
+	@Test
+	fun `the buttons post inside the context path the browser is standing in`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+		arriveWith("client_id=claude-code&scope=kanso%3Aread&state=s", under = "/kanso")
+
+		val html = controller.consent(clientId = "claude-code", scope = "kanso:read", state = "s").body!!
+
+		assertTrue(
+			html.contains("""action="/kanso/oauth2/authorize""""),
+			"under a context path, /oauth2/authorize is not where the library serves the endpoint",
+		)
+	}
+
+	/**
 	 * The name on this screen is the client's own text and `/connect/register` is open, so
 	 * the two lines that are not the client's choosing are the only ones a member can weigh
 	 * — and they come off the registration row rather than off the request.

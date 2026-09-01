@@ -86,6 +86,16 @@ object ConsentPage {
 	 * @param evidence the two facts the client did not pick — see [ClientEvidence]. Not
 	 *   defaulted, because a caller that forgot it would render a screen that looks
 	 *   finished and says nothing checkable.
+	 * @param authorizeAction where both buttons post. **The context path belongs in it.**
+	 *   The library resolves the redirect *to* this page with the context path
+	 *   (`resolveConsentUri` calls `setContextPath`), and `AuthorizationServerSettings`'
+	 *   `/oauth2/authorize` is context-path relative — so under
+	 *   `server.servlet.context-path=/kanso` the browser is standing on
+	 *   `/kanso/oauth/consent` and a root-absolute `/oauth2/authorize` 404s. Both buttons.
+	 *   `ConsentController` builds it, and `McpBearerFilter` and
+	 *   `ConsentController.returnUrl` record the two other instances of the same bug on
+	 *   this branch. A parameter rather than a constant so this stays a pure function of a
+	 *   deployment it cannot see.
 	 */
 	fun render(
 		clientName: String,
@@ -94,6 +104,7 @@ object ConsentPage {
 		clientId: String,
 		state: String,
 		evidence: ClientEvidence,
+		authorizeAction: String,
 	): String {
 		val name = esc(clientName)
 		val hosts = evidence.redirectHosts
@@ -101,6 +112,11 @@ object ConsentPage {
 			?.joinToString(", ") { esc(it) }
 			?: "an address this server cannot read"
 		val registered = esc(age(evidence.registeredAge))
+		// Escaped like everything else. It is built from the deployment's own context path
+		// rather than from a request parameter, so there is nothing here a stranger wrote —
+		// and the argument for an exception is exactly the argument that gets one wrong
+		// later, which this file already says once.
+		val action = esc(authorizeAction)
 		val hidden = listOf(
 			"""<input type="hidden" name="client_id" value="${esc(clientId)}">""",
 			"""<input type="hidden" name="state" value="${esc(state)}">""",
@@ -150,12 +166,12 @@ $scopeLines
 		host you do not recognise, is one to decline.
 	</p>
 	<div class="actions">
-		<form method="post" action="/oauth2/authorize">
+		<form method="post" action="$action">
 $hidden
 $scopeInputs
 			<button class="primary" type="submit">Authorise</button>
 		</form>
-		<form method="post" action="/oauth2/authorize">
+		<form method="post" action="$action">
 $hidden
 			<button class="ghost" type="submit">Decline</button>
 		</form>
