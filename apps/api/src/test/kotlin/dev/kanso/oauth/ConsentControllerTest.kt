@@ -1,0 +1,308 @@
+package dev.kanso.oauth
+
+import dev.kanso.PostgresTest
+import dev.kanso.auth.KansoLocalUser
+import dev.kanso.auth.hash
+import dev.kanso.config.KansoProperties
+import dev.kanso.domain.InstanceRole
+import dev.kanso.domain.User
+import dev.kanso.repo.UserRepository
+import dev.kanso.service.BadRequestException
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.http.HttpStatus
+import org.springframework.mock.web.MockHttpServletRequest
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.oauth2.core.AuthorizationGrantType
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.time.Instant
+import java.util.UUID
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * The HTTP half of the consent screen: who is asking, who is answering, and what happens
+ * when either of them is missing.
+ *
+ * A `MockHttpServletRequest` stands in RequestContextHolder because the anonymous branch
+ * builds the return URL from the request that arrived — there is no servlet here, and the
+ * URL it hands the login screen is the one thing on this page that gets reflected back
+ * into a redirect, so it is worth asserting rather than skipping.
+ */
+@Transactional
+class ConsentControllerTest : PostgresTest() {
+
+	@Autowired lateinit var controller: ConsentController
+	@Autowired lateinit var clients: RegisteredClientRepository
+	@Autowired lateinit var users: UserRepository
+	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var props: KansoProperties
+
+	private fun member(): User = users.createLocalUser(
+		email = "consent-${UUID.randomUUID()}@kanso.test",
+		displayName = "Consenting member",
+		passwordHash = encoder.hash("correct-horse-battery"),
+		role = InstanceRole.MEMBER,
+	)
+
+	/** What `/connect/register` would have written, minus everything this page never reads. */
+	private fun register(clientId: String, name: String) {
+		clients.save(
+			RegisteredClient.withId(UUID.randomUUID().toString())
+				.clientId(clientId)
+				.clientName(name)
+				.clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+				.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+				.redirectUri("http://127.0.0.1:8765/callback")
+				.apply { OAuthScopes.ALL.forEach { scope(it) } }
+				.clientSettings(
+					ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(true).build(),
+				)
+				.build(),
+		)
+	}
+
+	/** Stands in for the auth filter, which has no servlet request here to run inside. */
+	private fun actAs(actor: User) {
+		val principal = KansoLocalUser(actor.id, actor.email, actor.displayName)
+		SecurityContextHolder.getContext().authentication =
+			UsernamePasswordAuthenticationToken(principal, null, principal.authorities)
+	}
+
+	private fun arriveWith(query: String, under: String = "") {
+		val request = MockHttpServletRequest("GET", "$under$CONSENT_PAGE")
+		request.contextPath = under
+		request.serverName = "kanso.example.test"
+		request.serverPort = 8080
+		request.queryString = query
+		RequestContextHolder.setRequestAttributes(ServletRequestAttributes(request))
+	}
+
+	@BeforeEach
+	fun arrive() {
+		arriveWith("client_id=claude-code&scope=kanso%3Aread&state=s")
+	}
+
+	@AfterEach
+	fun clearSecurityContext() {
+		SecurityContextHolder.clearContext()
+		RequestContextHolder.resetRequestAttributes()
+	}
+
+	@Test
+	fun `a signed-in member gets the page, naming the client`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+
+		val response = controller.consent(
+			clientId = "claude-code", scope = "kanso:read kanso:write", state = "s",
+		)
+
+		assertEquals(HttpStatus.OK, response.statusCode)
+		assertTrue(response.body!!.contains("Claude Code"))
+		assertTrue(response.headers.contentType!!.toString().startsWith("text/html"))
+	}
+
+	@Test
+	fun `no session sends the member to log in, and back here afterwards`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+
+		val response = controller.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+
+		assertEquals(HttpStatus.FOUND, response.statusCode)
+		val location = response.headers.location!!.toString()
+		assertTrue(location.startsWith(props.webOrigin), "login lives in the app, not on the API")
+		assertTrue(location.contains("next="), "dropping the request lands them on an empty screen")
+		assertTrue(location.contains("consent"), "the round trip comes back to this page")
+	}
+
+	/**
+	 * The password half of the round trip works because `apps/web` still holds the `next`
+	 * in its own URL. The provider half does not: clicking Google leaves the app, and what
+	 * comes back to the API is a callback that has never heard of the consent page. The
+	 * session is the one thing both halves share — the consent page and `oauth2Login` are
+	 * served from the same origin, so the cookie set here comes back with the callback.
+	 */
+	@Test
+	fun `the way back is stashed in the session, so a provider round trip can find it`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+
+		val location = controller
+			.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+			.headers.location!!.toString()
+
+		val session = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes)
+			.request.getSession(false)
+		val stashed = session?.getAttribute(RETURN_URL_ATTRIBUTE) as? ReturnAddress
+		assertEquals(
+			URLDecoder.decode(location.substringAfter("next="), StandardCharsets.UTF_8),
+			stashed?.url,
+			"the two halves of the round trip must agree on where back is",
+		)
+		assertTrue(
+			stashed!!.url.startsWith("http://kanso.example.test:8080$CONSENT_PAGE"),
+			"and it is this page on the API's own origin, not a route in the app",
+		)
+		assertFalse(
+			stashed.expiredAt(Instant.now().plus(RETURN_URL_TTL).minusSeconds(1)),
+			"it has to outlive a login screen, a provider page and a callback",
+		)
+		assertTrue(
+			stashed.expiredAt(Instant.now().plus(RETURN_URL_TTL).plusSeconds(1)),
+			"and nothing beyond that, or it becomes a way of redirecting the next sign-in",
+		)
+	}
+
+	/**
+	 * The order of the two refusals is the security property. `signIn` mints a session and
+	 * plants a return address in it, so reaching it with any `client_id` at all let a
+	 * stranger — `/connect/register` is open — leave a consent screen for their own client
+	 * waiting in a member's session, to be sprung on them the moment they next sign in.
+	 */
+	@Test
+	fun `an unknown client is refused before an anonymous visitor gets a session`() {
+		SecurityContextHolder.clearContext()
+
+		assertFailsWith<BadRequestException> {
+			controller.consent(clientId = "never-registered", scope = "kanso:read", state = "s")
+		}
+
+		val session = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes)
+			.request.getSession(false)
+		assertNull(session, "a stranger's URL must not be able to mint a session, let alone furnish it")
+	}
+
+	/**
+	 * The bug a `queryParam(...).encode()` pair walks straight into: `&` and `=` are legal
+	 * query characters, so nothing escapes them, and the app reads a return URL truncated
+	 * at the first nested parameter — landing the member on a consent page with no client.
+	 */
+	@Test
+	fun `the return URL survives being a parameter, nested ampersands and all`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+
+		val location = controller
+			.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+			.headers.location!!.toString()
+
+		val next = location.substringAfter("next=")
+		assertFalse(next.contains("&"), "an unescaped separator ends the value the app reads")
+		assertTrue(next.contains("client_id"), "the client is what the page cannot be rendered without")
+		assertTrue(next.contains("state"), "without the state the library refuses the decision")
+	}
+
+	/**
+	 * Built from the three parameters this page declares, not copied off the query string —
+	 * so a crafted request cannot post its own text through the login screen's URL bar.
+	 */
+	@Test
+	fun `the return URL is rebuilt from what this page reads, never reflected`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+		arriveWith("client_id=claude-code&scope=kanso%3Aread&state=s&smuggled=surprise")
+
+		val location = controller
+			.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+			.headers.location!!.toString()
+
+		assertFalse(location.contains("smuggled"), "a parameter this page never reads is not its business to echo")
+	}
+
+	/**
+	 * Deployed under a servlet context path this page is `/kanso/oauth/consent`, which is
+	 * what its own builder produces — and the shape check compared that against
+	 * `CONSENT_PAGE`, so it threw on every request such a deployment ever made. A 400 in
+	 * place of the entire first-run flow, from a check written to catch a URL that had
+	 * stopped being this page. `McpBearerFilter` is context-path aware for the same reason.
+	 */
+	@Test
+	fun `the way back is still this page when the application is mounted under a context path`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+		arriveWith("client_id=claude-code&scope=kanso%3Aread&state=s", under = "/kanso")
+
+		val location = controller
+			.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+			.headers.location!!.toString()
+
+		assertTrue(
+			URLDecoder.decode(location.substringAfter("next="), StandardCharsets.UTF_8)
+				.startsWith("http://kanso.example.test:8080/kanso$CONSENT_PAGE"),
+			"the way back has to name the page as this deployment serves it",
+		)
+	}
+
+	/**
+	 * The other half of the same deployment: the buttons.
+	 *
+	 * The library sends the browser here *with* the context path and its
+	 * `/oauth2/authorize` is relative to that same path, so a root-absolute form action
+	 * posts a member's decision at a URL that 404s. [ConsentPage] holds the render side of
+	 * this; what is asserted here is that the controller puts the deployment's own prefix
+	 * in front of the library's own endpoint name.
+	 */
+	@Test
+	fun `the buttons post inside the context path the browser is standing in`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+		arriveWith("client_id=claude-code&scope=kanso%3Aread&state=s", under = "/kanso")
+
+		val html = controller.consent(clientId = "claude-code", scope = "kanso:read", state = "s").body!!
+
+		assertTrue(
+			html.contains("""action="/kanso/oauth2/authorize""""),
+			"under a context path, /oauth2/authorize is not where the library serves the endpoint",
+		)
+	}
+
+	/**
+	 * The name on this screen is the client's own text and `/connect/register` is open, so
+	 * the two lines that are not the client's choosing are the only ones a member can weigh
+	 * — and they come off the registration row rather than off the request.
+	 */
+	@Test
+	fun `the page carries the evidence the client did not get to choose`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+
+		val html = controller.consent(clientId = "claude-code", scope = "kanso:read", state = "s").body!!
+
+		assertTrue(html.contains("127.0.0.1"), "the host is where a code would actually be sent")
+		assertTrue(html.contains(" ago"), "and the row's own age is what says how new this client is")
+	}
+
+	@Test
+	fun `an unknown client is refused rather than shown with a blank name`() {
+		actAs(member())
+		assertFailsWith<BadRequestException> {
+			controller.consent(clientId = "not-registered", scope = "kanso:read", state = "s")
+		}
+	}
+
+	@Test
+	fun `an unknown scope is refused rather than rendered`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+		assertFailsWith<IllegalArgumentException> {
+			controller.consent(clientId = "claude-code", scope = "kanso:read kanso:everything", state = "s")
+		}
+	}
+}

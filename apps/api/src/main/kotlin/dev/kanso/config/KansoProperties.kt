@@ -7,6 +7,7 @@ import java.time.Duration
 data class KansoProperties(
 	val webOrigin: String = "http://localhost:3000",
 	val auth: Auth = Auth(),
+	val oauth: OAuth = OAuth(),
 	val notion: Notion = Notion(),
 	val sync: Sync = Sync(),
 	val realtime: Realtime = Realtime(),
@@ -27,6 +28,31 @@ data class KansoProperties(
 		 * gone, and reporting a mode nobody chose would only mislead the sign-in screen.
 		 */
 		val effectiveMode: String get() = mode.lowercase()
+	}
+
+	/**
+	 * Kanso as an authorisation *server*, which is the opposite direction from [Auth].
+	 */
+	data class OAuth(val registration: Registration = Registration()) {
+
+		/**
+		 * `/connect/register` is unauthenticated and creates rows, so all three of these
+		 * are security settings rather than tuning.
+		 */
+		data class Registration(
+			/**
+			 * Hosts a hosted client may be sent a code on, over https. Loopback is always
+			 * allowed and is not listed here.
+			 *
+			 * Configuration rather than a constant: which origins a vendor's client calls
+			 * back on is not Kanso's fact to hard-code, and an instance serving a
+			 * different client must be able to add one without a rebuild.
+			 */
+			val allowedRedirectHosts: List<String> = listOf("claude.ai", "claude.com"),
+			/** A refusal when reached, never a prune. */
+			val maxClients: Int = 200,
+			val perIpPerHour: Int = 5,
+		)
 	}
 
 	data class Provider(val clientId: String = "", val clientSecret: String = "") {

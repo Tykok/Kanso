@@ -1,22 +1,30 @@
 package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.mcp.McpBearerFilter
+import dev.kanso.oauth.CONSENT_PAGE
+import dev.kanso.oauth.OAuthRoutes
+import dev.kanso.oauth.ReturnUrlSuccessHandler
 import dev.kanso.publik.PublicRoutes
+import dev.kanso.repo.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
-import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler
+import org.springframework.transaction.PlatformTransactionManager
 
 /**
  * Two ways in — an OAuth2 round trip, or an email and a password — and one way
@@ -46,8 +54,20 @@ class SecurityConfig(
 
 
 
+	/**
+	 * Second, after the authorisation server's. It has no `securityMatcher` and so
+	 * answers everything the first chain did not claim — which is what it did before
+	 * there was a first chain, and the order annotation is what keeps that true.
+	 */
 	@Bean
-	fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+	@Order(2)
+	fun securityFilterChain(
+		http: HttpSecurity,
+		authorizations: OAuth2AuthorizationService,
+		clients: RegisteredClientRepository,
+		users: UserRepository,
+		transactionManager: PlatformTransactionManager,
+	): SecurityFilterChain {
 		http
 			.cors { }
 			.csrf { it.disable() }
@@ -74,6 +94,18 @@ class SecurityConfig(
 					// because a filter chain decides who asks, not what comes back.
 					.requestMatchers(HttpMethod.GET, *PublicRoutes.OPEN_GET).permitAll()
 					.requestMatchers(HttpMethod.POST, *PublicRoutes.OPEN_POST).permitAll()
+					// The OAuth flow's own open routes. A separate list from `PublicRoutes`
+					// because that file's guard asserts every pattern is under
+					// `/api/public/`, and that assertion is worth more than the reuse.
+					.requestMatchers(HttpMethod.GET, *OAuthRoutes.OPEN_GET).permitAll()
+					.requestMatchers(HttpMethod.POST, *OAuthRoutes.OPEN_POST).permitAll()
+					// Reachable without a session precisely so it can redirect to one:
+					// the controller reads the principal itself and sends an anonymous
+					// visitor to the app's login screen with a return URL. Inline rather
+					// than in `OAuthRoutes`, and the two facts do not contradict — that
+					// list is for endpoints a machine calls with no session at all, and
+					// this is a page a person is about to sign in to.
+					.requestMatchers(HttpMethod.GET, CONSENT_PAGE).permitAll()
 					.anyRequest().authenticated()
 			}
 			// A 302 to Google is useless to a fetch() call; the SPA wants a 401 and
@@ -93,9 +125,18 @@ class SecurityConfig(
 					.userInfoEndpoint { endpoint ->
 						endpoint.oidcUserService(oidcUserService).userService(oauth2UserService)
 					}
-					.successHandler(SimpleUrlAuthenticationSuccessHandler(props.webOrigin))
+					.successHandler(ReturnUrlSuccessHandler(props.webOrigin))
 					.failureHandler(SimpleUrlAuthenticationFailureHandler("${props.webOrigin}/?login_error=1"))
 			}
+
+		// Before the session filter, so a bearer on /api/mcp is answered without ever
+		// touching a cookie, and before dev mode's filter, so an instance that cannot have
+		// an authorisation server says so rather than handing an agent a header identity.
+		// It filters itself down to that one path; see its `shouldNotFilter`.
+		http.addFilterBefore(
+			McpBearerFilter(authorizations, clients, users, transactionManager, props.auth.effectiveMode),
+			UsernamePasswordAuthenticationFilter::class.java,
+		)
 
 		when (props.auth.mode.lowercase()) {
 			"oidc" -> {

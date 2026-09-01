@@ -16,6 +16,7 @@ import {
 } from "@/components/setup/fields";
 import { FormCard, MessageCard, SetupPage } from "@/components/setup/frame";
 import { API_URL, ApiError, api, type AuthMode } from "@/lib/api";
+import { safeNext } from "@/lib/next-url";
 import { keys, useAuthMode } from "@/lib/queries";
 
 export default function LoginPage() {
@@ -106,6 +107,10 @@ function SignInError({ error }: { error: unknown }) {
 function PasswordSignIn({ mode }: { mode?: AuthMode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  // Set by the API when an agent's authorisation lands on /oauth/consent with no
+  // session: the consent screen is served on the API's origin, so the way back is an
+  // absolute URL rather than a route in this app.
+  const next = useSearchParams().get("next");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -115,7 +120,11 @@ function PasswordSignIn({ mode }: { mode?: AuthMode }) {
     onSuccess: () => {
       // The cookie changed who the cached identity belongs to.
       queryClient.invalidateQueries({ queryKey: keys.me });
-      router.replace("/");
+      const target = safeNext(next, API_URL);
+      // An absolute target is the consent page on the API origin, which is a real
+      // navigation rather than a route change.
+      if (target.startsWith("http")) window.location.assign(target);
+      else router.replace(target);
     },
   });
 

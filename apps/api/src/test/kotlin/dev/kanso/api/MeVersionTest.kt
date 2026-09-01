@@ -1,15 +1,10 @@
 package dev.kanso.api
 
-import dev.kanso.PostgresTest
+import dev.kanso.MockMvcTest
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.info.BuildProperties
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection
-import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
-import org.testcontainers.postgresql.PostgreSQLContainer
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -23,20 +18,13 @@ import kotlin.test.assertTrue
  * `AuthController.me()` returns a hard-coded string. That is exactly the failure this
  * branch shipped three times, so the endpoint is called here for real.
  *
- * Its own web environment: [PostgresTest] runs with `WebEnvironment.NONE`, which has no
- * MockMvc to drive. The container is the same started singleton, so this costs a second
- * Spring context and not a second Postgres.
+ * Its own web environment, now shared: this class is where [MockMvcTest] came from, and
+ * the three annotations that used to sit here live there so a second class needing a
+ * filter chain does not buy a second Spring context.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-class MeVersionTest {
+class MeVersionTest : MockMvcTest() {
 
 	companion object {
-		@JvmStatic
-		@ServiceConnection
-		val postgres: PostgreSQLContainer = PostgresTest.postgres
-
 		/** A git short sha (7+ hex), or `dev` when the build was passed no commit. */
 		private val VERSION_SHAPE = Regex("^(dev|[0-9a-f]{7,40})$")
 	}

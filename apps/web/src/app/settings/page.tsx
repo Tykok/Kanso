@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AccountSection } from "@/components/settings/account-section";
+import { AgentsSection } from "@/components/settings/agents-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
 import { SettingsNote } from "@/components/settings/field";
@@ -12,13 +13,14 @@ import { PeopleSection } from "@/components/settings/people-section";
 import { ApiError } from "@/lib/api";
 import { useMe, useSetupState } from "@/lib/queries";
 
-type SectionId = "appearance" | "account" | "people" | "connections";
+type SectionId = "appearance" | "account" | "people" | "connections" | "agents";
 
 const SECTION_NAMES: Record<SectionId, string> = {
   appearance: "Appearance",
   account: "Account",
   people: "People",
   connections: "Connections",
+  agents: "Agents",
 };
 
 export default function SettingsPage() {
@@ -37,11 +39,14 @@ export default function SettingsPage() {
   if (signedOut || !me.data) return <div className="centered">Signing in…</div>;
 
   const canConfigure = me.data.user.instanceRole !== "member";
+  // "agents" is in both arrays, and that is the point: a grant belongs to the person who
+  // made it, so every member manages their own — there is nothing here for an admin to
+  // administer, and no list of anyone else's for them to see.
   const sections: SectionId[] = canConfigure
-    ? ["appearance", "account", "people", "connections"]
+    ? ["appearance", "account", "people", "connections", "agents"]
     : // A member has nothing to manage about other people, but still sees the
       // connections read-only: the mirror affects their tickets.
-      ["appearance", "account", "connections"];
+      ["appearance", "account", "connections", "agents"];
 
   return (
     <div className="mx-auto flex max-w-[760px] flex-col gap-5 px-5 pb-16 pt-6">
@@ -73,6 +78,7 @@ export default function SettingsPage() {
           {section === "account" && <AccountSection me={me.data} />}
           {section === "appearance" && <AppearanceSection />}
           {section === "people" && canConfigure && <PeopleSection />}
+          {section === "agents" && <AgentsSection />}
           {section === "connections" && (
             <div className="flex flex-col gap-6">
               {setup.data ? (
