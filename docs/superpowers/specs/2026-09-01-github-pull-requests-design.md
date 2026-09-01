@@ -34,7 +34,7 @@ own the rules.
 
 ## Read this first
 
-Four facts in the repository decide most of what follows.
+Five facts in the repository decide most of what follows.
 
 - **Kanso already speaks OAuth as a client.** `V14__notion_oauth.sql` and
   `setup/NotionOAuth.kt` exchange a consent screen for a token, store a client id and an
@@ -49,6 +49,11 @@ Four facts in the repository decide most of what follows.
   `activity_kind_chk` is a CHECK listing eleven kinds, mirrored by the `ActivityKind`
   enum so a typo is a compile error *and* a constraint violation. A new kind is a
   migration, not a string.
+- **The outbox is already general.** `V26` renamed `sync_jobs` to `outbound_jobs` and
+  gave it a `destination` column beside `entity_type`; `OutboundWorker` drains and
+  retries, and an `OutboundJobHandler` per destination says what a job means. GitHub's
+  pushes are a handler on that queue, not a queue — see "One outbox, and the coupling it
+  accepts".
 - **`PublicRoutes` cannot absorb a webhook.** `PublicRoutesTest` asserts every pattern
   begins with `/api/public/` and that there are exactly three. The webhook joins the
   sibling list the MCP spec opens in `SecurityConfig`, with a guard test of its own —
@@ -221,9 +226,10 @@ ALTER TABLE teams ADD COLUMN github_repo TEXT;   -- 'tykok/kanso'
 Why a team owns a repository is argued in part three.
 
 **`V17` is one migration, not four.** Parts two and three add `github_pull_requests`,
-`ticket_pull_requests`, `github_jobs` and `github_deliveries` to this same file; they are
-written beside the argument that justifies them rather than gathered here, because a
-table whose reason is three sections away is a table the next reader deletes.
+`ticket_pull_requests` and `github_deliveries` to this same file, and widen the closed
+vocabularies on `outbound_jobs` that part two argues for; they are written beside the
+argument that justifies them rather than gathered here, because a table whose reason is
+three sections away is a table the next reader deletes.
 
 ## The environment may pin the App
 
@@ -383,44 +389,112 @@ list.
 **Rewritten on link and on ticket status change.** Not on every field: status is what a
 reviewer reads at the top of a pull request, and priority churn is not worth an API write.
 
-## `github_jobs`, and the duplication it admits
+## One outbox, and the coupling it accepts
 
 That rewrite needs a transactional outbox — the ticket's status change and the intent to
 tell GitHub about it must commit together, or a rollback publishes a status that never
-existed. Kanso already has exactly this machinery for Notion: `sync_jobs`,
-`SyncEntityType`, `SyncWorker`, attempts and backoff and `last_error`.
+existed. Kanso already had exactly this machinery for Notion, and this document first
+proposed copying it: a `github_jobs` table and a `GithubWorker` beside `sync_jobs` and
+`SyncWorker`, duplicating attempts, backoff and `last_error` deliberately.
 
-`github_jobs` and `GithubWorker` **duplicate that shape**, deliberately. The alternative —
-a `target` column on `sync_jobs` so one worker drains two destinations — is less code and
-it was rejected: it modifies a mirror that works, for a need that is not the mirror's,
-and it makes every future change to Notion sync a change that can break GitHub. Two small
-tables that each do one thing beat one table that does two.
+The fear behind that proposal was concrete and it stays on the page: **a change to the
+Notion mirror must not be able to break GitHub.** Sharing a queue means sharing whatever
+the next person does to it, and the mirror is code that works and gets touched. Two small
+tables that each do one thing cost more lines and buy that isolation outright.
 
-> **Superseded by KAN-16 (`V26`).** The rejected alternative is what was built. `sync_jobs`
-> is now `outbound_jobs`, with a `destination` column beside `entity_type`, a collapse rule
-> keyed on `(destination, entity_type, entity_id)`, and an `OutboundWorker` that drains one
-> destination at a time through an `OutboundJobHandler` per destination — Notion's being
-> one of them. The objection above stands as written and is answered by the split rather
-> than by a second table: what a job *means* lives in the handler, so a change to the
-> Notion push cannot reach GitHub's. This section's `github_jobs` table and `GithubWorker`
-> should not be built; KAN-18 is a `GithubOutboundHandler`, a value in the `destination`
-> vocabulary, and whatever widening of `entity_type` and `operation` it needs.
+KAN-16 built the rejected alternative instead, in `V26`, and the reason is not that the
+fear was wrong. It is where the isolation was put.
 
-```sql
-CREATE TABLE github_jobs (
-  id         BIGSERIAL PRIMARY KEY,
-  kind       TEXT NOT NULL,   -- 'body_block'
-  payload    JSONB NOT NULL,
-  attempts   INT NOT NULL DEFAULT 0,
-  run_after  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_error TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
+`sync_jobs` was renamed to `outbound_jobs` and gained a `destination` column beside
+`entity_type` — two axes rather than one compound `notion.ticket`, because the worker
+dispatches on the destination while the failures tab joins on the entity to put a title
+and a `KAN-142` on the row. The collapse rule became
+`(destination, entity_type, entity_id)`, so a ticket queued for one system cannot swallow
+the same ticket queued for another. `SyncWorker` became `OutboundWorker` and kept only
+what is true of every destination: claiming a batch, ordering it, spending an attempt,
+backing off with jitter, giving up, and putting back what a dead worker was holding.
+Everything Notion-specific moved into `NotionOutboundHandler`, one file behind an
+`OutboundJobHandler` interface.
 
-One `kind` today. It is a column rather than an absence because the second kind is
-foreseeable and a table with a discriminator costs nothing to add and a migration to
-retrofit.
+**The split is what answers the objection.** `OutboundWorker` never names Notion; it holds
+a map from `Destination` to handler and calls `handle`. What a job *means* — which page,
+which properties, what a 429 costs, what to write on the row when it is abandoned — lives
+entirely in one destination's own file. A change to how a ticket reaches Notion changes
+`NotionOutboundHandler` and reaches nothing else. That is the isolation the two-table
+proposal wanted, placed at the level where the destinations actually differ.
+
+It was generalised before the second consumer arrived rather than after, and `V26`'s
+header says why: a consumer written against a Notion-shaped queue gets written
+Notion-shaped, and the price of that is not a bad name — it is the second queue, arriving
+anyway, with its own retry policy, its own stuck-job detector and its own way of being
+behind.
+
+**What is shared is still shared, and it is worth naming rather than calling the problem
+solved:**
+
+- **The table and the claim.** One `outbound_jobs`, one `FOR UPDATE SKIP LOCKED` claim,
+  one partial unique index. A migration that gets any of the three wrong gets it wrong
+  for both destinations at once.
+- **The retry policy.** `max-attempts`, the exponential backoff and its jitter, the
+  two-second base and the five-minute ceiling live in `OutboundWorker` and are not per
+  destination. Whatever suits Notion is what GitHub inherits, and changing it for one
+  changes it for the other.
+- **The failure vocabulary.** `Defer`, `Retry`, `Fatal` — three kinds, and only three. A
+  handler classifies its own errors, but it may only classify them into these.
+- **The collapse rule.** At most one `pending` job per `(destination, entity_type,
+  entity_id)`. It is right for a push that writes an entity's whole current state, which
+  is what the bounded block is, and it would be wrong for a job that has to happen once
+  per event rather than once per row.
+- **One switch, one thread.** `kanso.sync.outbound.enabled` stops every destination, and
+  `drain()` walks them in turn on Spring's single scheduler thread. The batch size is a
+  per-destination budget, so a backed-up GitHub cannot eat Notion's share of it — but
+  wall-clock is not budgeted, and a slow GitHub batch delays Notion's next tick. If that
+  ever matters the answer is a scheduler pool, not a second table.
+
+One thing is deliberately *not* shared, and it has to stay that way: `RateLimiter` is
+reused as a class, not as a bean. Notion's instance is built from
+`kanso.sync.outbound.requests-per-second` and holds Notion's ceiling; a `GithubWriter`
+that injected that same bean would spend the mirror's budget on pull request writes. Its
+own instance, its own ceiling.
+
+## What GitHub adds to the queue
+
+Three things, and none of them is a table.
+
+- **A `GithubOutboundHandler`** — an `OutboundJobHandler` whose `destination` is GitHub's.
+  It plans the bounded-block rewrite, performs it with no database connection held, and
+  classifies GitHub's refusals: a 403 with `X-RateLimit-Remaining: 0` is a `Defer` and
+  costs no attempt, a 422 on a pull request that no longer exists is a `Fatal`, anything
+  unrecognised is a `Retry`.
+- **A value in the `destination` vocabulary** — `'github'` in the `Destination` enum and
+  in `outbound_jobs_destination_chk`, which `V26` left holding exactly one value because
+  it added no consumer and had nothing honest to add. Closed in Kotlin and in the
+  database, like every other vocabulary here.
+- **Whatever `entity_type` and `operation` values the work needs.** `V26` widened neither,
+  on purpose, leaving them to whoever builds this: `outbound_jobs_entity_chk` still lists
+  `team`, `project`, `ticket`, `doc`, and `outbound_jobs_operation_chk` still lists
+  `upsert`, `archive`, `delete`.
+
+The narrow reading is that GitHub widens nothing: the bounded-block rewrite is *about* a
+ticket, and `ticket` and `upsert` both exist. That is probably right, and the question is
+still worth asking, because `entity_id` is a `UUID NOT NULL` — every job in this queue
+names a Kanso row. The rejected `github_jobs` had a `kind`, a free-form `payload` and no
+entity at all, so it would have accepted a job about nothing in particular. This queue
+does not, and the constraint earns its keep: it is what lets the failures tab put
+`KAN-142` on a failed GitHub push without knowing what GitHub is.
+
+It also means the collapse rule does real work here. A ticket dragged across three columns
+in ten seconds is one queued body rewrite rather than three, because the push writes the
+block's current content and not a delta — the same reason the rule exists for the mirror.
+Enqueue on link and on status change, as the previous section requires, and the
+coalescing comes free.
+
+The one case that would widen `entity_type` is fan-out: if a ticket with three pull
+requests should retry them independently — one repository suspended, the other two fine —
+then the job is about a pull request rather than about a ticket, which is a
+`pull_request` value keyed on `github_pull_requests.id`, already a UUID. Both shapes fit
+the queue; the difference is only which row the failures tab names. Decide it when the
+handler is written, not here.
 
 ---
 
@@ -551,8 +625,10 @@ accepted openly.
 
 ## Limits and refusals
 
-`RateLimiter` from `sync.notion` is reused rather than reinvented. GitHub returns
-`X-RateLimit-Remaining` and `Retry-After` on 403 and 429; both are honoured.
+`RateLimiter` from `sync.notion` is reused rather than reinvented — the class, and an
+instance of its own, for the reason part two gives: the bean carries Notion's ceiling and
+GitHub's writes have no business spending it. GitHub returns `X-RateLimit-Remaining` and
+`Retry-After` on 403 and 429; both are honoured.
 
 Three refusals are real and get sentences rather than 500s:
 
@@ -611,9 +687,9 @@ The mirrored ticket gains one rich-text property listing its pull requests as li
 `#418 merged`. Rich text and not URL, because Notion has no multi-URL property and a
 ticket has many pull requests.
 
-No new machinery: a link or a state change enqueues a ticket `UPSERT` on the existing
-`sync_jobs`, and `NotionMapper` gains a property. People who never open Kanso see the
-pull request, which is the promise the README makes.
+No new machinery: a link or a state change enqueues a ticket `UPSERT` on `outbound_jobs`
+for the `notion` destination, and `NotionMapper` gains a property. People who never open
+Kanso see the pull request, which is the promise the README makes.
 
 This is also the ricochet named in the risks: a merged pull request moves a ticket, which
 pushes the mirror. A noisy repository becomes noise in somebody else's tool.
@@ -673,6 +749,13 @@ and a stranger moving tickets. Tested first, and worth watching once deployed.
 **The mixed identity path.** Two write paths, and an author that depends on configuration.
 Recording it makes it legible; it does not make it simple.
 
+**GitHub and Notion share one queue.** The handler split keeps what a job *means* apart,
+but `outbound_jobs`, the claim, the collapse rule, the backoff and `max-attempts` are one
+implementation serving both — and `kanso.sync.outbound.enabled` is one switch. A bad
+migration or a bad retry policy is a bad one for the mirror and for pull requests at the
+same time. This was the two-table proposal's objection; it is narrowed, not abolished, and
+part two lists exactly what remains inside it.
+
 **GitHub reaches Notion by ricochet.** A merge moves a ticket, which pushes the mirror, in
 front of people who do not know what a pull request is.
 
@@ -696,8 +779,8 @@ member link, `V17`, the settings screen, environment pinning. Deliverable: setti
 credentials is proven before a single pull request exists.
 
 **Plan four — the link.** `PrLinkParser`, the webhook and its signature, the two
-transitions and their three guards, the ticket's pull request section, the bounded block,
-`github_jobs`, the Notion property.
+transitions and their three guards, the ticket's pull request section, the bounded block
+and the `GithubOutboundHandler` that writes it, the Notion property.
 
 **Plan five — writing, and the agent.** `teams.github_repo`, `[Open the PR]`, the two
 identities, `kanso_pr`, the `kanso_context` and `kanso_search` extensions, the
