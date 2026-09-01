@@ -14,4 +14,17 @@ object McpChallenge {
 
 	fun header(scopes: List<String>, baseUrl: String = ""): String =
 		"""Bearer resource_metadata="$baseUrl$RESOURCE_METADATA_PATH", scope="${scopes.joinToString(" ")}""""
+
+	/**
+	 * The other 401-shaped answer: the token is fine, the grant is too narrow.
+	 *
+	 * RFC 6750 §3.1 names this `insufficient_scope`, and the `scope` parameter is what
+	 * makes it actionable — a client reads it and runs the authorisation flow again asking
+	 * for that scope, instead of reporting a permanent failure to somebody who granted
+	 * read-only six weeks ago and has forgotten. Alongside [header] rather than built at
+	 * the point of failure, for the same reason that one is: a challenge is the only part
+	 * of a refusal a client can act on, and both belong where they can be read together.
+	 */
+	fun insufficientScope(scope: String): String =
+		"""Bearer error="insufficient_scope", scope="$scope""""
 }

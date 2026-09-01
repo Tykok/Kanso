@@ -44,11 +44,17 @@ class ActivityRepository(private val jdbc: JdbcClient) {
 		kind: ActivityKind,
 		payload: String,
 		createdAt: OffsetDateTime,
+		/**
+		 * Which application typed it, or null when a person did — the public `client_id`,
+		 * which is what `V19__activity_via_client_id_target.sql` moved the foreign key onto
+		 * so that the value a service layer actually holds could be written down.
+		 */
+		viaClientId: String? = null,
 	) {
 		jdbc.sql(
 			"""
-			INSERT INTO activity (id, entity_type, entity_id, actor_id, kind, payload, created_at)
-			VALUES (:id, :entityType, :entityId, :actorId, :kind, CAST(:payload AS jsonb), :createdAt)
+			INSERT INTO activity (id, entity_type, entity_id, actor_id, kind, payload, created_at, via_client_id)
+			VALUES (:id, :entityType, :entityId, :actorId, :kind, CAST(:payload AS jsonb), :createdAt, :viaClientId)
 			""".trimIndent()
 		)
 			.param("id", id)
@@ -58,6 +64,7 @@ class ActivityRepository(private val jdbc: JdbcClient) {
 			.param("kind", kind.wire)
 			.param("payload", payload)
 			.param("createdAt", createdAt)
+			.param("viaClientId", viaClientId)
 			.update()
 	}
 
