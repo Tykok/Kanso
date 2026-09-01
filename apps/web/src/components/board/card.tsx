@@ -70,7 +70,14 @@ export function BoardCard({
       onClick={onSelect}
       onDoubleClick={onOpen}
       className={cn(
-        "flex cursor-pointer flex-col gap-2 rounded-md border-t-2 bg-card p-2.5 text-left shadow-flat",
+        // `w-full` and not the column's doing: a form control's `width: auto` is
+        // shrink-to-fit, `display: flex` included, so this button is only ever as wide as
+        // its longest line unless something outside it says otherwise. Until the column
+        // was virtualised something did — the card was a flex item of the column's
+        // `flex-col`, and `align-items: stretch` filled it out. Virtualising put two
+        // blocks between the two, and the cards went back to their titles' widths. Owning
+        // the width here is what makes the card draw the same wherever it is put.
+        "flex w-full cursor-pointer flex-col gap-2 rounded-md border-t-2 bg-card p-2.5 text-left shadow-flat",
         selected && "ring-1 ring-primary",
       )}
       style={{ borderTopColor: STATUS_COLORS[ticket.status] }}
