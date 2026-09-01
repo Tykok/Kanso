@@ -116,10 +116,11 @@ it, Kanso answers `401` with a header naming its own authorisation server, and t
 registers itself, opens your browser and asks. What you read there is a Kanso page on
 Kanso's origin: which application is asking, **where it would send the code**, how old its
 registration is, and the permissions in sentences rather than scope names. Approve it and
-the agent holds a token; it acts as you, reaches exactly what you reach, and every change
-it makes says your name in the activity feed. Settings → Agents lists what you have let
-in and revokes it — revoking takes the tokens with the permission, so the next request is
-refused rather than the next hour.
+the agent holds a token. That token opens one door and not the rest of the API — it is
+accepted at `/api/mcp` and refused everywhere else — and what comes through that door acts
+as you: every change says your name in the activity feed. Settings → Agents lists what you
+have let in and revokes it — revoking takes the tokens with the permission, so the next
+request is refused rather than the next hour.
 
 **Sign in to Kanso in that browser first.** The authorisation URL answers a browser with
 no session `401` with an empty body, so an agent's link opens on a blank page rather than
