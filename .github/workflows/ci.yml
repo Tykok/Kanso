@@ -1,0 +1,172 @@
+# Runs the test suites. `pages.yml` deliberately does not test, and said that adding
+# Vitest or Playwright was a separate decision; this is that decision, taken because
+# the OAuth authorisation server this repository now carries is the wrong thing to
+# leave unenforced. `/connect/register` creates a row for an unauthenticated caller and
+# the webhook surface answers one too — code written once and trusted for years, whose
+# regressions are silent by nature. "Runs when someone remembers" was affordable for
+# CRUD and is not affordable for this.
+#
+# What is here is deliberately the boring half: the Gradle suite and the web unit
+# tests, typecheck and lint. The reasoning is a one-maintainer reasoning — a workflow
+# that is slow, flaky or noisy gets switched off, and an ignored red badge is worse
+# than an honest absence, because it launders every future failure as "probably that
+# thing again". Everything below either passed on a clean tree before being written
+# here, or is not here. Playwright is not here; the last section says why.
+
+name: CI
+
+# Every push, on every branch, and no `pull_request`. The history is merge commits
+# authored locally rather than squashes landed from PRs, so a `pull_request`-only
+# workflow would first see this branch's work at the merge — long after the point of
+# testing it. Triggering on both instead would run the same commit twice whenever a PR
+# does exist, and paying double for a 60-second Postgres suite trains its only reader
+# to stop reading. The repository is private and single-author, so nothing arrives from
+# a fork that the push trigger would miss.
+on:
+  push:
+  workflow_dispatch:
+
+# Nothing here writes to the repository: no artifact, no deployment, no comment.
+permissions:
+  contents: read
+
+# Only the newest commit on a ref is interesting, and the older run's verdict is about
+# code that no longer exists. This is the opposite of `pages.yml`'s
+# `cancel-in-progress: false`, and for the opposite reason: cancelling a deploy can
+# leave a half-published site, while cancelling a test run costs nothing but the
+# minutes it frees.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Two jobs rather than two steps in one, so a red web half cannot mask a red API
+  # half. They share no state, and running them in parallel makes the wall clock the
+  # slower of the two instead of the sum.
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    # The suite is 55 seconds locally. The cap is not a performance budget: it is the
+    # ceiling on a Testcontainers start that never returns, which would otherwise sit
+    # on a runner until GitHub's six-hour default.
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 21 because `build.gradle.kts` pins the toolchain to 21. Installing it here
+      # rather than letting Gradle auto-provision keeps the download off the critical
+      # path and makes the version a thing this file states out loud; Temurin is what
+      # `apps/api/Dockerfile` builds on. `cache: gradle` is setup-java's own cache
+      # rather than a second action, which is one fewer moving part to understand when
+      # it misbehaves.
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      # `PostgresTest` starts a real `postgres:16-alpine` through Testcontainers, so
+      # this step needs a Docker daemon — present on GitHub-hosted Ubuntu runners, and
+      # the reason this job is not `runs-on: macos-*`, where it is not. Nothing is
+      # configured for it: `application-test.yml` disables both sync workers and the
+      # trash sweep, and `@ServiceConnection` hands Spring the container's URL, so
+      # there is no database secret for this workflow to need or leak.
+      #
+      # `--no-daemon`: the Gradle daemon exists to keep a warm JVM between invocations,
+      # and a fresh runner has exactly one invocation. Keeping it would leave a live
+      # process holding the cache directory open while the cache is being saved.
+      - name: Test
+        run: ./gradlew test --no-daemon
+
+      # Only on failure, and only the reports. A green run's HTML is a green run's HTML;
+      # uploading it every time is 90 seconds and a storage bill for something nobody
+      # opens. On a red run the failing assertion's message is the whole point, and
+      # scrolling a Spring Boot log in the Actions pane to find it is how people give up.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: api-test-reports
+          path: |
+            apps/api/build/reports/tests/test
+            apps/api/build/test-results/test
+          retention-days: 7
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm before Node, and this order is load-bearing: `setup-node`'s `cache: pnpm`
+      # shells out to pnpm to find the store path, and fails with a message about an
+      # unrecognised package manager if pnpm is not on the PATH yet.
+      #
+      # No `version:` on purpose. `package.json` already says `pnpm@10.30.0` and this
+      # action reads it, so the version stays in one place instead of two that can
+      # drift; passing both is also how v4 errors with "multiple versions specified".
+      - uses: pnpm/action-setup@v4
+
+      # Node 22, matching `pages.yml`, and here the floor is not cosmetic. Vite 8's
+      # rolldown bindings declare `engines: node ^20.19 || >=22.12`, and pnpm *skips*
+      # an optional dependency whose engines do not match rather than failing — so a
+      # too-old Node produces a successful install and then a Vitest run that dies on a
+      # missing `@rolldown/binding-*`. That is exactly the failure `docs/follow-ups.md`
+      # records four of six agents hitting under Node 20.14, and the reason it looks
+      # like a broken lockfile is that the install is green. The lockfile is fine; it
+      # carries all fourteen platform bindings. If a future bump raises that floor past
+      # this pin, the symptom will be a missing binding and the fix is this line.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      # `--frozen-lockfile` is the point of the step, not a flourish: it fails on a
+      # lockfile that disagrees with `package.json` instead of quietly resolving
+      # something newer, which is the difference between CI testing this commit and CI
+      # testing whatever npm published this morning.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Typecheck first: it is the fastest of the three and the one whose failure most
+      # often explains the other two. Then the unit tests. Then lint, last, because a
+      # style complaint is the least interesting reason to stop.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # Lint is here because it is currently clean — one `import/no-anonymous-default-export`
+      # warning in `postcss.config.mjs`, which the repository's own eslint config does not
+      # treat as an error. It is included on that evidence and not on principle: if it
+      # starts costing more attention than it returns, deleting this step is the right
+      # move rather than adding `--max-warnings` to argue with it.
+      - name: Lint
+        run: pnpm lint
+
+# The two things this workflow does not do, so that their absence reads as a decision
+# rather than an oversight:
+#
+# **Playwright is not here.** `e2e/README.md` is the argument against it. The suite has
+# no `webServer` and assumes a `docker compose` stack already up, needs
+# `KANSO_AUTH_MODE=dev` before any two-person scenario is playable, and needs
+# `KANSO_WEB_ORIGIN` whenever `WEB_PORT` is non-default — that last one because without
+# it CORS renders every visitor as a member, which turns scenario 13 from a permissions
+# test into a test that cannot fail. A green e2e job that is green for the wrong reason
+# is strictly worse than no e2e job, and it is the failure mode a first CI is least
+# equipped to notice. `shots.spec.ts` compounds it: it is date-fenced to September 2026
+# and goes red on purpose afterwards. E2E belongs in CI once the stack is brought up by
+# something that also asserts it came up correctly. That is its own piece of work.
+#
+# **`next build` is not here.** It would catch breakage the unit tests cannot, and it
+# is a real gap. It is left out only because it was not run on a clean tree while this
+# file was written, and the rule this workflow was built under is that nothing goes in
+# unverified. Adding it is a small, well-defined follow-up.

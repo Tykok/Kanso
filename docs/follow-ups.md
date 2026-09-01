@@ -57,8 +57,16 @@ with no DOM, and the behaviour is a cache lifetime rather than a rendered result
 
 ## Not a defect, but load-bearing to know
 
-**There is no CI.** Vitest and Playwright run only when someone remembers. The branch's
-largest single investment is currently unenforced.
+**~~There is no CI.~~ Closed: `.github/workflows/ci.yml`.** The Gradle suite, and the web
+unit tests, typecheck and lint, now run on every push. What tipped it was not this entry
+but the OAuth branch: an authorisation server, an unauthenticated row-creating
+`/connect/register` and a webhook-shaped surface are code whose regressions are silent,
+and "when someone remembers" was affordable for CRUD and is not affordable for that.
+Playwright is still waiting to be remembered, deliberately — `e2e/README.md`'s environment
+variables decide whether scenario 13 is a permissions test or a test that cannot fail, and
+a first CI is the worst place to get that wrong. The workflow's closing comment carries
+that argument and the one against `next build`, which is a real gap left open only because
+it was not run clean while the file was written.
 
 **`app.palette` is a dead action.** ⌘K is intercepted ahead of the registry, and no menu
 references it, so its only surface is the palette itself.
@@ -555,7 +563,13 @@ completion date instead.
 **`pnpm install` in a fresh worktree silently skips `@rolldown/binding-darwin-arm64`** under
 Node 20.14 (rolldown wants `^20.19 || >=22.12`), and vitest then dies on a missing wasm
 binding. `pnpm install --force` fixes it and leaves the lockfile alone. Four of the six
-agents hit this.
+agents hit this. It gets *remembered* as a broken lockfile, because the install exits 0 and
+the failure surfaces one command later — it is not. All fourteen platform bindings are in
+there, and an install pinned to the runner's `linux`/`x64`/`glibc` resolves
+`@rolldown/binding-linux-x64-gnu` out of it cleanly; on Node 24 the darwin binding lands
+and `pnpm test`, `typecheck` and `lint` are all green. pnpm skipping an optional dependency
+whose `engines` do not match is the whole bug. `ci.yml` pins Node 22 for this and no other
+reason, which is worth knowing before someone lowers it.
 
 ## Small and mechanical
 
