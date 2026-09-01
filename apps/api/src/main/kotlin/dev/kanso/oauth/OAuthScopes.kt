@@ -20,7 +20,12 @@ object OAuthScopes {
 
 	private val PROSE = mapOf(
 		READ to "Read the tickets, projects, documents and dates of the teams you belong to",
-		WRITE to "Create and change them, and comment — as you, recorded as coming from this application",
+		// No promise of provenance. `activity.via_client_id` exists in the schema and
+		// nothing writes it yet, and a sentence next to an Authorise button that describes
+		// a record this version does not keep is worse than a plainer one — the settings
+		// screen repeats it word for word through `GrantService.scopeProse`. It goes back
+		// when the column is filled, and `AgentRightsTest` is the tripwire that says so.
+		WRITE to "Create and change them, and comment — as you, so the change carries your name",
 	)
 
 	/**

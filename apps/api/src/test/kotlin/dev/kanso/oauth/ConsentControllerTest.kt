@@ -84,8 +84,9 @@ class ConsentControllerTest : PostgresTest() {
 			UsernamePasswordAuthenticationToken(principal, null, principal.authorities)
 	}
 
-	private fun arriveWith(query: String) {
-		val request = MockHttpServletRequest("GET", CONSENT_PAGE)
+	private fun arriveWith(query: String, under: String = "") {
+		val request = MockHttpServletRequest("GET", "$under$CONSENT_PAGE")
+		request.contextPath = under
 		request.serverName = "kanso.example.test"
 		request.serverPort = 8080
 		request.queryString = query
@@ -223,6 +224,46 @@ class ConsentControllerTest : PostgresTest() {
 			.headers.location!!.toString()
 
 		assertFalse(location.contains("smuggled"), "a parameter this page never reads is not its business to echo")
+	}
+
+	/**
+	 * Deployed under a servlet context path this page is `/kanso/oauth/consent`, which is
+	 * what its own builder produces — and the shape check compared that against
+	 * `CONSENT_PAGE`, so it threw on every request such a deployment ever made. A 400 in
+	 * place of the entire first-run flow, from a check written to catch a URL that had
+	 * stopped being this page. `McpBearerFilter` is context-path aware for the same reason.
+	 */
+	@Test
+	fun `the way back is still this page when the application is mounted under a context path`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+		arriveWith("client_id=claude-code&scope=kanso%3Aread&state=s", under = "/kanso")
+
+		val location = controller
+			.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+			.headers.location!!.toString()
+
+		assertTrue(
+			URLDecoder.decode(location.substringAfter("next="), StandardCharsets.UTF_8)
+				.startsWith("http://kanso.example.test:8080/kanso$CONSENT_PAGE"),
+			"the way back has to name the page as this deployment serves it",
+		)
+	}
+
+	/**
+	 * The name on this screen is the client's own text and `/connect/register` is open, so
+	 * the two lines that are not the client's choosing are the only ones a member can weigh
+	 * — and they come off the registration row rather than off the request.
+	 */
+	@Test
+	fun `the page carries the evidence the client did not get to choose`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		actAs(member())
+
+		val html = controller.consent(clientId = "claude-code", scope = "kanso:read", state = "s").body!!
+
+		assertTrue(html.contains("127.0.0.1"), "the host is where a code would actually be sent")
+		assertTrue(html.contains(" ago"), "and the row's own age is what says how new this client is")
 	}
 
 	@Test

@@ -1,5 +1,7 @@
 package dev.kanso.oauth
 
+import java.time.Duration
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,11 +17,14 @@ import kotlin.test.assertTrue
  */
 class ConsentPageTest {
 
+	private val fresh = ClientEvidence(listOf("claude.ai"), Duration.ofMinutes(4))
+
 	private fun page(
 		clientName: String = "Claude Code",
 		email: String = "elie@example.com",
 		scopes: List<String> = OAuthScopes.ALL,
-	) = ConsentPage.render(clientName, email, scopes, clientId = "claude-code", state = "st4te")
+		evidence: ClientEvidence = fresh,
+	) = ConsentPage.render(clientName, email, scopes, clientId = "claude-code", state = "st4te", evidence = evidence)
 
 	@Test
 	fun `it names the client and the member, because approving the wrong one is the failure`() {
@@ -58,7 +63,7 @@ class ConsentPageTest {
 
 	@Test
 	fun `a state containing a quote cannot break out of its attribute`() {
-		val html = ConsentPage.render("C", "e@x.test", OAuthScopes.ALL, "c", "\" onload=\"x")
+		val html = ConsentPage.render("C", "e@x.test", OAuthScopes.ALL, "c", "\" onload=\"x", fresh)
 		assertFalse(html.contains("onload=\"x\""))
 	}
 
@@ -68,6 +73,78 @@ class ConsentPageTest {
 			page().contains("prefers-color-scheme: dark"),
 			"served from the API, it has no app CSS to inherit",
 		)
+	}
+
+	/**
+	 * The name is the client's own text and the whole screen used to be nothing else, which
+	 * is what made open registration rest on a field the attacker fills in: `/connect/register`
+	 * is unauthenticated and `claude.ai` is an allowed host by default, so anyone can be
+	 * "Claude Code" with a callback on it. These two lines are the parts nobody registering
+	 * gets to choose.
+	 */
+	@Test
+	fun `it shows where the code would go and how old the registration is`() {
+		val html = page()
+		assertTrue(html.contains("claude.ai"), "the host is the only thing that says who receives the code")
+		assertTrue(html.contains("4 minutes ago"), "a client registered minutes ago is the shape of an attack")
+	}
+
+	@Test
+	fun `the age is read out in the coarsest unit that is still true`() {
+		assertTrue(page(evidence = ClientEvidence(listOf("claude.ai"), Duration.ZERO)).contains("less than a minute ago"))
+		assertTrue(page(evidence = ClientEvidence(listOf("claude.ai"), Duration.ofMinutes(1))).contains("1 minute ago"))
+		assertTrue(page(evidence = ClientEvidence(listOf("claude.ai"), Duration.ofHours(3))).contains("3 hours ago"))
+		assertTrue(page(evidence = ClientEvidence(listOf("claude.ai"), Duration.ofDays(400))).contains("400 days ago"))
+	}
+
+	@Test
+	fun `a registration with no recorded instant says that, rather than implying age`() {
+		val html = page(evidence = ClientEvidence(listOf("claude.ai"), null))
+		assertFalse(html.contains(" ago"), "an unknown age must not be rendered as an old one")
+		assertTrue(html.contains("did not record"))
+	}
+
+	@Test
+	fun `several hosts are all named, and a client with none readable says so`() {
+		assertTrue(
+			page(evidence = ClientEvidence(listOf("claude.ai", "127.0.0.1"), Duration.ofMinutes(4)))
+				.contains("claude.ai, 127.0.0.1"),
+			"a member deciding about a code needs every address it might be sent to",
+		)
+		assertTrue(
+			page(evidence = ClientEvidence(emptyList(), Duration.ofMinutes(4))).contains("cannot read"),
+			"a blank line reads as reassurance, which is the one thing it is not",
+		)
+	}
+
+	@Test
+	fun `a host is escaped like everything else, because it came out of a registration`() {
+		// Registered, therefore checked by `RedirectUriPolicy` — and escaped anyway. The
+		// argument for trusting one value on this page is the argument that gets the next
+		// one wrong.
+		val html = page(evidence = ClientEvidence(listOf("<script>alert(1)</script>"), Duration.ofMinutes(4)))
+		assertFalse(html.contains("<script>alert"))
+		assertTrue(html.contains("&lt;script&gt;"))
+	}
+
+	/**
+	 * The host, and never the whole URI: a path is more of the client's own text, and it is
+	 * the host that decides who receives the code.
+	 */
+	@Test
+	fun `evidence is derived from the registration, keeping hosts and dropping everything else`() {
+		val evidence = ClientEvidence.of(
+			redirectUris = listOf(
+				"https://claude.ai/api/mcp/auth/callback",
+				"https://CLAUDE.AI/another/path",
+				"not a uri at all",
+			),
+			registeredAt = Instant.parse("2026-09-01T09:00:00Z"),
+			now = Instant.parse("2026-09-01T10:30:00Z"),
+		)
+
+		assertEquals(listOf("claude.ai"), evidence.redirectHosts, "one host, lowercased, and no path from it")
+		assertEquals(Duration.ofMinutes(90), evidence.registeredAge)
 	}
 
 	/**

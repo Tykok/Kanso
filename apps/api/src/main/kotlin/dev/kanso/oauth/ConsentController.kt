@@ -77,7 +77,24 @@ class ConsentController(
 			// and a browser guessing latin-1 renders them as mojibake on the one page
 			// where the wording is the product.
 			.contentType(MediaType(MediaType.TEXT_HTML, StandardCharsets.UTF_8))
-			.body(ConsentPage.render(client.clientName, member.kansoEmail, scopes, clientId, state))
+				// The two facts a member can actually weigh, and neither is the client's
+				// own text: where a code would be sent, and how old the registration is.
+				// `/connect/register` is open, so "Claude Code" on this screen means only
+				// that somebody typed it — see [ClientEvidence].
+				.body(
+					ConsentPage.render(
+						clientName = client.clientName,
+						email = member.kansoEmail,
+						scopes = scopes,
+						clientId = clientId,
+						state = state,
+						evidence = ClientEvidence.of(
+							redirectUris = client.redirectUris,
+							registeredAt = client.clientIdIssuedAt,
+							now = Instant.now(),
+						),
+					),
+				)
 	}
 
 	/**
@@ -147,8 +164,14 @@ class ConsentController(
 		// trip, and two checks of one value are two chances to disagree. Origin against
 		// itself is the tautology the paragraph above admits to; the path is not.
 		val origin = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString()
+		// The path *as this deployment serves it*, context path and all. `CONSENT_PAGE`
+		// alone is only the same string when the application is mounted at the root: under
+		// `/kanso` the URL above is `/kanso/oauth/consent`, so the comparison refused every
+		// request such an instance ever made — a 400 in place of the whole first-run flow,
+		// from a check written to catch a URL that had stopped being this page.
+		val here = ServletUriComponentsBuilder.fromCurrentContextPath().path(CONSENT_PAGE).build().path
 		val uri = ReturnUrl.parse(url, origin)
-		if (uri == null || uri.path != CONSENT_PAGE) {
+		if (uri == null || uri.path != here) {
 			throw BadRequestException("This instance cannot build a usable return address for the consent page")
 		}
 		return url

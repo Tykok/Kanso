@@ -1,5 +1,51 @@
 package dev.kanso.oauth
 
+import java.net.URI
+import java.net.URISyntaxException
+import java.time.Duration
+import java.time.Instant
+
+/**
+ * The two things on this screen the client did not choose.
+ *
+ * Everything else the page shows comes out of a registration anybody may create: the name
+ * is the client's own text, and `allowedRedirectHosts` defaults to Anthropic's own hosts,
+ * so a stranger can register "Claude Code" with a `https://claude.ai/<anything>` callback
+ * and send a member a link. A screen that displays only the attacker's field is a screen
+ * that cannot be read carefully, however careful the escaping is — so these two travel
+ * with it: where a code would actually go, and how old the registration is.
+ *
+ * @param redirectHosts the **hosts** of the registered redirect URIs, never the URIs. A
+ *   path is more of the client's own text, and it is the host that decides who receives
+ *   the code.
+ * @param registeredAge how long ago the row was written, or null when the column holds
+ *   nothing. A duration rather than an instant, so the page renders no clock of its own
+ *   and the sentence is testable without one.
+ */
+data class ClientEvidence(val redirectHosts: List<String>, val registeredAge: Duration?) {
+
+	companion object {
+
+		fun of(redirectUris: Collection<String>, registeredAt: Instant?, now: Instant): ClientEvidence =
+			ClientEvidence(
+				// Parsed, and only the host kept. `RedirectUriPolicy` already refused
+				// anything whose host is not loopback or a configured client host, so this
+				// value is one of a short list — which is exactly what makes an unfamiliar
+				// one worth reading.
+				redirectHosts = redirectUris.mapNotNull(::hostOf).distinct().sorted(),
+				registeredAge = registeredAt?.let { Duration.between(it, now) },
+			)
+
+		private fun hostOf(raw: String): String? = try {
+			// `URI(String)` throws the checked exception; `URI.create` throws the
+			// unchecked one. `RedirectUriPolicy` records the same trap.
+			URI(raw.trim()).host?.lowercase()
+		} catch (_: URISyntaxException) {
+			null
+		}
+	}
+}
+
 /**
  * The question, as a document — served by the API, not by `apps/web`.
  *
@@ -12,12 +58,15 @@ package dev.kanso.oauth
  * stylesheet instead of using the design system, and why moving it back to `apps/web`
  * would break the flow rather than tidy it.
  *
- * A pure function of five values, so what it says and what it refuses to say can be
+ * A pure function of its arguments, so what it says and what it refuses to say can be
  * tested without a servlet. The refusal is the important half: a client registers itself
  * unauthenticated and picks its own `client_name`, so that name is a stranger's text
  * printed in Kanso's voice next to an Authorise button. Every interpolation goes through
  * [esc], with no exceptions for values that "cannot" contain markup — the argument for
  * an exception is exactly the argument that gets one wrong later.
+ *
+ * What the escaping cannot fix is a screen with nothing on it to weigh, which is why
+ * [ClientEvidence] is an argument and not an option.
  *
  * Two forms rather than a form and a script. The library reads the decision off the
  * *presence* of `scope` — its own default page declines by resetting the form and
@@ -34,6 +83,9 @@ object ConsentPage {
 	 *   does not grant — the caller checks first, so that throw is a bug rather than a
 	 *   half-rendered page.
 	 * @param state the library's consent nonce. Opaque here, and posted back untouched.
+	 * @param evidence the two facts the client did not pick — see [ClientEvidence]. Not
+	 *   defaulted, because a caller that forgot it would render a screen that looks
+	 *   finished and says nothing checkable.
 	 */
 	fun render(
 		clientName: String,
@@ -41,8 +93,14 @@ object ConsentPage {
 		scopes: List<String>,
 		clientId: String,
 		state: String,
+		evidence: ClientEvidence,
 	): String {
 		val name = esc(clientName)
+		val hosts = evidence.redirectHosts
+			.takeIf { it.isNotEmpty() }
+			?.joinToString(", ") { esc(it) }
+			?: "an address this server cannot read"
+		val registered = esc(age(evidence.registeredAge))
 		val hidden = listOf(
 			"""<input type="hidden" name="client_id" value="${esc(clientId)}">""",
 			"""<input type="hidden" name="state" value="${esc(state)}">""",
@@ -70,6 +128,12 @@ $STYLESHEET
 	<p class="mark">Kanso</p>
 	<h1>Let $name act as you?</h1>
 	<p class="lede">Signed in as <span class="email">${esc(email)}</span>.</p>
+	<dl class="evidence">
+		<dt>Sends your code to</dt>
+		<dd>$hosts</dd>
+		<dt>Registered with Kanso</dt>
+		<dd>$registered</dd>
+	</dl>
 	<p class="asks">It is asking to:</p>
 	<ul class="scopes">
 $scopeLines
@@ -78,6 +142,12 @@ $scopeLines
 		It acts as you, and reaches exactly what you reach — the teams you belong to, and
 		nothing else. You can withdraw this at any time in Settings, under Connected
 		applications.
+	</p>
+	<p class="note weigh">
+		Any application may register itself here and choose its own name, so the name above
+		is its word rather than ours. The two lines that are not — the address and the age —
+		are worth a second look: a registration minutes old that you did not just create, or a
+		host you do not recognise, is one to decline.
 	</p>
 	<div class="actions">
 		<form method="post" action="/oauth2/authorize">
@@ -95,6 +165,26 @@ $hidden
 </html>
 """
 	}
+
+	/**
+	 * How long ago, in the coarsest unit that is still true.
+	 *
+	 * Coarse on purpose: the member is being asked to recognise something they did, and
+	 * "4 minutes ago" answers that where a timestamp in their least favourite timezone
+	 * does not. Rounded down by integer division, so it never overstates the age of a
+	 * registration — the young end is the dangerous end.
+	 */
+	private fun age(age: Duration?): String = when {
+		age == null -> "at a time this server did not record"
+		// A clock that moved backwards, or a row written in the same second. Either way
+		// the honest reading is "just now", and it is the reading that invites suspicion.
+		age.isNegative || age.toMinutes() < 1 -> "less than a minute ago"
+		age.toHours() < 1 -> ago(age.toMinutes(), "minute")
+		age.toDays() < 1 -> ago(age.toHours(), "hour")
+		else -> ago(age.toDays(), "day")
+	}
+
+	private fun ago(count: Long, unit: String): String = "$count $unit${if (count == 1L) "" else "s"} ago"
 
 	/**
 	 * The five XML entities, `&` first so the others' output is not re-escaped.
@@ -201,6 +291,20 @@ h1 {
 .email { color: var(--foreground); font-weight: 500; }
 .asks { margin: 0 0 8px; }
 
+.evidence {
+	margin: 0 0 18px;
+	padding: 10px 14px;
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 14px;
+	font-size: 12px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+.evidence dt { color: var(--muted-foreground); }
+/* A host is short; the fallback sentence is not, and neither may widen the card. */
+.evidence dd { margin: 0; overflow-wrap: anywhere; }
+
 .scopes {
 	margin: 0 0 18px;
 	padding: 12px 14px 12px 30px;
@@ -211,12 +315,14 @@ h1 {
 .scopes li + li { margin-top: 6px; }
 
 .note {
-	margin: 0 0 22px;
+	margin: 0 0 14px;
 	padding-top: 14px;
 	border-top: 1px solid var(--rule);
 	font-size: 12px;
 	color: var(--muted-foreground);
 }
+
+.weigh { margin-bottom: 22px; padding-top: 0; border-top: 0; }
 
 .actions { display: flex; flex-direction: row-reverse; gap: 8px; }
 .actions form { margin: 0; flex: 1; }

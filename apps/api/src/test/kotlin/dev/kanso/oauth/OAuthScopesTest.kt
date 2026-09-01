@@ -29,6 +29,21 @@ class OAuthScopesTest {
 		}
 	}
 
+	/**
+	 * `V16` adds `activity.via_client_id` and nothing under `src/main` writes it, so a
+	 * sentence promising that a change is recorded as coming from the application was
+	 * false — next to an Authorise button, and repeated on the settings screen through
+	 * `GrantService.scopeProse`. `AgentRightsTest` pins the missing column; this pins the
+	 * wording, so the two go back together or not at all.
+	 */
+	@Test
+	fun `the write sentence claims no provenance, because none is recorded yet`() {
+		assertFalse(
+			OAuthScopes.prose(OAuthScopes.WRITE).contains("recorded", ignoreCase = true),
+			"the consent screen must not promise a record this version of Kanso does not keep",
+		)
+	}
+
 	@Test
 	fun `an unknown scope is refused rather than shown raw`() {
 		// A client may ask for anything. Rendering it verbatim on a consent screen is how
