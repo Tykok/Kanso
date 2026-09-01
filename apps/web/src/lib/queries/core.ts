@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUi, type Scope } from "@/store/ui";
 import {
   api,
@@ -32,8 +27,9 @@ export const keys = {
   sync: ["sync"] as const,
 
   // Everything below is keyed on what was asked for, so two different answers
-  // never share one cache entry. `applyEvent` invalidates on the first segment,
-  // which is what lets these keys grow without it having to know about them.
+  // never share one cache entry. `applyEvents` finds them on the first segment,
+  // which is what lets these keys grow without it having to know about them; the
+  // segments after it are how it tells a scoped list from anything else stored there.
   teams: (includeArchived: boolean) => ["teams", includeArchived] as const,
   /** All projects, one query — the sidebar needs the whole set to draw its tree. */
   projects: (includeArchived: boolean) => ["projects", includeArchived] as const,
@@ -391,24 +387,5 @@ export function useUnarchive() {
   });
 }
 
-/**
- * Applies a realtime event to the cache. Same effect whoever caused it.
- *
- * Matched on the first key segment, so every variant of a list — archived shown
- * or not, whichever scope — is invalidated by one call.
- */
-export function applyEvent(queryClient: QueryClient, entity: string) {
-  if (entity === "tickets") {
-    queryClient.invalidateQueries({ queryKey: ["tickets"] });
-    // A cascade moves tickets other than the edited one, and the event names only
-    // the entity — so the whole view is refetched rather than patched.
-    queryClient.invalidateQueries({ queryKey: ["timeline"] });
-  } else if (entity === "projects") {
-    queryClient.invalidateQueries({ queryKey: ["projects"] });
-    // A project's derived bounds change when its tickets do, its explicit ones when
-    // it is edited, and its explicit end is a deadline the critical path reads.
-    queryClient.invalidateQueries({ queryKey: ["timeline"] });
-  } else if (entity === "teams") {
-    queryClient.invalidateQueries({ queryKey: ["teams"] });
-  }
-}
+// What a realtime event does to these keys lives in `lib/realtime-events.ts`, beside the
+// subscription that delivers it and away from React, where it is testable.
