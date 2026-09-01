@@ -311,10 +311,20 @@ function ComposerForm({
             handler before `resolveShortcut` whenever a dialog is open, so an action
             registered for this could never fire. `1`–`6` are the selected ticket's
             status besides. The native select's own arrows and typeahead are the
-            affordance, which is what the other four chips already rely on. */}
+            affordance, which is what the other four chips already rely on.
+
+            `grow-0` is the fifth chip's one departure from `CHIP_SELECT`, and it is what
+            the wrap costs. Five chips do not fit across 608px, so this one drops to a
+            second line — and `flex-1` there, alone beside [Create], grew it to 541px: a
+            "No estimate" select nearly four times its neighbours, which read as a defect
+            rather than as a row that wrapped. Making the five narrow enough to fit was
+            tried and is worse — 103px each clips "No estimate" and every team name in the
+            select above it, so four chips that were fine would pay for the fifth. Frozen
+            at its declared basis it is simply the same chip as the other four, on the
+            line below. */}
         <select
           aria-label="Estimate in points"
-          className={CHIP_SELECT}
+          className={cn(CHIP_SELECT, "grow-0")}
           value={estimate}
           disabled={create.isPending}
           onChange={(event) => setEstimate(event.target.value)}
@@ -329,7 +339,18 @@ function ComposerForm({
           ))}
         </select>
 
-        <Button type="button" size="sm" disabled={create.isPending} onClick={submit}>
+        {/* `ml-auto` so the row's last line ends where every line ends. Until the fifth
+            chip stopped growing, the button was pushed to the right edge by a chip that
+            had swollen to fill the gap; now that nothing fills it, the button has to hold
+            that edge itself — otherwise the primary action of the dialog slides in to sit
+            against the estimate chip, mid-row, with 400px of nothing to its right. */}
+        <Button
+          type="button"
+          size="sm"
+          className="ml-auto"
+          disabled={create.isPending}
+          onClick={submit}
+        >
           Create
         </Button>
       </div>
