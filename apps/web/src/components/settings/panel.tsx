@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ACCENTS, DENSITIES, THEMES, type Preferences } from "@/lib/api";
 import { DENSITY_LABELS, THEME_LABELS } from "@/lib/preferences-copy";
 import { useMe, usePreferences, useSavePreferences, useSyncStatus } from "@/lib/queries";
+import { canConfigure as configures } from "@/lib/seat";
 import { Backdrop } from "@/components/overlays";
 import { Button } from "@/components/ui/button";
 
@@ -131,7 +132,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const sync = useSyncStatus();
 
   const set = (patch: Partial<Preferences>) => save.mutate(patch);
-  const canReconfigure = me.data && me.data.user.instanceRole !== "member";
+  const canReconfigure = me.data !== undefined && configures(me.data.user.instanceRole);
 
   const instanceSummary = !sync.data
     ? "Instance status unavailable"

@@ -20,7 +20,7 @@ import { SettingsPanel } from "@/components/settings/panel";
 import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
-import { availableActions, hintOf, predecessorsOf, resolveShortcut } from "@/lib/actions";
+import { availableActions, hintOf, permits, predecessorsOf, resolveShortcut } from "@/lib/actions";
 import {
   ApiError,
   getDevUser,
@@ -304,8 +304,9 @@ export default function InboxPage() {
       // edit are two keys rather than one key and a modifier flag.
       const action = resolveShortcut(event.key, view);
       // One predicate answers both "may I show this" and "may I run it", so a key
-      // whose action is unavailable stays inert rather than half-firing.
-      if (!action || !action.when(ctx)) return;
+      // whose action is unavailable stays inert rather than half-firing. `permits` adds
+      // the seat to that predicate, so a reader's keyboard is as quiet as their menus.
+      if (!action || !permits(action, ctx)) return;
       event.preventDefault();
       action.run(ctx);
     };
@@ -568,12 +569,19 @@ export default function InboxPage() {
             <span>
               <kbd>j</kbd> <kbd>k</kbd> move
             </span>
-            <span>
-              <kbd>1</kbd>–<kbd>6</kbd> status
-            </span>
-            <span>
-              <kbd>c</kbd> new
-            </span>
+            {/* Absent for a read-only seat. The keys are already inert for them —
+                `permits` sees to that — and a strip that advertises two keys that do
+                nothing teaches the wrong thing about the product on every screen. */}
+            {ctx.canWrite && (
+              <>
+                <span>
+                  <kbd>1</kbd>–<kbd>6</kbd> status
+                </span>
+                <span>
+                  <kbd>c</kbd> new
+                </span>
+              </>
+            )}
             {/* The chart's keys are not guessable and are worth one line while it is
                 on screen; `?` lists them all, grouped by the view they belong to. */}
             {view === "timeline" && (

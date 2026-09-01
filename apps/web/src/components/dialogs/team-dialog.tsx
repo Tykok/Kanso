@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type InstanceRole, type Team } from "@/lib/api";
 import { keys, useMe } from "@/lib/queries";
+import { canConfigure } from "@/lib/seat";
 import { DialogFrame, Field } from "./field";
 import { MembersSection } from "./members-section";
 
@@ -16,7 +17,7 @@ import { MembersSection } from "./members-section";
  * that request.
  */
 export function canConfigureMembers(role: InstanceRole | undefined): boolean {
-  return role === "owner" || role === "admin";
+  return canConfigure(role);
 }
 
 type TeamErrors = { key?: string; parent?: string; general?: string };

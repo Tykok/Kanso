@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { actionById, type ActionContext } from "@/lib/actions";
+import { actionById, permits, type ActionContext } from "@/lib/actions";
 import { api } from "@/lib/api";
 import { keys } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
@@ -146,7 +146,7 @@ export function Sidebar({
       <div>
         <GroupLabel className="flex items-center gap-1.5">
           <span className="flex-1">Teams</span>
-          {newTeam.when(rootCtx) && (
+          {permits(newTeam, rootCtx) && (
             <button
               className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
               aria-label="New team"
@@ -186,7 +186,7 @@ export function Sidebar({
       <div>
         <GroupLabel className="flex items-center gap-1.5">
           <span className="flex-1">Projects</span>
-          {newProject.when(rootCtx) && (
+          {permits(newProject, rootCtx) && (
             <button
               className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
               aria-label="New project"
@@ -215,8 +215,10 @@ export function Sidebar({
       <div className="mt-auto flex flex-col gap-2 px-1.5">
         {/* Screen 08's four gestures. It renders nothing once they are done, so this
             needs no condition of its own — the checklist is the only thing that knows
-            whether it is finished. */}
-        <OnboardingChecklist />
+            whether it is finished. The one condition it does need is the seat: all four
+            gestures are writes, and homework a reader cannot do would never be finished
+            and so would never go away. */}
+        {rootCtx.canWrite && <OnboardingChecklist />}
 
         <button
           className={cn(

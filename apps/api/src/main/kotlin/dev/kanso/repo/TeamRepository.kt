@@ -176,6 +176,18 @@ class TeamRepository(private val jdbc: JdbcClient) {
 			.map { it[TeamMembers.teamId] }
 
 	/**
+	 * The teams this person is titled `admin` of.
+	 *
+	 * A narrow read with one caller: `AccountService` refuses to put somebody on a
+	 * read-only seat while a team still calls them its administrator, and it names the
+	 * teams rather than saying no and leaving the caller to go looking.
+	 */
+	fun adminTeamIdsFor(userId: UUID): List<UUID> =
+		TeamMembers.select(TeamMembers.teamId)
+			.where { (TeamMembers.userId eq userId) and (TeamMembers.role eq MemberRole.ADMIN.wire) }
+			.map { it[TeamMembers.teamId] }
+
+	/**
 	 * Exactly the teams in [ids] that hold at least one member row.
 	 *
 	 * `TicketAccess` needs this per chain rather than per team — one query for however

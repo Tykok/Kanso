@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { availableActions, hintOf, resolveShortcut } from "@/lib/actions";
+import { availableActions, hintOf, permits, resolveShortcut } from "@/lib/actions";
 import { ApiError, type Ticket } from "@/lib/api";
 import { isMac } from "@/lib/platform";
 import { useAuthMode, useMe, usePreferences, useSyncStatus } from "@/lib/queries";
@@ -110,7 +110,7 @@ export function ViewsShell({
       // The same registry the list dispatches on, asked in `list` mode: these screens
       // draw records rather than a chart, so the chart's keys are not theirs to answer.
       const action = resolveShortcut(event.key, "list");
-      if (!action || !action.when(ctx)) return;
+      if (!action || !permits(action, ctx)) return;
       event.preventDefault();
       action.run(ctx);
     };

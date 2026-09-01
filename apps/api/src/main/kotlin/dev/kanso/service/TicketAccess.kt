@@ -14,13 +14,21 @@ import java.util.UUID
  * A service of its own rather than a method on [TicketService], because
  * [ScheduleService] asks the same question and a mutual dependency between the two
  * would be the wrong way to share three rules. [TimelineService] asks it too, in bulk.
+ *
+ * There are two gates here and they are asked in this order: the seat, then the team. A
+ * `VIEWER` fails the first whatever the second would have said, and the sentence they are
+ * given says so — see [requireSeatThatWrites]. Everything downstream of this file inherits
+ * that for free: comments, labels, cycles, saved views, bulk edits, dependencies, triage,
+ * publication, doc folders, pages and blocks all reach a write through [require] or
+ * [requireTeam], so none of them needed a clause of their own.
  */
 @Service
 class TicketAccess(private val teams: TeamRepository) {
 
 	@Transactional(readOnly = true)
 	fun mayEdit(actor: User, ticket: Ticket): Boolean =
-		ticket.teamId?.let { mayEditTeam(actor, it) } ?: mayEditDraft(actor, ticket)
+		actor.instanceRole.mayWrite &&
+			(ticket.teamId?.let { mayEditTeam(actor, it) } ?: mayEditDraft(actor, ticket))
 
 	/**
 	 * A ticket outside every team is outside the only boundary this product has.
@@ -50,12 +58,18 @@ class TicketAccess(private val teams: TeamRepository) {
 	 * only editing it — and this does not change that. It answers for the one case the team
 	 * rule cannot: a draft is private to its author, so it is the only kind of ticket a
 	 * reader can be refused.
+	 *
+	 * A read-only seat changes nothing here, which is the point of it: it delegates to
+	 * [mayEditDraft] rather than to [mayEdit] precisely so the write rule cannot leak into
+	 * the read one. A member demoted to `VIEWER` keeps seeing the drafts they wrote — they
+	 * simply stop being able to change them.
 	 */
 	@Transactional(readOnly = true)
 	fun mayRead(actor: User, ticket: Ticket): Boolean = ticket.teamId != null || mayEditDraft(actor, ticket)
 
 	@Transactional(readOnly = true)
 	fun require(actor: User, ticket: Ticket) {
+		requireSeatThatWrites(actor)
 		if (mayEdit(actor, ticket)) return
 		val teamId = ticket.teamId
 			?: throw AccessDeniedException("That ticket belongs to no team, and you did not write it")
@@ -65,8 +79,28 @@ class TicketAccess(private val teams: TeamRepository) {
 	/** The destination side of a team move, which has no ticket row of its own yet. */
 	@Transactional(readOnly = true)
 	fun requireTeam(actor: User, teamId: UUID) {
+		requireSeatThatWrites(actor)
 		if (mayEditTeam(actor, teamId)) return
 		throw AccessDeniedException("${nameOf(teamId)} is not one of your teams")
+	}
+
+	/**
+	 * Said before the team rule, and said differently, because it is a different refusal.
+	 *
+	 * "Design is not one of your teams" is a true sentence to tell a viewer and a useless
+	 * one: it invites them to ask to be added to Design, which would change nothing. The
+	 * seat is the reason, so the seat is what the message names — and it names it *first*,
+	 * so a viewer who happens to be in the team is told the same thing as one who is not.
+	 *
+	 * This is the deep half of the read-only seat. `ReadOnlySeat` turns HTTP writes away at
+	 * the door and catches endpoints this file has never heard of; this catches the callers
+	 * that never touch HTTP — an MCP tool, the importer, a scheduled sweep — and it is what
+	 * makes a viewer's agent refuse without a line of MCP-specific code, since every
+	 * writing tool reaches a service that reaches here.
+	 */
+	private fun requireSeatThatWrites(actor: User) {
+		if (actor.instanceRole.mayWrite) return
+		throw AccessDeniedException(READS_NOT_WRITES)
 	}
 
 	/**
@@ -81,6 +115,9 @@ class TicketAccess(private val teams: TeamRepository) {
 	@Transactional(readOnly = true)
 	fun editableTeams(actor: User, teamIds: Set<UUID>): Set<UUID> {
 		if (teamIds.isEmpty()) return emptySet()
+		// Before the admin shortcut and before the queries: a viewer edits no team, so the
+		// timeline draws every bar as fixed and asks the database nothing to find that out.
+		if (!actor.instanceRole.mayWrite) return emptySet()
 		if (actor.instanceRole.canConfigureInstance) return teamIds
 		val mine = teams.teamIdsFor(actor.id).toSet()
 		val chains = teamIds.associateWith { teams.ancestorIds(it) }
@@ -90,6 +127,7 @@ class TicketAccess(private val teams: TeamRepository) {
 	}
 
 	private fun mayEditTeam(actor: User, teamId: UUID): Boolean {
+		if (!actor.instanceRole.mayWrite) return false
 		if (actor.instanceRole.canConfigureInstance) return true
 		val ancestors = teams.ancestorIds(teamId)
 		val withMembers = teams.teamsWithMembers(ancestors + teamId)
@@ -132,4 +170,16 @@ class TicketAccess(private val teams: TeamRepository) {
 	}
 
 	private fun nameOf(teamId: UUID): String = teams.findById(teamId)?.name ?: "That team"
+
+	companion object {
+		/**
+		 * What a read-only seat is told, wherever it is turned away.
+		 *
+		 * One sentence and one constant, read by both doors — this file for the domain and
+		 * `ReadOnlySeat` for HTTP — because a member refused by one and a member refused by
+		 * the other are the same member for the same reason, and two sentences would be the
+		 * first visible symptom of two rules.
+		 */
+		const val READS_NOT_WRITES = "Your seat on this instance reads; it does not write"
+	}
 }

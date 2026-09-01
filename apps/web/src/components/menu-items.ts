@@ -1,4 +1,4 @@
-import { actionById, hintOf, type ActionContext } from "@/lib/actions";
+import { actionById, hintOf, permits, type ActionContext } from "@/lib/actions";
 import { isMac } from "@/lib/platform";
 import type { MenuItem } from "./menu";
 
@@ -20,7 +20,7 @@ export const DESTRUCTIVE: ReadonlySet<string> = new Set([
 export function menuItems(ctx: ActionContext, ids: string[]): MenuItem[] {
   return ids
     .map((id) => actionById(id))
-    .filter((action) => action.when(ctx))
+    .filter((action) => permits(action, ctx))
     .map((action) => ({
       id: action.id,
       label: action.label,

@@ -21,6 +21,7 @@ import {
   type SetupState,
 } from "@/lib/api";
 import { useMe } from "@/lib/queries";
+import { canConfigure as configures } from "@/lib/seat";
 import { applyPreferences } from "@/lib/theme";
 
 /**
@@ -110,7 +111,7 @@ function Wizard({ state, me }: { state: SetupState; me?: Me }) {
     onSuccess: (next) => queryClient.setQueryData(setupKeys.state, next),
   });
 
-  const canCompleteInstance = me ? me.user.instanceRole !== "member" : false;
+  const canCompleteInstance = configures(me?.user.instanceRole);
 
   const advance = useCallback(() => {
     if (index < plan.length - 1) {
@@ -190,7 +191,7 @@ function Wizard({ state, me }: { state: SetupState; me?: Me }) {
       state={state}
       me={me}
       preferences={preferences}
-      canInvite={me ? me.user.instanceRole !== "member" : false}
+      canInvite={configures(me?.user.instanceRole)}
       onBack={() => setIndex(plan.length - 1)}
     />
   );

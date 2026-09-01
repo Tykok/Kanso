@@ -119,6 +119,7 @@ const zoomBy = (delta: number) => (ctx: ActionContext) => {
 export const coreActions: readonly Action[] = [
   {
     id: "ticket.create",
+    writes: true,
     label: "New ticket",
     shortcut: "c",
     group: "ticket",
@@ -139,6 +140,7 @@ export const coreActions: readonly Action[] = [
   // armed, so the keyboard would go dead until Escape.
   {
     id: "ticket.rename",
+    writes: true,
     label: "Rename ticket",
     shortcut: "e",
     mode: "list",
@@ -148,6 +150,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.archive",
+    writes: true,
     label: "Archive / unarchive ticket",
     shortcut: "x",
     group: "ticket",
@@ -156,6 +159,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.delete",
+    writes: true,
     label: "Delete ticket",
     group: "ticket",
     when: hasSelection,
@@ -182,6 +186,7 @@ export const coreActions: readonly Action[] = [
   // is a string the wire cares about and the field type alone would not spell out.
   {
     id: "ticket.status.backlog",
+    writes: true,
     label: "Set status: Backlog",
     shortcut: "1",
     group: "ticket",
@@ -193,6 +198,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.status.todo",
+    writes: true,
     label: "Set status: Todo",
     shortcut: "2",
     group: "ticket",
@@ -204,6 +210,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.status.in_progress",
+    writes: true,
     label: "Set status: In progress",
     shortcut: "3",
     group: "ticket",
@@ -215,6 +222,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.status.in_review",
+    writes: true,
     label: "Set status: In review",
     shortcut: "4",
     group: "ticket",
@@ -226,6 +234,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.status.done",
+    writes: true,
     label: "Set status: Done",
     shortcut: "5",
     group: "ticket",
@@ -237,6 +246,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.status.canceled",
+    writes: true,
     label: "Set status: Canceled",
     shortcut: "6",
     group: "ticket",
@@ -249,6 +259,7 @@ export const coreActions: readonly Action[] = [
 
   {
     id: "ticket.priority.none",
+    writes: true,
     label: "Set priority: None",
     group: "ticket",
     when: hasSelection,
@@ -259,6 +270,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.priority.low",
+    writes: true,
     label: "Set priority: Low",
     group: "ticket",
     when: hasSelection,
@@ -269,6 +281,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.priority.medium",
+    writes: true,
     label: "Set priority: Medium",
     group: "ticket",
     when: hasSelection,
@@ -279,6 +292,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.priority.high",
+    writes: true,
     label: "Set priority: High",
     group: "ticket",
     when: hasSelection,
@@ -289,6 +303,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "ticket.priority.urgent",
+    writes: true,
     label: "Set priority: Urgent",
     group: "ticket",
     when: hasSelection,
@@ -300,6 +315,7 @@ export const coreActions: readonly Action[] = [
 
   {
     id: "team.create",
+    writes: true,
     label: "New team",
     group: "team",
     when: (ctx) => ctx.canConfigure,
@@ -311,6 +327,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "team.rename",
+    writes: true,
     label: "Rename team",
     group: "team",
     when: (ctx) => ctx.canConfigure && ctx.scope.kind === "team",
@@ -318,6 +335,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "team.archive",
+    writes: true,
     label: "Archive team",
     group: "team",
     when: (ctx) => ctx.canConfigure && scopedTeam(ctx)?.archived === false,
@@ -331,6 +349,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "team.unarchive",
+    writes: true,
     label: "Unarchive team",
     group: "team",
     when: (ctx) => ctx.canConfigure && scopedTeam(ctx)?.archived === true,
@@ -338,6 +357,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "team.delete",
+    writes: true,
     label: "Delete team",
     group: "team",
     when: (ctx) => ctx.canConfigure && ctx.scope.kind === "team",
@@ -352,6 +372,7 @@ export const coreActions: readonly Action[] = [
 
   {
     id: "project.create",
+    writes: true,
     label: "New project",
     group: "project",
     when: () => true,
@@ -363,6 +384,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "project.edit",
+    writes: true,
     label: "Edit project",
     group: "project",
     when: (ctx) => ctx.scope.kind === "project",
@@ -370,6 +392,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "project.archive",
+    writes: true,
     label: "Archive project",
     group: "project",
     when: (ctx) => ctx.canConfigure && scopedProject(ctx)?.archived === false,
@@ -383,6 +406,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "project.unarchive",
+    writes: true,
     label: "Unarchive project",
     group: "project",
     when: (ctx) => ctx.canConfigure && scopedProject(ctx)?.archived === true,
@@ -390,6 +414,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "project.delete",
+    writes: true,
     label: "Delete project",
     group: "project",
     when: (ctx) => ctx.canConfigure && ctx.scope.kind === "project",
@@ -431,6 +456,7 @@ export const coreActions: readonly Action[] = [
    */
   {
     id: "timeline.shiftEarlier",
+    writes: true,
     label: "Move bar earlier",
     shortcut: "h",
     mode: "timeline",
@@ -441,6 +467,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.shiftLater",
+    writes: true,
     label: "Move bar later",
     shortcut: "l",
     mode: "timeline",
@@ -451,6 +478,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.shrinkEnd",
+    writes: true,
     label: "Pull the end in",
     shortcut: "H",
     mode: "timeline",
@@ -460,6 +488,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.growEnd",
+    writes: true,
     label: "Push the end out",
     shortcut: "L",
     mode: "timeline",
@@ -469,6 +498,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.schedule",
+    writes: true,
     label: "Schedule this ticket",
     shortcut: "p",
     mode: "timeline",
@@ -484,6 +514,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.unschedule",
+    writes: true,
     label: "Send back to the tray",
     shortcut: "u",
     mode: "timeline",
@@ -523,6 +554,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.link",
+    writes: true,
     label: "Add a dependency",
     shortcut: "d",
     mode: "timeline",
@@ -532,6 +564,7 @@ export const coreActions: readonly Action[] = [
   },
   {
     id: "timeline.unlink",
+    writes: true,
     label: "Remove a dependency",
     // `D`, the `event.key` of Shift+d, so `d` and its inverse are one keystroke apart.
     shortcut: "D",

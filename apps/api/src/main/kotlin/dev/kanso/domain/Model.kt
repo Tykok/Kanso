@@ -235,11 +235,28 @@ data class Team(
 /**
  * Who may configure the instance itself — distinct from [MemberRole], which is
  * about belonging to a team. The owner is whoever completed the first-run setup.
+ *
+ * [VIEWER] is the free seat: it reads everything a member of the same teams reads and
+ * writes nothing. It is a fourth value on this axis rather than a third axis, because
+ * "may this person change the instance" and "may this person change anything at all" are
+ * the same question asked at two heights, and a `read_only BOOLEAN` beside this enum
+ * would be a second thing to keep in step with it.
  */
 enum class InstanceRole(override val wire: String) : Wire {
-	OWNER("owner"), ADMIN("admin"), MEMBER("member");
+	OWNER("owner"), ADMIN("admin"), MEMBER("member"), VIEWER("viewer");
 
 	val canConfigureInstance: Boolean get() = this == OWNER || this == ADMIN
+
+	/**
+	 * **The whole of the read-only seat, in one line.**
+	 *
+	 * Everything that refuses a viewer reads this property and nothing else: `TicketAccess`
+	 * for the domain, `ReadOnlySeat` for the HTTP surface. A second spelling of it anywhere
+	 * — a role list, a `!= VIEWER` written out longhand, an MCP-only rule — is a second
+	 * answer to a question that has one, and the two would eventually disagree about
+	 * whatever value gets added next.
+	 */
+	val mayWrite: Boolean get() = this != VIEWER
 
 	companion object {
 		fun from(raw: String): InstanceRole = parse(entries.toTypedArray(), raw)
