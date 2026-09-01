@@ -41,6 +41,53 @@ class OAuthSchemaTest : PostgresTest() {
 		)
 	}
 
+	/**
+	 * The column and the only value that can reach it have to name the same thing.
+	 *
+	 * `V16` pointed this key at `oauth2_registered_client(id)` — the library's surrogate —
+	 * while `McpBearerFilter` puts the public `client_id` on the principal, so the one
+	 * value a service holds would have failed the constraint on insert. Neither
+	 * `AgentRightsTest`'s tripwire nor anything else could catch that, because nothing
+	 * writes the column yet: this is the assertion that makes plan two's first provenance
+	 * write possible rather than a discovery.
+	 */
+	@Test
+	fun `via_client_id points at the client id a service actually holds`() {
+		val target = jdbc.sql(
+			"""
+			SELECT a.attname
+			  FROM pg_constraint c
+			  JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = c.confkey[1]
+			 WHERE c.conname = 'activity_via_client_id_fkey'
+			""".trimIndent()
+		).query(String::class.java).single()
+		assertEquals(
+			"client_id",
+			target,
+			"the surrogate id never leaves the library's own table, so a key on it cannot be written",
+		)
+	}
+
+	/**
+	 * The index that makes the key above legal. Not a widening of the library's copied
+	 * schema but its own precondition: `findByClientId` takes a single result, so a
+	 * duplicate is already a runtime failure one layer down.
+	 */
+	@Test
+	fun `client_id is unique, which is what the library assumed and the key requires`() {
+		val unique = jdbc.sql(
+			"""
+			SELECT count(*) FROM pg_index i
+			  JOIN pg_class t ON t.oid = i.indrelid
+			  JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (i.indkey)
+			 WHERE t.relname = 'oauth2_registered_client'
+			   AND a.attname = 'client_id'
+			   AND i.indisunique
+			""".trimIndent()
+		).query(Int::class.java).single()
+		assertEquals(1, unique, "two clients sharing a client_id break the library before they break us")
+	}
+
 	@Test
 	fun `via_client_id is TEXT, because the library chooses its own client id type`() {
 		val type = jdbc.sql(
