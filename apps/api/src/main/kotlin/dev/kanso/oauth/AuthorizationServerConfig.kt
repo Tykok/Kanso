@@ -1,5 +1,7 @@
 package dev.kanso.oauth
 
+import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.Ordered
@@ -33,12 +35,38 @@ import org.springframework.security.web.authentication.preauth.AbstractPreAuthen
  * it registers its client in code. So without this bean the context does not start, and
  * that is the real reason this task cannot be split from the ones that follow it.
  */
+/**
+ * Said once, in one place, because it is said in three: a startup log, the `/api/mcp`
+ * refusal, and the settings screen.
+ */
+const val DEV_MODE_REFUSAL: String =
+	"Kanso is running with KANSO_AUTH_MODE=dev, where identity comes from an unverified " +
+		"header. Connecting an agent is disabled: an authorisation server behind that would " +
+		"issue durable tokens to anyone who can reach it. Switch to oidc to enable it."
+
 @Configuration
 class AuthorizationServerConfig {
 
+	/**
+	 * Absent in dev mode, which is the whole of the refusal: with no chain there is no
+	 * `/oauth2/authorize` and no `/oauth2/token`, so there is nothing to reach rather
+	 * than something that says no.
+	 *
+	 * The gate is on this bean and not on the class. Gating the configuration would take
+	 * `OAuth2AuthorizationService` with it, and `McpBearerFilter` needs that bean present
+	 * in order to look a token up and reject it — a refusal path that cannot be
+	 * constructed is not a refusal path.
+	 *
+	 * An expression rather than `havingValue = "oidc"`, because that comparison is
+	 * literal: `KANSO_AUTH_MODE=OIDC` would leave the door closed and `/api/mcp` would
+	 * then explain that the instance is in dev mode, which would be false.
+	 * `Auth.effectiveMode` lowercases before it reads; so does this.
+	 */
 	@Bean
 	@Order(Ordered.HIGHEST_PRECEDENCE)
+	@ConditionalOnExpression("!'\${kanso.auth.mode:oidc}'.equalsIgnoreCase('dev')")
 	fun authorizationServerChain(http: HttpSecurity): SecurityFilterChain {
+		LoggerFactory.getLogger(javaClass).info("Authorisation server enabled — agents may connect by consent")
 		val configurer = OAuth2AuthorizationServerConfigurer()
 		http
 			.securityMatcher(configurer.endpointsMatcher)
