@@ -24,6 +24,8 @@ import org.springframework.security.oauth2.server.authorization.settings.ClientS
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -125,6 +127,36 @@ class ConsentControllerTest : PostgresTest() {
 		assertTrue(location.startsWith(props.webOrigin), "login lives in the app, not on the API")
 		assertTrue(location.contains("next="), "dropping the request lands them on an empty screen")
 		assertTrue(location.contains("consent"), "the round trip comes back to this page")
+	}
+
+	/**
+	 * The password half of the round trip works because `apps/web` still holds the `next`
+	 * in its own URL. The provider half does not: clicking Google leaves the app, and what
+	 * comes back to the API is a callback that has never heard of the consent page. The
+	 * session is the one thing both halves share — the consent page and `oauth2Login` are
+	 * served from the same origin, so the cookie set here comes back with the callback.
+	 */
+	@Test
+	fun `the way back is stashed in the session, so a provider round trip can find it`() {
+		register(clientId = "claude-code", name = "Claude Code")
+		SecurityContextHolder.clearContext()
+
+		val location = controller
+			.consent(clientId = "claude-code", scope = "kanso:read", state = "s")
+			.headers.location!!.toString()
+
+		val session = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes)
+			.request.getSession(false)
+		val stashed = session?.getAttribute(RETURN_URL_ATTRIBUTE) as? String
+		assertEquals(
+			URLDecoder.decode(location.substringAfter("next="), StandardCharsets.UTF_8),
+			stashed,
+			"the two halves of the round trip must agree on where back is",
+		)
+		assertTrue(
+			stashed!!.startsWith("http://kanso.example.test:8080$CONSENT_PAGE"),
+			"and it is this page on the API's own origin, not a route in the app",
+		)
 	}
 
 	/**

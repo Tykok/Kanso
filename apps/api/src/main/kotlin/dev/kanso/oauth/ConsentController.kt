@@ -3,6 +3,7 @@ package dev.kanso.oauth
 import dev.kanso.auth.CurrentUser
 import dev.kanso.config.KansoProperties
 import dev.kanso.service.BadRequestException
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -11,9 +12,10 @@ import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseBody
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 import java.net.URI
-import java.net.URISyntaxException
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -79,10 +81,28 @@ class ConsentController(
 	 * lesson, where the missing `encode()` produced an illegal URI.
 	 */
 	private fun signIn(clientId: String, scope: String, state: String): ResponseEntity<String> {
-		val next = URLEncoder.encode(returnUrl(clientId, scope, state), StandardCharsets.UTF_8)
+		val back = returnUrl(clientId, scope, state)
+
+		// Said twice, because the two ways back are not the same way. `next` is for the
+		// member who types a password: they return through `apps/web`, which still holds
+		// it. The session attribute is for the member who clicks a provider button: that
+		// round trip leaves the app and comes back to `/login/oauth2/code/{provider}` on
+		// the API, where nothing in the URL remembers this page. `true` creates the
+		// session on purpose — there is none yet, and the cookie it sets is the only
+		// thread that survives a trip through Google.
+		currentRequest().getSession(true).setAttribute(RETURN_URL_ATTRIBUTE, back)
+
+		val next = URLEncoder.encode(back, StandardCharsets.UTF_8)
 		val target = "${props.webOrigin.trimEnd('/')}/login?next=$next"
 		return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(target)).build()
 	}
+
+	/**
+	 * The same request `ServletUriComponentsBuilder.fromCurrentContextPath()` reads, asked
+	 * for directly because a session is not a URL component.
+	 */
+	private fun currentRequest(): HttpServletRequest =
+		(RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
 
 	/**
 	 * This page's own URL — **rebuilt** from the three parameters it declares, never
@@ -109,18 +129,19 @@ class ConsentController(
 			.encode()
 			.toUriString()
 
-		val uri = try {
-			URI(url)
-		} catch (_: URISyntaxException) {
+		// `ReturnUrl` rather than a second check written here: the same string is read
+		// back out of the session by `ReturnUrlSuccessHandler` after a provider round
+		// trip, and two checks of one value are two chances to disagree. Origin against
+		// itself is the tautology the paragraph above admits to; the path is not.
+		val origin = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString()
+		val uri = ReturnUrl.parse(url, origin)
+		if (uri == null || uri.path != CONSENT_PAGE) {
 			throw BadRequestException("This instance cannot build a usable return address for the consent page")
 		}
-		val refusal = uri.scheme?.lowercase() !in HTTP_SCHEMES || uri.rawUserInfo != null || uri.path != CONSENT_PAGE
-		if (refusal) throw BadRequestException("This instance cannot build a usable return address for the consent page")
 		return url
 	}
 
 	private companion object {
 		val WHITESPACE = Regex("\\s+")
-		val HTTP_SCHEMES = setOf("http", "https")
 	}
 }

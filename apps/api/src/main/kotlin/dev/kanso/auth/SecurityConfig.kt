@@ -4,6 +4,7 @@ import dev.kanso.config.KansoProperties
 import dev.kanso.mcp.McpBearerFilter
 import dev.kanso.oauth.CONSENT_PAGE
 import dev.kanso.oauth.OAuthRoutes
+import dev.kanso.oauth.ReturnUrlSuccessHandler
 import dev.kanso.publik.PublicRoutes
 import dev.kanso.repo.UserRepository
 import org.slf4j.LoggerFactory
@@ -21,7 +22,6 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
-import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler
 
@@ -123,7 +123,7 @@ class SecurityConfig(
 					.userInfoEndpoint { endpoint ->
 						endpoint.oidcUserService(oidcUserService).userService(oauth2UserService)
 					}
-					.successHandler(SimpleUrlAuthenticationSuccessHandler(props.webOrigin))
+					.successHandler(ReturnUrlSuccessHandler(props.webOrigin))
 					.failureHandler(SimpleUrlAuthenticationFailureHandler("${props.webOrigin}/?login_error=1"))
 			}
 
