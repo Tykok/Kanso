@@ -5,6 +5,7 @@ import {
   findTicket,
   PATCH_LIMIT,
   RealtimeCache,
+  resumeAfterOutage,
   topicsFor,
   writeTickets,
   type CacheEntry,
@@ -25,6 +26,7 @@ function fakeCache(seed: CacheEntry[] = []) {
   const rows = new Map(seed.map((entry) => [JSON.stringify(entry.key), entry]));
   const invalidated: string[] = [];
   const writes: string[] = [];
+  let swept = 0;
 
   const cache: EventCache = {
     entries: (segment) => [...rows.values()].filter((entry) => entry.key[0] === segment),
@@ -33,6 +35,7 @@ function fakeCache(seed: CacheEntry[] = []) {
       rows.set(JSON.stringify(key), { key, data });
     },
     invalidate: (key) => void invalidated.push(JSON.stringify(key)),
+    invalidateAll: () => void (swept += 1),
   };
 
   return {
@@ -41,6 +44,8 @@ function fakeCache(seed: CacheEntry[] = []) {
     writes,
     read: <T>(key: readonly unknown[]) => rows.get(JSON.stringify(key))?.data as T | undefined,
     was: (key: readonly unknown[]) => invalidated.includes(JSON.stringify(key)),
+    /** How many times the whole cache was swept — what a reconnect does. */
+    sweeps: () => swept,
   };
 }
 
@@ -467,5 +472,31 @@ describe("what a screen subscribes to", () => {
 
   it("stays global until the team tree has loaded, rather than going deaf", () => {
     expect(topicsFor({ kind: "team", id: "team-a" }, "list", [])).toContain("/topic/tickets");
+  });
+
+});
+
+describe("coming back from an outage", () => {
+  /** A ledger with nothing in flight — the common case, and the one that runs at once. */
+  const settled = { whenIdle: (task: () => void) => task() };
+
+  it("sweeps the whole cache, because nothing says what was missed", () => {
+    const store = fakeCache();
+
+    resumeAfterOutage(store.cache, settled);
+
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("holds the sweep while a guess of this tab's is still in flight", () => {
+    const store = fakeCache();
+    let release = () => {};
+    const busy = { whenIdle: (task: () => void) => void (release = task) };
+
+    resumeAfterOutage(store.cache, busy);
+    expect(store.sweeps()).toBe(0);
+
+    release();
+    expect(store.sweeps()).toBe(1);
   });
 });

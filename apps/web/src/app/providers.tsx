@@ -7,7 +7,12 @@ import { api } from "@/lib/api";
 import { ticketGuesses } from "@/lib/optimistic";
 import { useMe, useTeams } from "@/lib/queries";
 import { connectRealtime, type RealtimeConnection } from "@/lib/realtime";
-import { queryCache, RealtimeCache, topicsFor } from "@/lib/realtime-events";
+import {
+  queryCache,
+  RealtimeCache,
+  resumeAfterOutage,
+  topicsFor,
+} from "@/lib/realtime-events";
 import { applyPreferences, cachePreferences, readCachedPreferences } from "@/lib/theme";
 import { useUi } from "@/store/ui";
 
@@ -46,10 +51,14 @@ function Realtime() {
   const teams = useTeams().data;
   const topics = useMemo(() => topicsFor(scope, view, teams ?? []), [scope, view, teams]);
 
+  // Hoisted out of the applier because the resume needs the same one: a sweep and a patch
+  // that disagreed about which cache they were writing into would be two caches.
+  const cache = useMemo(() => queryCache(queryClient), [queryClient]);
+
   const applier = useMemo(
     () =>
       new RealtimeCache({
-        cache: queryCache(queryClient),
+        cache,
         // A row this reader may not read is a refusal, not a failure: the applier reads
         // "no row" and widens, which is what the whole-key invalidation always did.
         fetchTicket: (id) => api.ticket(id).catch(() => undefined),
@@ -59,7 +68,7 @@ function Realtime() {
         // told about yet, and the change would visibly un-happen mid-request.
         overlay: ticketGuesses.fold,
       }),
-    [queryClient],
+    [cache],
   );
 
   // Neither effect assumes it runs first. The socket subscribes to the last topics the
@@ -70,7 +79,13 @@ function Realtime() {
   const wanted = useRef<readonly string[]>([]);
 
   useEffect(() => {
-    const socket = connectRealtime((event) => applier.receive(event));
+    const socket = connectRealtime({
+      onEvent: (event) => applier.receive(event),
+      // The events of an outage are gone — `pg_notify` keeps no copy — so what the socket
+      // can report on coming back is only that there was a gap. `resumeAfterOutage` turns
+      // that into the one refetch that can be honest about it.
+      onResume: () => resumeAfterOutage(cache, ticketGuesses),
+    });
     connection.current = socket;
     socket.subscribeTo(wanted.current);
     return () => {
@@ -78,7 +93,7 @@ function Realtime() {
       socket.close();
       applier.cancel();
     };
-  }, [applier]);
+  }, [applier, cache]);
 
   useEffect(() => {
     wanted.current = topics;

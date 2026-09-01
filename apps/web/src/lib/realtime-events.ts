@@ -96,6 +96,8 @@ export type EventCache = {
   entries(segment: string): CacheEntry[];
   set(key: readonly unknown[], data: unknown): void;
   invalidate(key: readonly unknown[]): void;
+  /** Every key at once, stale. The one thing an outage can honestly ask for. */
+  invalidateAll(): void;
 };
 
 export type CacheTarget = {
@@ -194,6 +196,37 @@ async function applyTickets(target: CacheTarget, events: readonly KansoEvent[]):
   }
 
   writeTickets(cache, { changed: fetched, gone, overlay: target.overlay });
+}
+
+// --- coming back from an outage ----------------------------------------------
+
+/** Something that can hold a task until no guess of this tab's is in flight. */
+export type IdleLedger = { whenIdle(task: () => void): void };
+
+/**
+ * What a socket that was away has to say: nothing, precisely — and that is the problem.
+ *
+ * An event is a notification, not a record. `pg_notify` hands it to whoever is listening
+ * at that instant and keeps no copy, so a client that was disconnected cannot ask what it
+ * missed and cannot tell a quiet minute from a lost one. This used to heal by accident:
+ * every event invalidated whole keys, so the next one to arrive swept up whatever had
+ * gone by unseen. Patching row by row removed the accident that was doing the repairing,
+ * which is how a narrower cache made a disconnection *worse* — the screen now stays
+ * durably wrong, and nothing on it says so.
+ *
+ * So the repair is asked for rather than stumbled into: once per outage, not once per
+ * event, which is the whole of what makes a hammer this wide affordable.
+ *
+ * Held until the ledger is idle, because a refetch writes the server's rows into the
+ * cache directly — nowhere near [writeTickets], and so nowhere near [TicketWrite.overlay],
+ * the seam that folds a live guess back over the server's copy. Sweeping mid-mutation
+ * would do exactly what the overlay exists to prevent: un-draw a change the server has
+ * not been told about yet, then re-draw it when the response lands. Queued rather than
+ * skipped — the answer to "not now" is "in a moment", and a dropped refresh leaves the
+ * screen wrong for as long as the tab stays open.
+ */
+export function resumeAfterOutage(cache: EventCache, guesses: IdleLedger): void {
+  guesses.whenIdle(() => cache.invalidateAll());
 }
 
 // --- writing rows into the cache ---------------------------------------------
@@ -492,5 +525,8 @@ export function queryCache(client: QueryClient): EventCache {
         .map((query) => ({ key: query.queryKey, data: query.state.data })),
     set: (key, data) => void client.setQueryData(key, data),
     invalidate: (key) => void client.invalidateQueries({ queryKey: key }),
+    // No filter is react-query's own "everything", and it refetches only what a screen
+    // is currently mounting — so the cost of the hammer is the visible screen, once.
+    invalidateAll: () => void client.invalidateQueries(),
   };
 }
