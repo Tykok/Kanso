@@ -1,10 +1,12 @@
 package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.oauth.OAuthRoutes
 import dev.kanso.publik.PublicRoutes
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -46,7 +48,13 @@ class SecurityConfig(
 
 
 
+	/**
+	 * Second, after the authorisation server's. It has no `securityMatcher` and so
+	 * answers everything the first chain did not claim — which is what it did before
+	 * there was a first chain, and the order annotation is what keeps that true.
+	 */
 	@Bean
+	@Order(2)
 	fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
 		http
 			.cors { }
@@ -74,6 +82,11 @@ class SecurityConfig(
 					// because a filter chain decides who asks, not what comes back.
 					.requestMatchers(HttpMethod.GET, *PublicRoutes.OPEN_GET).permitAll()
 					.requestMatchers(HttpMethod.POST, *PublicRoutes.OPEN_POST).permitAll()
+					// The OAuth flow's own open routes. A separate list from `PublicRoutes`
+					// because that file's guard asserts every pattern is under
+					// `/api/public/`, and that assertion is worth more than the reuse.
+					.requestMatchers(HttpMethod.GET, *OAuthRoutes.OPEN_GET).permitAll()
+					.requestMatchers(HttpMethod.POST, *OAuthRoutes.OPEN_POST).permitAll()
 					.anyRequest().authenticated()
 			}
 			// A 302 to Google is useless to a fetch() call; the SPA wants a 401 and
