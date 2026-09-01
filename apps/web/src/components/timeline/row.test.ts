@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineDependency, TimelineTicket } from "@/lib/api";
-import { canMoveTicket, canSelectTicket, isContextRow, overlapNotice, rowLabel } from "./row";
+import { canMoveTicket, canSelectTicket, isContextRow, laneOf, overlapNotice, rowLabel } from "./row";
 import type { Row } from "./view";
 
 /** A dependency edge, defaulting to the unbroken case so each test overrides only what it tests. */
@@ -133,5 +133,37 @@ describe("rowLabel", () => {
       ticket: ticket({ context: true, teamKey: "OPS", identifier: "OPS-9" }),
     };
     expect(rowLabel(row)).toBe("OPS · OPS-9");
+  });
+});
+
+describe("laneOf", () => {
+  const project: Row = { kind: "project", project: { id: "project-1", name: "Refonte" } };
+  const lane = (id: string): Row => ({ kind: "ticket", ticket: ticket({ id }) });
+
+  /**
+   * The same count `arrows.tsx` makes when it walks the rows for its anchors — a lane is
+   * a position in the row list, and the project headings between two tickets are lanes
+   * too. The two have to agree exactly: the chart positions a row at `lane × --row-h` and
+   * the arrow layer draws into `lane × --row-h`, so a lane counted differently in either
+   * place is an arrow that misses the bar it points at by a whole row.
+   */
+  it("counts the project headings between the tickets, as the arrow layer does", () => {
+    const rows = [project, lane("a"), lane("b"), project, lane("c")];
+    expect(laneOf(rows, "a")).toBe(1);
+    expect(laneOf(rows, "c")).toBe(4);
+  });
+
+  /** Off-screen is the whole point: a virtualised chart mounts no element for lane 600. */
+  it("answers for a lane far below the fold", () => {
+    const rows = Array.from({ length: 800 }, (_, at) => lane(`t${at}`));
+    expect(laneOf(rows, "t799")).toBe(799);
+  });
+
+  /** A project row is not somewhere the cursor can be — projects are not tickets. */
+  it("is -1 for a project, for an absent ticket, and for no ticket at all", () => {
+    const rows = [project, lane("a")];
+    expect(laneOf(rows, "project-1")).toBe(-1);
+    expect(laneOf(rows, "gone")).toBe(-1);
+    expect(laneOf(rows, undefined)).toBe(-1);
   });
 });
