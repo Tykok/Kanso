@@ -36,14 +36,28 @@ class AgentPrincipalFilter : OncePerRequestFilter() {
 		response: HttpServletResponse,
 		chain: FilterChain,
 	) {
-		val context = SecurityContextHolder.getContext()
-		val authentication = context.authentication
+		val authentication = SecurityContextHolder.getContext().authentication
 		val principal = authentication?.principal
 		if (principal is KansoAuthenticatedUser) {
-			context.authentication = UsernamePasswordAuthenticationToken(
-				principal.kansoUserId.toString(),
-				null,
-				authentication.authorities,
+			// A fresh context, set on the holder — never an assignment into the one already
+			// there. That object *is* the member's session:
+			// `HttpSessionSecurityContextRepository` hands back the stored instance rather
+			// than a copy, and `SecurityContextHolderFilter` neither copies it nor saves
+			// it. Writing through it therefore rewrites the session, and the member's next
+			// request to any Kanso endpoint arrives holding a bare `String` — authenticated
+			// enough for `anyRequest().authenticated()`, unreadable to `CurrentUser`, so
+			// every endpoint refuses including the Settings screen this grant is revoked
+			// from. A link to any path on this chain is a top-level navigation, so `Lax`
+			// sends the cookie: whoever clicked it would have been locked out looking
+			// signed in.
+			SecurityContextHolder.setContext(
+				SecurityContextHolder.createEmptyContext().apply {
+					this.authentication = UsernamePasswordAuthenticationToken(
+						principal.kansoUserId.toString(),
+						null,
+						authentication.authorities,
+					)
+				},
 			)
 		}
 		chain.doFilter(request, response)
