@@ -356,9 +356,17 @@ class TicketRepository(
 		TicketAssignees.select(TicketAssignees.userId).where { TicketAssignees.ticketId eq ticketId }
 			.map { it[TicketAssignees.userId] }
 
+	/**
+	 * Ordered by the column, which is what makes the head of each list mean something.
+	 * Grouping by assignee files a ticket with two owners under the first of them, and
+	 * unordered this was whichever row Postgres happened to hand back — so a ticket could
+	 * change group between two refetches of the same question. See
+	 * `TicketQueryRepository.firstAssignee`, which picks the same person with a `MIN`.
+	 */
 	fun assigneeIdsFor(ticketIds: Collection<UUID>): Map<UUID, List<UUID>> =
 		if (ticketIds.isEmpty()) emptyMap()
 		else TicketAssignees.selectAll().where { TicketAssignees.ticketId inList ticketIds }
+			.orderBy(TicketAssignees.userId)
 			.groupBy({ it[TicketAssignees.ticketId] }, { it[TicketAssignees.userId] })
 
 	fun setAssignees(ticketId: UUID, userIds: Collection<UUID>) {

@@ -11,7 +11,7 @@ import {
   VIEW_GROUP_BYS,
   VIEW_SORT_BYS,
   type SavedView,
-  type Ticket,
+  type TicketGroup,
   type ViewGroupBy,
   type ViewSortBy,
 } from "@/lib/api";
@@ -24,7 +24,7 @@ import {
   useSavedView,
   useSavedViews,
   useUsers,
-  useViewTickets,
+  useViewGroups,
 } from "@/lib/queries";
 import { useTeamLabels } from "@/lib/queries/social";
 import { useRowMetrics } from "@/lib/row-metrics";
@@ -35,7 +35,7 @@ import { BulkStrip } from "./bulk-strip";
 import type { ChipNames } from "./chips";
 import { FilterBar } from "./filter-bar";
 import { FilterComposer } from "./filter-composer";
-import { groupTickets } from "./grouping";
+import { nameGroups } from "./grouping";
 import { FavouriteStar } from "../favourites";
 import { OrganiseShell, useOrganiseTeam } from "./shell";
 import { ViewRail } from "./view-rail";
@@ -53,7 +53,16 @@ import { extend, toggle } from "./selection";
 export function SavedViewScreen({ id }: { id: string }) {
   const { team: resolved, teams } = useOrganiseTeam();
   const view = useSavedView(id);
-  const rows = useViewTickets(id);
+  /**
+   * The buckets, stacked and counted by the server.
+   *
+   * This screen used to fetch a flat page and bucket it here, which made every group
+   * header a count of the fetch rather than of the view: a view matching two thousand
+   * tickets drew `Todo · 29` where twenty-nine was how many of the two hundred rows it
+   * had been sent were todo. The rows below are the same rows — the flat page is this
+   * answer's `tickets` concatenated — so nothing else on the screen changes shape.
+   */
+  const rows = useViewGroups(id);
   /**
    * The view's own team, not the one the sidebar happens to be scoped to.
    *
@@ -95,10 +104,19 @@ export function SavedViewScreen({ id }: { id: string }) {
    */
   const { dialog, openDialog, close } = useUi();
 
-  const tickets = rows.data ?? [];
-  // Keyed on `rows.data`, not on `tickets`: the `?? []` makes a fresh array every render,
-  // and memoising against it would recompute every time and rebuild every callback below.
-  const ids = useMemo(() => (rows.data ?? []).map((ticket) => ticket.id), [rows.data]);
+  /**
+   * The page flattened back out, for everything that walks the list rather than draws it
+   * — the cursor, `⇧↑↓`, the empty state. It is the flat answer, in the order the server
+   * stacked it, so `j` still runs straight down the screen through the headers.
+   */
+  const tickets = useMemo(
+    () => (rows.data?.groups ?? []).flatMap((group) => group.tickets),
+    [rows.data],
+  );
+  // Keyed on `tickets`, which is already memoised on `rows.data`: the `?? []` above makes
+  // a fresh array every render, and memoising against that would recompute every time and
+  // rebuild every callback below.
+  const ids = useMemo(() => tickets.map((ticket) => ticket.id), [tickets]);
 
   const names = useMemo(
     () => ({
@@ -242,8 +260,8 @@ export function SavedViewScreen({ id }: { id: string }) {
         )}
 
         <Rows
-          tickets={tickets}
-          groupBy={view.data?.groupBy ?? "status"}
+          groups={rows.data?.groups ?? []}
+          groupBy={rows.data?.groupBy ?? view.data?.groupBy ?? "status"}
           names={names}
           selected={selected}
           cursor={cursor}
@@ -343,9 +361,9 @@ function Chips({
 }
 
 /**
- * The grouped list, virtualised over a **flattened index**: `groupTickets` answers with
- * groups, and `flatten` lays those out as one sequence in which a header is an entry like
- * any other.
+ * The grouped list, virtualised over a **flattened index**: the server answers with
+ * groups, `nameGroups` puts a reader's name on each, and `flatten` lays those out as one
+ * sequence in which a header is an entry like any other.
  *
  * The alternative — a virtualiser per group — was rejected. It needs a scroller per
  * group, and this screen's cursor walks the whole view: `j` off the bottom of `Todo` and
@@ -354,14 +372,14 @@ function Chips({
  * which is what it was before any of this.
  */
 function Rows({
-  tickets,
+  groups,
   groupBy,
   names,
   selected,
   cursor,
   onRow,
 }: {
-  tickets: Ticket[];
+  groups: TicketGroup[];
   groupBy: ViewGroupBy;
   names: { person: (id: string) => string; project: (id: string) => string };
   selected: string[];
@@ -373,8 +391,8 @@ function Rows({
   const chosen = new Set(selected);
 
   const flat = useMemo(
-    () => flatten(groupTickets(tickets, groupBy, names), (ticket) => ticket.id),
-    [tickets, groupBy, names],
+    () => flatten(nameGroups(groups, groupBy, names), (ticket) => ticket.id),
+    [groups, groupBy, names],
   );
 
   const virtualizer = useVirtualizer({

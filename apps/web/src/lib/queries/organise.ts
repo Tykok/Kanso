@@ -29,6 +29,7 @@ export const organiseKeys = {
   views: (teamId: string) => ["views", teamId] as const,
   view: (id: string) => ["views", "one", id] as const,
   viewTickets: (id: string) => ["views", "one", id, "tickets"] as const,
+  viewGroups: (id: string) => ["views", "one", id, "grouped"] as const,
   workload: (teamId: string, cycleId?: string) => ["workload", teamId, cycleId ?? ""] as const,
   servedFilters: ["servedFilters"] as const,
 };
@@ -150,6 +151,25 @@ export const useViewTickets = (id?: string) =>
   useQuery({
     queryKey: organiseKeys.viewTickets(id ?? ""),
     queryFn: () => organiseApi.viewTickets(id!),
+    enabled: Boolean(id),
+  });
+
+/**
+ * What screen 21 draws: the buckets, already stacked and already counted.
+ *
+ * It replaces `useViewTickets` on that screen rather than sitting beside it. Holding both
+ * would be two fetches of one question that can answer differently — a ticket edited
+ * between them lands in one and not the other — and the flat call stays only for the
+ * callers that want a plain list.
+ *
+ * The key is under the view's own family, so every mutation that already invalidates
+ * `views` refetches these counts too. A count that went stale would be worse than a stale
+ * row: a row is visibly out of date, a header is just a wrong number.
+ */
+export const useViewGroups = (id?: string) =>
+  useQuery({
+    queryKey: organiseKeys.viewGroups(id ?? ""),
+    queryFn: () => organiseApi.viewGroups(id!),
     enabled: Boolean(id),
   });
 

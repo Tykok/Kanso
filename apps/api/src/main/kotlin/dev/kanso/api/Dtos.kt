@@ -17,7 +17,10 @@ import dev.kanso.domain.User
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ProjectDetail
 import dev.kanso.service.TicketDetail
+import dev.kanso.service.TicketGroup
 import dev.kanso.service.TimelineView
+import dev.kanso.service.ViewGroupBy
+import dev.kanso.service.ViewSortBy
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.OffsetDateTime
@@ -331,6 +334,54 @@ data class TicketResponse(
 				updatedAt = t.updatedAt,
 			)
 		}
+	}
+}
+
+/**
+ * A grouped list on the wire: buckets, not a flat list the reader re-buckets.
+ *
+ * A flat answer was the other candidate and it is half a move. The reason to send groups
+ * is [TicketGroupResponse.count]: it is the count of the whole match, so a header can say
+ * `Todo · 29` while carrying twenty rows — which a flat page cannot express at all,
+ * because counting it can only ever count itself. It is also what makes paging *inside* a
+ * bucket possible later: the client already knows how many are missing and where.
+ *
+ * [total] is the sum of the buckets rather than a query of its own, so the number in the
+ * header and the numbers beside each group cannot disagree.
+ *
+ * No labels. `Todo`, `A. Okonkwo` and `Design system` are what a *screen* calls these
+ * keys, and the server has no screen — the web app resolves every one of those names
+ * today for its own chips. What the server owns is which buckets exist and how big they
+ * are.
+ */
+data class TicketGroupsResponse(
+	val groupBy: String,
+	val sortBy: String,
+	val total: Int,
+	val groups: List<TicketGroupResponse>,
+) {
+	companion object {
+		fun of(groupBy: ViewGroupBy, sortBy: ViewSortBy, groups: List<TicketGroup>) = TicketGroupsResponse(
+			groupBy = groupBy.wire,
+			sortBy = sortBy.wire,
+			total = groups.sumOf { it.count },
+			groups = groups.map(TicketGroupResponse::of),
+		)
+	}
+}
+
+/**
+ * One bucket. [count] is every row that matches, [tickets] only the ones this page
+ * reached — a bucket the page stopped short of comes back with its count and an empty
+ * list rather than being dropped, so a header can be drawn above rows still to load.
+ *
+ * [key] is the empty string for the rows that have none: nobody assigned, no project, and
+ * the single bucket `groupBy=none` answers with.
+ */
+data class TicketGroupResponse(val key: String, val count: Int, val tickets: List<TicketResponse>) {
+	companion object {
+		fun of(group: TicketGroup) =
+			TicketGroupResponse(group.key, group.count, group.tickets.map(TicketResponse::of))
 	}
 }
 
