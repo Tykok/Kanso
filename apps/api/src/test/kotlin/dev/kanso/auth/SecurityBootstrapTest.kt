@@ -27,12 +27,27 @@ import kotlin.test.assertTrue
 class SecurityBootstrapTest : PostgresTest() {
 
 	@Autowired lateinit var registrations: DynamicClientRegistrationRepository
-	@Autowired lateinit var chain: SecurityFilterChain
+
+	/**
+	 * Every chain, not "the" chain. `SecurityFilterChain` by type resolved to one bean
+	 * only because this suite runs in dev mode, where `authorizationServerChain` is
+	 * absent — so the autowire silently depended on the very thing `DevModeRefusalTest`
+	 * exists to assert, and would have failed to start the day somebody flipped the
+	 * profile. `dev.kanso.oauth.OidcChainWiringTest` is the other side of this.
+	 */
+	@Autowired lateinit var chains: List<SecurityFilterChain>
+
+	private val chain: SecurityFilterChain get() = chains.single()
 
 	@Test
 	fun `the context starts with no provider configured`() {
 		assertTrue(registrations.current().isEmpty(), "nothing is configured in the test profile")
 		assertNull(registrations.findByRegistrationId("google"))
+		assertEquals(
+			1,
+			chains.size,
+			"dev mode has no authorisation server, so Kanso's own chain is the only one built",
+		)
 		assertTrue(
 			chain.filters.any { it is OAuth2AuthorizationRequestRedirectFilter },
 			"oauth2Login is wired unconditionally, so the wizard can fill it in later",
