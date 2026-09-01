@@ -1,5 +1,6 @@
 package dev.kanso.oauth
 
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -97,6 +98,24 @@ class ReturnUrlTest {
 		assertNull(
 			ReturnUrl.parse("https://api.example.com/oauth/consent", "not a url"),
 			"an origin this function cannot parse must refuse everything absolute, not allow it",
+		)
+	}
+
+	/**
+	 * The number itself, because nothing else pins it upward.
+	 *
+	 * Every other assertion about the expiry is written *relative* to this constant —
+	 * `Instant.now().minus(RETURN_URL_TTL).minusSeconds(1)` and its mirror — so
+	 * `ofDays(365)` keeps the whole suite green while a way back into somebody's
+	 * authorisation lasts a year. It is a security bound, and a security bound nobody
+	 * states is a default.
+	 */
+	@Test
+	fun `the way back expires in minutes, and this is the assertion that says how many`() {
+		assertEquals(
+			Duration.ofMinutes(10),
+			RETURN_URL_TTL,
+			"long enough to sign in through a provider, short enough not to be somebody else's redirect",
 		)
 	}
 }

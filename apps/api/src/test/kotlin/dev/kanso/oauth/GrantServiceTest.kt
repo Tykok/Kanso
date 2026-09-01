@@ -144,8 +144,16 @@ class GrantServiceTest : PostgresTest() {
 		val listed = grants.list()
 
 		assertEquals(1, listed.size, "another member's grant is not a fact about this member's account")
-		assertEquals(ours.clientId, listed.single().clientId)
-		assertEquals("Claude Code", listed.single().clientName)
+		assertEquals(
+			ours.clientId,
+			listed.single().clientId,
+			"the public id is what a member matches against what `claude mcp add` told them",
+		)
+		assertEquals(
+			"Claude Code",
+			listed.single().clientName,
+			"and the name is the registration's own, because there is nowhere else it could come from",
+		)
 		assertEquals(
 			OAuthScopes.ALL.toSet(),
 			listed.single().scopes.toSet(),
