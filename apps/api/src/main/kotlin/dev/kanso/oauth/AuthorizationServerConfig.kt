@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.JdbcOperations
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationValidator
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
@@ -85,8 +87,35 @@ class AuthorizationServerConfig {
 		val configurer = OAuth2AuthorizationServerConfigurer()
 		http
 			.securityMatcher(configurer.endpointsMatcher)
-			.with(configurer) {
-				it.authorizationEndpoint { endpoint -> endpoint.consentPage(CONSENT_PAGE) }
+			.with(configurer) { server ->
+				server.authorizationEndpoint { endpoint ->
+					endpoint.consentPage(CONSENT_PAGE)
+					// RFC 9207. The library builds the redirect without `iss`; these two
+					// build it with one, on the granted response and on the refused one.
+					endpoint.authorizationResponseHandler(IssuerAppendingSuccessHandler())
+					endpoint.errorResponseHandler(IssuerAppendingFailureHandler())
+					// RFC 8707, first enforcement point. The provider is reached only
+					// here — `addAuthorizationCodeRequestAuthenticationValidator` is
+					// package-private, so replacing the validator on the provider is the
+					// supported way in.
+					endpoint.authenticationProviders { providers ->
+						providers.forEach { provider ->
+							if (provider is OAuth2AuthorizationCodeRequestAuthenticationProvider) {
+								// The library's *whole* default, not just its redirect-uri
+								// half. setAuthenticationValidator replaces rather than
+								// adds, so delegating to one part would silently drop
+								// scope validation — a client could then ask for a scope
+								// it was never registered for.
+								provider.setAuthenticationValidator(
+									ResourceValidator(OAuth2AuthorizationCodeRequestAuthenticationValidator()),
+								)
+							}
+						}
+					}
+				}
+				server.authorizationServerMetadataEndpoint { metadata ->
+					metadata.authorizationServerMetadataCustomizer(ISS_PARAMETER_ADVERTISED)
+				}
 			}
 			// Disabled for the same bounded reason `SecurityConfig` gives, and because
 			// `POST /oauth2/token` is a machine call carrying no cookie at all — there is
