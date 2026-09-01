@@ -6,8 +6,15 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
+import org.springframework.jdbc.core.JdbcOperations
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
+import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.preauth.AbstractPreAuthenticatedProcessingFilter
@@ -44,6 +51,14 @@ const val DEV_MODE_REFUSAL: String =
 		"header. Connecting an agent is disabled: an authorisation server behind that would " +
 		"issue durable tokens to anyone who can reach it. Switch to oidc to enable it."
 
+/**
+ * Where the library sends the browser to ask the question — a page served by the API
+ * itself, not by `apps/web`. The browser is already on the API origin when it reaches
+ * `/oauth2/authorize`, so the decision posts back same-origin with the session cookie
+ * attached, which a `SameSite=Lax` cookie will not do cross-site.
+ */
+const val CONSENT_PAGE: String = "/oauth/consent"
+
 @Configuration
 class AuthorizationServerConfig {
 
@@ -70,7 +85,9 @@ class AuthorizationServerConfig {
 		val configurer = OAuth2AuthorizationServerConfigurer()
 		http
 			.securityMatcher(configurer.endpointsMatcher)
-			.with(configurer) { }
+			.with(configurer) {
+				it.authorizationEndpoint { endpoint -> endpoint.consentPage(CONSENT_PAGE) }
+			}
 			// Disabled for the same bounded reason `SecurityConfig` gives, and because
 			// `POST /oauth2/token` is a machine call carrying no cookie at all — there is
 			// no ambient credential for a forged form to ride.
@@ -82,6 +99,31 @@ class AuthorizationServerConfig {
 			.addFilterBefore(AgentPrincipalFilter(), AbstractPreAuthenticatedProcessingFilter::class.java)
 		return http.build()
 	}
+
+	/**
+	 * Persisted, not in memory. A client that registered itself must survive a restart —
+	 * otherwise every deploy silently disconnects every agent, and the member's only
+	 * symptom is a tool that stopped working.
+	 *
+	 * These three are deliberately *outside* the dev-mode gate. They are inert with no
+	 * endpoint in front of them, and `McpBearerFilter` needs the authorisation service
+	 * present in order to look a token up and refuse it.
+	 */
+	@Bean
+	fun registeredClientRepository(jdbc: JdbcOperations): RegisteredClientRepository =
+		JdbcRegisteredClientRepository(jdbc)
+
+	@Bean
+	fun authorizationService(
+		jdbc: JdbcOperations,
+		clients: RegisteredClientRepository,
+	): OAuth2AuthorizationService = JdbcOAuth2AuthorizationService(jdbc, clients)
+
+	@Bean
+	fun authorizationConsentService(
+		jdbc: JdbcOperations,
+		clients: RegisteredClientRepository,
+	): OAuth2AuthorizationConsentService = JdbcOAuth2AuthorizationConsentService(jdbc, clients)
 
 	@Bean
 	fun authorizationServerSettings(): AuthorizationServerSettings =
