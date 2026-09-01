@@ -971,3 +971,117 @@ verified by reading `NoopNotionClient.enabled = false`.
   documented command — including the three in `e2e/README.md` that predate the import — and
   one line that is inert unless `NOTION_BASE_URL` names that host did not seem to earn a
   second compose file.
+
+---
+
+# Carried out of the branch that made Kanso an authorisation server
+
+Kanso now issues its own OAuth 2.1 grants so an agent can reach `/api/mcp` as the member
+who authorised it: dynamic client registration, PKCE, a consent screen the API serves
+itself, opaque tokens bound to this resource by RFC 8707, and a revoke button. Same rule
+as every block above: each item below was found by a review, judged not to block the
+merge, and left deliberately. The reasoning is here so the next person does not have to
+derive it again.
+
+## Worth a decision
+
+**Reuse of a spent refresh token does not revoke the grant.** This is the one MUST of the
+spec's seven that is unmet, and it costs more than it did when it was written down.
+`reuseRefreshTokens(false)` rotates: every refresh mints a new token and the old one stops
+working. What the OAuth 2.1 security BCP (§4.3.1) actually asks of a public client's
+refresh token is rotation **plus replay detection** — a spent token presented a second
+time should invalidate the whole chain, because a replay is the signature of a stolen
+token being used alongside the real client. `OAuth2RefreshTokenAuthenticationProvider`
+throws a plain `invalid_grant` and contains no call to
+`OAuth2Authorization.Builder.invalidate`; the code-replay path in
+`OAuth2AuthorizationCodeAuthenticationProvider` *does* invalidate and cascade, so the
+asymmetry is the library's and not a misreading. Confirmed on a running instance: a spent
+token was refused, and the live one it had been rotated into kept working afterwards.
+
+Two things make it matter now rather than later. `PublicClientRefresh` made refresh tokens
+exist at all on this branch — before it, the library refused a public client one, so there
+was nothing to replay. And a refresh token lives sixty days against an access token's one
+hour, so it is the credential worth stealing. Implementing it means a custom
+`AuthenticationProvider` for the refresh grant that recognises a token the authorisation no
+longer holds and revokes the row, which is a provider replacing one of the library's — the
+kind of thing to decide on purpose. The member-facing mitigation exists and is real:
+Settings → Agents revokes, and revocation deletes the authorisation rows, so a stolen
+refresh token dies with the next Revoke.
+
+**A public client cannot call `/oauth2/revoke`.** The same defect
+[PublicClientRefresh] fixes for the refresh grant applies to token revocation: none of the
+library's converters authenticates a credential-less client there either, so a client that
+wanted to hand its own token back is answered 401 with an empty body. Nothing in Kanso
+needs it — revocation is a member action on the Settings screen, and it deletes more than
+one token — and a well-behaved client shutting down cleanly is a nice thing to allow. The
+converter is already written and narrow; widening it to the revocation endpoint is a
+one-line matcher change plus its tests. Left out because the finding named the refresh
+grant, and a security surface widened past its finding is a surface nobody reviewed.
+
+**An anonymous browser at `/oauth2/authorize` gets a bare 401 with an empty body.** In
+7.1.0 the authorization endpoint filter is installed *after* `AuthorizationFilter`, so
+`anyRequest().authenticated()` on chain 1 refuses the request before the endpoint is
+reached, and the configurer's own `HttpStatusEntryPoint(UNAUTHORIZED)` answers it.
+Confirmed on a running instance: `HTTP/1.1 401`, `Content-Length: 0`, no
+`WWW-Authenticate`. `ConsentController` already handles the anonymous case properly — it
+mints a return address and sends the member to the login screen — but nothing ever reaches
+it, because `/oauth/consent` is only redirected to *after* `/oauth2/authorize` has
+succeeded. So the whole first-run path works only for a member who is already signed in in
+that browser, which is the common case and is now what the README and the Agents screen
+both say. The fix is small and is not a filter: a chain-1
+`exceptionHandling().defaultAuthenticationEntryPointFor(...)` matched on an `Accept` of
+`text/html`, sending a browser to the login screen and leaving every machine caller its
+401. It is left to a decision because it changes what an unauthenticated request to an
+OAuth endpoint gets back, which is not a thing to do as a side effect.
+
+## Not a defect, but load-bearing to know
+
+**The token endpoint creates a session when it refuses.** Chain 1 has no
+`sessionManagement` configuration, so a request denied by `AuthorizationFilter` reaches
+`ExceptionTranslationFilter`, which saves the request into an `HttpSessionRequestCache` and
+sets a `JSESSIONID` — observed on a `POST /oauth2/token` that was refused. Harmless: the
+session holds one cached request and no authentication, machine clients discard the cookie,
+and the sessions expire. Worth knowing because it is a session per refused machine call,
+and because `sessionManagement { it.sessionCreationPolicy(STATELESS) }` on that chain would
+end it — untried here because chain 1 also serves `/oauth2/authorize`, which is a browser
+flow that wants its session.
+
+**`activity.via_client_id` is writable now and still unwritten.** `V17` moved the foreign
+key onto `oauth2_registered_client(client_id)`, the public id that is the only one reaching
+a service layer — see the migration for why the column moved rather than the principal.
+Nothing under `src/main` writes it yet; `AgentRightsTest` carries a tripwire that fails on
+the day something does, and says so in its own assertion message.
+
+## Test shape, not test count
+
+**One extra Spring context, on purpose.** `OidcChainWiringTest` is
+`@SpringBootTest(properties = ["kanso.auth.mode=oidc"])`, which is a second context
+configuration in a suite whose `SecurityBootstrapTest` warns against multiplying them. It
+buys the only coverage there is of `/oauth2/authorize`, the chain ordering,
+`AgentPrincipalFilter` as installed, `ResourceValidator` as wired and both
+`IssuerAppending*` handlers — before it, deleting the two lines that satisfy RFC 9207 left
+the whole suite green. Everything needing the oidc chain belongs in that file rather than in
+a third context.
+
+**The end-to-end flow is driven by hand, not by a test.** What the suite covers is every
+piece of it; what proved the pieces fit was a `curl` walkthrough against a running instance
+— register, authorise, consent, exchange, call, refresh — and that is where two findings
+came from that no test could see: `McpBearerFilter` querying Exposed outside a transaction
+(fixed, and now pinned by a `NOT_SUPPORTED` test), and a public client never being issued a
+refresh token at all. A `@SpringBootTest(webEnvironment = RANDOM_PORT)` in oidc mode would
+cover the sequence, at the cost of a third context; the walkthrough is cheaper and is
+somebody remembering to run it, which is the trade being recorded.
+
+## Already closed — do not reopen
+
+Three items deferred by earlier reviews on this branch were closed by later commits on it,
+and are named here because a reader working backwards through the ledger would otherwise
+reopen them.
+
+- **`GrantService`'s forward-looking prose.** Its rationale for reading the library's tables
+  directly now names `GrantServiceTest` as what holds the formats it assumes.
+- **`McpBearerFilter.shouldNotFilter`'s prefix breadth.** Closed by `da28c1a`: the guard
+  matches the path Spring routes on, with a wildcard whose reach is argued in the KDoc and
+  pinned by `whatever Spring routes to the endpoint, this filter has already seen`.
+- **Login before client validation in `ConsentController`.** The client is looked up before
+  the anonymous branch, and the ordering carries the attack it prevents in a comment.

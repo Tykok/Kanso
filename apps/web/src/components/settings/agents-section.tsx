@@ -134,6 +134,17 @@ export function AgentsSection() {
               Run it wherever the agent lives. It opens this instance in a browser to ask
               you what to allow, and nothing is pasted anywhere — no key, no token.
             </SettingsNote>
+            {/*
+             * Said here because it is true here, and because the alternative is a member
+             * following their agent's link into a blank page: the authorisation URL
+             * answers a browser with no session a bare 401. Signed in already, in the
+             * browser you are reading this in, is the common case — which is exactly why
+             * the sentence above needs this one next to it rather than instead of it.
+             */}
+            <SettingsNote>
+              Sign in to Kanso in the browser it opens first. Without a session the
+              authorisation page has nothing to show you and nowhere to send you.
+            </SettingsNote>
           </>
         )}
       </SettingsFormField>

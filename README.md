@@ -103,6 +103,40 @@ volume. Back that up: without the key the stored secrets have to be entered agai
 `GET /api/admin/sync` reports queue depth, failures and poll cursors.
 `POST /api/admin/notion/reconcile` rewrites every page from Postgres.
 
+### Connecting an agent
+
+One command, run wherever the agent lives:
+
+```bash
+claude mcp add --transport http kanso http://localhost:8080/api/mcp
+```
+
+Nothing is pasted. The command only writes down an address; the first time the agent calls
+it, Kanso answers `401` with a header naming its own authorisation server, and the agent
+registers itself, opens your browser and asks. What you read there is a Kanso page on
+Kanso's origin: which application is asking, **where it would send the code**, how old its
+registration is, and the permissions in sentences rather than scope names. Approve it and
+the agent holds a token; it acts as you, reaches exactly what you reach, and every change
+it makes says your name in the activity feed. Settings → Agents lists what you have let
+in and revokes it — revoking takes the tokens with the permission, so the next request is
+refused rather than the next hour.
+
+**Sign in to Kanso in that browser first.** The authorisation URL answers a browser with
+no session `401` with an empty body, so an agent's link opens on a blank page rather than
+on a login screen. It is the one rough edge left in this flow and it is written down
+rather than smoothed over: signing in first makes it invisible.
+
+**This release declares no tools.** The endpoint answers enough of MCP to prove the door
+works — `initialize`, and `tools/list` with an empty list. That is the honest answer from
+a server that has none yet, and a placeholder that claimed a tool would be a placeholder
+somebody trusted. What goes behind the door comes next.
+
+Dev mode has no door at all, and says so instead of failing quietly:
+
+> Kanso is running with KANSO_AUTH_MODE=dev, where identity comes from an unverified
+> header. Connecting an agent is disabled: an authorisation server behind that would issue
+> durable tokens to anyone who can reach it. Switch to oidc to enable it.
+
 ### Local development (no Docker for the apps)
 
 ```bash
