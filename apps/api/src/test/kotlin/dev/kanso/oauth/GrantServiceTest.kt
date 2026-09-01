@@ -80,9 +80,18 @@ class GrantServiceTest : PostgresTest() {
 	 * One whole grant, made the way the flow makes one: a client registers itself, the
 	 * member consents on the screen, and a token comes out the other end.
 	 *
+	 * @param consentScopes what the consent row records, which is what the listing reads.
+	 *   Separate from [scopes] so a row can carry a permission this version of Kanso has no
+	 *   sentence for — an old grant, or a newer instance's — which is not a thing the
+	 *   consent screen can produce today and is exactly why it has to be written by hand.
 	 * @return the client id the member would see, and the access token the agent holds.
 	 */
-	private fun connect(member: User, name: String, scopes: List<String> = OAuthScopes.ALL): Grant {
+	private fun connect(
+		member: User,
+		name: String,
+		scopes: List<String> = OAuthScopes.ALL,
+		consentScopes: List<String> = scopes,
+	): Grant {
 		val registered = registrations.register(
 			ClientRegistrationRequest(
 				redirectUris = listOf("http://127.0.0.1:9999/callback"),
@@ -94,7 +103,7 @@ class GrantServiceTest : PostgresTest() {
 
 		consents.save(
 			OAuth2AuthorizationConsent.withId(client.id, member.id.toString())
-				.apply { scopes.forEach { scope(it) } }
+				.apply { consentScopes.forEach { scope(it) } }
 				.build(),
 		)
 
@@ -189,6 +198,37 @@ class GrantServiceTest : PostgresTest() {
 		assertNotNull(
 			authorizations.findByToken(ours.token, OAuth2TokenType.ACCESS_TOKEN),
 			"the refusal has to actually refuse — the other member's agent still works",
+		)
+	}
+
+	@Test
+	fun `a scope this version cannot say aloud is counted, not dropped and not rendered`() {
+		val mine = member("Elie")
+		// A consent that outlived a vocabulary change, which is the only way this row is
+		// written: a client may only be granted what it is registered for, and registration
+		// forces `OAuthScopes.ALL`. So it is written by hand, because production writes it
+		// by upgrade — and the failure it would cause is a settings screen that answers 500,
+		// at the exact moment somebody is trying to revoke something.
+		connect(mine, "Claude Code", consentScopes = listOf(OAuthScopes.READ, "kanso:admin"))
+
+		actAs(mine)
+		val grant = grants.list().single()
+
+		assertEquals(
+			listOf(OAuthScopes.READ),
+			grant.scopes,
+			"the permissions this version does have words for are still shown",
+		)
+		assertEquals(
+			1,
+			grant.unrecognisedScopes,
+			"a permission the row grants and this version cannot name must not vanish from a " +
+				"screen whose whole job is saying what an application may do",
+		)
+		assertTrue(
+			grant.scopeProse.none { it.contains("kanso:admin") },
+			"the unknown string itself never leaves the server — `prose` refuses to put a " +
+				"stranger's words in Kanso's voice, and a count cannot carry them either",
 		)
 	}
 }

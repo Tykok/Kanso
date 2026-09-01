@@ -23,12 +23,21 @@ import java.time.OffsetDateTime
  * Authorise" — `oauth2_authorization_consent` has no timestamp, and that table is the
  * library's, not ours to widen — but the first token follows the consent screen by
  * seconds, so the date a member reads is the day they connected it.
+ *
+ * `unrecognisedScopes` is how many permissions the consent row carries that this version
+ * of Kanso has no sentence for. A count and not the strings themselves: [OAuthScopes.prose]
+ * already refuses to render an unknown scope because that would put a stranger's words in
+ * Kanso's voice, and the same argument holds one screen along — a number cannot carry
+ * anybody's text at all, so there is no escaping question to get wrong later. It is not
+ * dropped, though, because a screen whose whole job is saying what an application may do
+ * must not understate it.
  */
 data class GrantSummary(
 	val clientId: String,
 	val clientName: String,
 	val scopes: List<String>,
 	val scopeProse: List<String>,
+	val unrecognisedScopes: Int,
 	val grantedAt: OffsetDateTime,
 )
 
@@ -58,12 +67,16 @@ class GrantService(
 	fun list(): List<GrantSummary> = jdbc.sql(LIST)
 		.param("principal", currentUser.requireId().toString())
 		.query { rs, _ ->
-			val scopes = scopesOf(rs.getString("authorities"))
+			val granted = scopesOf(rs.getString("authorities"))
 			GrantSummary(
 				clientId = rs.text("client_id"),
 				clientName = rs.text("client_name"),
-				scopes = scopes,
-				scopeProse = scopes.map(OAuthScopes::prose),
+				scopes = granted.known,
+				// Safe only because `known` is filtered to the vocabulary `prose` answers for.
+				// `GrantServiceTest` holds a row that proves it, so deleting the filter fails a
+				// test rather than the settings screen of whoever upgraded.
+				scopeProse = granted.known.map(OAuthScopes::prose),
+				unrecognisedScopes = granted.unrecognised,
 				grantedAt = rs.getObject("granted_at", OffsetDateTime::class.java),
 			)
 		}
@@ -110,20 +123,39 @@ class GrantService(
 		.param("principal", principal)
 		.update()
 
+	/** What a consent row grants, split by whether this version of Kanso can say it aloud. */
+	private data class GrantedScopes(val known: List<String>, val unrecognised: Int)
+
 	/**
 	 * The consent row's `authorities`, back to scope names.
 	 *
-	 * Rebuilt in [OAuthScopes.ALL]'s order rather than the column's, which does two
-	 * things at once: the rows read the same way every time, and a scope this instance no
-	 * longer grants — a consent that outlived a vocabulary change — is dropped instead of
-	 * reaching `prose`, which refuses it and would take the whole listing down with it.
+	 * The known ones are rebuilt in [OAuthScopes.ALL]'s order rather than the column's, so
+	 * every row reads the same way round every time. The rest are counted.
+	 *
+	 * Counted, and not passed on. [OAuthScopes.prose] refuses a scope it does not know, by
+	 * design, and a listing that called it on one would answer 500 — a settings screen that
+	 * cannot load is a screen a member cannot revoke anything from, which is the one moment
+	 * they most need it. Counting rather than dropping because the alternative is worse than
+	 * a crash in a quieter way: a screen that says an application may read, while the row
+	 * says it may read and do something this version has no name for, has told a member
+	 * something false about their own account. Neither half of this is theoretical enough to
+	 * leave to a comment, so `GrantServiceTest` holds a row carrying an unknown scope.
+	 *
+	 * Where an unknown scope comes from: a consent written before a scope was retired, or
+	 * after one was added by a version this process is not running. Not from a client, which
+	 * may only be granted what it is registered for — but the strings are still not ours, so
+	 * they stop here rather than travelling to a browser.
 	 */
-	private fun scopesOf(authorities: String?): List<String> {
+	private fun scopesOf(authorities: String?): GrantedScopes {
 		val granted = authorities.orEmpty()
 			.split(",")
 			.map { it.trim().removePrefix(SCOPE_PREFIX) }
+			.filter { it.isNotEmpty() }
 			.toSet()
-		return OAuthScopes.ALL.filter { it in granted }
+		return GrantedScopes(
+			known = OAuthScopes.ALL.filter { it in granted },
+			unrecognised = granted.count { it !in OAuthScopes.ALL },
+		)
 	}
 
 	private companion object {

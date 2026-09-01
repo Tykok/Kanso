@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, mcpAddCommand } from "@/lib/api";
+import { ApiError, mcpAddCommand, unrecognisedScopeNote } from "@/lib/api";
 import { useAuthMode, useGrants, useRevokeGrant } from "@/lib/queries";
 import { SettingsFormField, SettingsInline, SettingsNote } from "./field";
 
@@ -84,6 +84,18 @@ export function AgentsSection() {
                   {grant.scopeProse.map((sentence) => (
                     <SettingsNote key={sentence}>{sentence}</SettingsNote>
                   ))}
+                  {/*
+                   * A permission the server holds but has no words for. Shown as a count
+                   * and never as the scope itself — the server does not send the string,
+                   * so there is nothing here that a stranger wrote. Marked `error`
+                   * because a grant nobody can explain is the one row on this screen
+                   * worth looking twice at.
+                   */}
+                  {unrecognisedScopeNote(grant.unrecognisedScopes) && (
+                    <SettingsNote error>
+                      {unrecognisedScopeNote(grant.unrecognisedScopes)}
+                    </SettingsNote>
+                  )}
                 </span>
                 <button
                   className="button"

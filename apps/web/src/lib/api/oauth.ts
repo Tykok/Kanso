@@ -23,7 +23,31 @@ export type Grant = {
   clientName: string;
   scopes: string[];
   scopeProse: string[];
+  /**
+   * How many permissions the grant carries that this version of Kanso has no sentence
+   * for. A count and not the strings: the server refuses to send an unrecognised scope
+   * name, so there is no stranger's text arriving here to render.
+   */
+  unrecognisedScopes: number;
   grantedAt: string;
+};
+
+/**
+ * What to say about permissions the server could not name, or nothing at all.
+ *
+ * Said rather than swallowed. A row listing one permission when the grant holds two has
+ * told a member something false about their own account, and this is the screen they
+ * would have used to check. The sentence ends in the only action available — Revoke is
+ * the button already beside it — because "something is here that I cannot explain" is
+ * only useful next to a way out.
+ */
+export const unrecognisedScopeNote = (count: number): string | null => {
+  if (count <= 0) return null;
+  const permissions = count === 1 ? "1 further permission" : `${count} further permissions`;
+  return (
+    `${permissions} this version of Kanso cannot name — likely granted by a different ` +
+    "version. Revoke the application if you did not expect it."
+  );
 };
 
 /**
