@@ -26,11 +26,65 @@ import type { Action } from "./types";
  * shortcuts. They open the group-by and filter controls on a saved view; `when` is false
  * everywhere else, because the registry is global and there is nothing to group on a page
  * with no list.
+ *
+ * `F` is the third, and it is `F` rather than `f` because `f` is taken two entries down —
+ * by sort, which is where it landed before there was anything to filter with. Both live
+ * in the shared bucket, so `f` is claimed everywhere and `indexActions` would refuse a
+ * second claim on it at module load. Shift is spelled by the key itself, which is why
+ * this one is expressible where `⇧↑↓` above is not: `event.key` for Shift+f is `"F"`.
  */
 const onSavedView = () =>
   typeof window !== "undefined" && window.location.pathname.startsWith("/views/");
 
+/**
+ * The two surfaces that draw a list somebody can ask a question of: the main list, and a
+ * saved view. They are the same question through two doors — `GET /api/tickets` and
+ * stored jsonb — so the key that composes one is the same key on both.
+ */
+const onOrganisableList = () =>
+  typeof window !== "undefined" &&
+  (window.location.pathname === "/" || window.location.pathname.startsWith("/views/"));
+
 export const organiseActions: readonly Action[] = [
+  {
+    id: "organise.addFilter",
+    label: "Add a filter…",
+    shortcut: "F",
+    group: "view",
+    when: onOrganisableList,
+    /**
+     * A dialog and not an overlay, and opened through the store rather than by clicking
+     * an element by id the way the two below do.
+     *
+     * `page.tsx` stands its entire window key handler down while a dialog is open, which
+     * is what the composed list needs: `↑↓` inside it walk the offered filters, and
+     * without that guard they would also be walking the tickets behind it. The group-by
+     * and sort menus want the opposite — they are Radix popovers that shield their own
+     * keys — so the two are reached differently on purpose.
+     */
+    run: (ctx) => ctx.openDialog({ kind: "filter" }),
+  },
+  {
+    id: "organise.saveView",
+    label: "Save this question as a view",
+    group: "view",
+    /**
+     * The main list only, and not a saved view — which is already the answer to this.
+     * It is also the only route that mounts `SaveViewDialog`: `app/page.tsx` renders it,
+     * `OrganiseShell` does not, so opening the dialog from anywhere else sets a store
+     * field nothing draws.
+     */
+    when: () => typeof window !== "undefined" && window.location.pathname === "/",
+    /**
+     * No key, and no `hint` either, so it stays out of the help sheet and appears only in
+     * the palette. Two reasons. The gesture already has a button next to the chips it is
+     * about, which is where somebody who has just composed a filter is looking; and the
+     * bare letters left are poor mnemonics for it — `s` and `v` say nothing, and the good
+     * ones are taken. A palette entry is a real keyboard path without spending a key on
+     * something done once per question rather than once per row.
+     */
+    run: (ctx) => ctx.openDialog({ kind: "saveView" }),
+  },
   {
     id: "organise.groupBy",
     label: "Group by…",

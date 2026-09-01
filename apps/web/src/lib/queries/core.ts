@@ -7,6 +7,8 @@ import { queryCache } from "@/lib/realtime-events";
 import { useUi, type Scope } from "@/store/ui";
 import {
   api,
+  filterParams,
+  organiseApi,
   DEFAULT_PREFERENCES,
   type EffortPoints,
   type KansoInstant,
@@ -17,6 +19,7 @@ import {
   type Team,
   type TicketPriority,
   type TicketStatus,
+  type ViewFilters,
 } from "../api";
 
 export const keys = {
@@ -35,8 +38,18 @@ export const keys = {
   teams: (includeArchived: boolean) => ["teams", includeArchived] as const,
   /** All projects, one query — the sidebar needs the whole set to draw its tree. */
   projects: (includeArchived: boolean) => ["projects", includeArchived] as const,
-  tickets: (scope: Scope, includeArchived: boolean) =>
-    ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived] as const,
+  /**
+   * `asked` is the composed filter set, already spelled as a query string — the whole of
+   * what makes two entries under this key different questions.
+   *
+   * It defaults to the empty string, which is the unfiltered list, so every caller that
+   * predates the filter control keys the same entry it always did. `queries/views.ts`
+   * relies on exactly that: a project page and the list scoped to that project are
+   * deliberately one cache entry, and they would silently stop being one if this
+   * segment had no default.
+   */
+  tickets: (scope: Scope, includeArchived: boolean, asked = "") =>
+    ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived, asked] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
@@ -72,6 +85,31 @@ const cancelTicketRefetches = (queryClient: ReturnType<typeof useQueryClient>) =
     queryKey: ["tickets"],
     predicate: (query) => query.state.data !== undefined,
   });
+
+/**
+ * A project scope is a `project` filter, because that is the only way this door can
+ * express one: `ticketsMatching` takes a team and its descendants as scope, and a
+ * project belongs to no team in particular.
+ *
+ * It overwrites rather than joining what was composed, and cannot collide with it: the
+ * filter control does not offer `project` while the list is scoped to one, since the
+ * scope has already answered that question. Joining would be worse than either — the
+ * server reads two values of one facet as "either", so a project chip added inside a
+ * project scope would widen the list past the project whose name is in the header.
+ */
+const scopedFilters = (filters: ViewFilters, scope: Scope): ViewFilters =>
+  scope.kind === "project" ? { ...filters, project: [scope.id] } : filters;
+
+/**
+ * The composed filter set as the wire spells it, which is also what tells one cached
+ * answer from another.
+ *
+ * A string rather than the object: a query key is compared structurally and the store
+ * hands back a new object on every `setFilters`, so keying on the object would be one
+ * cache entry per keystroke of the filter control. `URLSearchParams` also fixes the
+ * order, so `status` then `priority` and `priority` then `status` are one question.
+ */
+const useAskedFilters = () => filterParams(useUi((state) => state.filters)).toString();
 
 export const useAuthMode = () => useQuery({ queryKey: keys.authMode, queryFn: api.authMode });
 
@@ -171,12 +209,33 @@ export const useProjects = () => {
   });
 };
 
+/**
+ * The main list — a saved view nobody saved.
+ *
+ * Two doors onto one question, and which one is used is decided by whether anything has
+ * been composed. Unfiltered, it is `api.tickets` exactly as it always was, so the entry
+ * `queries/views.ts` shares stays shared and the four mutation hooks below go on writing
+ * it optimistically. Composed, it is `organiseApi.ticketsMatching`, which spells the
+ * scope the same way and the facets in the vocabulary the server validates.
+ */
 export const useTickets = () => {
   const scope = useUi((state) => state.scope);
   const showArchived = useUi((state) => state.showArchived);
+  const filters = useUi((state) => state.filters);
+  const asked = useAskedFilters();
   return useQuery({
-    queryKey: keys.tickets(scope, showArchived),
-    queryFn: () => api.tickets(scope, showArchived),
+    queryKey: keys.tickets(scope, showArchived, asked),
+    queryFn: () =>
+      asked === ""
+        ? api.tickets(scope, showArchived)
+        : organiseApi.ticketsMatching(scopedFilters(filters, scope), {
+            // The same scope the unfiltered door sends, so the two answer about the same
+            // room: a team scope reaches its descendants, a project scope names no team.
+            teamId: scope.kind === "team" ? scope.id : undefined,
+            includeDescendants: scope.kind === "team" ? true : undefined,
+            includeArchived: showArchived,
+            limit: 200,
+          }),
   });
 };
 

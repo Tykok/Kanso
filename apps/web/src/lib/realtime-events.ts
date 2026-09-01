@@ -239,6 +239,10 @@ export function writeTickets(cache: EventCache, write: TicketWrite): void {
     const list = listShape(entry);
     if (list) patchList(cache, entry.key, list, changed, gone, teams);
     else if (isTicket(entry.data)) patchRow(cache, entry.key, entry.data, changed, gone);
+    // A filtered list, which nothing here can place a row in. The wide answer, for the
+    // reason the two paragraphs above give: only the server knows what matches, so
+    // asking it again is the only honest way to learn whether this row now does.
+    else if (Array.isArray(entry.data) && askedOf(entry) !== "") cache.invalidate(entry.key);
   }
 }
 
@@ -262,6 +266,15 @@ export function findTicket(cache: EventCache, id: string): Ticket | undefined {
   return undefined;
 }
 
+/**
+ * The filter set a tickets entry was asked with, as `keys.tickets` spells it — `""` for
+ * the unfiltered list, and for any key written before that segment existed.
+ */
+function askedOf(entry: CacheEntry): string {
+  const asked = entry.key[4];
+  return typeof asked === "string" ? asked : "";
+}
+
 type ListShape = { rows: Ticket[]; scope: Scope; includeArchived: boolean };
 
 const SCOPE_KINDS = ["all", "team", "project"] as const;
@@ -272,11 +285,18 @@ const SCOPE_KINDS = ["all", "team", "project"] as const;
  * Read off the key rather than declared anywhere: `queries/core.ts` builds these and
  * `queries/views.ts` deliberately puts other things under the same first segment, so
  * the shape is what tells them apart.
+ *
+ * A *filtered* entry is not one of these, and saying so is the whole of [askedOf]. The
+ * scope is the only question [placement] below can answer — it knows a row's team and
+ * its project and nothing else about it — so a list narrowed by status, label or points
+ * would take every row the scope admits, filter or no filter. That is a row appearing in
+ * a list that excludes it, which is the failure the filter gate exists to prevent.
  */
 function listShape(entry: CacheEntry): ListShape | null {
   const [, kind, id, includeArchived] = entry.key;
   if (!Array.isArray(entry.data)) return null;
   if (typeof includeArchived !== "boolean") return null;
+  if (askedOf(entry) !== "") return null;
   if (typeof kind !== "string" || !SCOPE_KINDS.includes(kind as (typeof SCOPE_KINDS)[number])) {
     return null;
   }

@@ -297,6 +297,17 @@ export const organiseApi = {
     return request<Ticket[]>(`/api/tickets${encoded ? `?${encoded}` : ""}`);
   },
 
+  /**
+   * The facets the server will answer, from the server.
+   *
+   * There is no second list of them in this file and there must not be: `ViewFilters`
+   * above is a *type*, checked at compile time against a server that may since have been
+   * rolled back, and a control built from a list typed out here would offer a chip the
+   * server 400s on. This is what the "add a filter" control reads instead — see
+   * `components/organise/facets.ts`.
+   */
+  servedFilters: () => request<{ served: string[] }>("/api/tickets/filters"),
+
   views: (teamId: string) => request<SavedView[]>(`/api/teams/${teamId}/views`),
 
   view: (id: string) => request<SavedView>(`/api/views/${id}`),

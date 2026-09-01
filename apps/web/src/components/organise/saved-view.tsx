@@ -30,8 +30,11 @@ import { useTeamLabels } from "@/lib/queries/social";
 import { useRowMetrics } from "@/lib/row-metrics";
 import { PRIORITY_LABELS } from "@/lib/status";
 import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
+import { useUi } from "@/store/ui";
 import { BulkStrip } from "./bulk-strip";
-import { chipsOf, withoutChip } from "./chips";
+import type { ChipNames } from "./chips";
+import { FilterBar } from "./filter-bar";
+import { FilterComposer } from "./filter-composer";
 import { groupTickets } from "./grouping";
 import { OrganiseShell, useOrganiseTeam } from "./shell";
 import { ViewRail } from "./view-rail";
@@ -82,6 +85,14 @@ export function SavedViewScreen({ id }: { id: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The composer is a store dialog rather than local state, and `F` reaches it from this
+   * page's own handler rather than through the registry, for the two reasons this file
+   * already gives about `x` and `⇧↑↓`: `resolveShortcut` is dispatched by `app/page.tsx`
+   * and this route is not that page. The action exists all the same — `organise.addFilter`
+   * — so the help sheet says the key is there, and the button below is the same door.
+   */
+  const { dialog, openDialog, close } = useUi();
 
   const tickets = rows.data ?? [];
   // Keyed on `rows.data`, not on `tickets`: the `?? []` makes a fresh array every render,
@@ -124,8 +135,17 @@ export function SavedViewScreen({ id }: { id: string }) {
       const target = event.target;
       if (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
 
+      // Nothing behind an open dialog: the composer owns `↑↓↵` while it is up, and this
+      // list must not walk its own rows underneath it.
+      if (dialog.kind !== "none") return;
+
       if (event.key === "Escape") {
         clear();
+        return;
+      }
+      if (event.key === "F") {
+        event.preventDefault();
+        openDialog({ kind: "filter" });
         return;
       }
       // `⇧↑↓`: the range grows and the cursor follows it, in one keypress. `event.key` for
@@ -177,9 +197,25 @@ export function SavedViewScreen({ id }: { id: string }) {
           <Chips
             view={view.data}
             names={names}
+            onAdd={() => openDialog({ kind: "filter" })}
             onFilters={(filters) => patch.mutate({ id, filters })}
             onGroupBy={(groupBy) => patch.mutate({ id, groupBy })}
             onSortBy={(sortBy) => patch.mutate({ id, sortBy })}
+          />
+        )}
+
+        {dialog.kind === "filter" && view.data && (
+          <FilterComposer
+            filters={view.data.filters}
+            teamId={team?.id}
+            /**
+             * Written straight through to the view, not held and saved on closing. A
+             * saved view is a stored question and this *is* the question — every other
+             * edit on this screen lands the same way, and a composer with its own draft
+             * would be the one place on it where what is on screen is not what is stored.
+             */
+            onFilters={(filters) => patch.mutate({ id, filters })}
+            onClose={close}
           />
         )}
 
@@ -237,45 +273,36 @@ export function SavedViewScreen({ id }: { id: string }) {
   );
 }
 
+/**
+ * The strip, plus the two controls only a saved view has.
+ *
+ * The chips and the `+ Filter` button are `FilterBar`, shared with the main list: the
+ * two are one question asked through two doors, and a strip that read differently on
+ * each would be the divergence the vocabulary was unified to end.
+ */
 function Chips({
   view,
   names,
+  onAdd,
   onFilters,
   onGroupBy,
   onSortBy,
 }: {
   view: SavedView;
-  names: Parameters<typeof chipsOf>[1];
+  names: ChipNames;
+  onAdd: () => void;
   onFilters: (filters: SavedView["filters"]) => void;
   onGroupBy: (groupBy: ViewGroupBy) => void;
   onSortBy: (sortBy: ViewSortBy) => void;
 }) {
-  const chips = chipsOf(view.filters, names);
-
   return (
-    <div className="flex flex-wrap items-center gap-2 px-6 pt-[18px] pb-3.5">
-      {chips.map((chip) => (
-        <span
-          key={chip.key}
-          data-testid="filter-chip"
-          className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1 text-12 text-muted-foreground"
-        >
-          {chip.label} {chip.value && <span className="text-foreground">{chip.value}</span>}
-          <button
-            type="button"
-            aria-label={`Remove ${chip.label} filter`}
-            className="text-faint hover:text-foreground"
-            onClick={() => onFilters(withoutChip(view.filters, chip.key))}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-
-      {chips.length === 0 && <span className="text-12 text-faint">No filters — everything in the team.</span>}
-
-      <span className="flex-1" />
-
+    <FilterBar
+      filters={view.filters}
+      names={names}
+      onAdd={onAdd}
+      onFilters={onFilters}
+      empty={<span className="text-12 text-faint">No filters — everything in the team.</span>}
+    >
       {/* `g` and `f` from the shortcut sheet reach these two through the action registry;
           the menus are what makes them discoverable with a mouse. */}
       <Menu
@@ -306,7 +333,7 @@ function Chips({
           onSelect: () => onSortBy(sortBy),
         }))}
       />
-    </div>
+    </FilterBar>
   );
 }
 

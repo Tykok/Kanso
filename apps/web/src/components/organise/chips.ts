@@ -1,5 +1,6 @@
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import type { TicketStatus, ViewFilters } from "@/lib/api";
+import { FACET_ORDER } from "./facets";
 
 /**
  * A saved view's filters, as the removable chips screen 21 draws across the top.
@@ -32,21 +33,12 @@ const LABELS: Record<keyof ViewFilters, string> = {
   estimateMax: "Points",
 };
 
-/** Left to right as the drawing has them, so the strip does not reshuffle on every edit. */
-const ORDER: (keyof ViewFilters)[] = [
-  "project",
-  "status",
-  "statusNot",
-  "priority",
-  "assignee",
-  "unassigned",
-  "cycle",
-  "label",
-  "openedForDays",
-  "unestimated",
-  "estimateMin",
-  "estimateMax",
-];
+/**
+ * Left to right as the drawing has them, so the strip does not reshuffle on every edit —
+ * and read out of `facets.ts` rather than written again here, so the order a filter is
+ * *offered* in is the order it is drawn in once it has been asked.
+ */
+const ORDER = FACET_ORDER;
 
 /** Resolves the ids a filter stores into the names a reader recognises. */
 export type ChipNames = {
