@@ -15,14 +15,20 @@ import org.springframework.http.server.RequestPath
 import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.util.pattern.PathPatternParser
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,13 +57,22 @@ class McpBearerFilterTest : PostgresTest() {
 	@Autowired lateinit var clients: RegisteredClientRepository
 	@Autowired lateinit var authorizations: OAuth2AuthorizationService
 	@Autowired lateinit var consents: OAuth2AuthorizationConsentService
+	@Autowired lateinit var transactionManager: PlatformTransactionManager
 
-	/** The application's own chain, built in the dev mode this suite runs in. */
-	@Autowired lateinit var chain: SecurityFilterChain
+	/**
+	 * Every chain the application built, not "the" chain.
+	 *
+	 * `SecurityFilterChain` by type resolved to exactly one bean only because this suite
+	 * runs in dev mode, where `authorizationServerChain` is absent — the same autowire in
+	 * an oidc context would have failed to start, and the test asserting *ordering* below
+	 * would have been asserting about whichever of two chains Spring picked. See
+	 * `OidcChainWiringTest`, which runs with the mode that has both.
+	 */
+	@Autowired lateinit var chains: List<SecurityFilterChain>
 
 	private val grants by lazy { TestGrants(clients, authorizations, consents) }
-	private val filter by lazy { McpBearerFilter(authorizations, clients, users, authMode = "oidc") }
-	private val inDevMode by lazy { McpBearerFilter(authorizations, clients, users, authMode = "DEV") }
+	private val filter by lazy { McpBearerFilter(authorizations, clients, users, transactionManager, authMode = "oidc") }
+	private val inDevMode by lazy { McpBearerFilter(authorizations, clients, users, transactionManager, authMode = "DEV") }
 
 	/** What this instance calls itself on the origin `MockHttpServletRequest` defaults to. */
 	private val ours = McpResource.canonical("http://localhost")
@@ -100,20 +115,26 @@ class McpBearerFilterTest : PostgresTest() {
 	fun `no header leaves the context empty and challenges`() {
 		val response = call(null)
 
-		assertEquals(401, response.status)
+		assertEquals(401, response.status, "no credential is the start of the flow, so it has to be answered as one")
 		assertTrue(
 			response.getHeader("WWW-Authenticate")!!.contains("resource_metadata="),
 			"a 401 without the challenge is a dead end the client cannot recover from",
 		)
-		assertNull(SecurityContextHolder.getContext().authentication)
+		assertNull(
+			SecurityContextHolder.getContext().authentication,
+			"and nothing is left standing for a downstream handler to read as an identity",
+		)
 	}
 
 	@Test
 	fun `an unknown token is refused, and says nothing about why`() {
 		val response = call("Bearer kat_not-a-real-token")
 
-		assertEquals(401, response.status)
-		assertNull(SecurityContextHolder.getContext().authentication)
+		assertEquals(401, response.status, "a token this server never issued names nobody")
+		assertNull(
+			SecurityContextHolder.getContext().authentication,
+			"a refusal that still set a principal would be no refusal at all",
+		)
 	}
 
 	@Test
@@ -127,6 +148,29 @@ class McpBearerFilterTest : PostgresTest() {
 		grants.revoke(owner, "claude-code")
 
 		assertEquals(401, call("Bearer $token").status, "no window: the filter resolves against the same table")
+	}
+
+	/**
+	 * Expiry is how every token's life normally ends, and requirement 4 — "revoked or
+	 * expired stops working, with no window" — was pinned by revocation alone. The whole
+	 * claim rests on one line, `accessToken.isActive`, which answers both questions at
+	 * once; a version of this filter that read only the token's presence would have passed
+	 * every other test in this file.
+	 */
+	@Test
+	fun `an expired token stops working, and nothing had to be revoked`() {
+		val owner = member()
+		val token = grants.issue(
+			owner,
+			setOf(OAuthScopes.READ),
+			clientId = "claude-code",
+			// The client's own access-token lifetime is an hour, so this one ran out a
+			// minute ago. Nobody revoked anything: the row is still there.
+			issuedAt = Instant.now().minus(Duration.ofHours(1)).minusSeconds(60),
+		)
+
+		assertEquals(401, call("Bearer $token").status, "a spent token is refused for the same reason a revoked one is")
+		assertNull(SecurityContextHolder.getContext().authentication, "and nothing is standing afterwards")
 	}
 
 	@Test
@@ -236,8 +280,15 @@ class McpBearerFilterTest : PostgresTest() {
 		call("Bearer $token")
 
 		val principal = SecurityContextHolder.getContext().authentication?.principal as KansoAgentUser
-		assertEquals(setOf(OAuthScopes.READ), principal.scopes)
-		assertTrue(OAuthScopes.WRITE !in principal.scopes)
+		assertEquals(
+			setOf(OAuthScopes.READ),
+			principal.scopes,
+			"a read grant travels as a read grant; widening it here is widening it everywhere",
+		)
+		assertTrue(
+			OAuthScopes.WRITE !in principal.scopes,
+			"and the scope the member did not give is the one a writing tool has to be able to refuse",
+		)
 	}
 
 	private fun at(uri: String): MockHttpServletResponse {
@@ -353,6 +404,69 @@ class McpBearerFilterTest : PostgresTest() {
 	}
 
 	/**
+	 * The rule `AgentPrincipalFilter` carries, asserted on this filter too.
+	 *
+	 * The instance the holder carries is the instance in the session:
+	 * `HttpSessionSecurityContextRepository` hands back the stored object rather than a
+	 * copy, so an assignment through `getContext()` rewrites it and the browser whose
+	 * cookie arrived is left holding an agent principal. Thin precondition — an MCP client
+	 * has no cookie — and a rule this branch documents at length, so the two filters had
+	 * better agree about it.
+	 */
+	@Test
+	fun `the context a session would have handed in is left exactly as it was`() {
+		val owner = member()
+		val token = grants.issue(owner, setOf(OAuthScopes.READ), clientId = "claude-code")
+		val session = SecurityContextHolder.createEmptyContext().apply {
+			authentication = UsernamePasswordAuthenticationToken("a-browser-principal", null, emptyList())
+		}
+		SecurityContextHolder.setContext(session)
+
+		call("Bearer $token")
+
+		assertEquals(
+			"a-browser-principal",
+			session.authentication?.principal,
+			"this is the session's own object; rewriting it hands the member's browser an agent identity",
+		)
+		assertTrue(
+			SecurityContextHolder.getContext().authentication?.principal is KansoAgentUser,
+			"and this request still runs as the agent — a fresh context, not the session's",
+		)
+	}
+
+	/**
+	 * The condition the deployed filter actually runs in: no transaction anywhere.
+	 *
+	 * `NOT_SUPPORTED` suspends this class's own, and that is the whole test. Every other
+	 * test here runs inside a `@Transactional` method, which had already opened the
+	 * transaction the filter needs — so `UserRepository.findById` found one and the suite
+	 * was green while a real server raised `IllegalStateException: No transaction in
+	 * context` on every valid token, re-dispatched the failure to `/error`, and answered
+	 * 401 with an empty body. A good token refused, with no challenge to recover from.
+	 *
+	 * The two rows this leaves behind are not rolled back, so both keys are unique to this
+	 * run — the same liberty `ConsentRouteTest` takes, and for the same reason: the thing
+	 * under test is what happens *outside* a transaction.
+	 */
+	@Test
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	fun `a valid token resolves with no transaction on the thread, which is how it is deployed`() {
+		val transactions = TransactionTemplate(transactionManager)
+		// Created inside one explicitly, because creating a user is a write and Exposed
+		// refuses that without a transaction too — which is the point, one layer up.
+		val owner = requireNotNull(transactions.execute { member() })
+		val token = grants.issue(owner, setOf(OAuthScopes.READ), clientId = "no-transaction-${UUID.randomUUID()}")
+
+		val response = call("Bearer $token")
+
+		assertEquals(200, response.status, "the request continued down the chain, so nothing refused it")
+		val principal = SecurityContextHolder.getContext().authentication?.principal
+		assertTrue(principal is KansoAgentUser, "a filter that cannot read the users table cannot name anybody")
+		assertEquals(owner.id, principal.kansoUserId, "and the member it names is the one who authorised it")
+	}
+
+	/**
 	 * The wiring, not the behaviour: everything above drives a filter this test built, so
 	 * something has to assert that the deployed chain has one at all — and that it stands
 	 * ahead of dev mode's filter, which would otherwise hand an agent a header identity
@@ -360,7 +474,8 @@ class McpBearerFilterTest : PostgresTest() {
 	 */
 	@Test
 	fun `the application's chain carries the filter, ahead of dev mode's`() {
-		val positions = chain.filters.withIndex()
+		assertEquals(1, chains.size, "in dev mode the authorisation server's chain is absent; this is Kanso's own")
+		val positions = chains.single().filters.withIndex()
 		val bearer = positions.firstOrNull { it.value is McpBearerFilter }
 		val dev = positions.firstOrNull { it.value is DevAuthenticationFilter }
 

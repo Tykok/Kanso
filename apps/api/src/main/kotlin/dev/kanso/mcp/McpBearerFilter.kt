@@ -18,6 +18,8 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.filter.OncePerRequestFilter
 import java.util.UUID
 
@@ -49,8 +51,32 @@ class McpBearerFilter(
 	private val authorizations: OAuth2AuthorizationService,
 	private val clients: RegisteredClientRepository,
 	private val users: UserRepository,
+	transactionManager: PlatformTransactionManager,
 	private val authMode: String,
 ) : OncePerRequestFilter() {
+
+	/**
+	 * A filter runs outside every transaction, and Exposed refuses a query without one.
+	 *
+	 * Not a precaution. On a running instance a *valid* bearer token reached
+	 * `UserRepository.findById` and raised `IllegalStateException: No transaction in
+	 * context`; Tomcat re-dispatched the failure to `/error`, the session chain answered
+	 * that with `HttpStatusEntryPoint`, and the client saw **401 with an empty body** —
+	 * a good token refused, indistinguishable from a forged one, with the challenge
+	 * missing so nothing told the client to start the flow again. Every request through
+	 * this filter, in other words, on the one path this branch exists to open.
+	 *
+	 * Invisible to this whole suite, and that is the part worth remembering: every test
+	 * that drives this filter is `@Transactional`, so the transaction the filter is
+	 * missing has already been opened by the test method around it.
+	 * `McpBearerFilterTest` now carries one that is not.
+	 *
+	 * Around the one call that needs it. The two library lookups above go through
+	 * `JdbcOperations` and need nothing, and `DevAuthenticationFilter` has the same
+	 * problem solved one layer down — it reaches its user through `UserProvisioning`,
+	 * which is `@Transactional`.
+	 */
+	private val transactions = TransactionTemplate(transactionManager).apply { isReadOnly = true }
 
 	/**
 	 * The path Spring routes on, which is not the URI Tomcat received.
@@ -132,7 +158,7 @@ class McpBearerFilter(
 		// thing we know about it is that we do not know what it is.
 		val user = runCatching { UUID.fromString(authorization.principalName) }
 			.getOrNull()
-			?.let(users::findById)
+			?.let { id -> transactions.execute { users.findById(id) } }
 			?: return challenge(request, response)
 
 		// The public `client_id`, not `registeredClientId`. The latter is the library's
@@ -149,11 +175,22 @@ class McpBearerFilter(
 			clientId = clientId,
 			scopes = authorization.authorizedScopes.orEmpty().toSet(),
 		)
-		// Set on the holder and never saved to a repository, so no session is created:
-		// `SecurityContextHolderFilter` persists nothing on its own, and a token that
-		// left a cookie behind would outlive the request that carried it.
-		SecurityContextHolder.getContext().authentication =
-			UsernamePasswordAuthenticationToken(principal, null, principal.authorities)
+		// A fresh context, set on the holder — never an assignment into the one already
+		// there. `AgentPrincipalFilter` carries the long version of this argument, and it
+		// is the same rule: `HttpSessionSecurityContextRepository` hands back the *stored*
+		// instance rather than a copy, so writing through `getContext()` rewrites the
+		// session of whoever's cookie arrived with the request. Nothing is saved to a
+		// repository either, so no session is created — that half was already true, and it
+		// is not the failure mode. The precondition is admittedly thin here: an MCP client
+		// holds no cookie, so a request carrying both a live access token and a
+		// `JSESSIONID` is not one this endpoint expects. Two sibling filters disagreeing
+		// about a rule this branch documents at length is the more expensive thing to
+		// leave standing.
+		SecurityContextHolder.setContext(
+			SecurityContextHolder.createEmptyContext().apply {
+				this.authentication = UsernamePasswordAuthenticationToken(principal, null, principal.authorities)
+			},
+		)
 
 		filterChain.doFilter(request, response)
 	}

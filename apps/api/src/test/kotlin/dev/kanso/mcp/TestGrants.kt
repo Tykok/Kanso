@@ -63,6 +63,10 @@ class TestGrants(
 	 *   be shown refusing.
 	 * @param principalName overridable so a grant written by something that is *not*
 	 *   `AgentPrincipalFilter`'s chain can be shown being refused rather than looked up.
+	 * @param issuedAt when the token was minted. Overridable so expiry — the normal end of
+	 *   every token's life — can be reached without waiting an hour for it. The access
+	 *   token's lifetime is the client's own hour, applied to this instant, so an instant
+	 *   more than an hour ago is a spent grant.
 	 */
 	fun authorize(
 		owner: User,
@@ -70,9 +74,9 @@ class TestGrants(
 		clientId: String,
 		resource: Any? = "http://localhost/api/mcp",
 		principalName: String = owner.id.toString(),
+		issuedAt: Instant = Instant.now(),
 	): OAuth2Authorization {
 		val client = clients.findByClientId(clientId) ?: register(clientId)
-		val issuedAt = Instant.now()
 
 		val request = OAuth2AuthorizationRequest.authorizationCode()
 			.authorizationUri("http://localhost/oauth2/authorize")
@@ -109,8 +113,9 @@ class TestGrants(
 		clientId: String,
 		resource: Any? = "http://localhost/api/mcp",
 		principalName: String = owner.id.toString(),
+		issuedAt: Instant = Instant.now(),
 	): String {
-		val authorization = authorize(owner, scopes, clientId, resource, principalName)
+		val authorization = authorize(owner, scopes, clientId, resource, principalName, issuedAt)
 
 		authorizations.save(authorization)
 		// The consent row the screen would have written. Not read by the filter, and

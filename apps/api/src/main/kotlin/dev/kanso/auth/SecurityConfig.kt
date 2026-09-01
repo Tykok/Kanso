@@ -24,6 +24,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler
+import org.springframework.transaction.PlatformTransactionManager
 
 /**
  * Two ways in — an OAuth2 round trip, or an email and a password — and one way
@@ -65,6 +66,7 @@ class SecurityConfig(
 		authorizations: OAuth2AuthorizationService,
 		clients: RegisteredClientRepository,
 		users: UserRepository,
+		transactionManager: PlatformTransactionManager,
 	): SecurityFilterChain {
 		http
 			.cors { }
@@ -132,7 +134,7 @@ class SecurityConfig(
 		// an authorisation server says so rather than handing an agent a header identity.
 		// It filters itself down to that one path; see its `shouldNotFilter`.
 		http.addFilterBefore(
-			McpBearerFilter(authorizations, clients, users, props.auth.effectiveMode),
+			McpBearerFilter(authorizations, clients, users, transactionManager, props.auth.effectiveMode),
 			UsernamePasswordAuthenticationFilter::class.java,
 		)
 

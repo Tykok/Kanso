@@ -34,6 +34,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository
+import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.test.Test
@@ -74,6 +75,7 @@ class AgentRightsTest : PostgresTest() {
 	@Autowired lateinit var clients: RegisteredClientRepository
 	@Autowired lateinit var authorizations: OAuth2AuthorizationService
 	@Autowired lateinit var consents: OAuth2AuthorizationConsentService
+	@Autowired lateinit var transactionManager: PlatformTransactionManager
 
 	private val grants by lazy { TestGrants(clients, authorizations, consents) }
 
@@ -82,7 +84,7 @@ class AgentRightsTest : PostgresTest() {
 	 * refusal on the container's own filter; what is under test here is what happens on an
 	 * instance that has a door, so this one is built with the mode that opens it.
 	 */
-	private val filter by lazy { McpBearerFilter(authorizations, clients, users, authMode = "oidc") }
+	private val filter by lazy { McpBearerFilter(authorizations, clients, users, transactionManager, authMode = "oidc") }
 
 	private fun user(role: InstanceRole) = users.createLocalUser(
 		email = "rights-${UUID.randomUUID()}@kanso.test",
