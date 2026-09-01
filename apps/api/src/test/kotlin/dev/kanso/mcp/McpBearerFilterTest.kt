@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -55,6 +56,11 @@ class McpBearerFilterTest : PostgresTest() {
 	private val grants by lazy { TestGrants(clients, authorizations, consents) }
 	private val filter by lazy { McpBearerFilter(authorizations, clients, users, authMode = "oidc") }
 	private val inDevMode by lazy { McpBearerFilter(authorizations, clients, users, authMode = "DEV") }
+
+	/** What this instance calls itself on the origin `MockHttpServletRequest` defaults to. */
+	private val ours = McpResource.canonical("http://localhost")
+	private val read = setOf(OAuthScopes.READ)
+	private val client = "claude-code"
 
 	private fun member(): User = users.createLocalUser(
 		email = "agent-${UUID.randomUUID()}@kanso.test",
@@ -148,25 +154,58 @@ class McpBearerFilterTest : PostgresTest() {
 	}
 
 	/**
-	 * Two audiences bind a token to neither — and this row cannot even be read back:
-	 * Jackson's allowlist refuses to reconstitute the `String[]` it was stored as, so the
-	 * library raises rather than returning nothing. Both roads end at the same 401, which
-	 * is the assertion worth making: an unreadable grant is refused, not raised.
+	 * The row a repeated `resource` produces cannot be read back at all: Jackson's
+	 * allowlist refuses to reconstitute the `String[]` it was stored as, so the library
+	 * raises where it should have returned nothing. This test is named for that, because
+	 * that is the only thing it can prove — the refusal happens before `Audience` is ever
+	 * consulted, and the rule about repeated values is asserted directly below instead.
 	 */
 	@Test
-	fun `a token naming this resource and another is refused`() {
+	fun `a grant this server cannot read back is refused, not raised`() {
 		val owner = member()
 		val token = grants.issue(
 			owner,
 			setOf(OAuthScopes.READ),
 			clientId = "claude-code",
-			resource = arrayOf(McpResource.canonical("http://localhost"), "https://elsewhere.example.com/api/mcp"),
+			resource = arrayOf(ours, "https://elsewhere.example.com/api/mcp"),
 		)
 
 		assertEquals(
 			401,
 			call("Bearer $token").status,
-			"two audiences bind a token to neither, and a grant we cannot parse is not a grant",
+			"a grant this server cannot parse is not a grant, and not a 500 either",
+		)
+	}
+
+	/**
+	 * The audience rule itself, on an authorisation held in the hand.
+	 *
+	 * In memory because it has to be: the store cannot return a repeated `resource`, so
+	 * driving this through the filter would only ever prove the catch above — and would
+	 * pass with [Audience] deleted. Both shapes RFC 8707's parameter arrives in are
+	 * asserted, because a stored grant hands back a `Collection` where a live request hands
+	 * back an `Array`, and the rule has to be the same one for both.
+	 */
+	@Test
+	fun `two resources bind a token to neither, and one of them being ours does not help`() {
+		val owner = member()
+		val elsewhere = "https://elsewhere.example.com/api/mcp"
+
+		assertFalse(
+			Audience.matches(grants.authorize(owner, read, client, resource = arrayOf(ours, elsewhere)), ours),
+			"naming us alongside somebody else is not naming us",
+		)
+		assertFalse(
+			Audience.matches(grants.authorize(owner, read, client, resource = listOf(ours, elsewhere)), ours),
+			"the same rule, for the shape a stored grant reads back as",
+		)
+		assertFalse(
+			Audience.matches(grants.authorize(owner, read, client, resource = elsewhere), ours),
+			"and a single resource that is not ours is still not ours",
+		)
+		assertTrue(
+			Audience.matches(grants.authorize(owner, read, client, resource = ours), ours),
+			"one value, and it is ours: the only combination that opens the door",
 		)
 	}
 
@@ -227,6 +266,27 @@ class McpBearerFilterTest : PostgresTest() {
 		assertEquals(503, response.status, "no authorisation server exists to send anybody to")
 		assertEquals(DEV_MODE_REFUSAL, response.contentAsString.trim(), "the sentence names the variable to change")
 		assertNull(SecurityContextHolder.getContext().authentication, "a valid token is still not honoured here")
+	}
+
+	/**
+	 * Deployed under a servlet context path, `/api/mcp` arrives as `/kanso/api/mcp`. A
+	 * filter matching the raw URI would skip it and leave the session chain to answer —
+	 * an endpoint quietly falling back to cookie authentication, which is the wrong
+	 * direction for a failure to take.
+	 */
+	@Test
+	fun `the endpoint is found under a context path, and the challenge names it`() {
+		val request = MockHttpServletRequest("POST", "/kanso${McpResource.PATH}").apply { contextPath = "/kanso" }
+		val response = MockHttpServletResponse()
+
+		filter.doFilter(request, response, MockFilterChain())
+
+		assertEquals(401, response.status, "the filter has to recognise its own endpoint wherever it is mounted")
+		assertEquals(
+			McpChallenge.header(OAuthScopes.ALL, "http://localhost/kanso"),
+			response.getHeader("WWW-Authenticate"),
+			"and send the client to a document that exists on this deployment",
+		)
 	}
 
 	/**

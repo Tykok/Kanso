@@ -51,8 +51,14 @@ class McpBearerFilter(
 	private val authMode: String,
 ) : OncePerRequestFilter() {
 
+	/**
+	 * The path within the application, not the raw URI. Under a servlet context path the
+	 * two differ, and matching the raw one would skip `/kanso/api/mcp` — leaving the
+	 * endpoint to the session chain, which is a bearer-protected route quietly falling
+	 * back to a cookie. [McpResource.origin] is context-path aware; so is this.
+	 */
 	override fun shouldNotFilter(request: HttpServletRequest): Boolean =
-		!request.requestURI.startsWith(McpResource.PATH)
+		!request.requestURI.removePrefix(request.contextPath).startsWith(McpResource.PATH)
 
 	override fun doFilterInternal(
 		request: HttpServletRequest,
