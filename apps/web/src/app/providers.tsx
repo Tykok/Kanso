@@ -2,10 +2,13 @@
 
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { applyEvent, useMe } from "@/lib/queries";
-import { connectRealtime } from "@/lib/realtime";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { api } from "@/lib/api";
+import { useMe, useTeams } from "@/lib/queries";
+import { connectRealtime, type RealtimeConnection } from "@/lib/realtime";
+import { queryCache, RealtimeCache, topicsFor } from "@/lib/realtime-events";
 import { applyPreferences, cachePreferences, readCachedPreferences } from "@/lib/theme";
+import { useUi } from "@/store/ui";
 
 /**
  * The route segments that answer without a session.
@@ -26,10 +29,55 @@ const isAnonymousRoute = (pathname: string | null) =>
     (segment) => pathname === segment || pathname.startsWith(`${segment}/`),
   );
 
+/**
+ * The change feed, wired to the cache.
+ *
+ * Two lifetimes, two effects. The socket is opened once per session; the topics follow
+ * whatever the list is scoped to, which changes every time someone clicks a team in the
+ * sidebar. Reading `useTeams` here is not a spare query — it is the hierarchy
+ * [topicsFor] needs to subscribe to a scoped team's descendants as well as itself, and
+ * every screen that can be scoped has already loaded it.
+ */
 function Realtime() {
   const queryClient = useQueryClient();
+  const scope = useUi((state) => state.scope);
+  const view = useUi((state) => state.view);
+  const teams = useTeams().data;
+  const topics = useMemo(() => topicsFor(scope, view, teams ?? []), [scope, view, teams]);
 
-  useEffect(() => connectRealtime((event) => applyEvent(queryClient, event.entity)), [queryClient]);
+  const applier = useMemo(
+    () =>
+      new RealtimeCache({
+        cache: queryCache(queryClient),
+        // A row this reader may not read is a refusal, not a failure: the applier reads
+        // "no row" and widens, which is what the whole-key invalidation always did.
+        fetchTicket: (id) => api.ticket(id).catch(() => undefined),
+      }),
+    [queryClient],
+  );
+
+  // Neither effect assumes it runs first. The socket subscribes to the last topics the
+  // other one recorded, and the other one re-subscribes whichever socket is open —
+  // so mounting, scoping to another team, and replacing the socket all end up asking
+  // for the same set, in any order.
+  const connection = useRef<RealtimeConnection | null>(null);
+  const wanted = useRef<readonly string[]>([]);
+
+  useEffect(() => {
+    const socket = connectRealtime((event) => applier.receive(event));
+    connection.current = socket;
+    socket.subscribeTo(wanted.current);
+    return () => {
+      connection.current = null;
+      socket.close();
+      applier.cancel();
+    };
+  }, [applier]);
+
+  useEffect(() => {
+    wanted.current = topics;
+    connection.current?.subscribeTo(topics);
+  }, [topics]);
 
   return null;
 }

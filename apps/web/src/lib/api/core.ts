@@ -634,6 +634,13 @@ export const api = {
       })}`,
     ),
 
+  /**
+   * One row. What a realtime event is worth fetching: the event names an id, and
+   * refetching the list it happens to be in to learn what changed about it is the
+   * round trip `lib/realtime-events.ts` exists to avoid.
+   */
+  ticket: (id: string) => request<Ticket>(`/api/tickets/${id}`),
+
   createTicket: (body: {
     teamId: string;
     title: string;
