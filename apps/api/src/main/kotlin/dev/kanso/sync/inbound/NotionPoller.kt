@@ -7,19 +7,20 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.NotionMetaRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.service.NotificationKind
 import dev.kanso.service.NotificationService
 import dev.kanso.service.ScheduleService
-import dev.kanso.sync.SyncEntityType
-import dev.kanso.sync.SyncOperation
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionProps
@@ -54,7 +55,7 @@ class NotionPoller(
 	private val teams: TeamRepository,
 	private val projects: ProjectRepository,
 	private val tickets: TicketRepository,
-	private val jobs: SyncJobRepository,
+	private val jobs: OutboundJobRepository,
 	private val schedule: ScheduleService,
 	private val notifications: NotificationService,
 	private val events: EventPublisher,
@@ -133,7 +134,7 @@ class NotionPoller(
 		if (isEcho(page.lastEditedTime, ticket.mirror.notionLastEditedTime)) return
 
 		if (kansoWins(page, ticket.updatedAt, ticket.mirror.notionSyncedAt)) {
-			jobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+			jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, ticket.id, OutboundOperation.UPSERT)
 			recordConflicts(ticket, page)
 			return
 		}
@@ -188,7 +189,7 @@ class NotionPoller(
 		if (isEcho(page.lastEditedTime, project.mirror.notionLastEditedTime)) return
 
 		if (kansoWins(page, project.updatedAt, project.mirror.notionSyncedAt)) {
-			jobs.enqueue(SyncEntityType.PROJECT, project.id, SyncOperation.UPSERT)
+			jobs.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, project.id, OutboundOperation.UPSERT)
 			return
 		}
 
@@ -233,7 +234,7 @@ class NotionPoller(
 		if (isEcho(page.lastEditedTime, team.mirror.notionLastEditedTime)) return
 
 		if (kansoWins(page, team.updatedAt, team.mirror.notionSyncedAt)) {
-			jobs.enqueue(SyncEntityType.TEAM, team.id, SyncOperation.UPSERT)
+			jobs.enqueue(Destination.NOTION, OutboundEntityType.TEAM, team.id, OutboundOperation.UPSERT)
 			return
 		}
 		if (team.archived != page.archived) {
@@ -243,9 +244,10 @@ class NotionPoller(
 				page.id,
 			)
 			jobs.enqueue(
-				SyncEntityType.TEAM,
+				Destination.NOTION,
+				OutboundEntityType.TEAM,
 				team.id,
-				if (team.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+				if (team.archived) OutboundOperation.ARCHIVE else OutboundOperation.UPSERT,
 			)
 		}
 		teams.markSynced(team.id, page.id, page.lastEditedTime)

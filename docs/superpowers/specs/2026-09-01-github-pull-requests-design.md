@@ -396,6 +396,16 @@ it was rejected: it modifies a mirror that works, for a need that is not the mir
 and it makes every future change to Notion sync a change that can break GitHub. Two small
 tables that each do one thing beat one table that does two.
 
+> **Superseded by KAN-16 (`V26`).** The rejected alternative is what was built. `sync_jobs`
+> is now `outbound_jobs`, with a `destination` column beside `entity_type`, a collapse rule
+> keyed on `(destination, entity_type, entity_id)`, and an `OutboundWorker` that drains one
+> destination at a time through an `OutboundJobHandler` per destination — Notion's being
+> one of them. The objection above stands as written and is answered by the split rather
+> than by a second table: what a job *means* lives in the handler, so a change to the
+> Notion push cannot reach GitHub's. This section's `github_jobs` table and `GithubWorker`
+> should not be built; KAN-18 is a `GithubOutboundHandler`, a value in the `destination`
+> vocabulary, and whatever widening of `entity_type` and `operation` it needs.
+
 ```sql
 CREATE TABLE github_jobs (
   id         BIGSERIAL PRIMARY KEY,

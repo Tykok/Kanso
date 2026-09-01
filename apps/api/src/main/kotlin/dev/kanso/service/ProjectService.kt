@@ -9,19 +9,20 @@ import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectHealth
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.User
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.DocRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.ProjectUpdateRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
-import dev.kanso.sync.SyncEntityType
-import dev.kanso.sync.deletePayload
-import dev.kanso.sync.SyncOperation
+import dev.kanso.sync.outbound.deletePayload
 import dev.kanso.trash.TrashDisposal
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
@@ -52,7 +53,7 @@ class ProjectService(
 	private val tickets: TicketRepository,
 	private val users: UserRepository,
 	private val docs: DocRepository,
-	private val syncJobs: SyncJobRepository,
+	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val trash: TrashDisposal,
 ) {
@@ -106,7 +107,7 @@ class ProjectService(
 
 		val project = projects.insert(name, status, start, end, leadUserId, teamId)
 		projects.setDocs(project.id, docIds)
-		syncJobs.enqueue(SyncEntityType.PROJECT, project.id, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, project.id, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.project(ChangeKind.CREATED, project.id, teamId))
 		// No health: a project that has just been created has nobody's assessment on it yet,
 		// and the absence is the honest answer rather than a starting value.
@@ -152,7 +153,7 @@ class ProjectService(
 			?: throw NotFoundException("No project $id")
 		if (docIds != null) projects.setDocs(id, docIds)
 
-		syncJobs.enqueue(SyncEntityType.PROJECT, id, SyncOperation.UPSERT)
+		outbox.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, id, OutboundOperation.UPSERT)
 		events.publish(KansoEvent.project(ChangeKind.UPDATED, id, teamId))
 		// Editing a project cannot touch its health — including when it moves the status,
 		// which is the one edit somebody will expect to. The health is read back out of the
@@ -192,10 +193,11 @@ class ProjectService(
 		if (declared != fresh) throw CountsChangedException(fresh)
 
 		disperseTickets(id, plan, destructive = true)
-		syncJobs.enqueue(
-			SyncEntityType.PROJECT,
+		outbox.enqueue(
+			Destination.NOTION,
+			OutboundEntityType.PROJECT,
 			id,
-			SyncOperation.DELETE,
+			OutboundOperation.DELETE,
 			payload = deletePayload(project.mirror.notionPageId),
 		)
 		projects.delete(id)
@@ -214,7 +216,7 @@ class ProjectService(
 
 		when {
 			plan.tickets == DispositionChoice.KEEP -> tickets.clearProject(projectId).forEach {
-				syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.UPSERT)
+				outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, it, OutboundOperation.UPSERT)
 				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, null))
 			}
 
@@ -224,10 +226,11 @@ class ProjectService(
 				// a countdown goes on running over a row that is gone.
 				trash.forgetTickets(tickets.deleteByProject(projectId))
 				held.forEach {
-					syncJobs.enqueue(
-						SyncEntityType.TICKET,
+					outbox.enqueue(
+						Destination.NOTION,
+						OutboundEntityType.TICKET,
 						it.id,
-						SyncOperation.DELETE,
+						OutboundOperation.DELETE,
 						payload = deletePayload(it.mirror.notionPageId),
 					)
 					events.publish(KansoEvent.ticket(ChangeKind.DELETED, it.id, it.teamId, projectId))
@@ -235,7 +238,7 @@ class ProjectService(
 			}
 
 			else -> tickets.setArchivedByProject(projectId, true).forEach {
-				syncJobs.enqueue(SyncEntityType.TICKET, it, SyncOperation.ARCHIVE)
+				outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, it, OutboundOperation.ARCHIVE)
 				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, projectId))
 			}
 		}
@@ -252,10 +255,11 @@ class ProjectService(
 			teamId = project.teamId,
 			archived = archived,
 		) ?: throw NotFoundException("No project ${project.id}")
-		syncJobs.enqueue(
-			SyncEntityType.PROJECT,
+		outbox.enqueue(
+			Destination.NOTION,
+			OutboundEntityType.PROJECT,
 			project.id,
-			if (archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+			if (archived) OutboundOperation.ARCHIVE else OutboundOperation.UPSERT,
 		)
 		events.publish(KansoEvent.project(ChangeKind.UPDATED, project.id, project.teamId))
 		return ProjectDetail(updated, projects.docIds(project.id), updates.latest(project.id)?.health)

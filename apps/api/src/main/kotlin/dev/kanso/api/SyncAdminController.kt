@@ -1,12 +1,13 @@
 package dev.kanso.api
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.outbox.Destination
 import dev.kanso.repo.NotionMetaRepository
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.repo.OutboundJobRepository
+import dev.kanso.service.BadRequestException
 import dev.kanso.sync.bootstrap.BootstrapNotPossible
 import dev.kanso.sync.bootstrap.NotionBootstrap
 import dev.kanso.sync.notion.NotionClient
-import dev.kanso.service.BadRequestException
 import kotlinx.coroutines.runBlocking
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
@@ -33,13 +34,18 @@ data class CursorStatus(val dataSourceId: String, val lastEditTime: String?, val
  * Operational surface for the mirror. Everything here is diagnosable from the UI
  * or a terminal, because "the mirror is behind" has to be answerable without
  * reading logs.
+ *
+ * Every queue question it asks is asked of [Destination.NOTION] alone. The outbox is
+ * shared now, and a screen that says "the mirror" while counting another consumer's
+ * backlog — or whose Retry button silently requeued it — would be answering a
+ * different question from the one it was drawn to answer.
  */
 @RestController
 @RequestMapping("/api/admin")
 class SyncAdminController(
 	private val props: KansoProperties,
 	private val client: NotionClient,
-	private val jobs: SyncJobRepository,
+	private val jobs: OutboundJobRepository,
 	private val meta: NotionMetaRepository,
 	private val bootstrap: NotionBootstrap,
 	private val tx: TransactionTemplate,
@@ -53,8 +59,8 @@ class SyncAdminController(
 			mirrorEnabled = client.enabled,
 			bootstrapped = databases.size >= 4,
 			databases = databases.map { MirroredDatabase(it.kind, it.databaseId, it.dataSourceId) },
-			jobs = jobs.countsByStatus(),
-			failed = jobs.findFailed().map {
+			jobs = jobs.countsByStatus(Destination.NOTION),
+			failed = jobs.findFailed(Destination.NOTION).map {
 				FailedJob(it.id, it.entityType.wire, it.entityId.toString(), it.attempts, it.lastError)
 			},
 			cursors = databases.mapNotNull { db ->
@@ -90,5 +96,5 @@ class SyncAdminController(
 
 	@PostMapping("/sync/retry-failed")
 	@Transactional
-	fun retryFailed(): Map<String, Any> = mapOf("requeued" to jobs.retryAllFailed())
+	fun retryFailed(): Map<String, Any> = mapOf("requeued" to jobs.retryAllFailed(Destination.NOTION))
 }

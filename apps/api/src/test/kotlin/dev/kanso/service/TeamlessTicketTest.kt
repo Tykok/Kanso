@@ -45,7 +45,7 @@ class TeamlessTicketTest : PostgresTest() {
 
 	/** Straight at the outbox: no repository read answers "is this one entity queued". */
 	private fun queuedPushes(ticketId: UUID): Int = jdbc
-		.sql("SELECT count(*) FROM sync_jobs WHERE entity_type = 'ticket' AND entity_id = :id")
+		.sql("SELECT count(*) FROM outbound_jobs WHERE entity_type = 'ticket' AND entity_id = :id")
 		.param("id", ticketId).query(Int::class.java).single()
 
 	private fun user(role: InstanceRole) = users.createLocalUser(

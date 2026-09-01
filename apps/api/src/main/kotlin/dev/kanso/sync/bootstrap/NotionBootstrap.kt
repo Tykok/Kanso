@@ -1,15 +1,16 @@
 package dev.kanso.sync.bootstrap
 
-import dev.kanso.settings.InstanceSettingsService
+import dev.kanso.outbox.Destination
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.NotionDatabaseRef
 import dev.kanso.repo.NotionMetaRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
-import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
-import dev.kanso.sync.SyncEntityType
-import dev.kanso.sync.SyncOperation
+import dev.kanso.settings.InstanceSettingsService
 import dev.kanso.sync.notion.NotionApiException
 import dev.kanso.sync.notion.NotionClient
 import dev.kanso.sync.notion.NotionProps
@@ -18,6 +19,7 @@ import dev.kanso.sync.notion.RelationDialect
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.support.TransactionTemplate
+import java.util.UUID
 
 class BootstrapNotPossible(message: String) : RuntimeException(message)
 
@@ -38,7 +40,7 @@ class NotionBootstrap(
 	private val projects: ProjectRepository,
 	private val tickets: TicketRepository,
 	private val docs: DocRepository,
-	private val jobs: SyncJobRepository,
+	private val jobs: OutboundJobRepository,
 	private val tx: TransactionTemplate,
 ) {
 
@@ -159,15 +161,15 @@ class NotionBootstrap(
 	 */
 	fun enqueueEverything(): Int {
 		var count = 0
-		docs.findAll().forEach { jobs.enqueue(SyncEntityType.DOC, it.id, SyncOperation.UPSERT); count++ }
-		teams.findAll(includeArchived = true).forEach {
-			jobs.enqueue(SyncEntityType.TEAM, it.id, SyncOperation.UPSERT); count++
+		val push = { type: OutboundEntityType, id: UUID ->
+			jobs.enqueue(Destination.NOTION, type, id, OutboundOperation.UPSERT)
+			count++
 		}
-		projects.search(teamIds = null, includeArchived = true).forEach {
-			jobs.enqueue(SyncEntityType.PROJECT, it.id, SyncOperation.UPSERT); count++
-		}
+		docs.findAll().forEach { push(OutboundEntityType.DOC, it.id) }
+		teams.findAll(includeArchived = true).forEach { push(OutboundEntityType.TEAM, it.id) }
+		projects.search(teamIds = null, includeArchived = true).forEach { push(OutboundEntityType.PROJECT, it.id) }
 		val batch = tickets.search(includeArchived = true, limit = MAX_RECONCILE)
-		batch.forEach { jobs.enqueue(SyncEntityType.TICKET, it.id, SyncOperation.UPSERT); count++ }
+		batch.forEach { push(OutboundEntityType.TICKET, it.id) }
 		if (batch.size == MAX_RECONCILE) {
 			log.warn(
 				"Reconcile queued only the {} most recently updated tickets. Run it again after this " +

@@ -6,7 +6,8 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
-import dev.kanso.repo.SyncJobRepository
+import dev.kanso.outbox.Destination
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.trash.TrashKind
 import dev.kanso.trash.TrashService
@@ -34,7 +35,7 @@ class NotificationServiceTest : PostgresTest() {
 	@Autowired lateinit var notifications: NotificationService
 	@Autowired lateinit var teams: TeamService
 	@Autowired lateinit var tickets: TicketService
-	@Autowired lateinit var jobs: SyncJobRepository
+	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var trash: TrashService
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
@@ -156,14 +157,14 @@ class NotificationServiceTest : PostgresTest() {
 
 	/**
 	 * The failures tab is derived from the outbox rather than stored beside the other
-	 * kinds. `sync_jobs` is where "the mirror refused this write" is already true, and a
+	 * kinds. `outbound_jobs` is where "the mirror refused this write" is already true, and a
 	 * stored copy would keep claiming it after the job was retried and pushed.
 	 */
 	@Test
 	fun `a refused mirror push appears in the failures tab with nobody having recorded it`() {
 		val lea = person("Lea")
 		val ticket = newTicket("The mirror refused two writes")
-		val job = jobs.claimBatch(10, "test").single { it.entityId == ticket.ticket.id }
+		val job = jobs.claimBatch(Destination.NOTION, 10, "test").single { it.entityId == ticket.ticket.id }
 		jobs.markFailed(job.id, "The target page is locked by another workspace")
 
 		val inbox = notifications.inbox(lea.id, InboxTab.FAILURES)
@@ -174,6 +175,9 @@ class NotificationServiceTest : PostgresTest() {
 		assertEquals("The mirror refused two writes", row.subject)
 		assertEquals("The target page is locked by another workspace", row.payload["error"])
 		assertEquals(job.id, (row.payload["jobId"] as Number).toLong())
+		// Which system refused, so the row's sentence can name it rather than assume
+		// Notion — the outbox serves more than one destination now.
+		assertEquals("notion", row.payload["destination"])
 		assertEquals(1, inbox.counts.failures)
 		// It is unread while it is broken: there is no "dismiss", only Retry.
 		assertNull(row.readAt)
@@ -184,7 +188,7 @@ class NotificationServiceTest : PostgresTest() {
 	fun `marking all read does not pretend a failed push was dealt with`() {
 		val lea = person("Lea")
 		val ticket = newTicket()
-		val job = jobs.claimBatch(10, "test").single { it.entityId == ticket.ticket.id }
+		val job = jobs.claimBatch(Destination.NOTION, 10, "test").single { it.entityId == ticket.ticket.id }
 		jobs.markFailed(job.id, "locked")
 
 		notifications.markAllRead(lea.id)

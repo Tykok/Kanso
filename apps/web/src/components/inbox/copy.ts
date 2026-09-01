@@ -24,6 +24,20 @@ export type RowCopy = {
 
 const quoted = (value: string) => `“${value}”`;
 
+/**
+ * What to call the system that refused a push.
+ *
+ * Closed here the way `STATUS_LABELS` is, and falling back to the wire value rather
+ * than to "the mirror": a destination this build has never heard of is one a newer
+ * server added, and printing its own name is closer to true than printing Notion's.
+ */
+const DESTINATION_LABELS: Record<string, string> = { notion: "Notion mirror" };
+
+function destinationLabel(raw: unknown): string {
+  if (typeof raw !== "string" || !raw) return DESTINATION_LABELS.notion;
+  return DESTINATION_LABELS[raw] ?? raw;
+}
+
 /** A status the vocabulary knows, written as the rest of the app writes it. */
 function statusLabel(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
@@ -77,8 +91,11 @@ export function rowCopy(notification: Notification): RowCopy {
 
     case "sync_failed":
       return {
-        sentence: "The Notion mirror refused this write",
-        // The mirror's own words, not a paraphrase: "the target page is locked by
+        // The outbox serves more than Notion now, so the row names who refused rather
+        // than assuming. An older server sends no destination and only ever meant
+        // Notion, which is what the fallback says.
+        sentence: `The ${destinationLabel(payload.destination)} refused this write`,
+        // The far side's own words, not a paraphrase: "the target page is locked by
         // another workspace" is actionable and "sync failed" is not.
         detail: typeof payload.error === "string" && payload.error
           ? payload.error

@@ -24,7 +24,7 @@ import org.postgresql.util.PGobject
  * Written through [PGobject] rather than as a plain `text()` column: pgjdbc sends a
  * Kotlin String as `varchar`, and Postgres refuses `varchar → jsonb` without an
  * explicit cast, so `text("content")` here would compile and then fail on the first
- * insert. `SyncJobs.payload` sidesteps that by only ever being written through raw
+ * insert. `OutboundJobs.payload` sidesteps that by only ever being written through raw
  * SQL that casts; blocks are written through Exposed, so the cast has to live in the
  * column type.
  *

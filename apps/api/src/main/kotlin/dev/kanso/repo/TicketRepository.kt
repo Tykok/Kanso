@@ -43,7 +43,7 @@ class TicketRepository(
 	 * The row, whatever state it is in — **including** one in the trash.
 	 *
 	 * This is a row reader, not a scope query, and two callers depend on it staying one:
-	 * `SyncWorker.plan` looks a ticket up to build the push that archives its Notion page,
+	 * `NotionOutboundHandler.plan` looks a ticket up to build the push that archives its Notion page,
 	 * which happens precisely because it was just thrown away, and `TicketService` loads
 	 * the row before deciding whether the caller may see it. Filtering here would make the
 	 * mirror silently keep a live page for every deleted ticket. `TicketService.get` is

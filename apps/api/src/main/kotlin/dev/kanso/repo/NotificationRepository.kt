@@ -38,7 +38,7 @@ data class NotificationRow(
 )
 
 /**
- * Raw SQL throughout, following `SyncJobRepository`.
+ * Raw SQL throughout, following `OutboundJobRepository`.
  *
  * Two things put this outside the Exposed DSL. `payload` is jsonb, which has to be
  * cast explicitly on the way in and read as `::text` on the way out; and every read
@@ -190,24 +190,31 @@ class NotificationRepository(
 	// --- the failures tab, read off the outbox --------------------------------
 
 	/**
-	 * The mirror's refusals, as inbox rows.
+	 * Refused pushes, as inbox rows.
 	 *
-	 * Not stored beside the other kinds on purpose. `sync_jobs` is already where "the
-	 * mirror refused this write" is true, and a notification copying it would go on
+	 * Not stored beside the other kinds on purpose. `outbound_jobs` is already where "the
+	 * far side refused this write" is true, and a notification copying it would go on
 	 * claiming a push had failed after the queue was retried and the push succeeded.
 	 * Nobody has to remember to delete anything: the row exists exactly while the job
 	 * is failed.
 	 *
+	 * Every destination, unlike the admin screen, which is one destination's own. The
+	 * inbox's question is "what has not left the building", and a change stuck on its
+	 * way to somewhere else is still stuck. `destination` rides along so the row can
+	 * name who refused instead of assuming Notion.
+	 *
 	 * `entity_type` here is the queue's vocabulary, which includes `team` — one value
 	 * wider than `notifications`' own `CHECK`. That is legal because these rows are
-	 * never written to that table.
+	 * never written to that table. It is also the axis that survives generalising the
+	 * queue: whoever refused the write, the row is still named after the ticket it was
+	 * about, which is why the discriminator is two columns and this stays a join.
 	 */
 	fun failedPushes(limit: Int): List<FailedPush> = jdbc.sql(
 		"""
-		SELECT j.id, j.entity_type, j.entity_id, j.attempts, j.last_error, j.updated_at,
+		SELECT j.id, j.destination, j.entity_type, j.entity_id, j.attempts, j.last_error, j.updated_at,
 		       CASE WHEN j.entity_type = 'ticket' THEN tm.key || '-' || t.number END AS reference,
 		       COALESCE(t.title, p.name, d.title, jt.name) AS subject
-		  FROM sync_jobs j
+		  FROM outbound_jobs j
 		  LEFT JOIN tickets     t  ON j.entity_type = 'ticket'  AND t.id = j.entity_id
 		  LEFT JOIN teams       tm ON tm.id = t.team_id
 		  LEFT JOIN projects    p  ON j.entity_type = 'project' AND p.id = j.entity_id
@@ -220,6 +227,7 @@ class NotificationRepository(
 	).param("limit", limit).query { rs, _ ->
 		FailedPush(
 			jobId = rs.getLong("id"),
+			destination = rs.text("destination"),
 			entityType = rs.text("entity_type"),
 			entityId = rs.uuid("entity_id"),
 			attempts = rs.getInt("attempts"),
@@ -231,7 +239,7 @@ class NotificationRepository(
 	}.list()
 
 	fun failedPushCount(): Long = jdbc.sql(
-		"SELECT count(*) AS total FROM sync_jobs WHERE status = 'failed'"
+		"SELECT count(*) AS total FROM outbound_jobs WHERE status = 'failed'"
 	).query { rs, _ -> rs.getLong("total") }.single()
 
 	private companion object {
@@ -249,9 +257,10 @@ class NotificationRepository(
 	}
 }
 
-/** A job the mirror gave up on, with enough of its entity to name it on screen. */
+/** A job the queue gave up on, with enough of its entity to name it on screen. */
 data class FailedPush(
 	val jobId: Long,
+	val destination: String,
 	val entityType: String,
 	val entityId: UUID,
 	val attempts: Int,
