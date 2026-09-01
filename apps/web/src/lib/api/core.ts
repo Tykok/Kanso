@@ -108,6 +108,15 @@ export type Team = {
   key: string;
   parentTeamId?: string;
   archived: boolean;
+  /**
+   * Tickets ever filed in this team, not tickets it has — the server sends
+   * `ticket_counter`, the allocator that makes KAN-14 the fourteenth, so it climbs on a
+   * create and never comes back down on a delete.
+   *
+   * Which is the right answer for its one reader: `emptyReason` asks whether anything has
+   * ever been filed anywhere, and an instance whose work has all been deleted is not on a
+   * first run. Read it as a high-water mark and not as a counter to draw beside a name.
+   */
   ticketCount: number;
   mirror: Mirror;
   /** The server's answer to "may this actor create a ticket here", from `TicketAccess`. */

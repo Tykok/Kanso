@@ -47,6 +47,13 @@ export type KansoEvent = {
  * timeline, because it is the one drawing that shows work from *outside* its scope: the
  * far end of a dependency that crosses into another team arrives as a context bar, and a
  * subscription narrowed to the scope would never hear that bar move.
+ *
+ * [teams] must be the whole tree, archived teams included — not the one the sidebar's
+ * toggle has filtered. That toggle is about what is *drawn*, and a subscription is about
+ * what can *arrive*: `TeamRepository.descendantIds` walks straight through an archived
+ * team, so a parent's list can hold an archived sub-team's rows, and a subtree computed
+ * without them is deaf on exactly those. The caller in `app/providers.tsx` is what
+ * guarantees it.
  */
 export function topicsFor(scope: Scope, view: View, teams: readonly Team[]): string[] {
   return ["/topic/projects", "/topic/teams", ...ticketTopics(scope, view, teams)];
@@ -96,6 +103,8 @@ export type EventCache = {
   entries(segment: string): CacheEntry[];
   set(key: readonly unknown[], data: unknown): void;
   invalidate(key: readonly unknown[]): void;
+  /** Every key at once, stale. The one thing an outage can honestly ask for. */
+  invalidateAll(): void;
 };
 
 export type CacheTarget = {
@@ -162,11 +171,42 @@ export async function applyEvents(
   // makes that costless.
   if (teams || projects) cache.invalidate(["favourites"]);
 
+  // A create moves the team's counter, and nothing else here would go and read it.
+  if (tickets.some((event) => event.kind === "CREATED")) invalidateTeamLists(cache);
+
   // A project's derived bounds change when its tickets do, its explicit ones when it is
   // edited, and its explicit end is a deadline the critical path reads. Once for the
   // batch: fifty notifications are still one stale chart.
   if (projects || tickets.length) cache.invalidate(["timeline"]);
   if (tickets.length) await applyTickets(target, tickets);
+}
+
+/**
+ * The teams query, and only the list of them.
+ *
+ * `Team.ticketCount` is not a count of the tickets a team currently has — it is
+ * `ticket_counter`, `nextTicketNumber`'s allocator, the thing that makes KAN-14 the
+ * fourteenth. It climbs on a create and stays put on a delete, so a delete has nothing to
+ * refetch *for*: the server would hand back the same number, one round trip later. Only
+ * `CREATED`, therefore, and this is the whole of why the obvious "invalidate on CREATED
+ * and DELETED" would have been half a no-op.
+ *
+ * Derived from the tickets already in cache instead would be narrower and is wrong twice
+ * over. The one reader of this field asks "has anything ever been filed anywhere", which
+ * no scoped list can answer — a client scoped to one team holds only that subtree — and
+ * a live count would answer "no" for an instance whose work has all been deleted, which
+ * is a first-run welcome screen shown to someone on their hundredth ticket.
+ *
+ * The list and not `keys.teamMembers`, which a bare `["teams"]` would sweep up by prefix:
+ * a team's roster does not change because somebody filed a ticket, and a create is the
+ * commonest write there is.
+ */
+function invalidateTeamLists(cache: EventCache): void {
+  for (const entry of cache.entries("teams")) {
+    // The flag is what tells `keys.teams(includeArchived)` from `keys.teamMembers(id)`,
+    // read exactly as [knownTeams] below reads it.
+    if (typeof entry.key[1] === "boolean") cache.invalidate(entry.key);
+  }
 }
 
 async function applyTickets(target: CacheTarget, events: readonly KansoEvent[]): Promise<void> {
@@ -203,6 +243,37 @@ async function applyTickets(target: CacheTarget, events: readonly KansoEvent[]):
   }
 
   writeTickets(cache, { changed: fetched, gone, overlay: target.overlay });
+}
+
+// --- coming back from an outage ----------------------------------------------
+
+/** Something that can hold a task until no guess of this tab's is in flight. */
+export type IdleLedger = { whenIdle(task: () => void): void };
+
+/**
+ * What a socket that was away has to say: nothing, precisely — and that is the problem.
+ *
+ * An event is a notification, not a record. `pg_notify` hands it to whoever is listening
+ * at that instant and keeps no copy, so a client that was disconnected cannot ask what it
+ * missed and cannot tell a quiet minute from a lost one. This used to heal by accident:
+ * every event invalidated whole keys, so the next one to arrive swept up whatever had
+ * gone by unseen. Patching row by row removed the accident that was doing the repairing,
+ * which is how a narrower cache made a disconnection *worse* — the screen now stays
+ * durably wrong, and nothing on it says so.
+ *
+ * So the repair is asked for rather than stumbled into: once per outage, not once per
+ * event, which is the whole of what makes a hammer this wide affordable.
+ *
+ * Held until the ledger is idle, because a refetch writes the server's rows into the
+ * cache directly — nowhere near [writeTickets], and so nowhere near [TicketWrite.overlay],
+ * the seam that folds a live guess back over the server's copy. Sweeping mid-mutation
+ * would do exactly what the overlay exists to prevent: un-draw a change the server has
+ * not been told about yet, then re-draw it when the response lands. Queued rather than
+ * skipped — the answer to "not now" is "in a moment", and a dropped refresh leaves the
+ * screen wrong for as long as the tab stays open.
+ */
+export function resumeAfterOutage(cache: EventCache, guesses: IdleLedger): void {
+  guesses.whenIdle(() => cache.invalidateAll());
 }
 
 // --- writing rows into the cache ---------------------------------------------
@@ -501,5 +572,8 @@ export function queryCache(client: QueryClient): EventCache {
         .map((query) => ({ key: query.queryKey, data: query.state.data })),
     set: (key, data) => void client.setQueryData(key, data),
     invalidate: (key) => void client.invalidateQueries({ queryKey: key }),
+    // No filter is react-query's own "everything", and it refetches only what a screen
+    // is currently mounting — so the cost of the hammer is the visible screen, once.
+    invalidateAll: () => void client.invalidateQueries(),
   };
 }

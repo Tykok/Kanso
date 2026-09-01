@@ -7,7 +7,12 @@ import {
   TicketGuesses,
   wornLabels,
 } from "./optimistic";
-import { applyEvents, type CacheEntry, type EventCache } from "./realtime-events";
+import {
+  applyEvents,
+  resumeAfterOutage,
+  type CacheEntry,
+  type EventCache,
+} from "./realtime-events";
 
 /**
  * The same in-memory cache `realtime-events.test.ts` uses, and deliberately a second
@@ -19,6 +24,7 @@ function fakeCache(seed: CacheEntry[] = []) {
   const rows = new Map(seed.map((entry) => [JSON.stringify(entry.key), entry]));
   const invalidated: string[] = [];
   const writes: string[] = [];
+  let swept = 0;
 
   const cache: EventCache = {
     entries: (segment) => [...rows.values()].filter((entry) => entry.key[0] === segment),
@@ -27,6 +33,7 @@ function fakeCache(seed: CacheEntry[] = []) {
       rows.set(JSON.stringify(key), { key, data });
     },
     invalidate: (key) => void invalidated.push(JSON.stringify(key)),
+    invalidateAll: () => void (swept += 1),
   };
 
   return {
@@ -35,6 +42,8 @@ function fakeCache(seed: CacheEntry[] = []) {
     writes,
     read: <T>(key: readonly unknown[]) => rows.get(JSON.stringify(key))?.data as T | undefined,
     was: (key: readonly unknown[]) => invalidated.includes(JSON.stringify(key)),
+    /** How many times the whole cache was swept — what a reconnect does. */
+    sweeps: () => swept,
   };
 }
 
@@ -416,5 +425,76 @@ describe("the labels a ticket will wear", () => {
 
   it("is empty when every pill has been pressed off", () => {
     expect(wornLabels([], catalogue)).toEqual([]);
+  });
+});
+
+describe("a reconnect, while a guess is in flight", () => {
+  it("holds the sweep until the mutation settles", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    const handle = guesses.open(store.cache, "t1", patchedTicket({ title: "renamed" }));
+    resumeAfterOutage(store.cache, guesses);
+
+    // A refetch writes the server's rows into the cache directly — nowhere near the
+    // overlay that folds a live guess back over them — so sweeping now would un-draw a
+    // change the server has not been told about yet.
+    expect(store.sweeps()).toBe(0);
+    expect(store.read<Ticket[]>(listKey("all", ""))?.[0].title).toBe("renamed");
+
+    guesses.close(store.cache, handle, ticket("t1", { title: "renamed" }));
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("sweeps at once when nothing is in flight", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+
+    resumeAfterOutage(store.cache, new TicketGuesses());
+
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("waits for the last guess, not the first", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] }]);
+    const guesses = new TicketGuesses();
+
+    const first = guesses.open(store.cache, "t1", patchedTicket({ title: "a" }));
+    const second = guesses.open(store.cache, "t2", patchedTicket({ title: "b" }));
+    resumeAfterOutage(store.cache, guesses);
+
+    guesses.close(store.cache, first);
+    expect(store.sweeps()).toBe(0);
+
+    guesses.close(store.cache, second);
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("sweeps once per outage, not once per guess that settles", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    const handle = guesses.open(store.cache, "t1", patchedTicket({ title: "a" }));
+    resumeAfterOutage(store.cache, guesses);
+    guesses.close(store.cache, handle);
+
+    guesses.close(store.cache, guesses.open(store.cache, "t1", patchedTicket({ title: "b" })));
+
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("keeps waiting for a guess opened after the sweep was queued", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1"), ticket("t2")] }]);
+    const guesses = new TicketGuesses();
+
+    const first = guesses.open(store.cache, "t1", patchedTicket({ title: "a" }));
+    resumeAfterOutage(store.cache, guesses);
+    const second = guesses.open(store.cache, "t2", patchedTicket({ title: "b" }));
+
+    guesses.close(store.cache, first);
+    // Drained on going idle, not on the next settle whatever else is still open.
+    expect(store.sweeps()).toBe(0);
+
+    guesses.close(store.cache, second);
+    expect(store.sweeps()).toBe(1);
   });
 });
