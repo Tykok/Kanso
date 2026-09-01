@@ -74,6 +74,27 @@ class TicketController(
 		return TicketFilterVocabulary.parseServed(asked)
 	}
 
+	/**
+	 * The vocabulary itself, published — the list [list] and a saved view are both held to.
+	 *
+	 * It exists because the only other way for a client to know which facets can be asked
+	 * for is to write them down a second time, and a second copy of a closed vocabulary is
+	 * the thing the gate below was built to stop being necessary. A web app that retyped
+	 * these twelve names would drift from them, and the symptom would be a chip drawn on
+	 * screen that the server answers with a 400.
+	 *
+	 * Names only. What a facet *means* to a reader — that `assignee` is picked from the
+	 * team's people and `estimateMin` is a bound on the points — is a question about a
+	 * control, and the server has no controls; it would be publishing a guess about a
+	 * screen it cannot see. What it does own is which questions it will answer, and that
+	 * is exactly what is here.
+	 *
+	 * Before `/{id}` because Spring matches a literal segment ahead of a template, and
+	 * `filters` is not a UUID: the two cannot collide.
+	 */
+	@GetMapping("/filters")
+	fun filters(): ServedFiltersResponse = ServedFiltersResponse(TicketFilterVocabulary.SERVED.sorted())
+
 	@GetMapping("/{id}")
 	fun get(@PathVariable id: UUID): TicketResponse = TicketResponse.of(tickets.get(id))
 

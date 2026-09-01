@@ -45,6 +45,10 @@ function fakeCache(seed: CacheEntry[] = []) {
 const listKey = (kind: "all" | "team" | "project", id: string, includeArchived = false) =>
   ["tickets", kind, id, includeArchived] as const;
 
+/** The same list, narrowed by a composed filter — `keys.tickets`'s fifth segment. */
+const askedKey = (asked: string, kind: "all" | "team" | "project" = "all", id = "") =>
+  ["tickets", kind, id, false, asked] as const;
+
 const ticket = (id: string, overrides: Partial<Ticket> = {}): Ticket => ({
   id,
   identifier: `KAN-${id}`,
@@ -230,6 +234,57 @@ describe("applying a realtime event to the cache", () => {
     expect(store.was(["teams"])).toBe(true);
     expect(store.was(["timeline"])).toBe(false);
     expect(api.asked).toEqual([]);
+  });
+});
+
+/**
+ * A filtered list is a different question, and nothing in this module can answer it.
+ *
+ * `placement` knows a row's team and its project, which is the whole of what a *scope*
+ * is. A list narrowed by status, label or points is narrowed by something it cannot see,
+ * so patching one would be guessing — and the guess is always the same one: every row
+ * the scope admits belongs. That is a ticket appearing in a list that excludes it.
+ */
+describe("a list narrowed by a composed filter", () => {
+  it("refetches rather than placing a row it cannot judge", async () => {
+    const store = fakeCache([{ key: askedKey("status=todo"), data: [ticket("t1")] }]);
+    const api = server([ticket("t1", { status: "done", title: "finished" })]);
+
+    await applyEvents({ cache: store.cache, fetchTicket: api.fetchTicket }, [event()]);
+
+    expect(store.was(askedKey("status=todo"))).toBe(true);
+    // Not patched in place either: a row that no longer matches would have stayed on
+    // screen wearing its new status, which is the wrong list drawn confidently.
+    expect(store.writes).toEqual([]);
+  });
+
+  // The unfiltered entry beside it is still patched. The two live under one first
+  // segment on purpose — one optimistic write, one invalidation family — so the
+  // distinction has to be the fifth segment and not the first.
+  it("leaves the unfiltered list to be patched as it always was", async () => {
+    const store = fakeCache([
+      { key: listKey("all", ""), data: [ticket("t1")] },
+      { key: askedKey("unassigned=true"), data: [ticket("t1")] },
+    ]);
+    const api = server([ticket("t1", { title: "renamed" })]);
+
+    await applyEvents({ cache: store.cache, fetchTicket: api.fetchTicket }, [event()]);
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.map((row) => row.title)).toEqual(["renamed"]);
+    expect(store.was(askedKey("unassigned=true"))).toBe(true);
+  });
+
+  // Every key written before the segment existed, and the unfiltered one written after,
+  // read the same: no filter. Otherwise this change would have quietly stopped the main
+  // list being patched at all.
+  it("reads a key with no filter segment as unfiltered", async () => {
+    const store = fakeCache([{ key: askedKey(""), data: [ticket("t1")] }]);
+    const api = server([ticket("t1", { title: "renamed" })]);
+
+    await applyEvents({ cache: store.cache, fetchTicket: api.fetchTicket }, [event()]);
+
+    expect(store.read<Ticket[]>(askedKey(""))?.map((row) => row.title)).toEqual(["renamed"]);
+    expect(store.was(askedKey(""))).toBe(false);
   });
 });
 
