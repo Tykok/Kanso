@@ -94,6 +94,10 @@ export function TeamRow({
   onSelect: () => void;
 }) {
   const items = menuItems(ctx, [
+    // `ctx` here is already scoped to this row, so the toggle acts on this team and not on
+    // whatever the list happens to be showing — the same trick every other id in this
+    // array relies on.
+    "favourite.toggle",
     "project.create",
     "team.create",
     "team.rename",
@@ -157,6 +161,7 @@ export function ProjectRow({
   onSelect: () => void;
 }) {
   const items = menuItems(ctx, [
+    "favourite.toggle",
     "project.edit",
     project.archived ? "project.unarchive" : "project.archive",
     "project.delete",

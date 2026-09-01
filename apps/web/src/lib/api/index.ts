@@ -15,3 +15,4 @@ export * from "./inbox";
 export * from "./views";
 export * from "./organise";
 export * from "./oauth";
+export * from "./favourites";

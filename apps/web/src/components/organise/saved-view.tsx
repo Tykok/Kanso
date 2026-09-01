@@ -36,6 +36,7 @@ import type { ChipNames } from "./chips";
 import { FilterBar } from "./filter-bar";
 import { FilterComposer } from "./filter-composer";
 import { groupTickets } from "./grouping";
+import { FavouriteStar } from "../favourites";
 import { OrganiseShell, useOrganiseTeam } from "./shell";
 import { ViewRail } from "./view-rail";
 import { extend, toggle } from "./selection";
@@ -187,6 +188,10 @@ export function SavedViewScreen({ id }: { id: string }) {
           <span>{team?.name ?? "…"}</span>
           <span>/</span>
           <span className="text-muted-foreground">{view.data?.name ?? "Saved view"}</span>
+          {/* Beside the name, for the reason the document's is: this screen's key handler
+              is hand-written and never reaches the registry, and `OrganiseShell` mounts no
+              command palette, so `s` has nowhere to land here. */}
+          {view.data && <FavouriteStar target={{ kind: "view", id: id }} label={view.data.name} />}
         </>
       }
       trailing={view.data && <span>{view.data.shared ? "Shared with the team" : "Only yours"}</span>}

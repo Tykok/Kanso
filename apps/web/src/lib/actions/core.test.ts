@@ -104,6 +104,7 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     startLink: vi.fn(),
     dependencies: [],
     startUnlink: vi.fn(),
+    toggleFavourite: vi.fn(),
     logout: vi.fn(),
     ...overrides,
   };
