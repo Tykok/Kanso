@@ -223,7 +223,11 @@ data class DependencyRequest(val predecessorId: UUID)
 data class CascadeResponse(val movedTicketIds: List<UUID>)
 
 data class TicketCreateRequest(
-	val teamId: UUID,
+	/**
+	 * Absent files a draft. Absent *and* a [projectId] that belongs to a team files it into
+	 * that team, because a ticket's project belongs to its team.
+	 */
+	val teamId: UUID? = null,
 	@field:NotBlank val title: String,
 	val description: String? = null,
 	val status: String = TicketStatus.TODO.wire,
@@ -279,10 +283,14 @@ data class TicketPatchRequest(
 
 data class TicketResponse(
 	val id: UUID,
-	/** `KAN-142` — what people type and say out loud. */
-	val identifier: String,
-	val number: Int,
-	val teamId: UUID,
+	/**
+	 * `KAN-142` — what people type and say out loud, and null for a ticket no team has
+	 * claimed. A draft is addressed by [id] instead, which is the address that never
+	 * changes; the client draws a "no team" badge where this would have gone.
+	 */
+	val identifier: String?,
+	val number: Int?,
+	val teamId: UUID?,
 	val title: String,
 	val description: String?,
 	val status: String,

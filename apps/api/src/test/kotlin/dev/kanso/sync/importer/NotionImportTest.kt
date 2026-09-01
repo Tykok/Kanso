@@ -128,7 +128,7 @@ class NotionImportTest : ImportTestBase() {
 		importer().perform(admin, team.id, drawnPlan())
 
 		val numbers = ticketRows.search(teamIds = listOf(team.id), includeArchived = true, limit = 500)
-			.map { it.number }
+			.mapNotNull { it.number }
 			.sorted()
 		assertEquals(listOf(1, 2, 3), numbers, "no gaps and no collisions: the team's counter did the work")
 	}

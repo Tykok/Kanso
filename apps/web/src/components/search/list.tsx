@@ -1,6 +1,7 @@
 "use client";
 
 import type { Project } from "@/lib/api";
+import { TicketIdentifier } from "../pills";
 import { cn } from "@/lib/utils";
 import { GroupLabel } from "../ui/group-label";
 import { StatusDot } from "../ui/status-dot";
@@ -58,7 +59,7 @@ export function SearchList({
           onHover={onHover}
           onOpen={onOpen}
         >
-          <span className="w-[62px] shrink-0 font-mono text-11 text-faint">{ticket.identifier}</span>
+          <TicketIdentifier ticket={ticket} className="w-[62px] shrink-0 font-mono text-11 text-faint" />
           <StatusDot status={ticket.status} />
           <span className="min-w-0 flex-1 truncate">
             <Marked text={ticket.title} query={query} />

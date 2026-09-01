@@ -1,9 +1,9 @@
 "use client";
 
-import { dayValue, type Ticket } from "@/lib/api";
+import { dayValue, ticketAddress, type Ticket } from "@/lib/api";
 import { categoryOf, STATUS_COLORS } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import { SyncBadge } from "../pills";
+import { SyncBadge, TicketIdentifier } from "../pills";
 import { PriorityMark } from "../ui/priority-mark";
 import { Avatar } from "../views/avatar";
 import { cardLabel } from "./columns";
@@ -51,7 +51,7 @@ export function BoardCard({
     <button
       type="button"
       data-testid="board-card"
-      data-ticket={ticket.identifier}
+      data-ticket={ticketAddress(ticket)}
       data-selected={selected}
       draggable
       onDragStart={(event) => {
@@ -104,7 +104,13 @@ export function BoardCard({
       )}
 
       <div className="flex items-center gap-1.5">
-        <span className="flex-1 font-mono text-11 text-faint">{ticket.identifier}</span>
+        {/* The badge stands where `KAN-142` would: a ticket nobody has filed yet is
+            recognisable at a glance precisely by having no name here. `flex-1` is on the
+            wrapper and not on the identifier, because a pill given the rest of the row
+            stretches into a bar — the text it replaces had nothing to stretch. */}
+        <span className="flex-1">
+          <TicketIdentifier ticket={ticket} className="font-mono text-11 text-faint" />
+        </span>
         <PriorityMark priority={ticket.priority} />
         <Avatar displayName={assignee} size={18} />
       </div>

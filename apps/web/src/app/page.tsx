@@ -21,7 +21,14 @@ import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
 import { availableActions, hintOf, predecessorsOf, resolveShortcut } from "@/lib/actions";
-import { ApiError, getDevUser, setDevUser, ticketHref, type Ticket } from "@/lib/api";
+import {
+  ApiError,
+  getDevUser,
+  setDevUser,
+  ticketAddress,
+  ticketHref,
+  type Ticket,
+} from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
 import { isMac } from "@/lib/platform";
 import {
@@ -94,7 +101,7 @@ export default function InboxPage() {
     return rows.filter(
       (ticket) =>
         ticket.title.toLowerCase().includes(needle) ||
-        ticket.identifier.toLowerCase().includes(needle),
+        (ticket.identifier?.toLowerCase().includes(needle) ?? false),
     );
   }, [tickets.data, query]);
 
@@ -275,7 +282,7 @@ export default function InboxPage() {
        */
       if (event.key === "Enter" && event.shiftKey && selected) {
         event.preventDefault();
-        router.push(ticketHref(selected.identifier));
+        router.push(ticketHref(ticketAddress(selected)));
         return;
       }
 

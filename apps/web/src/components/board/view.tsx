@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   openTicketMode,
+  ticketAddress,
   ticketHref,
   type Ticket,
   type TicketStatus,
@@ -63,7 +64,7 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
     return rows.filter(
       (ticket) =>
         ticket.title.toLowerCase().includes(needle) ||
-        ticket.identifier.toLowerCase().includes(needle),
+        (ticket.identifier?.toLowerCase().includes(needle) ?? false),
     );
   }, [tickets.data, query]);
 
@@ -83,9 +84,9 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
    */
   const openTicket = useMemo(() => {
     const mode = openTicketMode(preferences);
-    return (identifier: string, id: string) => {
+    return (address: string, id: string) => {
       select(id);
-      if (mode === "page") router.push(ticketHref(identifier));
+      if (mode === "page") router.push(ticketHref(address));
       else open("detail");
     };
   }, [preferences, router, select, open]);
@@ -97,9 +98,9 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
    */
   useEffect(() => {
     if (!requestedOpen) return;
-    const wanted = visible.find((ticket) => ticket.identifier === requestedOpen);
+    const wanted = visible.find((ticket) => ticketAddress(ticket) === requestedOpen);
     openHandled();
-    if (wanted) openTicket(wanted.identifier, wanted.id);
+    if (wanted) openTicket(ticketAddress(wanted), wanted.id);
   }, [requestedOpen, visible, openHandled, openTicket]);
 
   const moveTo = (status: TicketStatus, ticketId: string) => {

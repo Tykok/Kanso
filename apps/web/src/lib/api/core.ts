@@ -68,9 +68,19 @@ export const fromDayValue = (value: string): KansoInstant | null =>
 
 export type Ticket = {
   id: string;
-  identifier: string;
-  number: number;
-  teamId: string;
+  /**
+   * `KAN-142`, and absent for a ticket no team has claimed yet. The identifier is a team
+   * key and that team's counter, so a ticket outside every team has no name to print — the
+   * card draws a "no team" badge where this would have gone, and [id] is what addresses it
+   * until somebody files it.
+   *
+   * Optional rather than `| null`, like every other absent field on this row: the server
+   * omits nulls, so what arrives is `undefined` and a `=== null` test would silently miss
+   * every draft. The helpers that read these three use `== null` for the same reason.
+   */
+  identifier?: string;
+  number?: number;
+  teamId?: string;
   title: string;
   description?: string;
   status: TicketStatus;
@@ -641,8 +651,12 @@ export const api = {
    */
   ticket: (id: string) => request<Ticket>(`/api/tickets/${id}`),
 
+  /** The drafts: tickets no team has claimed, which are in no other list this API serves. */
+  drafts: () => request<Ticket[]>("/api/tickets/drafts"),
+
   createTicket: (body: {
-    teamId: string;
+    /** Absent files a draft — see `Ticket.identifier` for what that costs it. */
+    teamId?: string;
     title: string;
     status?: TicketStatus;
     priority?: TicketPriority;
@@ -662,6 +676,8 @@ export const api = {
       start: KansoInstant;
       due: KansoInstant;
       projectId: string;
+      /** Attaching a draft to a team. There is no way back: the server refuses `unset`. */
+      teamId: string;
       archived: boolean;
       unset: string[];
     }>,

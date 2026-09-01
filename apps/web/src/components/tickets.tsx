@@ -7,7 +7,7 @@ import type { ActionContext } from "@/lib/actions";
 import { useRowMetrics } from "@/lib/row-metrics";
 import { Row, rowActionsTriggerClass } from "./ui/row";
 import { GroupLabel } from "./ui/group-label";
-import { PriorityMark, StatusPill, SyncBadge } from "./pills";
+import { PriorityMark, StatusPill, SyncBadge, TicketIdentifier } from "./pills";
 import { Menu } from "./menu";
 import { menuItems } from "./menu-items";
 
@@ -120,9 +120,11 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
         onOpen();
       }}
     >
-      <span data-testid="row-id" className="font-mono text-11 text-faint">
-        {ticket.identifier}
-      </span>
+      <TicketIdentifier
+        ticket={ticket}
+        className="font-mono text-11 text-faint"
+        data-testid="row-id"
+      />
       <PriorityMark priority={ticket.priority} ctx={ctx} />
       <StatusPill status={ticket.status} ctx={ctx} />
 
@@ -157,7 +159,7 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       <SyncBadge mirror={ticket.mirror} />
 
       <Menu
-        label={`Actions for ${ticket.identifier}`}
+        label={`Actions for ${ticket.identifier ?? ticket.title}`}
         asChild
         trigger={
           <button type="button" className={rowActionsTriggerClass}>

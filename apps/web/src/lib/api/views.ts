@@ -65,11 +65,35 @@ export function parseTicketKey(key: string): TicketKey | null {
 }
 
 /**
+ * A UUID, which is the other thing `/t/{key}` can be handed.
+ *
+ * It cannot be mistaken for an identifier: [KEY_SHAPE] admits at most eight characters
+ * before the dash and digits after it, and this has four dashes and hex on both sides. So
+ * one route serves both without the two ever having to be told apart by anything but their
+ * own shape.
+ */
+const ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const isTicketId = (key: string) => ID_SHAPE.test(key);
+
+/**
+ * What goes in the URL for this ticket.
+ *
+ * The identifier when it has one, because that is the half of a link somebody can read
+ * out loud. Its id when it does not: a ticket no team has claimed has no identifier, and
+ * the id is the address that never changes — including across the moment it gains a team
+ * and is named for the first time, which is precisely when a link made of the identifier
+ * would not have existed to break.
+ */
+export const ticketAddress = (ticket: { id: string; identifier?: string | null }) =>
+  ticket.identifier ?? ticket.id;
+
+/**
  * Where a ticket lives at page width. One function rather than a template literal at
  * each of the four call sites — the board card, the palette row, the project row and
  * the breadcrumb — so the route and the identifier cannot drift apart.
  */
-export const ticketHref = (identifier: string) => `/t/${identifier}`;
+export const ticketHref = (address: string) => `/t/${address}`;
 
 // --- how `↵` opens a ticket --------------------------------------------------
 
@@ -126,6 +150,12 @@ export const viewsApi = {
    */
   ticketByKey: ({ teamKey, number }: TicketKey) =>
     get<Ticket>(`/api/tickets/by-key/${encodeURIComponent(teamKey)}/${number}`),
+
+  /**
+   * The other resolution, for a ticket with no identifier to be read out loud. Same page,
+   * same shape back; only the address differs.
+   */
+  ticketById: (id: string) => get<Ticket>(`/api/tickets/${encodeURIComponent(id)}`),
 
   /**
    * Newest first. Delegates rather than re-issuing the request: `socialApi` owns the

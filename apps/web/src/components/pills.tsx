@@ -97,6 +97,62 @@ export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?
   );
 }
 
+/** What the badge says. Exported so a test names the same string the screen draws. */
+export const NO_TEAM_LABEL = "No team";
+
+/**
+ * True when this ticket shows the badge instead of an identifier.
+ *
+ * Reads `teamId` rather than `identifier`, though today the two are null together: the
+ * team is the fact, and the missing identifier is its consequence. A row that somehow had
+ * one without the other should still say which of the two it is missing.
+ */
+// `== null` and not `=== null`: the server omits nulls, so a draft arrives with the key
+// absent rather than explicitly empty, and the strict test would answer false for every
+// one of them.
+export const hasNoTeam = (ticket: { teamId?: string | null }) => ticket.teamId == null;
+
+const NO_TEAM_PILL =
+  "inline-flex items-center rounded-sm border border-dashed border-border px-1.5 font-sans text-11 whitespace-nowrap";
+
+/**
+ * Where `KAN-142` goes, and what stands there when there is no team to make one.
+ *
+ * A dashed outline rather than a solid pill, borrowing the "add a label" affordance from
+ * `ticket-labels.tsx`: dashed already means *not filled in yet* everywhere else on this
+ * screen, which is exactly what this is. It is deliberately not a link — a ticket with no
+ * team has nothing to navigate to that the row itself does not already open.
+ *
+ * One component for every surface that used to interpolate `ticket.identifier`, so the
+ * answer for a ticket without one is given once instead of eight times.
+ */
+export function TicketIdentifier({
+  ticket,
+  className,
+  ...rest
+}: {
+  ticket: { identifier?: string | null; teamId?: string | null };
+  className?: string;
+} & React.HTMLAttributes<HTMLSpanElement>) {
+  if (!hasNoTeam(ticket) && ticket.identifier) {
+    return (
+      <span className={className} {...rest}>
+        {ticket.identifier}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(className, NO_TEAM_PILL)}
+      data-no-team=""
+      title="This ticket belongs to no team yet"
+      {...rest}
+    >
+      {NO_TEAM_LABEL}
+    </span>
+  );
+}
+
 /**
  * The mirror runs behind by design, so its state is shown per row rather than
  * implied. "Pending" is the normal state for a second or two after every edit;

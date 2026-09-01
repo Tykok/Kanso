@@ -114,5 +114,8 @@ export function deltaTo(
  */
 export function cardLabel(ticket: Ticket): string {
   const priority = ticket.priority === "none" ? "" : `, ${PRIORITY_LABELS[ticket.priority]}`;
-  return `${ticket.identifier}, ${STATUS_LABELS[ticket.status]}${priority}: ${ticket.title}`;
+  // A ticket with no team has no identifier to read out, and "null" is worse than
+  // silence — so the sentence opens with the fact instead of with a name.
+  const named = ticket.identifier ?? "No team";
+  return `${named}, ${STATUS_LABELS[ticket.status]}${priority}: ${ticket.title}`;
 }

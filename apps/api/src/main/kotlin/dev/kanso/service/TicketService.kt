@@ -5,6 +5,7 @@ import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.EffortPoints
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.StatusCategory
+import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -31,14 +32,22 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.util.UUID
 
-/** A ticket with its team key (for `KAN-142`) and its relations already loaded. */
+/**
+ * A ticket with its team key (for `KAN-142`) and its relations already loaded.
+ *
+ * [teamKey] and [identifier] are null for a ticket no team has claimed. Null rather than a
+ * placeholder on purpose: a draft's name would be guaranteed to change the moment it gains
+ * a team, and a name that changes is worse than no name — it gets pasted into a comment or
+ * a chat message and rots there silently, while an absence cannot. What addresses a draft
+ * until then is its id, which never changes. What a person calls it is its title.
+ */
 data class TicketDetail(
 	val ticket: Ticket,
-	val teamKey: String,
+	val teamKey: String?,
 	val assigneeIds: List<UUID>,
 	val docIds: List<UUID>,
 ) {
-	val identifier: String get() = "$teamKey-${ticket.number}"
+	val identifier: String? get() = teamKey?.let { "$it-${ticket.number}" }
 }
 
 /**
@@ -152,11 +161,41 @@ class TicketService(
 		offset = offset,
 	)
 
+	/**
+	 * [actor] is here for the one kind of ticket a reader can be refused: a draft is private
+	 * to whoever wrote it. A 404 rather than a 403, for the reason [requireLive] gives — a
+	 * reader who cannot act on it is either stale or guessing, and neither should learn that
+	 * somebody else's draft exists.
+	 */
+	@Transactional(readOnly = true)
+	fun get(actor: User, id: UUID): TicketDetail {
+		val ticket = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
+		if (!access.mayRead(actor, ticket)) throw NotFoundException("No ticket $id")
+		return decorate(listOf(ticket)).single()
+	}
+
+	/** The row, with no reader in mind. Internal callers and tests only; the door is [get]. */
 	@Transactional(readOnly = true)
 	fun get(id: UUID): TicketDetail {
 		val ticket = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
 		return decorate(listOf(ticket)).single()
 	}
+
+	/**
+	 * The drafts — every list on every other screen goes through the one predicate, and that
+	 * predicate excludes them, so this is the only place they are.
+	 *
+	 * Scoped to the caller by the same rule that decides whether they may edit one, in SQL
+	 * rather than by filtering afterwards: a page of 200 that quietly drops other people's
+	 * rows is a page that under-fills, and paging over it skips work.
+	 */
+	@Transactional(readOnly = true)
+	fun drafts(actor: User, limit: Int = 200): List<TicketDetail> = decorate(
+		tickets.findDrafts(
+			authorId = if (actor.instanceRole.canConfigureInstance) null else actor.id,
+			limit = limit,
+		)
+	)
 
 	@Transactional(readOnly = true)
 	fun getByIdentifier(teamKey: String, number: Int): TicketDetail {
@@ -187,10 +226,18 @@ class TicketService(
 		return ticket
 	}
 
+	/**
+	 * [teamId] null files a draft: no counter is asked, no identifier exists yet, and
+	 * [actor] becomes the only person who may see or edit it until a team does.
+	 *
+	 * Naming a [projectId] that belongs to a team is the other way in. The team follows the
+	 * project, because a ticket's project belongs to its team and the alternative is a row
+	 * that breaks that invariant the instant it is written.
+	 */
 	@Transactional
 	fun create(
 		actor: User,
-		teamId: UUID,
+		teamId: UUID?,
 		title: String,
 		description: String?,
 		status: TicketStatus,
@@ -202,25 +249,34 @@ class TicketService(
 		docIds: List<UUID>,
 		estimate: Int? = null,
 	): TicketDetail {
+		// A project's team is adopted only when none was named — never as an override, so
+		// this cannot become a way to file into a team the explicit check below would refuse.
+		val effectiveTeamId = teamId ?: projectId?.let { projects.findById(it)?.teamId }
 		// First, because `nextTicketNumber` below takes an exclusive row lock on the
 		// team — a check placed after it would serialise every legitimate creator in that
 		// team behind a request already destined for 403, for the rest of this
 		// transaction. (The counter itself is not at risk either way: the UPDATE rolls
 		// back with the refusal, this method being @Transactional.) The same reason
 		// `patch` checks its destination side before doing anything else.
-		access.requireTeam(actor, teamId)
-		val team = teams.findById(teamId) ?: throw BadRequestException("No team $teamId")
+		//
+		// Asked of the adopted team too: attaching through a project must not be a door into
+		// a team the actor may not edit, which would be the whole rule defeated in one field.
+		effectiveTeamId?.let { access.requireTeam(actor, it) }
+		val team = effectiveTeamId?.let {
+			teams.findById(it) ?: throw BadRequestException("No team $it")
+		}
 		validateDates(start, due)
 		// A ticket's project belongs to its team — the same invariant `patch` upholds,
 		// and the same answer for the same reason: a project named explicitly and
 		// belonging to another team is a mistake worth a 400, not something to swallow.
 		// The composer only bounds what it offers; this is what makes the rule true of
-		// every caller. A team-less project is transverse and belongs everywhere.
+		// every caller. A team-less project is transverse and belongs everywhere — and
+		// leaves a team-less ticket team-less, having none of its own to lend.
 		projectId?.let {
 			val project = requireProject(it)
-			if (project.teamId != null && project.teamId != teamId) {
+			if (project.teamId != null && project.teamId != effectiveTeamId) {
 				throw BadRequestException(
-					"Project $it belongs to team ${project.teamId}, not team $teamId",
+					"Project $it belongs to team ${project.teamId}, not team $effectiveTeamId",
 				)
 			}
 		}
@@ -233,12 +289,17 @@ class TicketService(
 		val points = EffortPoints.from(estimate)
 
 		// Allocated inside this transaction: the row lock on the team serialises
-		// concurrent creates, so two people pressing "c" at once get 41 and 42.
-		val number = teams.nextTicketNumber(teamId)
+		// concurrent creates, so two people pressing "c" at once get 41 and 42. No team, no
+		// counter to ask and nothing to allocate — the pair stays null on both sides.
+		val number = effectiveTeamId?.let { teams.nextTicketNumber(it) }
 		val ticket = tickets.insert(
 			id = UUID.randomUUID(),
 			number = number,
-			teamId = teamId,
+			teamId = effectiveTeamId,
+			// Recorded whatever happens, because the write that attaches a team later is not
+			// the write that would know who to ask. It stops deciding anything the moment a
+			// team is named; see `TicketAccess`.
+			createdBy = actor.id,
 			title = title,
 			description = description,
 			status = status,
@@ -251,13 +312,17 @@ class TicketService(
 		tickets.setAssignees(ticket.id, assigneeIds)
 		tickets.setDocs(ticket.id, docIds)
 
-		syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
+		// A draft is not mirrored. The Notion row is built from the identifier and the team
+		// relation, and it has neither — the page would be a blank nothing could reconcile,
+		// and it would have to be found and rewritten the day the ticket is attached. The
+		// attach is the push, and `patch` makes it.
+		if (effectiveTeamId != null) syncJobs.enqueue(SyncEntityType.TICKET, ticket.id, SyncOperation.UPSERT)
 		// No payload: a creation has no before, and the title a feed wants to print is on
 		// the row it is already reading. What the log adds is who, and when.
 		activity.record(ActivityEntity.TICKET, ticket.id, actor.id, ActivityKind.CREATED)
 		recordAssigneeChanges(actor, ticket.id, before = emptyList(), after = assigneeIds)
-		events.publish(KansoEvent.ticket(ChangeKind.CREATED, ticket.id, teamId, projectId))
-		return TicketDetail(ticket, team.key, assigneeIds, docIds)
+		events.publish(KansoEvent.ticket(ChangeKind.CREATED, ticket.id, effectiveTeamId, projectId))
+		return TicketDetail(ticket, team?.key, assigneeIds, docIds)
 	}
 
 	/**
@@ -268,12 +333,30 @@ class TicketService(
 	fun patch(actor: User, id: UUID, patch: TicketPatch): TicketDetail {
 		val current = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
 		access.require(actor, current)
+		// Losing a team would lose the identifier people already say out loud, and there is
+		// no counter that hands the same number back. A draft goes forwards only.
+		if ("teamId" in patch.unset) {
+			throw BadRequestException("A ticket cannot be detached from its team; $id would lose its identifier")
+		}
+
+		// The two ways a ticket gains a team: naming one, or naming a project that already
+		// belongs to one. The second is a real attach and not a side effect — a ticket's
+		// project belongs to its team, so a draft filed into somebody's project *is* work in
+		// that team, and leaving it team-less would break the invariant the coherence check
+		// below enforces for everybody else.
+		//
+		// The project's team is read only when the ticket has none and none was named: for a
+		// ticket that already has a team the project must match it, which is the existing
+		// rule and is checked below rather than quietly overridden here.
+		val teamId = patch.teamId
+			?: current.teamId
+			?: patch.projectId?.let { projects.findById(it)?.teamId }
 		// Both ends, not one. `TicketPatch` carries `teamId`, so a single-sided check
 		// lets anyone move a foreign ticket into a team of their own and then edit it
-		// freely — the whole rule defeated in two requests.
-		patch.teamId?.let { access.requireTeam(actor, it) }
-
-		val teamId = patch.teamId ?: current.teamId
+		// freely — the whole rule defeated in two requests. Asked of a team arriving via a
+		// project too, for exactly the same reason: otherwise the project field is the
+		// second request.
+		if (teamId != null && teamId != current.teamId) access.requireTeam(actor, teamId)
 		if (patch.teamId != null && teams.findById(patch.teamId) == null) {
 			throw BadRequestException("No team ${patch.teamId}")
 		}
@@ -319,8 +402,16 @@ class TicketService(
 		// either collides with one already in use over there, or squats one the
 		// destination's counter will hand out again later. Same allocation the
 		// disposition makes for a whole block, for one ticket.
-		if (patch.teamId != null && patch.teamId != current.teamId) {
-			tickets.moveToTeam(id, patch.teamId, teams.nextTicketNumber(patch.teamId))
+		//
+		// The same write is a draft's first naming: it arrives with the pair null on both
+		// sides and leaves with both set, which is the only transition
+		// `tickets_team_number_together_chk` allows out of that state.
+		if (teamId != null && teamId != current.teamId) {
+			tickets.moveToTeam(id, teamId, teams.nextTicketNumber(teamId))
+			// The mirror was switched off while this had no team — see `TicketRepository.insert`
+			// — so the first attach switches it back on. Before the row is read back below, so
+			// the response carries the state the push it is about to queue will act on.
+			if (current.teamId == null) tickets.markSyncState(id, SyncState.PENDING)
 		}
 
 		// Written here rather than in a trigger: the rule belongs next to the status
@@ -359,11 +450,16 @@ class TicketService(
 		}
 		patch.docIds?.let { tickets.setDocs(id, it) }
 
-		syncJobs.enqueue(
-			SyncEntityType.TICKET,
-			id,
-			if (updated.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
-		)
+		// Still nothing to mirror while it has no identifier and no team relation — the same
+		// argument `create` makes. The first push is the one that follows the attach, and
+		// by then this row carries both.
+		if (updated.teamId != null) {
+			syncJobs.enqueue(
+				SyncEntityType.TICKET,
+				id,
+				if (updated.archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
+			)
+		}
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, updated.teamId, updated.projectId))
 
 		// The cascade runs inside this transaction, so the event published just above —
@@ -599,13 +695,16 @@ class TicketService(
 	private fun decorate(found: List<Ticket>): List<TicketDetail> {
 		if (found.isEmpty()) return emptyList()
 		val ids = found.map { it.id }
-		val keys = teams.findAllById(found.map { it.teamId }.toSet()).associate { it.id to it.key }
+		val keys = teams.findAllById(found.mapNotNull { it.teamId }.toSet()).associate { it.id to it.key }
 		val assignees = tickets.assigneeIdsFor(ids)
 		val docsByTicket = tickets.docIdsFor(ids)
 		return found.map {
 			TicketDetail(
 				ticket = it,
-				teamKey = keys[it.teamId] ?: "?",
+				// Null when there is no team, which is what makes the identifier null too. The
+				// `?` fallback is for a team that vanished under us, which is a different
+				// accident and still worth printing something for.
+				teamKey = it.teamId?.let { teamId -> keys[teamId] ?: "?" },
 				assigneeIds = assignees[it.id].orEmpty(),
 				docIds = docsByTicket[it.id].orEmpty(),
 			)

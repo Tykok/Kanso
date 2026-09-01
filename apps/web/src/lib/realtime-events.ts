@@ -316,6 +316,10 @@ function placement(
   if (ticket.archived && !includeArchived) return "out";
   if (scope.kind === "all") return "in";
   if (scope.kind === "project") return ticket.projectId === scope.id ? "in" : "out";
+  // A ticket with no team is in no team's list, and in no descendant's either. It is
+  // only ever in the unscoped one, which returned above. `== null` because the server
+  // omits the key rather than sending an explicit null.
+  if (ticket.teamId == null) return "out";
   if (ticket.teamId === scope.id) return "in";
   // A team scope includes its descendants, so a stranger's row and a sub-team's row are
   // the same row until the tree says otherwise.

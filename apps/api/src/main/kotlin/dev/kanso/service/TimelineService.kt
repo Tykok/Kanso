@@ -121,8 +121,15 @@ class TimelineService(
 			limit = SCOPE_LIMIT,
 		)
 
+		// A ticket with no team is drawn on nobody's timeline. `own` never holds one — the
+		// one predicate excludes them — but these two do not go through it: a transverse
+		// project can hold a draft, and so can a dependency chain. A Gantt row is labelled
+		// with an identifier and coloured by whose work it is, and a draft has neither; it
+		// is also private to its author, and this is a shared drawing. It stays in
+		// `graphTickets` for the slack maths below, where it is a duration rather than a row,
+		// and its edges come back flagged `outOfScope`, which is exactly what they are.
 		val context = (shared + graphTickets)
-			.filter { it.id !in ownIds && !it.archived }
+			.filter { it.id !in ownIds && !it.archived && it.teamId != null }
 			.distinctBy { it.id }
 		val drawn = own + context
 		val truncated = own.size >= SCOPE_LIMIT || shared.size >= SCOPE_LIMIT
@@ -169,12 +176,13 @@ class TimelineService(
 		// One query for every team on screen rather than one per row — the scope crosses
 		// teams whenever the filter is a parent team, and a context row prints the key of
 		// whoever owns it rather than the reader's.
-		val keys = teams.findAllById(drawn.map { it.teamId }.toSet()).associate { it.id to it.key }
+		val keys = teams.findAllById(drawn.mapNotNull { it.teamId }.toSet()).associate { it.id to it.key }
 		fun identifier(ticket: Ticket) = "${keys[ticket.teamId] ?: "?"}-${ticket.number}"
+
 
 		// One call for every team drawn: the rule costs a couple of queries per distinct
 		// team, and asking it per ticket would be two thousand ancestor walks.
-		val editableTeams = access.editableTeams(actor, drawn.map { it.teamId }.toSet())
+		val editableTeams = access.editableTeams(actor, drawn.mapNotNull { it.teamId }.toSet())
 
 		return TimelineView(
 			projects = projectRows(own, drawn, projectId, teamIds),

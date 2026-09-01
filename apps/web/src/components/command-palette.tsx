@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { openTicketMode, ticketHref } from "@/lib/api";
+import { openTicketMode, ticketAddress, ticketHref } from "@/lib/api";
 import { usePreferences, useProjects, useSearchableTickets, useDocs } from "@/lib/queries";
 import { useUi } from "@/store/ui";
 import {
@@ -111,7 +111,7 @@ export function CommandPalette({
     select(row.ticket.id);
     onClose();
     if (inPage || openTicketMode(preferences) === "page") {
-      router.push(ticketHref(row.ticket.identifier));
+      router.push(ticketHref(ticketAddress(row.ticket)));
     } else {
       open("detail");
     }

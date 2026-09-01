@@ -89,7 +89,10 @@ export function newTicketBody(form: {
   estimate: string;
 }) {
   return {
-    teamId: form.teamId,
+    // Omitted rather than sent empty: absent files a draft, and `""` is a UUID the server
+    // would refuse. A project chosen without a team still files into that project's team —
+    // the server adopts it, because a ticket's project belongs to its team.
+    teamId: form.teamId ? form.teamId : undefined,
     title: form.title,
     priority: form.priority,
     estimate: chosenEstimate(form.estimate),
@@ -168,20 +171,18 @@ function ComposerForm({
   });
 
   /**
-   * The defect this replaces: `page.tsx` fell back to `teams.data[0]` when the view
-   * was "All tickets", so a ticket filed from there landed in whichever team sorted
-   * first, with nobody having chosen it. With no team resolved, creation stops and
-   * points at the selector.
+   * No team is a choice, not a refusal.
+   *
+   * This used to stop and point at the selector, guarding against the older defect where
+   * `page.tsx` silently fell back to `teams.data[0]` and filed the ticket into whichever
+   * team sorted first. That defect was never about the absence — it was about *inventing*
+   * a team nobody chose — and the absence is now a state the row can hold. So the thought
+   * gets typed and filed as a draft, and the team is a decision for later.
    */
   const submit = () => {
     if (create.isPending) return;
     const trimmed = title.trim();
     if (!trimmed) return;
-    if (!teamId) {
-      setBlocked(true);
-      teamRef.current?.focus();
-      return;
-    }
     create.mutate(
       newTicketBody({ teamId, title: trimmed, priority, projectId, assigneeId, estimate }),
     );
@@ -227,21 +228,19 @@ function ComposerForm({
           // "New team" button. Named at the source rather than worked around in the
           // test's locator.
           aria-label="Ticket team"
-          aria-invalid={blocked && !teamId ? true : undefined}
-          className={cn(CHIP_SELECT, "aria-invalid:border-destructive")}
+          className={CHIP_SELECT}
           value={teamId}
           disabled={create.isPending}
           onChange={(event) => {
             const next = event.target.value;
             setTeamId(next);
-            setBlocked(false);
             // A project of the team just left is no longer a legal home; a team-less
             // project always is.
             const chosen = projects.find((row) => row.id === projectId);
             if (chosen?.teamId && chosen.teamId !== next) setProjectId("");
           }}
         >
-          <option value="">Team…</option>
+          <option value="">No team</option>
           {[...teams]
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((team) => (
@@ -357,10 +356,10 @@ function ComposerForm({
 
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-11 text-faint">
         <Kbd>↵</Kbd> <span>create</span> <Kbd>esc</Kbd> <span>cancel</span>
-        {blocked && !teamId && (
-          <span className="text-urgent" role="alert">
-            Pick a team first.
-          </span>
+        {!teamId && (
+          // Not an error: it says what will happen, so nobody is surprised to find the
+          // ticket has no identifier afterwards.
+          <span className="text-faint">Files with no team — you can attach one later.</span>
         )}
         {create.isError && (
           <span className="text-urgent" role="alert">
@@ -395,23 +394,11 @@ export function Composer({ scope, onClose }: { scope: Scope; onClose: () => void
 
   // Filtered once, here, rather than inside the form: `creationSeed` and the select
   // must agree on what is offered, and computing it twice is how they would drift.
+  // No longer a reason to refuse the whole composer: a fresh instance with no team, and
+  // an instance where none will take a ticket from this actor, both still have somewhere
+  // to put a thought — the drafts. `composerEmptyReason` survives for the sentence the
+  // form draws about *why* the select is empty, which is still worth saying.
   const composable = teams.data.filter(isComposableTeam);
-  if (composable.length === 0) {
-    // Not an empty select: that reads as a loading bug rather than the honest answer.
-    // And the honest answer is not always about this person — `composerEmptyReason`
-    // is what keeps a fresh instance, or one where every team is archived, from being
-    // told a permissions story that has nothing to do with either.
-    const reason = composerEmptyReason(teams.data.length);
-    return (
-      <Backdrop onClose={onClose}>
-        <div className="empty">
-          {reason === "no-teams"
-            ? "There is no team yet to file a ticket into."
-            : "No team will accept a ticket from you yet."}
-        </div>
-      </Backdrop>
-    );
-  }
 
   return (
     <ComposerForm

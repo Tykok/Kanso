@@ -125,6 +125,17 @@ class TicketQueryRepository {
 			// for one — and out of the list until the Archives tab asks. A view is a working
 			// list, and the archive is where things go to stop being on one.
 			if (!scope.includeArchived) add(Tickets.archived eq false)
+			// A ticket with no team is in none of these lists, and this is the one place that
+			// has to be said. Every list on every screen runs this predicate, and each of
+			// them is a room a team owns — a board, a saved view, a triage queue, a cycle, a
+			// timeline, a workload. A draft nobody has filed is in none of those rooms, and
+			// it is private to whoever wrote it, so leaking it into the unscoped list would
+			// be both a wrong answer and a disclosure. `TicketRepository.findDrafts` is where
+			// they are, scoped to their author.
+			//
+			// Not folded into the clause below: `teamIds` null means "every team", and every
+			// team is still not the same set as every row.
+			add(Tickets.teamId.isNotNull())
 			scope.teamIds?.let { add(Tickets.teamId inList it) }
 			if (filters.statuses.isNotEmpty()) add(Tickets.status inList filters.statuses.map { it.wire })
 			if (filters.statusesExcluded.isNotEmpty()) {

@@ -59,7 +59,7 @@ class VoteTest : PostgresTest() {
 			docIds = emptyList(),
 		)
 		publication.publish(owner, created.ticket.id, public = true)
-		return team.key to created.ticket.number
+		return team.key to created.ticket.number!!
 	}
 
 	@Test
