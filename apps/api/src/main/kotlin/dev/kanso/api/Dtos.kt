@@ -185,6 +185,13 @@ data class ProjectResponse(
 	val leadUserId: UUID?,
 	val teamId: UUID?,
 	val docIds: List<UUID>,
+	/**
+	 * The newest health anybody posted, or absent if nobody has. Absent is not
+	 * `on_track` — see `ProjectDetail.health` — so the client must draw "not assessed"
+	 * rather than a green pill, and this is null rather than a default for exactly that
+	 * reason. Never sent alongside a health on the project row: there is no such column.
+	 */
+	val health: String?,
 	val archived: Boolean,
 	val mirror: MirrorDto,
 	val createdAt: OffsetDateTime,
@@ -202,6 +209,7 @@ data class ProjectResponse(
 				leadUserId = p.leadUserId,
 				teamId = p.teamId,
 				docIds = detail.docIds,
+				health = detail.health?.wire,
 				archived = p.archived,
 				mirror = MirrorDto(p.mirror.notionPageId, p.mirror.syncState.wire, p.mirror.notionSyncedAt),
 				createdAt = p.createdAt,

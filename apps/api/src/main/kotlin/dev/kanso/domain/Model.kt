@@ -94,6 +94,31 @@ enum class ProjectStatus(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * Whether a project will land — which is a different question from [ProjectStatus], and
+ * deliberately not derivable from it.
+ *
+ * Status says where the work *is*: planned, in progress, paused, completed. Health says
+ * whether it will arrive. A project can sit at `in_progress` for eleven weeks while
+ * quietly becoming undeliverable, and no reading of the status column can say so, because
+ * nothing about the status has changed. So health is posted by a person, with a sentence
+ * under it, and nothing here maps one vocabulary onto the other in either direction.
+ *
+ * There is no fourth value and no `UNKNOWN`. A project nobody has assessed answers null —
+ * see `ProjectDetail.health` — because "nobody has said" is the absence of a judgement
+ * rather than a judgement of its own, and giving it a name on this enum would invite
+ * somebody to store it.
+ */
+enum class ProjectHealth(override val wire: String) : Wire {
+	ON_TRACK("on_track"), AT_RISK("at_risk"), OFF_TRACK("off_track");
+
+	val label: String get() = wire.split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+
+	companion object {
+		fun from(raw: String): ProjectHealth = parse(entries.toTypedArray(), raw)
+	}
+}
+
 enum class SyncState(override val wire: String) : Wire {
 	PENDING("pending"), SYNCED("synced"), FAILED("failed"), DISABLED("disabled");
 
@@ -148,7 +173,20 @@ enum class ActivityKind(override val wire: String) : Wire {
 	 * a second `CREATED`: nothing about the ticket changed, only the plan it belongs
 	 * to, and the feed has to be able to say that in the ticket's own history.
 	 */
-	CARRIED_OVER("carried_over");
+	CARRIED_OVER("carried_over"),
+
+	/**
+	 * Somebody said how a project is going. The first kind written against
+	 * [ActivityEntity.PROJECT] — until this, the feed on the project page had nothing to
+	 * draw — and the one whose row is worth most later: "when did this start being at
+	 * risk, and who said so" is a question about history, and this is the history.
+	 *
+	 * Not a [STATUS_CHANGED]: no status changed, and the two are kept apart everywhere
+	 * else for the reason [ProjectHealth] gives. The payload carries `to`, `from` when
+	 * there was a previous health, and the update's id — never its body, following
+	 * [COMMENTED]: an activity row outlives what it describes.
+	 */
+	HEALTH_POSTED("health_posted");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)

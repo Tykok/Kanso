@@ -25,6 +25,19 @@ export const TICKET_PRIORITIES = ["none", "low", "medium", "high", "urgent"] as 
 export const PROJECT_STATUSES = ["planned", "in_progress", "paused", "completed", "canceled"] as const;
 
 /**
+ * `ProjectHealth`, server side. Whether a project will land — a different question from
+ * `PROJECT_STATUSES`, which says where its work is, and never derived from it: a project
+ * can be `in_progress` and `off_track` at the same time, and that pair is the single most
+ * useful thing this vocabulary can say.
+ *
+ * Three values and no fourth. A project nobody has assessed has `health: undefined`, which
+ * is **not** `on_track` — "nobody has said" and "somebody said it is fine" are different
+ * facts, and a client that draws the first as the second turns every project green on the
+ * day the feature ships. Absence is drawn as absence everywhere below.
+ */
+export const PROJECT_HEALTHS = ["on_track", "at_risk", "off_track"] as const;
+
+/**
  * The effort scale, and the whole of it: a truncated Fibonacci sequence the server
  * refuses anything outside of, in Kotlin and again by `tickets_estimate_chk`. Restated
  * here rather than fetched because it is a vocabulary, not data — the same reason
@@ -40,6 +53,7 @@ export type EffortPoints = (typeof EFFORT_POINTS)[number];
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+export type ProjectHealth = (typeof PROJECT_HEALTHS)[number];
 export type SyncState = "pending" | "synced" | "failed" | "disabled";
 
 export type Mirror = {
@@ -113,8 +127,26 @@ export type Project = {
   end?: KansoInstant;
   leadUserId?: string;
   teamId?: string;
+  /**
+   * The newest update's health, derived server-side and absent when nobody has posted
+   * one. Read-only: it is not on `ProjectBody`, because there is no column to write —
+   * changing a project's health means posting an update, which is a different endpoint
+   * and a different permission.
+   */
+  health?: ProjectHealth;
   archived: boolean;
   mirror: Mirror;
+};
+
+/** One thing somebody said about how a project is going, on the date they said it. */
+export type ProjectUpdate = {
+  id: string;
+  projectId: string;
+  health: ProjectHealth;
+  body: string;
+  /** Null once the account is gone. The assessment it left behind is not. */
+  author: User | null;
+  at: string;
 };
 
 export type ProjectBody = {
@@ -616,6 +648,20 @@ export const api = {
 
   deleteProject: (id: string, plan: DispositionPlan) =>
     request<void>(`/api/projects/${id}`, { method: "DELETE", body: JSON.stringify(plan) }),
+
+  /** Newest first — the reader wants what is true now, and the rest as context under it. */
+  projectUpdates: (id: string) => request<ProjectUpdate[]>(`/api/projects/${id}/updates`),
+
+  /**
+   * No date on the way in: the server dates an update when it is written. A caller-supplied
+   * one would let somebody backfill a history nobody lived through, which is the only thing
+   * that would make this record unreadable as evidence.
+   */
+  postProjectUpdate: (id: string, body: { health: ProjectHealth; body: string }) =>
+    request<ProjectUpdate>(`/api/projects/${id}/updates`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // --- tickets -------------------------------------------------------------
 

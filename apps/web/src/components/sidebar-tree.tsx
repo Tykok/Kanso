@@ -1,6 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { PROJECT_HEALTH_COLORS } from "@/lib/status";
+import { healthLabel } from "./views/project-copy";
 import { menuItems } from "./menu-items";
 import { Menu } from "./menu";
 import { rowActionsTriggerClass } from "./ui/row";
@@ -169,17 +171,48 @@ export function ProjectRow({
       data-kind="project"
       data-current={current}
       data-archived={project.archived}
+      data-health={project.health ?? "none"}
     >
       <button
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 py-[5px] text-left before:size-1 before:shrink-0 before:rounded-full before:bg-faint",
+          "flex min-w-0 flex-1 items-center gap-2 py-[5px] text-left",
           DEPTH_PAD[depth],
           project.archived && "opacity-55",
         )}
         aria-current={current}
         onClick={onSelect}
-        title={project.name}
+        /**
+         * The health in the `title`, beside the name.
+         *
+         * A one-pixel dot cannot carry a word, and the rule `ui/status-dot.tsx` sets out
+         * at length is that the hue is never the only signal — so the health is spelled
+         * out in the text this row already carries, rather than left to the colour alone.
+         */
+        title={project.health ? `${project.name} — ${healthLabel(project.health)}` : project.name}
       >
+        {/*
+          * The bullet that has always marked a project row, now in the colour of its
+          * health.
+          *
+          * A real element rather than the `before:` pseudo it used to be, because the
+          * colour is per-project data and a pseudo-element can only be reached through a
+          * custom property — which would be a design token invented for one dot, and
+          * `lib/tokens.test.ts` is right to refuse those.
+          *
+          * This is the only place in the app where every project is listed at once, which
+          * makes it the only place "which of these is in trouble" can be answered by
+          * looking instead of by visiting five pages. The *public* roadmap under
+          * `app/roadmap/` is a shop window over published tickets, so it is not that
+          * place — see the note on `ProjectHealthPanel`. A project nobody has assessed
+          * keeps the faint dot it has always had: absence must not read as good news.
+          */}
+        <span
+          aria-hidden
+          className="size-1 shrink-0 rounded-full"
+          style={{
+            background: project.health ? PROJECT_HEALTH_COLORS[project.health] : "var(--faint)",
+          }}
+        />
         <span className="truncate">{project.name}</span>
       </button>
       <Menu

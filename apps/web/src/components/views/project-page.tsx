@@ -13,6 +13,7 @@ import { Row } from "../ui/row";
 import { ActivityFeed } from "./activity-feed";
 import { Avatar } from "./avatar";
 import { donePercent, periodLabel, statusCounts } from "./project-copy";
+import { HealthPill, ProjectHealthPanel } from "./project-health";
 import { ViewsShell } from "./shell";
 
 /** The first five and no more: the list is one screen away and it does this properly. */
@@ -164,6 +165,17 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
             <dd className="m-0">{periodLabel(project.start, project.end)}</dd>
             <dt className="text-faint">Team</dt>
             <dd className="m-0">{team ? team.name : <span className="text-faint">across teams</span>}</dd>
+            {/*
+              * A row of its own in the same table as Lead, Period and Team, rather than
+              * a second word in the status line above: health is a fact about the
+              * project, like its lead, and putting it beside the status would invite the
+              * reading that it is a kind of status. The line above says where the work
+              * is; this says whether it will land.
+              */}
+            <dt className="text-faint">Health</dt>
+            <dd className="m-0">
+              <HealthPill health={project.health} />
+            </dd>
             <dt className="text-faint">Mirror</dt>
             <dd className="m-0">
               <SyncBadge mirror={project.mirror} />
@@ -241,6 +253,10 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
           </div>
 
           <div className="flex flex-col gap-6">
+            {/* Above the documents and the feed: it is the newest thing anybody said about
+                this project, and the one thing on the page a reader may have come for. */}
+            <ProjectHealthPanel project={project} />
+
             {linked.length > 0 && (
               <div className="flex flex-col gap-2">
                 <GroupLabel className="px-0 pt-0 pb-0">Linked documents</GroupLabel>

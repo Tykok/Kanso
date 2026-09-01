@@ -21,6 +21,7 @@ export const ACTIVITY_KINDS = [
   "labelled",
   "mirror_pushed",
   "carried_over",
+  "health_posted",
 ] as const;
 
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];

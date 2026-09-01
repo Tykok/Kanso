@@ -6,6 +6,7 @@ import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.DispositionPlan
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.Project
+import dev.kanso.domain.ProjectHealth
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
@@ -13,6 +14,7 @@ import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.ProjectRepository
+import dev.kanso.repo.ProjectUpdateRepository
 import dev.kanso.repo.SyncJobRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
@@ -26,12 +28,26 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
-/** A project plus the relations a caller almost always wants alongside it. */
-data class ProjectDetail(val project: Project, val docIds: List<UUID>)
+/**
+ * A project plus the relations a caller almost always wants alongside it.
+ *
+ * [health] is derived on every read from the newest row of `project_updates` and is
+ * **not** a column — `V23` carries the argument, which is `V10`'s. Null means nobody has
+ * assessed this project, which is a different fact from [ProjectHealth.ON_TRACK] and must
+ * never be collapsed into it: defaulting to the optimistic value would turn the whole
+ * signal green on the day it shipped. It is also independent of [Project.status] in both
+ * directions — see [ProjectHealth].
+ */
+data class ProjectDetail(
+	val project: Project,
+	val docIds: List<UUID>,
+	val health: ProjectHealth? = null,
+)
 
 @Service
 class ProjectService(
 	private val projects: ProjectRepository,
+	private val updates: ProjectUpdateRepository,
 	private val teams: TeamRepository,
 	private val tickets: TicketRepository,
 	private val users: UserRepository,
@@ -46,13 +62,16 @@ class ProjectService(
 		val teamIds = teamId?.let { if (includeDescendants) teams.descendantIds(it) else listOf(it) }
 		val found = projects.search(teamIds, includeArchived)
 		val docsByProject = projects.docIdsFor(found.map { it.id })
-		return found.map { ProjectDetail(it, docsByProject[it.id].orEmpty()) }
+		// One `DISTINCT ON` for the whole list rather than one read per project: the sidebar
+		// asks for every project in the instance, and health is drawn on each of its rows.
+		val healthByProject = updates.latestHealthFor(found.map { it.id })
+		return found.map { ProjectDetail(it, docsByProject[it.id].orEmpty(), healthByProject[it.id]) }
 	}
 
 	@Transactional(readOnly = true)
 	fun get(id: UUID): ProjectDetail {
 		val project = projects.findById(id) ?: throw NotFoundException("No project $id")
-		return ProjectDetail(project, projects.docIds(id))
+		return ProjectDetail(project, projects.docIds(id), updates.latest(id)?.health)
 	}
 
 	// --- disposition ---------------------------------------------------------
@@ -89,6 +108,8 @@ class ProjectService(
 		projects.setDocs(project.id, docIds)
 		syncJobs.enqueue(SyncEntityType.PROJECT, project.id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.project(ChangeKind.CREATED, project.id, teamId))
+		// No health: a project that has just been created has nobody's assessment on it yet,
+		// and the absence is the honest answer rather than a starting value.
 		return ProjectDetail(project, docIds)
 	}
 
@@ -133,7 +154,10 @@ class ProjectService(
 
 		syncJobs.enqueue(SyncEntityType.PROJECT, id, SyncOperation.UPSERT)
 		events.publish(KansoEvent.project(ChangeKind.UPDATED, id, teamId))
-		return ProjectDetail(updated, projects.docIds(id))
+		// Editing a project cannot touch its health — including when it moves the status,
+		// which is the one edit somebody will expect to. The health is read back out of the
+		// updates, unchanged, because nothing here wrote to them.
+		return ProjectDetail(updated, projects.docIds(id), updates.latest(id)?.health)
 	}
 
 	@Transactional
@@ -234,7 +258,7 @@ class ProjectService(
 			if (archived) SyncOperation.ARCHIVE else SyncOperation.UPSERT,
 		)
 		events.publish(KansoEvent.project(ChangeKind.UPDATED, project.id, project.teamId))
-		return ProjectDetail(updated, projects.docIds(project.id))
+		return ProjectDetail(updated, projects.docIds(project.id), updates.latest(project.id)?.health)
 	}
 
 	/**
