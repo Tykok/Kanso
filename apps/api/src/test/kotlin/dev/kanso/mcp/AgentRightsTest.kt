@@ -23,6 +23,7 @@ import dev.kanso.service.TicketService
 import org.junit.jupiter.api.AfterEach
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
@@ -68,6 +69,7 @@ class AgentRightsTest : PostgresTest() {
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
 	@Autowired lateinit var current: CurrentUser
+	@Autowired lateinit var jdbc: JdbcClient
 
 	@Autowired lateinit var clients: RegisteredClientRepository
 	@Autowired lateinit var authorizations: OAuth2AuthorizationService
@@ -130,9 +132,19 @@ class AgentRightsTest : PostgresTest() {
 		request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer $token")
 		filter.doFilter(request, MockHttpServletResponse(), MockFilterChain())
 
+		val principal = SecurityContextHolder.getContext().authentication?.principal
 		assertTrue(
-			SecurityContextHolder.getContext().authentication?.principal is KansoAgentUser,
+			principal is KansoAgentUser,
 			"the grant was refused before any of this test's own assertions could run",
+		)
+		// Not paranoia about the filter — `McpBearerFilterTest` owns that. It is that a
+		// second call to this helper without a clear in between would leave the *previous*
+		// member standing, and every test below would go on asserting about the wrong
+		// person in a file whose whole job is proving who acts as whom.
+		assertEquals(
+			member.id,
+			principal.kansoUserId,
+			"the principal now standing is this member's, not one left over from a previous call",
 		)
 		return current.require()
 	}
@@ -258,9 +270,14 @@ class AgentRightsTest : PostgresTest() {
 	 * A row attributed to the client, to an anonymous actor or to nobody would each break
 	 * the same promise: the consent screen tells a member their agent acts *as them*, and
 	 * the feed is where that either turns out to be true or does not.
+	 *
+	 * The second question has a column waiting for it and nothing filling it, and the
+	 * last assertion here says so out loud rather than leaving it to a report. The name
+	 * of this test is deliberately about the principal: provenance is *durable* only once
+	 * `activity.via_client_id` is written, and today it is not.
 	 */
 	@Test
-	fun `a write through a grant is recorded as the member's own, with the client as provenance`() {
+	fun `a write through a grant is the member's own in the log, with the client only on the principal`() {
 		val admin = user(InstanceRole.ADMIN)
 		val alice = user(InstanceRole.MEMBER)
 		val hers = teamOf(alice, admin, "Hers")
@@ -274,12 +291,28 @@ class AgentRightsTest : PostgresTest() {
 		assertEquals(alice.id, actor.id, "the token acts as its owner, so the history says its owner")
 		assertEquals(alice.email, actor.email, "and the feed will name her, not the application")
 
-		// Provenance lives on the principal today — nothing writes a client onto an
-		// activity row yet — so this is where it has to be asserted, and where a feed
-		// wanting to say "via Claude Code" will come to find it.
+		// Provenance reaches the request, and stops there. `Principals.kt` says the client
+		// travels "so the activity feed can say which application typed a change", and this
+		// is the whole of what that amounts to today: a field on a principal that dies with
+		// the request.
 		val principal = SecurityContextHolder.getContext().authentication?.principal as KansoAgentUser
 		assertEquals(CLIENT, principal.clientId, "which application typed it is not lost on the way in")
-		assertEquals(alice.id, principal.kansoUserId, "and it is recorded alongside her, not instead of her")
+		assertEquals(alice.id, principal.kansoUserId, "and it is carried alongside her, not instead of her")
+
+		// The gap, pinned rather than described. `V16__oauth_server.sql` added
+		// `activity.via_client_id` and `OAuthSchemaTest` pins that the column exists;
+		// nothing under `src/main` writes it. This assertion is expected to *fail* on the
+		// day somebody fills it in — which is the point. A gap recorded only in a report
+		// is a gap the next reader concludes was already closed.
+		val recorded = jdbc
+			.sql("SELECT via_client_id FROM activity WHERE id = :id")
+			.param("id", entry.id)
+			.query(String::class.java)
+			.optional()
+		assertTrue(
+			recorded.isEmpty,
+			"provenance is not durable yet: if this column now has a value, rename this test and delete this assertion",
+		)
 	}
 
 	/**
