@@ -42,6 +42,20 @@ class SavedViewRepository(private val jdbc: JdbcClient) {
 			.where { (SavedViews.id eq id) and (SavedViews.id notInSubQuery trashed) }
 			.singleOrNull()?.toViewRow()
 
+	/**
+	 * [findLive] for a whole set, in one query — the sidebar's favourites resolve four
+	 * kinds at once and cannot afford a round trip per pin.
+	 *
+	 * The inverse of [findTrashed] over the same ids, which is exactly what a favourite
+	 * wants: a pinned view in the trash is not drawn, and the pin itself survives, so the
+	 * thirty days it has to come back are thirty days the pin is still there.
+	 */
+	fun findAllLive(ids: Collection<UUID>): List<SavedViewRow> =
+		if (ids.isEmpty()) emptyList()
+		else SavedViews.selectAll()
+			.where { (SavedViews.id inList ids) and (SavedViews.id notInSubQuery trashed) }
+			.map { it.toViewRow() }
+
 	/** The trash's own read: only the rows among [ids] that are actually in it. */
 	fun findTrashed(ids: Collection<UUID>): List<SavedViewRow> =
 		if (ids.isEmpty()) emptyList()

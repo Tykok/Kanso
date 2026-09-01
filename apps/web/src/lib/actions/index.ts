@@ -2,6 +2,7 @@ import type { View } from "@/store/ui";
 import { boardActions } from "./board";
 import { coreActions } from "./core";
 import { docsActions } from "./docs";
+import { favouriteActions } from "./favourites";
 import { inboxActions } from "./inbox";
 import { organiseActions } from "./organise";
 import { publikActions } from "./publik";
@@ -29,6 +30,7 @@ export const ACTIONS: readonly Action[] = [
   ...inboxActions,
   ...trashActions,
   ...publikActions,
+  ...favouriteActions,
 ];
 
 /** Where a key lives: one bucket per mode, plus `any` for the keys both views share. */

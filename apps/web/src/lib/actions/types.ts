@@ -1,5 +1,6 @@
 import type { Dialog, Overlay, Scope, View } from "@/store/ui";
 import type {
+  FavouriteTarget,
   Project,
   Team,
   Ticket,
@@ -67,6 +68,24 @@ export type ActionContext = {
    * second way of being in a state.
    */
   startUnlink: (successorId: string) => void;
+  /**
+   * What this context is *about*, when a caller can say so and the route cannot.
+   *
+   * Absent almost everywhere, and `favourites.ts` then works it out from the route and the
+   * scope. The sidebar's own rows set it, because they are the one caller whose ctx names a
+   * team or a project that is **not** what the page is showing: a row menu opened while a
+   * saved view is on screen would otherwise pin the view it is sitting in front of.
+   */
+  favourite?: FavouriteTarget;
+  /**
+   * Pins [target] to the top of this person's sidebar, or un-pins it if it is already
+   * there — see `actions/favourites.ts` for why the toggle is one gesture and not a pair.
+   *
+   * A toggle rather than an `add`/`remove` pair here too, and for a second reason: the
+   * registry must not have to know the current state to run, since `when` is answered
+   * from the route and the scope and neither of those has loaded a favourites list.
+   */
+  toggleFavourite: (target: FavouriteTarget) => void;
   logout: () => void;
 };
 

@@ -11,6 +11,7 @@ import { keys } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
 import { GroupLabel } from "./ui/group-label";
 import { BrandMenu } from "./brand-menu";
+import { Favourites } from "./favourites";
 import { OnboardingChecklist } from "./inbox/onboarding-checklist";
 import { NAV_ITEMS } from "./nav-items";
 import { ProjectRow, rootProjects, TeamRow, tree } from "./sidebar-tree";
@@ -57,7 +58,17 @@ export function Sidebar({
   const rows = useMemo(() => tree(teamList, projectList), [teamList, projectList]);
   const loose = useMemo(() => rootProjects(teamList, projectList), [teamList, projectList]);
 
-  const at = (next: Scope): ActionContext => ({ ...ctx, scope: next });
+  /**
+   * `favourite` beside `scope`, and it has to be spelled out rather than derived from the
+   * scope by the action: a row's menu names a team or a project that is not necessarily
+   * what the page is showing, and `favourite.toggle` opened from one while a saved view is
+   * on screen would otherwise pin the view behind it.
+   */
+  const at = (next: Scope): ActionContext => ({
+    ...ctx,
+    scope: next,
+    favourite: next.kind === "all" ? undefined : { kind: next.kind, id: next.id },
+  });
 
   /**
    * The two header `+` buttons create at the root, explicitly: a team with no parent,
@@ -74,6 +85,10 @@ export function Sidebar({
   return (
     <aside className="flex w-full flex-col gap-[22px] bg-card px-2.5 py-4 overflow-y-auto">
       <BrandMenu ctx={rootCtx} />
+
+      {/* Above everything: what somebody pinned is what they came back for. Draws nothing
+          at all until there is a pin, so an empty instance is the column it always was. */}
+      <Favourites onNavigate={onNavigate} />
 
       <div>
         <GroupLabel className="pt-0">Views</GroupLabel>

@@ -150,8 +150,17 @@ export async function applyEvents(
   const tickets = batch.filter((event) => event.entity === "tickets");
   const projects = batch.some((event) => event.entity === "projects");
 
-  if (batch.some((event) => event.entity === "teams")) cache.invalidate(["teams"]);
+  const teams = batch.some((event) => event.entity === "teams");
+  if (teams) cache.invalidate(["teams"]);
   if (projects) cache.invalidate(["projects"]);
+
+  // A pin the reader holds on a team or a project somebody else has just deleted is
+  // already gone from the table — `V22`'s cascade — and only gone from the screen once
+  // this key is asked again. Nothing publishes a `favourites` event and nothing should:
+  // every destination in `realtime/Events.kt` is broadcast to every client, and one
+  // person's sidebar is nobody else's business. Riding on the entity's own event is what
+  // makes that costless.
+  if (teams || projects) cache.invalidate(["favourites"]);
 
   // A project's derived bounds change when its tickets do, its explicit ones when it is
   // edited, and its explicit end is a deadline the critical path reads. Once for the
