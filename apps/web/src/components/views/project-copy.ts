@@ -228,6 +228,7 @@ export function activitySentence(row: ActivityRow): string {
         // than sending a null — and no `to` only if the row arrived from a writer that
         // recorded less than this hoped for.
         return "posted a health update";
+      }
       case "estimated": {
         // Both ends are optional and they mean different things by their absence: no
         // `to` is an estimate withdrawn, no `from` is one arrived at for the first
