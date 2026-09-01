@@ -26,13 +26,14 @@ class TicketDetails(
 	fun of(found: List<Ticket>): List<TicketDetail> {
 		if (found.isEmpty()) return emptyList()
 		val ids = found.map { it.id }
-		val keys = teams.findAllById(found.map { it.teamId }.toSet()).associate { it.id to it.key }
+		val keys = teams.findAllById(found.mapNotNull { it.teamId }.toSet()).associate { it.id to it.key }
 		val assignees = tickets.assigneeIdsFor(ids)
 		val docsByTicket = tickets.docIdsFor(ids)
 		return found.map {
 			TicketDetail(
 				ticket = it,
-				teamKey = keys[it.teamId] ?: "?",
+				// Null for a ticket with no team, which is what makes its identifier null.
+				teamKey = it.teamId?.let { teamId -> keys[teamId] ?: "?" },
 				assigneeIds = assignees[it.id].orEmpty(),
 				docIds = docsByTicket[it.id].orEmpty(),
 			)

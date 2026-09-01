@@ -193,6 +193,31 @@ export function filterParams(filters: ViewFilters): URLSearchParams {
   return search;
 }
 
+/**
+ * One bucket as the server stacks it: the value its rows share, how many rows share it,
+ * and the rows of them this page reached.
+ *
+ * `count` and `tickets.length` are allowed to differ, and that is the whole reason the
+ * wire carries groups rather than a flat list. A header reading `Todo · 29` above twenty
+ * loaded rows is true; counting the page could only ever have said `Todo · 20`.
+ *
+ * `key` is the empty string for the rows that have none — nobody assigned, no project —
+ * and for the single bucket `groupBy: "none"` answers with, which is the spelling
+ * `organise/grouping.ts` has always used for it. There is no `label`: `Todo`,
+ * `A. Okonkwo` and `Design system` are what a screen calls these keys, and the screen is
+ * where the names already are.
+ */
+export type TicketGroup = { key: string; count: number; tickets: Ticket[] };
+
+/** A grouped answer, and the stacking and sort it was answered under. */
+export type TicketGroups = {
+  groupBy: ViewGroupBy;
+  sortBy: ViewSortBy;
+  /** The sum of the buckets, so the two numbers on screen cannot disagree. */
+  total: number;
+  groups: TicketGroup[];
+};
+
 export type SavedView = {
   id: string;
   teamId: string;
@@ -298,6 +323,34 @@ export const organiseApi = {
   },
 
   /**
+   * The same list, stacked by the server — and the reason a group header's count is a
+   * fact about the team rather than about the fetch.
+   *
+   * Its own call rather than a flag on `ticketsMatching`: the two answer different
+   * shapes, and one function whose return type depended on an argument would make every
+   * caller branch on it.
+   */
+  groupedTickets: (
+    filters: ViewFilters,
+    scope: {
+      teamId?: string;
+      includeDescendants?: boolean;
+      includeArchived?: boolean;
+      groupBy?: ViewGroupBy;
+      sort?: ViewSortBy;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) => {
+    const search = filterParams(filters);
+    for (const [key, value] of Object.entries(scope)) {
+      if (value !== undefined) search.set(key, String(value));
+    }
+    const encoded = search.toString();
+    return request<TicketGroups>(`/api/tickets/grouped${encoded ? `?${encoded}` : ""}`);
+  },
+
+  /**
    * The facets the server will answer, from the server.
    *
    * There is no second list of them in this file and there must not be: `ViewFilters`
@@ -313,6 +366,14 @@ export const organiseApi = {
   view: (id: string) => request<SavedView>(`/api/views/${id}`),
 
   viewTickets: (id: string) => request<Ticket[]>(`/api/views/${id}/tickets`),
+
+  /**
+   * The view's rows, stacked the way the view stores. No `groupBy` parameter: the
+   * stacking is part of the stored question, and a caller that could override it would
+   * be asking a different one under this view's name.
+   */
+  viewGroups: (id: string, limit = 200) =>
+    request<TicketGroups>(`/api/views/${id}/grouped${query({ limit })}`),
 
   createView: (
     teamId: string,

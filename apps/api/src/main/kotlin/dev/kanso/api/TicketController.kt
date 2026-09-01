@@ -8,6 +8,7 @@ import dev.kanso.service.ScheduleService
 import dev.kanso.service.TicketFilterVocabulary
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
+import dev.kanso.service.ViewGroupBy
 import dev.kanso.service.ViewSortBy
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -95,8 +96,72 @@ class TicketController(
 	@GetMapping("/filters")
 	fun filters(): ServedFiltersResponse = ServedFiltersResponse(TicketFilterVocabulary.SERVED.sorted())
 
+	/**
+	 * The same list, stacked into its buckets — and the reason the counts on a group
+	 * header are true.
+	 *
+	 * Every parameter [list] takes, plus `groupBy`, and the filters go through the same
+	 * gate: two doors onto one question that disagreed about which questions exist would
+	 * be exactly the divergence the shared vocabulary was built to end. `groupBy` joins
+	 * `SCOPE_PARAMS` for the same reason `sort` is in it — how an answer is stacked is a
+	 * wall of the room, not a chip in it.
+	 *
+	 * A route of its own rather than a shape [list] switches into when `groupBy` is
+	 * present: a response whose type depends on a query parameter is one every caller has
+	 * to branch on, and every other screen in this app reads the flat one.
+	 *
+	 * Before `/{id}` for the reason [filters] gives — a literal segment beats a template,
+	 * and `grouped` is not a UUID.
+	 */
+	@GetMapping("/grouped")
+	fun grouped(
+		@RequestParam(required = false) teamId: UUID?,
+		@RequestParam(defaultValue = "false") includeDescendants: Boolean,
+		@RequestParam(defaultValue = "false") includeArchived: Boolean,
+		@RequestParam(defaultValue = "status") groupBy: String,
+		@RequestParam(defaultValue = "updated") sort: String,
+		@RequestParam(defaultValue = "200") limit: Int,
+		@RequestParam(defaultValue = "0") offset: Long,
+		@RequestParam query: MultiValueMap<String, String>,
+	): TicketGroupsResponse {
+		val stacking = ViewGroupBy.from(groupBy)
+		val sorting = ViewSortBy.from(sort)
+		return TicketGroupsResponse.of(
+			groupBy = stacking,
+			sortBy = sorting,
+			groups = tickets.grouped(
+				teamId = teamId,
+				includeDescendants = includeDescendants,
+				includeArchived = includeArchived,
+				filters = filtersFrom(query),
+				groupBy = stacking,
+				sortBy = sorting,
+				// The same clamp the flat list applies, and it has to be the same number:
+				// `limit` here bounds the rows, not the buckets, so a grouped page and a flat
+				// one asked with the same limit carry the same amount of the answer.
+				limit = limit.coerceIn(1, 500),
+				offset = offset.coerceAtLeast(0),
+			),
+		)
+	}
+
+	/**
+	 * The tickets no team has claimed, which are in no other list this API serves.
+	 *
+	 * Before `/{id}` for the reason `filters` is: Spring matches a literal segment ahead of
+	 * a template, and `drafts` is not a UUID, so the two cannot collide.
+	 */
+	@GetMapping("/drafts")
+	fun drafts(@RequestParam(defaultValue = "200") limit: Int): List<TicketResponse> =
+		tickets.drafts(currentUser.require(), limit.coerceIn(1, 500)).map(TicketResponse::of)
+
+	/**
+	 * By id, which is the only address a ticket with no team has — and the one address that
+	 * survives it gaining one, since the identifier is minted at that moment.
+	 */
 	@GetMapping("/{id}")
-	fun get(@PathVariable id: UUID): TicketResponse = TicketResponse.of(tickets.get(id))
+	fun get(@PathVariable id: UUID): TicketResponse =
+		TicketResponse.of(tickets.get(currentUser.require(), id))
 
 	/** Lookup by the identifier people actually use: `/api/tickets/by-key/KAN/142`. */
 	@GetMapping("/by-key/{teamKey}/{number}")
@@ -188,6 +253,10 @@ class TicketController(
 			"limit",
 			"offset",
 			"sort",
+			// How the answer is stacked, which `/grouped` takes and the flat list does not.
+			// It sits in the one list both routes subtract, because a name that is a filter
+			// on one door and scope on the other is the divergence this set exists to stop.
+			"groupBy",
 		)
 	}
 }

@@ -9,6 +9,8 @@ import {
   TICKET_STATUSES,
   dayValue,
   fromDayValue,
+  isTicketId,
+  ticketAddress,
   ticketHref,
   type EffortPoints,
   type Ticket,
@@ -26,7 +28,7 @@ import {
   useUsers,
 } from "@/lib/queries";
 import { useUi } from "@/store/ui";
-import { SyncBadge } from "../pills";
+import { SyncBadge, TicketIdentifier } from "../pills";
 import { Kbd } from "../ui/kbd";
 import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
@@ -61,7 +63,10 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
    * refusal has to be said in both cases: one of them is a typo somebody can see and fix,
    * and a blank screen tells them neither that the link is wrong nor that it was read.
    */
-  const unresolvable = parseTicketKey(ticketKey) === null;
+  // Two shapes resolve, not one. A ticket no team has claimed has no `KAN-142` to put in
+  // a URL, so its id is the link — and `useTicketByKey` sends that to `GET /api/tickets/{id}`
+  // instead. Only a string that is neither is a bad link nobody needs a round trip to answer.
+  const unresolvable = parseTicketKey(ticketKey) === null && !isTicketId(ticketKey);
 
   return (
     <ViewsShell
@@ -156,7 +161,7 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
             <span>/</span>
           </>
         )}
-        <span className="font-mono text-muted-foreground">{ticket.identifier}</span>
+        <TicketIdentifier ticket={ticket} className="font-mono text-muted-foreground" />
         <span className="flex-1" />
         {/*
           * The drawing's `⤡`, and the exact inverse of the panel's `⤢`: the same ticket,
@@ -170,7 +175,15 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
           aria-label="Collapse into the panel"
           className="inline-flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
           onClick={() => {
-            setScope(project ? { kind: "project", id: project.id } : { kind: "team", id: ticket.teamId });
+            // A ticket with no team collapses into the unscoped list, which is the only
+            // one it is in — there is no team scope that would show it.
+            setScope(
+              project
+                ? { kind: "project", id: project.id }
+                : ticket.teamId
+                  ? { kind: "team", id: ticket.teamId }
+                  : { kind: "all" },
+            );
             select(ticket.id);
             open("detail");
             router.push("/");
@@ -304,10 +317,10 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
               {dependsOn.map((predecessor) => (
                 <Link
                   key={predecessor.id}
-                  href={ticketHref(predecessor.identifier)}
+                  href={ticketHref(ticketAddress(predecessor))}
                   className="inline-flex h-6 items-center rounded-sm bg-accent-soft px-2.5 font-mono text-11 text-accent-ink"
                 >
-                  {predecessor.identifier}
+                  {predecessor.identifier ?? predecessor.title}
                 </Link>
               ))}
             </div>

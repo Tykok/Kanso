@@ -134,6 +134,7 @@ export class Guesses<T> {
  */
 export class TicketGuesses {
   private readonly guesses = new Guesses<Ticket>();
+  private waiting: (() => void)[] = [];
 
   /** Paints a guess about one ticket. The handle settles it; `0` is nothing to settle. */
   open(cache: EventCache, id: string, guess: Guess<Ticket>): number {
@@ -146,6 +147,29 @@ export class TicketGuesses {
   close(cache: EventCache, handle: number, settled?: Ticket | null): void {
     const done = this.guesses.close(handle, settled);
     if (done) this.paint(cache, done.subject, done.value);
+    // Drained after the paint, and only on the way to idle: a settle that still leaves
+    // another mutation in flight has not made the cache safe to write over.
+    if (this.waiting.length && this.idle) {
+      const tasks = this.waiting;
+      this.waiting = [];
+      for (const task of tasks) task();
+    }
+  }
+
+  /**
+   * Runs [task] once nothing of this tab's is in flight — now, if nothing is.
+   *
+   * `resumeAfterOutage` is the caller, and the only one: a reconnect is the single
+   * operation here that writes over the whole cache rather than over rows it can name,
+   * so it is the single one that has to wait for a guess it cannot see.
+   *
+   * The queue is drained rather than replaced, but a second outage while one is already
+   * queued adds a second sweep of the same cache — harmless, and cheaper to allow than
+   * to deduplicate.
+   */
+  whenIdle(task: () => void): void {
+    if (this.idle) task();
+    else this.waiting.push(task);
   }
 
   /**

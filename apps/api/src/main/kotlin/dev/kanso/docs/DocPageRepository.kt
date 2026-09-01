@@ -39,6 +39,20 @@ class DocPageRepository {
 			.where { (DocPages.id eq id) and (DocPages.id notInSubQuery trashed) }
 			.singleOrNull()?.toPage()
 
+	/**
+	 * [findLive] for a whole set, in one query — the sidebar's favourites resolve four
+	 * kinds at once and cannot afford a round trip per pin.
+	 *
+	 * The inverse of [findTrashed] over the same ids, which is exactly what a favourite
+	 * wants: a pinned page in the trash is not drawn, and the pin itself survives, so the
+	 * thirty days it has to come back are thirty days the pin is still there.
+	 */
+	fun findAllLive(ids: Collection<UUID>): List<DocPage> =
+		if (ids.isEmpty()) emptyList()
+		else DocPages.selectAll()
+			.where { (DocPages.id inList ids) and (DocPages.id notInSubQuery trashed) }
+			.map { it.toPage() }
+
 	/** The trash's own read: only the rows among [ids] that are actually in it. */
 	fun findTrashed(ids: Collection<UUID>): List<DocPage> =
 		if (ids.isEmpty()) emptyList()

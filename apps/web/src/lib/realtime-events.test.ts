@@ -5,6 +5,7 @@ import {
   findTicket,
   PATCH_LIMIT,
   RealtimeCache,
+  resumeAfterOutage,
   topicsFor,
   writeTickets,
   type CacheEntry,
@@ -25,6 +26,7 @@ function fakeCache(seed: CacheEntry[] = []) {
   const rows = new Map(seed.map((entry) => [JSON.stringify(entry.key), entry]));
   const invalidated: string[] = [];
   const writes: string[] = [];
+  let swept = 0;
 
   const cache: EventCache = {
     entries: (segment) => [...rows.values()].filter((entry) => entry.key[0] === segment),
@@ -33,6 +35,7 @@ function fakeCache(seed: CacheEntry[] = []) {
       rows.set(JSON.stringify(key), { key, data });
     },
     invalidate: (key) => void invalidated.push(JSON.stringify(key)),
+    invalidateAll: () => void (swept += 1),
   };
 
   return {
@@ -41,6 +44,8 @@ function fakeCache(seed: CacheEntry[] = []) {
     writes,
     read: <T>(key: readonly unknown[]) => rows.get(JSON.stringify(key))?.data as T | undefined,
     was: (key: readonly unknown[]) => invalidated.includes(JSON.stringify(key)),
+    /** How many times the whole cache was swept — what a reconnect does. */
+    sweeps: () => swept,
   };
 }
 
@@ -467,5 +472,112 @@ describe("what a screen subscribes to", () => {
 
   it("stays global until the team tree has loaded, rather than going deaf", () => {
     expect(topicsFor({ kind: "team", id: "team-a" }, "list", [])).toContain("/topic/tickets");
+  });
+
+  it("takes an archived sub-team too, because the server's descendant walk does", () => {
+    const archived = { ...team("team-d", "team-a"), archived: true };
+
+    // `TeamRepository.descendantIds` does not skip archived teams, so a parent's list can
+    // hold their rows. Leaving them off the subscription is being deaf on rows that are
+    // on screen — which is why the tree handed in here has to be the whole tree, archived
+    // teams included, and not the one the sidebar's toggle has filtered.
+    expect(topicsFor({ kind: "team", id: "team-a" }, "list", [...tree, archived])).toContain(
+      "/topic/teams/team-d/tickets",
+    );
+  });
+
+  it("walks through an archived team to the live work underneath it", () => {
+    const archived = { ...team("team-d", "team-a"), archived: true };
+    const grandchild = team("team-e", "team-d");
+
+    expect(
+      topicsFor({ kind: "team", id: "team-a" }, "list", [...tree, archived, grandchild]),
+    ).toContain("/topic/teams/team-e/tickets");
+  });
+});
+
+describe("coming back from an outage", () => {
+  /** A ledger with nothing in flight — the common case, and the one that runs at once. */
+  const settled = { whenIdle: (task: () => void) => task() };
+
+  it("sweeps the whole cache, because nothing says what was missed", () => {
+    const store = fakeCache();
+
+    resumeAfterOutage(store.cache, settled);
+
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("holds the sweep while a guess of this tab's is still in flight", () => {
+    const store = fakeCache();
+    let release = () => {};
+    const busy = { whenIdle: (task: () => void) => void (release = task) };
+
+    resumeAfterOutage(store.cache, busy);
+    expect(store.sweeps()).toBe(0);
+
+    release();
+    expect(store.sweeps()).toBe(1);
+  });
+});
+
+describe("what a create does to the teams query", () => {
+  it("refreshes the team list, which carries the counter a create moved", async () => {
+    const store = fakeCache([{ key: ["teams", false], data: [team("team-a")] }]);
+
+    await applyEvents(
+      { cache: store.cache, ...server([ticket("t1")]) },
+      [event({ kind: "CREATED" })],
+    );
+
+    expect(store.was(["teams", false])).toBe(true);
+  });
+
+  it("refreshes every copy of the list, archived-included as well", async () => {
+    const store = fakeCache([
+      { key: ["teams", false], data: [team("team-a")] },
+      { key: ["teams", true], data: [team("team-a")] },
+    ]);
+
+    await applyEvents(
+      { cache: store.cache, ...server([ticket("t1")]) },
+      [event({ kind: "CREATED" })],
+    );
+
+    expect(store.was(["teams", true])).toBe(true);
+  });
+
+  it("leaves a team's roster alone, which no ticket has ever changed", async () => {
+    const store = fakeCache([
+      { key: ["teams", false], data: [team("team-a")] },
+      { key: ["teams", "team-a", "members"], data: [] },
+    ]);
+
+    await applyEvents(
+      { cache: store.cache, ...server([ticket("t1")]) },
+      [event({ kind: "CREATED" })],
+    );
+
+    // A bare `["teams"]` would sweep this up by prefix, on the commonest write there is.
+    expect(store.was(["teams", "team-a", "members"])).toBe(false);
+  });
+
+  it("says nothing on a delete, which the counter does not answer to", async () => {
+    const store = fakeCache([{ key: ["teams", false], data: [team("team-a")] }]);
+
+    await applyEvents({ cache: store.cache, ...server() }, [event({ kind: "DELETED" })]);
+
+    // `ticket_counter` is `nextTicketNumber`'s allocator — the thing that makes KAN-14 the
+    // fourteenth — so it only ever climbs. Refetching after a delete spends a round trip
+    // to be told the same number.
+    expect(store.was(["teams", false])).toBe(false);
+  });
+
+  it("says nothing on an update either", async () => {
+    const store = fakeCache([{ key: ["teams", false], data: [team("team-a")] }]);
+
+    await applyEvents({ cache: store.cache, ...server([ticket("t1")]) }, [event()]);
+
+    expect(store.was(["teams", false])).toBe(false);
   });
 });

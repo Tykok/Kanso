@@ -11,6 +11,7 @@ import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -18,6 +19,8 @@ import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -33,6 +36,7 @@ class ActivityServiceTest : PostgresTest() {
 	@Autowired lateinit var activity: ActivityService
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var jdbc: JdbcClient
 
 	private fun user(name: String) = users.createLocalUser(
 		email = "act-${UUID.randomUUID()}@kanso.test",
@@ -140,6 +144,83 @@ class ActivityServiceTest : PostgresTest() {
 		val archived = log(ticket.id).filter { it.kind == ActivityKind.ARCHIVED }
 		assertEquals(2, archived.size, "coming back out of the archive is a decision too")
 		assertEquals(false, archived.first().payload["to"])
+	}
+
+	@Test
+	fun `re-sizing a ticket records one row carrying both sizes`() {
+		val ticket = ticket()
+		tickets.patch(actor, ticket.id, TicketPatch(estimate = 3))
+		tickets.patch(actor, ticket.id, TicketPatch(estimate = 13))
+
+		val sized = log(ticket.id).filter { it.kind == ActivityKind.ESTIMATED }
+
+		assertEquals(2, sized.size, "sizing and re-sizing are two decisions")
+		assertEquals(3, sized.first().payload["from"], "the row a reader comes back for is 3 → 13")
+		assertEquals(13, sized.first().payload["to"])
+	}
+
+	@Test
+	fun `re-sizing to the size it already had records nothing`() {
+		val ticket = ticket()
+		tickets.patch(actor, ticket.id, TicketPatch(estimate = 5))
+		tickets.patch(actor, ticket.id, TicketPatch(estimate = 5))
+
+		assertEquals(
+			1,
+			log(ticket.id).count { it.kind == ActivityKind.ESTIMATED },
+			"one row per scalar that actually changed — the second patch changed none",
+		)
+	}
+
+	@Test
+	fun `un-sizing is recorded too, with no size to have arrived at`() {
+		val ticket = ticket()
+		tickets.patch(actor, ticket.id, TicketPatch(estimate = 8))
+		tickets.patch(actor, ticket.id, TicketPatch(unset = setOf("estimate")))
+
+		val undone = log(ticket.id).first { it.kind == ActivityKind.ESTIMATED }
+		assertEquals(8, undone.payload["from"])
+		assertNull(undone.payload["to"], "an estimate withdrawn is a judgement, and reads as one")
+	}
+
+	/**
+	 * The other half of the two-sided guard. `ActivityRepository.insert` takes an
+	 * [ActivityKind], so nothing in Kotlin can write a kind that is not in the enum —
+	 * which is exactly why the vocabulary has to be refused a second time, down here,
+	 * where a raw INSERT from some future caller would otherwise walk straight past it.
+	 */
+	@Test
+	fun `the kinds are closed, and the database is what refuses a fourteenth`() {
+		val error = assertFailsWith<Exception> {
+			jdbc.sql(
+				"""
+				INSERT INTO activity (id, entity_type, entity_id, actor_id, kind, payload, created_at)
+				VALUES (:id, 'ticket', :entityId, NULL, 'resized', CAST('{}' AS jsonb), now())
+				""".trimIndent()
+			)
+				.param("id", UUID.randomUUID())
+				.param("entityId", UUID.randomUUID())
+				.update()
+		}
+		assertTrue(
+			error.toString().contains("activity_kind_chk"),
+			"refused by the CHECK, not by a Kotlin enum a raw INSERT never consults: $error",
+		)
+	}
+
+	@Test
+	fun `estimated is a kind the CHECK accepts, so the enum and the constraint agree`() {
+		val ticket = ticket()
+		activity.record(
+			ActivityEntity.TICKET,
+			ticket.id,
+			actor.id,
+			ActivityKind.ESTIMATED,
+			mapOf("from" to 3, "to" to 13),
+		)
+
+		val row = log(ticket.id).first { it.kind == ActivityKind.ESTIMATED }
+		assertEquals(13, row.payload["to"], "the wire value round-trips through the column")
 	}
 
 	@Test

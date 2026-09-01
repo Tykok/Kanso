@@ -20,6 +20,19 @@ export type RealtimeConnection = {
   close(): void;
 };
 
+export type RealtimeHandlers = {
+  onEvent: (event: KansoEvent) => void;
+  /**
+   * A socket that was away is back, and the events of the outage are gone.
+   *
+   * Separate from [onEvent] because it is the opposite kind of news: an event says what
+   * changed, and this says that something did and nobody knows what. What to do about it
+   * is `resumeAfterOutage`'s answer, not this module's — the socket's job ends at
+   * noticing the gap.
+   */
+  onResume: () => void;
+};
+
 /**
  * Subscribes to the server's change feed.
  *
@@ -32,7 +45,7 @@ export type RealtimeConnection = {
  * function's, and the caller says so through [RealtimeConnection.subscribeTo] — the same
  * call it makes every time the scope changes, rather than a special first one.
  */
-export function connectRealtime(onEvent: (event: KansoEvent) => void): RealtimeConnection {
+export function connectRealtime({ onEvent, onResume }: RealtimeHandlers): RealtimeConnection {
   const url = API_URL.replace(/^http/, "ws") + "/ws";
 
   const client = new Client({
@@ -68,12 +81,21 @@ export function connectRealtime(onEvent: (event: KansoEvent) => void): RealtimeC
     }
   };
 
+  // Whether a socket has ever been up. What tells a reconnect from the first connect —
+  // and the first connect is not a resume: the queries load at mount alongside it, so
+  // announcing a gap there would buy a second copy of every one of them on every load.
+  let established = false;
+
   client.onConnect = () => {
     connected = true;
     // A reconnect gets a broker that has forgotten every subscription, so the handles
     // from the previous socket are dropped rather than reused.
     active.clear();
     reconcile();
+    // After the re-subscribe, so the topics are live before anything acts on the gap:
+    // whatever the resume refetches would otherwise race the frames it is refetching for.
+    if (established) onResume();
+    established = true;
   };
   client.onWebSocketClose = () => {
     connected = false;

@@ -283,7 +283,9 @@ class TeamService(
 			else -> {
 				// A taken ticket keeps its team, but the projects may have just left for
 				// the parent, so the same check applies against the team it stays in.
-				val stranded = strandedTickets(held) { it.teamId }
+				// A ticket the disposition holds always has a team — the doomed ones were read
+				// out of `team_id` to begin with — so the pair is never null here.
+				val stranded = strandedTickets(held) { requireNotNull(it.teamId) }
 				tickets.clearProjectFor(stranded)
 				val byId = held.associateBy { it.id }
 				val touched = tickets.setArchivedByTeams(doomed, true).toMutableSet()

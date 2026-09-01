@@ -25,6 +25,19 @@ export const TICKET_PRIORITIES = ["none", "low", "medium", "high", "urgent"] as 
 export const PROJECT_STATUSES = ["planned", "in_progress", "paused", "completed", "canceled"] as const;
 
 /**
+ * `ProjectHealth`, server side. Whether a project will land — a different question from
+ * `PROJECT_STATUSES`, which says where its work is, and never derived from it: a project
+ * can be `in_progress` and `off_track` at the same time, and that pair is the single most
+ * useful thing this vocabulary can say.
+ *
+ * Three values and no fourth. A project nobody has assessed has `health: undefined`, which
+ * is **not** `on_track` — "nobody has said" and "somebody said it is fine" are different
+ * facts, and a client that draws the first as the second turns every project green on the
+ * day the feature ships. Absence is drawn as absence everywhere below.
+ */
+export const PROJECT_HEALTHS = ["on_track", "at_risk", "off_track"] as const;
+
+/**
  * The effort scale, and the whole of it: a truncated Fibonacci sequence the server
  * refuses anything outside of, in Kotlin and again by `tickets_estimate_chk`. Restated
  * here rather than fetched because it is a vocabulary, not data — the same reason
@@ -40,6 +53,7 @@ export type EffortPoints = (typeof EFFORT_POINTS)[number];
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+export type ProjectHealth = (typeof PROJECT_HEALTHS)[number];
 export type SyncState = "pending" | "synced" | "failed" | "disabled";
 
 export type Mirror = {
@@ -68,9 +82,19 @@ export const fromDayValue = (value: string): KansoInstant | null =>
 
 export type Ticket = {
   id: string;
-  identifier: string;
-  number: number;
-  teamId: string;
+  /**
+   * `KAN-142`, and absent for a ticket no team has claimed yet. The identifier is a team
+   * key and that team's counter, so a ticket outside every team has no name to print — the
+   * card draws a "no team" badge where this would have gone, and [id] is what addresses it
+   * until somebody files it.
+   *
+   * Optional rather than `| null`, like every other absent field on this row: the server
+   * omits nulls, so what arrives is `undefined` and a `=== null` test would silently miss
+   * every draft. The helpers that read these three use `== null` for the same reason.
+   */
+  identifier?: string;
+  number?: number;
+  teamId?: string;
   title: string;
   description?: string;
   status: TicketStatus;
@@ -94,6 +118,15 @@ export type Team = {
   key: string;
   parentTeamId?: string;
   archived: boolean;
+  /**
+   * Tickets ever filed in this team, not tickets it has — the server sends
+   * `ticket_counter`, the allocator that makes KAN-14 the fourteenth, so it climbs on a
+   * create and never comes back down on a delete.
+   *
+   * Which is the right answer for its one reader: `emptyReason` asks whether anything has
+   * ever been filed anywhere, and an instance whose work has all been deleted is not on a
+   * first run. Read it as a high-water mark and not as a counter to draw beside a name.
+   */
   ticketCount: number;
   mirror: Mirror;
   /** The server's answer to "may this actor create a ticket here", from `TicketAccess`. */
@@ -113,8 +146,26 @@ export type Project = {
   end?: KansoInstant;
   leadUserId?: string;
   teamId?: string;
+  /**
+   * The newest update's health, derived server-side and absent when nobody has posted
+   * one. Read-only: it is not on `ProjectBody`, because there is no column to write —
+   * changing a project's health means posting an update, which is a different endpoint
+   * and a different permission.
+   */
+  health?: ProjectHealth;
   archived: boolean;
   mirror: Mirror;
+};
+
+/** One thing somebody said about how a project is going, on the date they said it. */
+export type ProjectUpdate = {
+  id: string;
+  projectId: string;
+  health: ProjectHealth;
+  body: string;
+  /** Null once the account is gone. The assessment it left behind is not. */
+  author: User | null;
+  at: string;
 };
 
 export type ProjectBody = {
@@ -617,6 +668,20 @@ export const api = {
   deleteProject: (id: string, plan: DispositionPlan) =>
     request<void>(`/api/projects/${id}`, { method: "DELETE", body: JSON.stringify(plan) }),
 
+  /** Newest first — the reader wants what is true now, and the rest as context under it. */
+  projectUpdates: (id: string) => request<ProjectUpdate[]>(`/api/projects/${id}/updates`),
+
+  /**
+   * No date on the way in: the server dates an update when it is written. A caller-supplied
+   * one would let somebody backfill a history nobody lived through, which is the only thing
+   * that would make this record unreadable as evidence.
+   */
+  postProjectUpdate: (id: string, body: { health: ProjectHealth; body: string }) =>
+    request<ProjectUpdate>(`/api/projects/${id}/updates`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // --- tickets -------------------------------------------------------------
 
   /**
@@ -641,8 +706,12 @@ export const api = {
    */
   ticket: (id: string) => request<Ticket>(`/api/tickets/${id}`),
 
+  /** The drafts: tickets no team has claimed, which are in no other list this API serves. */
+  drafts: () => request<Ticket[]>("/api/tickets/drafts"),
+
   createTicket: (body: {
-    teamId: string;
+    /** Absent files a draft — see `Ticket.identifier` for what that costs it. */
+    teamId?: string;
     title: string;
     status?: TicketStatus;
     priority?: TicketPriority;
@@ -662,6 +731,8 @@ export const api = {
       start: KansoInstant;
       due: KansoInstant;
       projectId: string;
+      /** Attaching a draft to a team. There is no way back: the server refuses `unset`. */
+      teamId: string;
       archived: boolean;
       unset: string[];
     }>,

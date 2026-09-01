@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCreateTicket } from "@/lib/queries";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
-import type { Ticket, TicketStatus } from "@/lib/api";
+import { ticketAddress, type Ticket, type TicketStatus } from "@/lib/api";
 import { StatusDot } from "../ui/status-dot";
 import { BoardCard } from "./card";
 import type { BoardColumn } from "./columns";
@@ -167,7 +167,7 @@ export function BoardColumnView({
                     assignee={control.nameOf(ticket)}
                     selected={ticket.id === control.selectedId}
                     onSelect={() => control.onSelect(ticket.id)}
-                    onOpen={() => control.onOpen(ticket.identifier, ticket.id)}
+                    onOpen={() => control.onOpen(ticketAddress(ticket), ticket.id)}
                     onDragStart={() => control.onDragStart(ticket.id)}
                   />
                 </div>

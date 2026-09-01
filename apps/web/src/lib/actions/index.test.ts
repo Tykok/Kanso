@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { boardActions } from "./board";
 import { coreActions } from "./core";
 import { docsActions } from "./docs";
+import { favouriteActions } from "./favourites";
 import { ACTIONS, resolveShortcut } from "./index";
 import { inboxActions } from "./inbox";
 import { organiseActions } from "./organise";
@@ -24,6 +25,7 @@ describe("the composed action registry", () => {
       ...inboxActions,
       ...trashActions,
       ...publikActions,
+      ...favouriteActions,
     ];
     expect(ACTIONS).toHaveLength(contributed.length);
     for (const action of contributed) {

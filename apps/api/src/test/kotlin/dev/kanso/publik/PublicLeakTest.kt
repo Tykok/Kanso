@@ -109,7 +109,7 @@ class PublicLeakTest : PostgresTest() {
 			"nor may its title reach the list by any other field",
 		)
 
-		val page = roadmap.contributorPage(shown.teamKey, shown.ticket.number)
+		val page = roadmap.contributorPage(shown.teamKey!!, shown.ticket.number!!)
 		assertEquals(listOf("good first step"), page.labels, "the shown ticket wears its own badge")
 		assertFalse(
 			page.otherFirstSteps.any { it.identifier == hidden.identifier },
@@ -124,10 +124,10 @@ class PublicLeakTest : PostgresTest() {
 		// A 404 rather than a 403: "you may not see this" tells a stranger the ticket
 		// exists, which is half of what they were fishing for.
 		assertFailsWith<NotFoundException>("the contributor page must not resolve a private key") {
-			roadmap.contributorPage(hidden.teamKey, hidden.ticket.number)
+			roadmap.contributorPage(hidden.teamKey!!, hidden.ticket.number!!)
 		}
 		assertFailsWith<NotFoundException>("nor may a stranger vote a private ticket up the list") {
-			votes.vote(hidden.teamKey, hidden.ticket.number, "a-voter-key")
+			votes.vote(hidden.teamKey!!, hidden.ticket.number!!, "a-voter-key")
 		}
 	}
 
@@ -151,7 +151,7 @@ class PublicLeakTest : PostgresTest() {
 			listOf(FilePointer("packages/ui/seal.css", "the pattern")),
 		)
 
-		val page = roadmap.contributorPage(open.teamKey, open.ticket.number)
+		val page = roadmap.contributorPage(open.teamKey!!, open.ticket.number!!)
 		assertEquals(
 			listOf("J. Salas"),
 			page.helpers.map { it.displayName },

@@ -50,6 +50,7 @@ function context(overrides: Partial<ActionContext> = {}): ActionContext {
     recentre: unreachable,
     startLink: unreachable,
     startUnlink: unreachable,
+    toggleFavourite: unreachable,
     logout: unreachable,
     ...overrides,
   };

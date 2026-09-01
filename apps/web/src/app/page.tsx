@@ -21,7 +21,14 @@ import { Sidebar } from "@/components/sidebar";
 import { TicketList } from "@/components/tickets";
 import { TimelineView } from "@/components/timeline/view";
 import { availableActions, hintOf, predecessorsOf, resolveShortcut } from "@/lib/actions";
-import { ApiError, getDevUser, setDevUser, ticketHref, type Ticket } from "@/lib/api";
+import {
+  ApiError,
+  getDevUser,
+  setDevUser,
+  ticketAddress,
+  ticketHref,
+  type Ticket,
+} from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
 import { isMac } from "@/lib/platform";
 import {
@@ -87,6 +94,19 @@ export default function InboxPage() {
   const link = useLinkDependency();
   const unlink = useUnlinkDependency();
 
+  /**
+   * The box stays here, and stays a contains-match over the page — deliberately, now that
+   * grouping and counting have gone to the server for being wrong at volume.
+   *
+   * It is not the same kind of question. A chip narrows the *answer*, so answering it over
+   * a page gives a page of the wrong answer; this narrows what is *on screen* to get the
+   * eye to a row the reader can already see is there, which is why it is a keystroke with
+   * no round trip and why the comment below can say its job is to find a row rather than
+   * to hide a plan. Making it a facet would also be a promise this schema cannot keep
+   * cheaply: `ILIKE '%…%'` is a sequential scan on every keystroke, and doing it honestly
+   * means `pg_trgm` and a GIN index — a migration, and a ticket of its own. Until then the
+   * honest reading of the box is "search what is loaded", which is what it does.
+   */
   const filtered = useMemo(() => {
     const rows = tickets.data ?? [];
     const needle = query.trim().toLowerCase();
@@ -94,7 +114,7 @@ export default function InboxPage() {
     return rows.filter(
       (ticket) =>
         ticket.title.toLowerCase().includes(needle) ||
-        ticket.identifier.toLowerCase().includes(needle),
+        (ticket.identifier?.toLowerCase().includes(needle) ?? false),
     );
   }, [tickets.data, query]);
 
@@ -275,7 +295,7 @@ export default function InboxPage() {
        */
       if (event.key === "Enter" && event.shiftKey && selected) {
         event.preventDefault();
-        router.push(ticketHref(selected.identifier));
+        router.push(ticketHref(ticketAddress(selected)));
         return;
       }
 

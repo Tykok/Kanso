@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useDocBlockWrites } from "@/lib/queries";
 import { useDocsUi } from "@/store/docs";
 import { useUi } from "@/store/ui";
+import { FavouriteStar } from "../favourites";
 import { Kbd } from "../ui/kbd";
 import { BlockBody, queriedStatuses } from "./blocks";
 import { InsertMenu } from "./insert-menu";
@@ -99,6 +100,9 @@ export function DocumentView({
         </Link>
         <span aria-hidden>/</span>
         <span className="text-muted-foreground">{page.title}</span>
+        {/* The only way to pin a document: this route hands its keys to the caret, where
+            `s` is a letter somebody is typing, and it mounts no command palette. */}
+        <FavouriteStar target={{ kind: "doc", id: page.id }} label={page.title} />
         <span className="flex-1" />
 
         {page.notionPageId && (

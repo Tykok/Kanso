@@ -1085,3 +1085,30 @@ reopen them.
   pinned by `whatever Spring routes to the endpoint, this filter has already seen`.
 - **Login before client validation in `ConsentController`.** The client is looked up before
   the anonymous branch, and the ordering carries the attack it prevents in a comment.
+
+## Favourites (KAN-10)
+
+**Ordering is insertion order, and manual reordering is not there.** `favourites` carries a
+`created_at` and no `position`. The useful version — drag a pin above another — needs a
+column, a reorder endpoint, a drag affordance in a 248px column and a keyboard equivalent
+for a keyboard-first product, and none of it falls out of what shipped. Oldest first rather
+than newest first, so a fifth pin does not renumber the four above it.
+
+**Tickets and doc folders cannot be pinned.** Argued at length in `V22__favourites.sql`'s
+header. In short: every kind that *can* be pinned is a place somebody goes back to, with a
+name they chose and a row that fits; a ticket is work that finishes and is recognised by
+two facts (`KAN-142 · <title>`) where the column holds one, and a doc folder has no route
+of its own to send anybody to. Both are a column and a `@Component` away if the argument
+stops holding.
+
+**`s` does not reach the two record routes; a star does.** The registry's key is dispatched
+by `app/page.tsx` and `components/views/shell.tsx`. `/views/[id]` runs a hand-written key
+handler that never falls through to `resolveShortcut`, `/docs/[id]` gives its keys to the
+caret, and `OrganiseShell` mounts no command palette at all — so on those two screens the
+gesture is `FavouriteStar` in the header rather than a keypress. Giving `OrganiseShell` the
+palette, or letting the saved view's handler fall through to the registry, would close it
+and is worth doing on its own rather than from here.
+
+**`/docs/[id]` draws no Favourites section, because it draws no sidebar.** That route has
+its own tree rail. Pre-existing, and it means a pinned document is visible from every
+screen except the document's own.

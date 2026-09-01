@@ -92,7 +92,7 @@ class TrashControllerTest : PostgresTest() {
 			docIds = emptyList(),
 		)
 		tickets.delete(admin, ticket.ticket.id)
-		return ticket.ticket.id to ticket.identifier
+		return ticket.ticket.id to ticket.identifier!!
 	}
 
 	@Test

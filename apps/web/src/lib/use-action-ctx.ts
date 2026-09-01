@@ -7,11 +7,13 @@ import { api, setDevUser, type Ticket } from "./api";
 import { actionErrorMessage } from "./errors";
 import {
   useDeleteTicket,
+  useFavourites,
   useMe,
   usePatchTicket,
   useProjects,
   useTeams,
   useTimeline,
+  useToggleFavourite,
   useUnarchive,
 } from "./queries";
 
@@ -56,6 +58,13 @@ export function useActionContext(local: {
   const { mutate: patchTicket } = usePatchTicket();
   const { mutate: unarchiveEntity } = useUnarchive();
   const { mutate: deleteTicket } = useDeleteTicket();
+
+  // The whole list, not a membership test: the toggle has to know which way it is going,
+  // and the sidebar has already loaded this exact cache entry to draw its own section —
+  // so asking for it here costs a read of the cache and no second request.
+  const favourites = useFavourites();
+  const { mutate: flipFavourite } = useToggleFavourite();
+  const pinned = favourites.data;
 
   // Signing out is a full page transition, not a cache update: everything on screen
   // belongs to the session that is ending, so a reload is the honest way to drop it.
@@ -135,6 +144,17 @@ export function useActionContext(local: {
       dependencies: timeline.data?.dependencies ?? [],
       startLink,
       startUnlink,
+      /**
+       * A no-op until the list has loaded, deliberately. Without it the first press after
+       * a cold start would always read as "not pinned yet" and un-pinning would be
+       * impossible for as long as the request had left to run — a key that silently does
+       * the wrong thing is worse than a key that waits a beat.
+       */
+      toggleFavourite: (target) => {
+        if (!pinned) return;
+        const already = pinned.some((row) => row.kind === target.kind && row.id === target.id);
+        flipFavourite({ target, pinned: already });
+      },
       // Left alone on purpose: a patch is optimistic, so a failure is already
       // visible as the row snapping back to what it was.
       patchTicket,
@@ -170,6 +190,8 @@ export function useActionContext(local: {
       startLink,
       startUnlink,
       reportError,
+      pinned,
+      flipFavourite,
       patchTicket,
       deleteTicket,
       unarchiveEntity,

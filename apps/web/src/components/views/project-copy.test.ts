@@ -4,6 +4,7 @@ import {
   activitySentence,
   activityTime,
   donePercent,
+  healthLabel,
   periodLabel,
   statusCounts,
 } from "./project-copy";
@@ -140,6 +141,25 @@ describe("activitySentence", () => {
     expect(activitySentence(row("carried_over"))).toBe("Tykok carried work into the next cycle");
   });
 
+  /**
+   * Re-sizing is the decision somebody comes back looking for, so the sentence carries
+   * both sizes. The two one-ended rows are not the same event and must not read alike:
+   * the server omits a null, so an estimate arrived at has no `from` and one withdrawn
+   * has no `to`.
+   */
+  it("says what a ticket was re-sized from and to", () => {
+    expect(activitySentence(row("estimated", { ref: "KAN-142", from: 3, to: 13 }))).toBe(
+      "Tykok re-sized KAN-142 from 3 to 13",
+    );
+    expect(activitySentence(row("estimated", { ref: "KAN-142", to: 5 }))).toBe(
+      "Tykok sized KAN-142 at 5",
+    );
+    expect(activitySentence(row("estimated", { ref: "KAN-142", from: 8 }))).toBe(
+      "Tykok un-sized KAN-142, from 8",
+    );
+    expect(activitySentence(row("estimated"))).toBe("Tykok re-sized a ticket");
+  });
+
   /** The mirror is not a person, and "nobody pushed 2 pages" is not a sentence. */
   it("leaves the actor out when there was not one", () => {
     expect(activitySentence({ ...row("mirror_pushed"), actor: null })).toBe("Pushed to Notion");
@@ -152,6 +172,49 @@ describe("activitySentence", () => {
   it("reads as a sentence with an empty payload", () => {
     expect(activitySentence(row("renamed"))).toBe("Tykok renamed a ticket");
     expect(activitySentence(row("status_changed"))).toBe("Tykok changed a status");
+  });
+
+  /**
+   * The first kind written against a *project*, and the only one whose `to` is a health
+   * rather than a status. The sentence has to say "health" out loud: a feed line reading
+   * "Tykok moved this to At risk" beside a project whose status is In progress is the one
+   * place the two vocabularies could be mistaken for each other.
+   */
+  it("says a health was posted, and where it moved from", () => {
+    expect(activitySentence(row("health_posted", { to: "at_risk", from: "on_track" }))).toBe(
+      "Tykok posted health At risk, from On track",
+    );
+  });
+
+  it("leaves out a from that the first update never had", () => {
+    expect(activitySentence(row("health_posted", { to: "on_track" }))).toBe(
+      "Tykok posted health On track",
+    );
+  });
+
+  it("still reads as a sentence when the health did not travel", () => {
+    expect(activitySentence(row("health_posted"))).toBe("Tykok posted a health update");
+  });
+});
+
+/**
+ * The decision this whole feature turns on, in one function: absence is not `on_track`.
+ *
+ * "Nobody has said" and "somebody looked and said it is fine" are different facts. A
+ * client that renders the first as the second turns every project in the instance green on
+ * the day this ships — including the ones nobody has ever assessed — and a reader who
+ * learns that green is the resting state stops reading green at all.
+ */
+describe("healthLabel", () => {
+  it("names each of the three", () => {
+    expect(healthLabel("on_track")).toBe("On track");
+    expect(healthLabel("at_risk")).toBe("At risk");
+    expect(healthLabel("off_track")).toBe("Off track");
+  });
+
+  it("says nobody has said, rather than saying it is fine", () => {
+    expect(healthLabel(undefined)).toBe("No update yet");
+    expect(healthLabel(undefined)).not.toBe(healthLabel("on_track"));
   });
 });
 

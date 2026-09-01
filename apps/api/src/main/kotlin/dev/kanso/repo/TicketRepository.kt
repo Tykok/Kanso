@@ -136,10 +136,15 @@ class TicketRepository(
 			.limit(limit)
 			.map { it.toTicket() }
 
+	/**
+	 * [teamId] and [number] are null together — a draft, with no counter having spoken for
+	 * it yet. [createdBy] is who to ask about it while that lasts.
+	 */
 	fun insert(
 		id: UUID,
-		number: Int,
-		teamId: UUID,
+		number: Int?,
+		teamId: UUID?,
+		createdBy: UUID?,
 		title: String,
 		description: String?,
 		status: TicketStatus,
@@ -154,6 +159,7 @@ class TicketRepository(
 			it[Tickets.id] = id
 			it[Tickets.number] = number
 			it[Tickets.teamId] = teamId
+			it[Tickets.createdBy] = createdBy
 			it[Tickets.title] = title
 			it[Tickets.description] = description
 			it[Tickets.status] = status.wire
@@ -171,7 +177,13 @@ class TicketRepository(
 			it[Tickets.completedAt] = if (status.category == StatusCategory.COMPLETED) now else null
 			it[Tickets.projectId] = projectId
 			it[archived] = false
-			it[syncState] = SyncState.PENDING.wire
+			// `pending` means "queued for Notion", and the badge on every row says so. A
+			// ticket with no team is never enqueued — it has no identifier and no team
+			// relation, so there is no page to write — and leaving it `pending` would be a
+			// row claiming to be waiting for a push nothing will ever make. `disabled` is
+			// the state `SyncBadge` draws nothing for, which is the honest picture until a
+			// team arrives and `TicketService.patch` turns the mirror back on.
+			it[syncState] = if (teamId == null) SyncState.DISABLED.wire else SyncState.PENDING.wire
 			it[createdAt] = now
 			it[updatedAt] = now
 		}
@@ -180,7 +192,7 @@ class TicketRepository(
 
 	fun update(
 		id: UUID,
-		teamId: UUID,
+		teamId: UUID?,
 		title: String,
 		description: String?,
 		status: TicketStatus,
@@ -258,12 +270,35 @@ class TicketRepository(
 		return Tickets.selectAll().where(where).count().toInt()
 	}
 
+	/**
+	 * The drafts, newest first — tickets no team has claimed.
+	 *
+	 * [authorId] null is the instance admin's view, which is every draft: `created_by` is
+	 * null on every row written before `V20` and on any whose author has since been deleted,
+	 * and somebody has to be able to reach those. Everyone else sees only their own, which
+	 * is the whole of the access rule for a ticket with no team to decide it.
+	 */
+	fun findDrafts(authorId: UUID?, limit: Int): List<Ticket> {
+		val mine = if (authorId == null) Op.TRUE else (Tickets.createdBy eq authorId)
+		return Tickets.selectAll()
+			.where { Tickets.teamId.isNull() and mine and (Tickets.id notInSubQuery trashed) }
+			.orderBy(Tickets.createdAt to SortOrder.DESC)
+			.limit(limit)
+			.map { it.toTicket() }
+	}
+
 	fun idsByTeam(teamId: UUID): List<UUID> =
 		Tickets.select(Tickets.id).where { Tickets.teamId eq teamId }
 			.orderBy(Tickets.number to SortOrder.ASC)
 			.map { it[Tickets.id] }
 
-	/** A move renames the ticket for good: `UNIQUE (team_id, number)` leaves no choice. */
+	/**
+	 * A move renames the ticket for good: `UNIQUE (team_id, number)` leaves no choice.
+	 *
+	 * Also the first naming, for a draft arriving from no team at all — the write is the
+	 * same one, and the pair is set together so `tickets_team_number_together_chk` is never
+	 * momentarily false.
+	 */
 	fun moveToTeam(ticketId: UUID, teamId: UUID, number: Int): Boolean =
 		Tickets.update({ Tickets.id eq ticketId }) {
 			it[Tickets.teamId] = teamId
@@ -356,9 +391,17 @@ class TicketRepository(
 		TicketAssignees.select(TicketAssignees.userId).where { TicketAssignees.ticketId eq ticketId }
 			.map { it[TicketAssignees.userId] }
 
+	/**
+	 * Ordered by the column, which is what makes the head of each list mean something.
+	 * Grouping by assignee files a ticket with two owners under the first of them, and
+	 * unordered this was whichever row Postgres happened to hand back — so a ticket could
+	 * change group between two refetches of the same question. See
+	 * `TicketQueryRepository.firstAssignee`, which picks the same person with a `MIN`.
+	 */
 	fun assigneeIdsFor(ticketIds: Collection<UUID>): Map<UUID, List<UUID>> =
 		if (ticketIds.isEmpty()) emptyMap()
 		else TicketAssignees.selectAll().where { TicketAssignees.ticketId inList ticketIds }
+			.orderBy(TicketAssignees.userId)
 			.groupBy({ it[TicketAssignees.ticketId] }, { it[TicketAssignees.userId] })
 
 	fun setAssignees(ticketId: UUID, userIds: Collection<UUID>) {

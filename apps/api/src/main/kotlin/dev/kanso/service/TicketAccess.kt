@@ -19,12 +19,47 @@ import java.util.UUID
 class TicketAccess(private val teams: TeamRepository) {
 
 	@Transactional(readOnly = true)
-	fun mayEdit(actor: User, ticket: Ticket): Boolean = mayEditTeam(actor, ticket.teamId)
+	fun mayEdit(actor: User, ticket: Ticket): Boolean =
+		ticket.teamId?.let { mayEditTeam(actor, it) } ?: mayEditDraft(actor, ticket)
+
+	/**
+	 * A ticket outside every team is outside the only boundary this product has.
+	 *
+	 * The three-part rule below cannot be asked: there is no team, so no membership, no
+	 * ancestors, and — the trap — no chain to be silent, which means [claimedBy]'s
+	 * open-chain clause would return true and hand every draft in the instance to
+	 * everybody. That clause exists to keep an instance with an empty `team_members` usable;
+	 * it is an argument about *unclaimed teams*, and a draft is not one.
+	 *
+	 * So the draft belongs to whoever wrote it, plus the instance admins. Strictly narrower
+	 * than anything the team rule grants, which is the right direction for a state that is
+	 * new: nothing that was reachable yesterday becomes unreachable, and nothing becomes
+	 * reachable that was not.
+	 *
+	 * A null [Ticket.createdBy] — every row older than `V20`, and any whose author's account
+	 * was closed — resolves to admins only. Inventing an owner for a row nobody signed would
+	 * be handing out rights that were never given.
+	 */
+	private fun mayEditDraft(actor: User, ticket: Ticket): Boolean =
+		actor.instanceRole.canConfigureInstance || (ticket.createdBy != null && ticket.createdBy == actor.id)
+
+	/**
+	 * Whether this ticket is one the actor may even be told about.
+	 *
+	 * Reads are otherwise open across teams — a ticket's *team* has never gated seeing it,
+	 * only editing it — and this does not change that. It answers for the one case the team
+	 * rule cannot: a draft is private to its author, so it is the only kind of ticket a
+	 * reader can be refused.
+	 */
+	@Transactional(readOnly = true)
+	fun mayRead(actor: User, ticket: Ticket): Boolean = ticket.teamId != null || mayEditDraft(actor, ticket)
 
 	@Transactional(readOnly = true)
 	fun require(actor: User, ticket: Ticket) {
 		if (mayEdit(actor, ticket)) return
-		throw AccessDeniedException("${nameOf(ticket.teamId)} is not one of your teams")
+		val teamId = ticket.teamId
+			?: throw AccessDeniedException("That ticket belongs to no team, and you did not write it")
+		throw AccessDeniedException("${nameOf(teamId)} is not one of your teams")
 	}
 
 	/** The destination side of a team move, which has no ticket row of its own yet. */

@@ -273,13 +273,15 @@ class AgentRightsTest : PostgresTest() {
 	 * the same promise: the consent screen tells a member their agent acts *as them*, and
 	 * the feed is where that either turns out to be true or does not.
 	 *
-	 * The second question has a column waiting for it and nothing filling it, and the
-	 * last assertion here says so out loud rather than leaving it to a report. The name
-	 * of this test is deliberately about the principal: provenance is *durable* only once
-	 * `activity.via_client_id` is written, and today it is not.
+	 * The second question now has an answer on disk too. This test used to end on a
+	 * tripwire asserting `activity.via_client_id` was *empty* — a gap pinned rather than
+	 * described, with instructions to rename the test and delete the assertion on the day
+	 * somebody filled it in. `ActivityService.clientTyping` is that day: the column is
+	 * written from the principal `McpBearerFilter` leaves standing, so provenance outlives
+	 * the request that carried it.
 	 */
 	@Test
-	fun `a write through a grant is the member's own in the log, with the client only on the principal`() {
+	fun `a write through a grant is the member's own in the log, with the client recorded alongside`() {
 		val admin = user(InstanceRole.ADMIN)
 		val alice = user(InstanceRole.MEMBER)
 		val hers = teamOf(alice, admin, "Hers")
@@ -293,27 +295,25 @@ class AgentRightsTest : PostgresTest() {
 		assertEquals(alice.id, actor.id, "the token acts as its owner, so the history says its owner")
 		assertEquals(alice.email, actor.email, "and the feed will name her, not the application")
 
-		// Provenance reaches the request, and stops there. `Principals.kt` says the client
-		// travels "so the activity feed can say which application typed a change", and this
-		// is the whole of what that amounts to today: a field on a principal that dies with
-		// the request.
+		// Provenance reaches the request. `Principals.kt` says the client travels "so the
+		// activity feed can say which application typed a change", and this is the way in.
 		val principal = SecurityContextHolder.getContext().authentication?.principal as KansoAgentUser
 		assertEquals(CLIENT, principal.clientId, "which application typed it is not lost on the way in")
 		assertEquals(alice.id, principal.kansoUserId, "and it is carried alongside her, not instead of her")
 
-		// The gap, pinned rather than described. `V18__oauth_server.sql` added
-		// `activity.via_client_id` and `OAuthSchemaTest` pins that the column exists;
-		// nothing under `src/main` writes it. This assertion is expected to *fail* on the
-		// day somebody fills it in — which is the point. A gap recorded only in a report
-		// is a gap the next reader concludes was already closed.
+		// And it reaches disk, which is the half that used to be missing. The value is the
+		// *public* `client_id`, which is what `V19__activity_via_client_id_target.sql` moved
+		// the foreign key onto for exactly this write — the surrogate `V18` first pointed at
+		// is a key no service layer ever holds.
 		val recorded = jdbc
 			.sql("SELECT via_client_id FROM activity WHERE id = :id")
 			.param("id", entry.id)
 			.query(String::class.java)
 			.optional()
-		assertTrue(
-			recorded.isEmpty,
-			"provenance is not durable yet: if this column now has a value, rename this test and delete this assertion",
+		assertEquals(
+			CLIENT,
+			recorded.orElse(null),
+			"provenance is durable: the feed can name the application long after the request ended",
 		)
 	}
 

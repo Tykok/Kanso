@@ -1,5 +1,17 @@
-import { dayValue, type ActivityRow, type KansoInstant, type Ticket, type TicketStatus } from "@/lib/api";
-import { categoryOf, STATUS_LABELS, type StatusCategory } from "@/lib/status";
+import {
+  dayValue,
+  type ActivityRow,
+  type KansoInstant,
+  type ProjectHealth,
+  type Ticket,
+  type TicketStatus,
+} from "@/lib/api";
+import {
+  categoryOf,
+  PROJECT_HEALTH_LABELS,
+  STATUS_LABELS,
+  type StatusCategory,
+} from "@/lib/status";
 
 /**
  * Everything screen 05 says in words, with no React in it.
@@ -104,11 +116,42 @@ export function periodLabel(
   return "—";
 }
 
+// --- health ------------------------------------------------------------------
+
+/**
+ * What to print where a project's health goes, including when it has none.
+ *
+ * The absent case is the whole reason this is a function rather than an index into
+ * `PROJECT_HEALTH_LABELS`. A project nobody has assessed answers `undefined`, and it must
+ * not be drawn as "On track": "nobody has said" and "somebody looked and said it is fine"
+ * are different facts, and rendering the first as the second turns every project in the
+ * instance green on the day this ships — including the ones nobody has ever looked at.
+ * A reader who learns that green is the resting state stops reading green, and then the
+ * signal is worth nothing on the projects it was built for.
+ *
+ * "No update yet" and not "Unknown": the absence is a thing somebody can fix, and naming
+ * the missing act says who has to fix it.
+ */
+export function healthLabel(health: ProjectHealth | undefined): string {
+  return health ? PROJECT_HEALTH_LABELS[health] : "No update yet";
+}
+
 // --- the feed ----------------------------------------------------------------
 
 /** What a row's `payload` may name, read by key and never assumed to be there. */
 const ref = (payload: Record<string, unknown>): string | undefined =>
   typeof payload.ref === "string" ? payload.ref : undefined;
+
+/** The health twin of [statusOf]: a separate reader, because they are separate vocabularies. */
+const healthOf = (payload: Record<string, unknown>, key: "from" | "to"): string | undefined => {
+  const value = payload[key];
+  return typeof value === "string" && value in PROJECT_HEALTH_LABELS
+    ? PROJECT_HEALTH_LABELS[value as ProjectHealth]
+    : undefined;
+};
+/** An estimate off either end of a re-sizing. Absent and null both read as "no size". */
+const points = (payload: Record<string, unknown>, key: "from" | "to"): number | undefined =>
+  typeof payload[key] === "number" ? (payload[key] as number) : undefined;
 
 const statusOf = (payload: Record<string, unknown>, key: "from" | "to"): string | undefined => {
   const value = payload[key];
@@ -134,7 +177,7 @@ export function activitySentence(row: ActivityRow): string {
   const what = ref(row.payload);
 
   // Written as the verb phrase first, so the actor is prepended once rather than in
-  // twelve branches that could each get the spacing wrong.
+  // thirteen branches that could each get the spacing wrong.
   const phrase = ((): string => {
     switch (row.kind) {
       case "created":
@@ -171,6 +214,33 @@ export function activitySentence(row: ActivityRow): string {
         if (what && to) return `carried ${what} into cycle ${to}`;
         if (to) return `carried unfinished work into cycle ${to}`;
         return what ? `carried ${what} into the next cycle` : "carried work into the next cycle";
+      }
+      case "health_posted": {
+        // The only branch whose `to` is a *health* and not a status, and the only one about
+        // a project rather than a ticket. The word "health" is in the sentence deliberately:
+        // "moved this to At risk", printed in a feed beside a project reading In progress,
+        // is the one line where a reader could take the two vocabularies for one.
+        const to = healthOf(row.payload, "to");
+        const from = healthOf(row.payload, "from");
+        if (to && from) return `posted health ${to}, from ${from}`;
+        if (to) return `posted health ${to}`;
+        // No `from` on the first update anybody posts — the server omits the key rather
+        // than sending a null — and no `to` only if the row arrived from a writer that
+        // recorded less than this hoped for.
+        return "posted a health update";
+      }
+      case "estimated": {
+        // Both ends are optional and they mean different things by their absence: no
+        // `to` is an estimate withdrawn, no `from` is one arrived at for the first
+        // time. Printing "sized KAN-142 at undefined" for either is the failure the
+        // whole payload-read-by-key discipline in this file exists to avoid.
+        const from = points(row.payload, "from");
+        const to = points(row.payload, "to");
+        const it = what ?? "a ticket";
+        if (from !== undefined && to !== undefined) return `re-sized ${it} from ${from} to ${to}`;
+        if (to !== undefined) return `sized ${it} at ${to}`;
+        if (from !== undefined) return `un-sized ${it}, from ${from}`;
+        return `re-sized ${it}`;
       }
     }
   })();

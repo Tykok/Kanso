@@ -151,10 +151,36 @@ object Projects : Table("projects") {
 	override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * How a project is going, said on a date. No `updatedAt` because there is no writer for
+ * one: an update is a dated statement, and the correction for a wrong one is the next
+ * update. There is no `projects.health` to go with this — the current health is the
+ * latest row here, and `V23` argues why a stored copy would be wrong on arrival.
+ */
+object ProjectUpdates : Table("project_updates") {
+	val id = javaUUID("id")
+	val projectId = javaUUID("project_id")
+	val health = text("health")
+	val body = text("body")
+	/** Null once the account is gone. What was known about the project in August is not. */
+	val authorId = javaUUID("author_id").nullable()
+	val at = timestampWithTimeZone("at")
+	override val primaryKey = PrimaryKey(id)
+}
+
 object Tickets : Table("tickets") {
 	val id = javaUUID("id")
-	val number = integer("number")
-	val teamId = javaUUID("team_id")
+
+	/**
+	 * Null together or not at all, which `tickets_team_number_together_chk` is what
+	 * actually enforces: the number comes from the team's counter and is unique only
+	 * within it, so half the pair names nothing.
+	 */
+	val number = integer("number").nullable()
+	val teamId = javaUUID("team_id").nullable()
+
+	/** Who may edit a ticket no team is deciding for. Null for every row older than `V20`. */
+	val createdBy = javaUUID("created_by").nullable()
 	val title = text("title")
 	val description = text("description").nullable()
 	val status = text("status")

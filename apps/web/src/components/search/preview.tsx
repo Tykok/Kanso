@@ -2,7 +2,7 @@
 
 import { dayValue, type Project } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
-import { SyncBadge } from "../pills";
+import { SyncBadge, TicketIdentifier } from "../pills";
 import { Kbd } from "../ui/kbd";
 import type { SearchRow } from "./results";
 
@@ -33,7 +33,7 @@ export function SearchPreview({ row, projects }: { row?: SearchRow; projects: Pr
       {row.kind === "ticket" && (
         <>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-11 text-faint">{row.ticket.identifier}</span>
+            <TicketIdentifier ticket={row.ticket} className="font-mono text-11 text-faint" />
             <span className="flex-1" />
             <SyncBadge mirror={row.ticket.mirror} />
           </div>

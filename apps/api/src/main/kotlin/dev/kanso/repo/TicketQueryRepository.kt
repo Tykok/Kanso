@@ -67,6 +67,13 @@ data class TicketFilters(
 )
 
 /**
+ * One bucket of a grouped answer, counted over everything that matches rather than over
+ * a page of it. [key] is null for the rows that have none — no project, nobody assigned —
+ * and for the single bucket `none` grouping answers with.
+ */
+data class TicketGroupCount(val key: String?, val count: Int)
+
+/**
  * The one query that answers "which tickets".
  *
  * It used to be two. `TicketRepository.search` served the main list with four filters and
@@ -87,16 +94,26 @@ data class TicketFilters(
 @Repository
 class TicketQueryRepository {
 
+	/**
+	 * [groupBy] is not a second shape, it is the first key of the ordering.
+	 *
+	 * A grouped list is rows stacked by bucket, and a page of one has to be *contiguous*
+	 * in its buckets or the boundary between page 1 and page 2 puts half of `Todo` under
+	 * `Done`. Ordering by the group before the sort is what makes the flat page and the
+	 * grouped answer the same rows: the caller can bucket the page it holds and know that
+	 * nothing from a bucket it has already closed is still to come.
+	 */
 	fun matching(
 		scope: TicketScope,
 		filters: TicketFilters,
+		groupBy: dev.kanso.service.ViewGroupBy = dev.kanso.service.ViewGroupBy.NONE,
 		sortBy: dev.kanso.service.ViewSortBy = dev.kanso.service.ViewSortBy.UPDATED,
 		limit: Int,
 		offset: Long = 0,
 	): List<Ticket> {
 		if (scope.teamIds?.isEmpty() == true) return emptyList()
 		return Tickets.selectAll().where(predicate(scope, filters))
-			.orderBy(*order(sortBy))
+			.orderBy(*(groupOrder(groupBy) + order(sortBy)))
 			.limit(limit).offset(offset)
 			.map { it.toTicket() }
 	}
@@ -104,6 +121,36 @@ class TicketQueryRepository {
 	fun count(scope: TicketScope, filters: TicketFilters): Int {
 		if (scope.teamIds?.isEmpty() == true) return 0
 		return Tickets.selectAll().where(predicate(scope, filters)).count().toInt()
+	}
+
+	/**
+	 * Every bucket the question has, counted by the database over the whole match.
+	 *
+	 * This is the half that could not be done on the client at all. Bucketing the page in
+	 * JavaScript answers `Todo · 12` when twelve is how many of the two hundred rows that
+	 * were sent happen to be todo — the header reads as a fact about the team and is a
+	 * fact about a fetch. One `GROUP BY` costs one round trip and is true regardless of
+	 * how little of the answer the caller asked to carry.
+	 *
+	 * Buckets with nothing in them are absent rather than zero: an empty bucket is a
+	 * header drawn over nothing, and the set of possible statuses is not the set of
+	 * statuses this question found.
+	 */
+	fun groupCounts(
+		scope: TicketScope,
+		filters: TicketFilters,
+		groupBy: dev.kanso.service.ViewGroupBy,
+	): List<TicketGroupCount> {
+		if (scope.teamIds?.isEmpty() == true) return emptyList()
+		// `none` is a real choice on the control and it means one bucket, not zero — the
+		// same reading the client has always given it.
+		val key = groupKey(groupBy)
+			?: return count(scope, filters).let { if (it == 0) emptyList() else listOf(TicketGroupCount(null, it)) }
+		val tally = Tickets.id.count()
+		return Tickets.select(key, tally).where(predicate(scope, filters))
+			.groupBy(key)
+			.orderBy(*groupOrder(groupBy))
+			.map { TicketGroupCount(it[key]?.toString(), it[tally].toInt()) }
 	}
 
 	/**
@@ -125,6 +172,17 @@ class TicketQueryRepository {
 			// for one — and out of the list until the Archives tab asks. A view is a working
 			// list, and the archive is where things go to stop being on one.
 			if (!scope.includeArchived) add(Tickets.archived eq false)
+			// A ticket with no team is in none of these lists, and this is the one place that
+			// has to be said. Every list on every screen runs this predicate, and each of
+			// them is a room a team owns — a board, a saved view, a triage queue, a cycle, a
+			// timeline, a workload. A draft nobody has filed is in none of those rooms, and
+			// it is private to whoever wrote it, so leaking it into the unscoped list would
+			// be both a wrong answer and a disclosure. `TicketRepository.findDrafts` is where
+			// they are, scoped to their author.
+			//
+			// Not folded into the clause below: `teamIds` null means "every team", and every
+			// team is still not the same set as every row.
+			add(Tickets.teamId.isNotNull())
 			scope.teamIds?.let { add(Tickets.teamId inList it) }
 			if (filters.statuses.isNotEmpty()) add(Tickets.status inList filters.statuses.map { it.wire })
 			if (filters.statusesExcluded.isNotEmpty()) {
@@ -208,6 +266,88 @@ class TicketQueryRepository {
 				Tickets.number to SortOrder.DESC,
 			)
 		}
+
+	/**
+	 * Which bucket a row falls in, as an expression the database can both group and order
+	 * by — so the counts and the rows agree on the answer by construction rather than by
+	 * two implementations happening to match.
+	 *
+	 * Null for `none`, which has no key: the caller reads that as "one bucket".
+	 */
+	private fun groupKey(groupBy: dev.kanso.service.ViewGroupBy): Expression<*>? = when (groupBy) {
+		dev.kanso.service.ViewGroupBy.STATUS -> Tickets.status
+		dev.kanso.service.ViewGroupBy.PRIORITY -> Tickets.priority
+		dev.kanso.service.ViewGroupBy.PROJECT -> Tickets.projectId
+		dev.kanso.service.ViewGroupBy.ASSIGNEE -> firstAssignee
+		dev.kanso.service.ViewGroupBy.NONE -> null
+	}
+
+	/**
+	 * How the buckets themselves are stacked — a different question from how the rows
+	 * inside one are, and answered by different things.
+	 *
+	 * `status` and `priority` are closed vocabularies with a reading order the screen has
+	 * always drawn: waiting at the top, finished at the bottom. It is written out here as
+	 * a `CASE` for the reason [priorityRank] gives about its own — the order of a closed
+	 * vocabulary is a product decision, and deriving it from the enum's declaration or
+	 * from `StatusCategory` would make an unrelated edit silently restack every grouped
+	 * view. It is deliberately a second copy of `STATUS_ORDER` in the web app's
+	 * `organise/grouping.ts` rather than a derivation from the category, which is what
+	 * `KAN-42` is open about; that ticket owns reconciling the two, and this one leaves
+	 * both constants exactly as it found them.
+	 *
+	 * `project` and `assignee` have no such order, and this query cannot invent one: a
+	 * project's name and a person's name live in other tables, and sorting people by
+	 * their id is not sorting them by anything a reader can see. So the buckets come back
+	 * ordered by the key — arbitrary, but *total and stable*, which is the property paging
+	 * actually needs. Whoever holds the names may relabel the headers; nothing may reorder
+	 * the rows, because the page boundary was cut against this order.
+	 *
+	 * The nameless bucket sorts last wherever there is one. It is the leftovers — no
+	 * project, nobody assigned — and a bucket with no name at the top of the list reads
+	 * as a group whose name failed to load.
+	 */
+	private fun groupOrder(
+		groupBy: dev.kanso.service.ViewGroupBy,
+	): Array<Pair<Expression<*>, SortOrder>> = when (groupBy) {
+		dev.kanso.service.ViewGroupBy.STATUS -> arrayOf(statusRank to SortOrder.ASC)
+		dev.kanso.service.ViewGroupBy.PRIORITY -> arrayOf(priorityRank to SortOrder.ASC)
+		dev.kanso.service.ViewGroupBy.PROJECT -> arrayOf(Tickets.projectId to SortOrder.ASC_NULLS_LAST)
+		dev.kanso.service.ViewGroupBy.ASSIGNEE -> arrayOf(firstAssignee to SortOrder.ASC_NULLS_LAST)
+		dev.kanso.service.ViewGroupBy.NONE -> emptyArray()
+	}
+
+	/**
+	 * The one assignee a ticket is filed under, chosen by the database so that it is the
+	 * same one every time.
+	 *
+	 * A ticket with two owners appears once, under one of them, because a row drawn twice
+	 * in a grouped list is a row somebody will count twice — that much the client already
+	 * decided. What it could not decide was *which*: it took `assigneeIds[0]`, and that
+	 * list came back from an unordered `SELECT`, so a ticket could change groups between
+	 * two refetches of the same question. `MIN` makes the choice a property of the data.
+	 *
+	 * Cast to text because Postgres 16 has no `min(uuid)`. It is not a lossy comparison:
+	 * a uuid compares as its sixteen bytes and its canonical text form is those bytes in
+	 * lowercase hex, so the two orders are the same one — which is what lets
+	 * `TicketRepository.assigneeIdsFor`, ordered by the column itself, hand back a list
+	 * whose head is this same person.
+	 */
+	private val firstAssignee: Expression<String?> = wrapAsExpression(
+		TicketAssignees
+			.select(Min(TicketAssignees.userId.castTo(TextColumnType()), TextColumnType()))
+			.where { TicketAssignees.ticketId eq Tickets.id }
+	)
+
+	/** Downwards as the work flows — the web app's `STATUS_ORDER`, and see [groupOrder]. */
+	private val statusRank: Expression<Int> = Case()
+		.When(Tickets.status eq TicketStatus.BACKLOG.wire, intLiteral(1))
+		.When(Tickets.status eq TicketStatus.TODO.wire, intLiteral(2))
+		.When(Tickets.status eq TicketStatus.IN_PROGRESS.wire, intLiteral(3))
+		.When(Tickets.status eq TicketStatus.IN_REVIEW.wire, intLiteral(4))
+		.When(Tickets.status eq TicketStatus.DONE.wire, intLiteral(5))
+		.When(Tickets.status eq TicketStatus.CANCELED.wire, intLiteral(6))
+		.Else(intLiteral(7))
 
 	/**
 	 * Urgent first, as the screen reads downwards. Written out rather than folded over

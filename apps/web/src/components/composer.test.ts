@@ -120,3 +120,39 @@ describe("newTicketBody", () => {
     });
   });
 });
+
+describe("newTicketBody, with no team chosen", () => {
+  const FORM_WITHOUT_TEAM = {
+    teamId: "",
+    title: "A thought typed in a meeting",
+    priority: "none" as TicketPriority,
+    projectId: "",
+    assigneeId: "",
+    estimate: "",
+  };
+
+  /**
+   * Omitted, not empty. `""` is not a UUID and the server would refuse it with a 400,
+   * which would turn "I have not decided yet" into an error message. Absent is the wire's
+   * own way of saying it, and the server files a draft.
+   */
+  it("leaves the team out rather than sending an empty string", () => {
+    const body = newTicketBody(FORM_WITHOUT_TEAM);
+
+    expect(body.teamId).toBeUndefined();
+    expect("teamId" in body).toBe(true);
+    expect(body.title).toBe("A thought typed in a meeting");
+  });
+
+  /**
+   * A project without a team still reaches the server, because the server is where the
+   * team follows the project — a ticket's project belongs to its team, and deciding that
+   * here would be a second copy of a rule the API already enforces.
+   */
+  it("still sends a project chosen without a team, and lets the server adopt its team", () => {
+    const body = newTicketBody({ ...FORM_WITHOUT_TEAM, projectId: "project-1" });
+
+    expect(body.teamId).toBeUndefined();
+    expect(body.projectId).toBe("project-1");
+  });
+});

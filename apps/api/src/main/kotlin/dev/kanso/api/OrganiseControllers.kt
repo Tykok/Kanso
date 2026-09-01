@@ -165,8 +165,10 @@ class SavedViewController(
 	fun get(@PathVariable id: UUID): SavedViewResponse {
 		val view = views.get(id)
 		// The count is what the sidebar row shows, and asking for the view without it would
-		// make the header and the sidebar disagree the moment one was refetched alone.
-		return SavedViewResponse.of(view, views.tickets(id).size)
+		// make the header and the sidebar disagree the moment one was refetched alone. It is
+		// `views.count`, not the size of a page of rows: the page stops at 200 and the
+		// sidebar's own number never did, so the two used to part company on a large view.
+		return SavedViewResponse.of(view, views.count(id))
 	}
 
 	@GetMapping("/views/{id}/tickets")
@@ -174,6 +176,28 @@ class SavedViewController(
 		@PathVariable id: UUID,
 		@RequestParam(defaultValue = "200") limit: Int,
 	): List<TicketResponse> = views.tickets(id, limit.coerceIn(1, 500)).map(TicketResponse::of)
+
+	/**
+	 * The same view, stacked into the buckets it stores a `groupBy` for — and the reason
+	 * a group header can say `Todo · 29` while carrying twenty rows.
+	 *
+	 * The stacking and the sort are the view's own and are not parameters here: they are
+	 * the stored question, and a caller that could override them would be asking a
+	 * different one under this view's name.
+	 */
+	@GetMapping("/views/{id}/grouped")
+	fun grouped(
+		@PathVariable id: UUID,
+		@RequestParam(defaultValue = "200") limit: Int,
+		@RequestParam(defaultValue = "0") offset: Long,
+	): TicketGroupsResponse {
+		val view = views.get(id)
+		return TicketGroupsResponse.of(
+			groupBy = view.groupBy,
+			sortBy = view.sortBy,
+			groups = views.grouped(id, limit.coerceIn(1, 500), offset.coerceAtLeast(0)),
+		)
+	}
 
 	@PostMapping("/teams/{teamId}/views")
 	@ResponseStatus(HttpStatus.CREATED)
@@ -190,7 +214,7 @@ class SavedViewController(
 			groupBy = ViewGroupBy.from(request.groupBy),
 			sortBy = ViewSortBy.from(request.sortBy),
 		)
-		return SavedViewResponse.of(created, views.tickets(created.id).size)
+		return SavedViewResponse.of(created, views.count(created.id))
 	}
 
 	@PatchMapping("/views/{id}")
@@ -204,7 +228,7 @@ class SavedViewController(
 			groupBy = request.groupBy?.let(ViewGroupBy::from),
 			sortBy = request.sortBy?.let(ViewSortBy::from),
 		)
-		return SavedViewResponse.of(updated, views.tickets(id).size)
+		return SavedViewResponse.of(updated, views.count(id))
 	}
 
 	@DeleteMapping("/views/{id}")

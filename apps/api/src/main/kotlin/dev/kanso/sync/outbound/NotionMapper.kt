@@ -77,14 +77,21 @@ class NotionMapper(
 	}
 
 	fun ticketProperties(ticket: Ticket): Map<String, Any?> {
-		val team = teams.findById(ticket.teamId)
+		// Null only for a ticket with no team, which `TicketService` never enqueues a push
+		// for — a page with no identifier and no team relation is a row nothing could
+		// reconcile. Tolerated rather than required so a job queued by some other path
+		// writes a blank identifier instead of throwing inside the worker.
+		val team = ticket.teamId?.let(teams::findById)
 		val assigneeIds = tickets.assigneeIds(ticket.id)
 		val personIds = users.notionPersonIds(assigneeIds)
 		val assigneeNames = users.findAllById(assigneeIds).joinToString { it.displayName }
 		return buildMap {
 			put(NotionProps.NAME, NotionProps.title(ticket.title))
 			put(NotionProps.KANSO_ID, NotionProps.richText(ticket.id.toString()))
-			put(NotionProps.IDENTIFIER, NotionProps.richText("${team?.key ?: "?"}-${ticket.number}"))
+			put(
+				NotionProps.IDENTIFIER,
+				NotionProps.richText(team?.let { "${it.key}-${ticket.number}" }),
+			)
 			put(NotionProps.STATUS, NotionProps.select(ticket.status.label))
 			put(NotionProps.PRIORITY, NotionProps.select(ticket.priority.label))
 			// An unestimated ticket writes an explicit null, like every absent date does:
