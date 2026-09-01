@@ -53,6 +53,9 @@ export const keys = {
     ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived, asked] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
   teamMembers: (id: string) => ["teams", id, "members"] as const,
+  /** Per team, because a velocity measured against another team's fortnights is a different number. */
+  velocity: (teamId: string) => ["velocity", teamId] as const,
+  ticketDuration: (id: string) => ["ticketDuration", id] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
   timeline: (scope: Scope) =>
     ["timeline", scope.kind, scope.kind === "all" ? "" : scope.id] as const,
@@ -144,6 +147,19 @@ export function usePreferences(): Preferences {
   return me.data?.preferences ?? DEFAULT_PREFERENCES;
 }
 
+export type SavePreferencesInput = Partial<Preferences> & {
+  onboarded?: boolean;
+  /**
+   * Names the fields to clear. JSON cannot tell an omitted key from an explicit null, so
+   * withdrawing a declared velocity is impossible without saying which field it is.
+   */
+  unset?: string[];
+};
+
+/** The optimistic half of `unset`: every named field, gone. */
+const cleared = (unset: string[] | undefined): Partial<Preferences> =>
+  Object.fromEntries((unset ?? []).map((field) => [field, undefined]));
+
 /**
  * Optimistic save, for the same reason ticket patches are: a theme that takes a
  * round trip to change feels broken. The cache is the single source of truth for
@@ -156,13 +172,16 @@ export function useSavePreferences() {
   return useMutation({
     mutationFn: api.savePreferences,
 
-    onMutate: async (patch: Partial<Preferences>) => {
+    onMutate: async ({ unset, ...patch }: SavePreferencesInput) => {
       await queryClient.cancelQueries({ queryKey: keys.me });
       const previous = queryClient.getQueryData<Me>(keys.me);
       if (previous) {
         queryClient.setQueryData<Me>(keys.me, {
           ...previous,
-          preferences: { ...previous.preferences, ...patch },
+          // `unset` is a command, not a field, so it is applied rather than merged: the
+          // guess has to clear what the request clears, or the interface shows the old
+          // value until the response lands and then jumps.
+          preferences: { ...previous.preferences, ...cleared(unset), ...patch },
         });
       }
       return { previous };
@@ -174,12 +193,50 @@ export function useSavePreferences() {
 
     // The response is the whole saved row, so take it rather than invalidate: a
     // refetch of /api/me on every keystroke-sized change would be pure noise.
-    onSuccess: (saved) =>
+    onSuccess: (saved, patch) => {
       queryClient.setQueryData<Me>(keys.me, (current) =>
         current ? { ...current, preferences: saved } : current,
-      ),
+      );
+      // The declared velocity is the one preference that is an *input* to reads living in
+      // other caches: which velocity is in force, and now every ticket's duration. Both are
+      // computed on the server from it, so neither can be patched from the response here.
+      // Conditional rather than a blanket invalidate, because a theme change moves nothing.
+      if ("declaredVelocity" in patch || (patch.unset ?? []).includes("declaredVelocity")) {
+        queryClient.invalidateQueries({ queryKey: ["velocity"] });
+        queryClient.invalidateQueries({ queryKey: ["ticketDuration"] });
+      }
+    },
   });
 }
+
+/**
+ * Which velocity Kanso will plan this person's dates with, and where it came from.
+ *
+ * Not folded into `/api/me` the way preferences are: the answer depends on how many of a
+ * team's cycles have closed, so it is per team and it changes without this person touching
+ * anything. A field on the session object would be stale the morning after a cycle closes.
+ */
+export const useVelocity = (teamId?: string) =>
+  useQuery({
+    queryKey: keys.velocity(teamId ?? ""),
+    queryFn: () => api.velocity(teamId!),
+    enabled: Boolean(teamId),
+  });
+
+/**
+ * How long one ticket should take. Detail surfaces only — the list never asks.
+ *
+ * Its own key rather than a field on the ticket cache, because it moves for reasons the
+ * ticket does not: an assignee closing a cycle changes this number and nothing about the
+ * row. Left to the client-wide staleTime, since a duration nobody can read to the day does
+ * not need to be fresh to the second.
+ */
+export const useTicketDuration = (id?: string) =>
+  useQuery({
+    queryKey: keys.ticketDuration(id ?? ""),
+    queryFn: () => api.ticketDuration(id!),
+    enabled: Boolean(id),
+  });
 
 export const useTeams = () => {
   const showArchived = useUi((state) => state.showArchived);

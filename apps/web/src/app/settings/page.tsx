@@ -10,14 +10,16 @@ import { ConnectionsSection } from "@/components/settings/connections-section";
 import { SettingsNote } from "@/components/settings/field";
 import { NotionPeopleSection } from "@/components/settings/notion-people-section";
 import { PeopleSection } from "@/components/settings/people-section";
+import { VelocitySection } from "@/components/settings/velocity-section";
 import { ApiError } from "@/lib/api";
 import { useMe, useSetupState } from "@/lib/queries";
 
-type SectionId = "appearance" | "account" | "people" | "connections" | "agents";
+type SectionId = "appearance" | "account" | "velocity" | "people" | "connections" | "agents";
 
 const SECTION_NAMES: Record<SectionId, string> = {
   appearance: "Appearance",
   account: "Account",
+  velocity: "Velocity",
   people: "People",
   connections: "Connections",
   agents: "Agents",
@@ -42,11 +44,13 @@ export default function SettingsPage() {
   // "agents" is in both arrays, and that is the point: a grant belongs to the person who
   // made it, so every member manages their own — there is nothing here for an admin to
   // administer, and no list of anyone else's for them to see.
+  // "velocity" is in both arrays for the same reason "agents" is: it is a fact about how
+  // you work, declared by you, and there is nothing in it for an admin to administer.
   const sections: SectionId[] = canConfigure
-    ? ["appearance", "account", "people", "connections", "agents"]
+    ? ["appearance", "account", "velocity", "people", "connections", "agents"]
     : // A member has nothing to manage about other people, but still sees the
       // connections read-only: the mirror affects their tickets.
-      ["appearance", "account", "connections", "agents"];
+      ["appearance", "account", "velocity", "connections", "agents"];
 
   return (
     <div className="mx-auto flex max-w-[760px] flex-col gap-5 px-5 pb-16 pt-6">
@@ -77,6 +81,7 @@ export default function SettingsPage() {
         <main className="min-w-0">
           {section === "account" && <AccountSection me={me.data} />}
           {section === "appearance" && <AppearanceSection />}
+          {section === "velocity" && <VelocitySection />}
           {section === "people" && canConfigure && <PeopleSection />}
           {section === "agents" && <AgentsSection />}
           {section === "connections" && (

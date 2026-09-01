@@ -74,9 +74,12 @@ data class TeamVelocity(val cycles: List<Cycle>, val rows: List<PersonVelocity>)
  * number nobody can explain when it disagrees with the cycles listed underneath it. There
  * is no cached column and there will not be one.
  *
- * There is no controller. Nothing renders this yet — the page that will is a later
- * ticket — and a route exposing one person's output to anyone who can guess a user id is
- * not a thing to add before somebody has decided who may read it.
+ * There is no controller *here*, and the reason has not changed: a route exposing one
+ * person's output to anyone who can guess a user id is not a thing to add before somebody
+ * has decided who may read it. `VelocityController` is the narrowest answer that unblocks
+ * a screen — you may read your own — and it reaches this file through
+ * `EffectiveVelocityService`, which is also where the rule arbitrating this number against
+ * a declared one lives. Nothing in this file knows that a declared velocity exists.
  */
 @Service
 class VelocityService(

@@ -1,0 +1,53 @@
+-- The velocity a person declares for themselves, in points per working day.
+--
+-- `VelocityService` already measures what somebody delivered and deliberately answers
+-- null — never zero — when no closed cycle can say. This column is what stands in that
+-- hole, and the interesting part of this migration is not the column. It is the rule the
+-- column is subject to, which lives in `EffectiveVelocityService` and is stated here
+-- because the shape below only makes sense once you know it.
+--
+-- **The declared value is a seed, not a setting.** Under two measurable closed cycles it
+-- is what Kanso plans with; from the second it steps aside and the measured number takes
+-- over, with the declared one still shown beside it as a reference. Two numbers answering
+-- the same question and disagreeing is a tool that lies, so exactly one of them is ever
+-- in force and every screen that renders a date says which — in a sentence, not an icon.
+--
+-- **Nothing ever writes this column except the person themselves.** The measured value
+-- does not flow back into it, not on a schedule and not the day the two diverge. A person
+-- who declared 2 and measures 0.8 has learned something, and the gap is the thing they
+-- learned; overwriting the 2 would delete the finding and leave a column that agrees with
+-- the measurement by construction and therefore says nothing. The one write path is the
+-- preferences PUT.
+--
+-- **Not historised, and that is a decision rather than an omission.** A revisions table
+-- pays for itself only if somebody wants to trace how an estimate of oneself moved — a
+-- retrospective feature with its own screen and its own reading of what a revision means.
+-- Nothing asks for that today, the column stops being consulted the moment two cycles
+-- exist, and `activity` already records nothing about preferences. A history nobody reads
+-- is a table that has to be migrated forever. If the retrospective arrives, it arrives as
+-- its own migration with its own shape, and it will want the measured series too, which
+-- this column could not have given it.
+--
+-- **Nullable, and never defaulted.** The same argument `V16` makes for `tickets.estimate`:
+-- "has not declared one" and "declared zero" are different states, and a default would
+-- collapse them the day this ships. Null here means nobody has said, which is what makes
+-- the third refusal on the ticket-duration screen possible at all — an assignee with
+-- neither a declared nor a computable velocity is told so, rather than shown an empty box.
+--
+-- NUMERIC rather than a float: this is a number a person typed, it is rendered back to
+-- them, and 0.7 has to come back as 0.7. Two decimals is finer than anyone can honestly
+-- estimate their own pace and stops the value from being the reason a duration moved.
+--
+-- Derived from nothing and deriving nothing. There is still no velocity column anywhere,
+-- as `V10` and `V16` both say and `VelocityService` repeats: every rate in Kanso is
+-- computed on read. This column is not a cached rate — it is an input nobody can compute.
+ALTER TABLE user_preferences ADD COLUMN declared_velocity NUMERIC(5, 2);
+
+-- Strictly positive, and bounded well above anything real. Zero is refused because a
+-- velocity of zero divides into an infinite duration, and "I deliver nothing per day" is
+-- a null — an absent declaration — not a measurement. The ceiling catches the decimal
+-- point a person drops: the scale tops out at 13 points for one ticket, so a hundred
+-- points a day is already a claim no team can make, while 250 typed for 2.50 would
+-- otherwise silently turn every estimate on the screen into "under a day".
+ALTER TABLE user_preferences ADD CONSTRAINT user_preferences_declared_velocity_chk
+  CHECK (declared_velocity IS NULL OR (declared_velocity > 0 AND declared_velocity <= 100));

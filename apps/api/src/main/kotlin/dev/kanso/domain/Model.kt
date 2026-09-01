@@ -311,6 +311,15 @@ data class Preferences(
 	val openTicket: OpenTicket = OpenTicket.PANEL,
 	val defaultTeamId: UUID? = null,
 	val onboardedAt: OffsetDateTime? = null,
+	/**
+	 * Points per working day, as this person estimates their own pace. Null means they
+	 * have not said — never zero, which would be a claim that they deliver nothing.
+	 *
+	 * A seed, not a setting: `EffectiveVelocityService` stops consulting it once two
+	 * closed cycles can measure the same person, and nothing in Kanso ever writes it
+	 * except the person themselves. `V24` argues both halves.
+	 */
+	val declaredVelocity: Double? = null,
 )
 
 data class TeamMember(val teamId: UUID, val user: User, val role: MemberRole)
