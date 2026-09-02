@@ -117,9 +117,11 @@ class ProjectPermissionTest : PostgresTest() {
 	 * fixtures rely on — so a test written against an empty team would pass either way and
 	 * prove nothing.
 	 */
-	private fun claimedTeam(owner: User): UUID {
+	private fun claimedTeam(member: User): UUID {
 		val team = teamRows.insert("Owned ${UUID.randomUUID().toString().take(4)}", "T${UUID.randomUUID().toString().take(3).uppercase()}", null)
-		teams.addMember(owner, team.id, owner.id, MemberRole.MEMBER)
+		// Added by an admin, because `TeamService.addMember` is owner-or-admin — the point
+		// here is only that somebody claims the team, not who did the claiming.
+		teams.addMember(admin, team.id, member.id, MemberRole.MEMBER)
 		return team.id
 	}
 
