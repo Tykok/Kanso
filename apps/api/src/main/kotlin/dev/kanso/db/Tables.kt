@@ -383,6 +383,10 @@ object OutboundJobs : Table("outbound_jobs") {
 	val nextAttemptAt = timestampWithTimeZone("next_attempt_at")
 	val lockedAt = timestampWithTimeZone("locked_at").nullable()
 	val lockedBy = text("locked_by").nullable()
+	// When the holder was last known to be alive, refreshed while a push runs — not when
+	// the push started, which is `lockedAt`. The stuck-job sweep reads this one, so that a
+	// slow push and a dead worker stop looking alike; see `V29`.
+	val heartbeatAt = timestampWithTimeZone("heartbeat_at").nullable()
 	// jsonb, read as text. Written only through raw SQL, which casts explicitly.
 	val payload = text("payload").nullable()
 	val createdAt = timestampWithTimeZone("created_at")

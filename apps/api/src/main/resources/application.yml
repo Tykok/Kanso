@@ -20,14 +20,22 @@ spring:
     default-property-inclusion: non_null
 
   # One thread per recurring task, or they serialise: the inbound poller, the
-  # stuck-job sweeper, the trash sweep, and one outbound clock per sync destination
-  # (see OutboundWorker.start). A task that finds no free thread waits for one, which
-  # is the exact coupling those per-destination clocks exist to remove — so this is
-  # sized for the second destination before there is one, and keeps a spare.
+  # stuck-job sweeper, the trash sweep, the outbound heartbeat, and one outbound clock
+  # per sync destination (see OutboundWorker.start). A task that finds no free thread
+  # waits for one, which is the exact coupling those per-destination clocks exist to
+  # remove — so this is sized for the second destination before there is one, and keeps
+  # a spare.
+  #
+  # The heartbeat is the one that must never queue behind anything. Its whole job is to
+  # prove this process is alive while a drain sits blocked on a remote call, so a
+  # heartbeat starved of a thread by the very drains it is covering would let the sweep
+  # reclaim pushes that are still in flight — the replay OutboundWorker.beat exists to
+  # prevent. Ten missed beats are needed before that happens, so the spare is what makes
+  # the margin real rather than nominal.
   task:
     scheduling:
       pool:
-        size: 6
+        size: 7
 
 server:
   port: 8080
@@ -116,8 +124,11 @@ kanso:
       max-attempts: 8
       # Notion allows roughly 3 requests/second averaged; stay under it.
       requests-per-second: 2.5
-      # A job still 'running' after this long is assumed orphaned by a dead
-      # worker and returned to the queue.
+      # How long a 'running' job may go without its holder saying it is alive before
+      # the job is assumed orphaned and returned to the queue. Not "how long a push
+      # may take": a slow push keeps beating and keeps its lock for as long as it
+      # needs — see V29. The worker beats at a tenth of this, so ten consecutive
+      # missed beats are what it takes to declare a worker dead.
       stuck-job-timeout: 5m
     inbound:
       enabled: true

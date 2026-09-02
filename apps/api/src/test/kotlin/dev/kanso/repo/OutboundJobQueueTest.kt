@@ -140,6 +140,67 @@ class OutboundJobQueueTest : PostgresTest() {
 		assertEquals(1, jobs.claimBatch(Destination.NOTION, 10, "other").size)
 	}
 
+	// --- a slow worker is not a dead one --------------------------------------
+	//
+	// The sweep used to reclaim on the age of the lock, and a push that is merely slow
+	// answers "how long have you held this" exactly like a process that died holding it.
+	// These two pin the distinction from both sides: same sweep, same timeout, and the
+	// only difference between them is whether the holder said anything.
+
+	/**
+	 * Ages a running job's two timestamps independently, because telling them apart is
+	 * the entire subject: [lockHeld] is how long the push has been running, and
+	 * [unheardFrom] is how long since whoever holds it last proved it was alive.
+	 */
+	private fun backdate(jobId: Long, lockHeld: Duration, unheardFrom: Duration) {
+		jdbc.sql(
+			"""
+			UPDATE outbound_jobs
+			   SET locked_at    = clock_timestamp() - make_interval(secs => :held),
+			       heartbeat_at = clock_timestamp() - make_interval(secs => :silent)
+			 WHERE id = :id
+			""".trimIndent()
+		)
+			.param("held", lockHeld.seconds.toDouble())
+			.param("silent", unheardFrom.seconds.toDouble())
+			.param("id", jobId)
+			.update()
+	}
+
+	@Test
+	fun `a push whose worker is still beating keeps its lock however long it runs`() {
+		val id = UUID.randomUUID()
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
+		val running = jobs.claimBatch(Destination.NOTION, 1, "slow-worker").single()
+
+		// An hour into the push, twelve times over the timeout the sweep is about to apply.
+		backdate(running.id, lockHeld = Duration.ofHours(1), unheardFrom = Duration.ofHours(1))
+		// And the worker holding it is alive, and says so.
+		jobs.heartbeat(listOf(running.id))
+
+		assertEquals(0, jobs.reclaimStuck(Duration.ofMinutes(5)))
+		assertEquals(
+			"running",
+			statusOf(running.id),
+			"reclaiming a push still in flight sends the same operation a second time",
+		)
+	}
+
+	@Test
+	fun `a job whose heartbeat stopped is reclaimed however recently it was claimed`() {
+		val id = UUID.randomUUID()
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
+		val abandoned = jobs.claimBatch(Destination.NOTION, 1, "dead-worker").single()
+
+		// The mirror image: the lock was taken moments ago, and nothing has been heard
+		// since. This is the half that proves the sweep reads the heartbeat rather than
+		// the lock — on the age of the lock, this job is not stuck at all.
+		backdate(abandoned.id, lockHeld = Duration.ZERO, unheardFrom = Duration.ofMinutes(10))
+
+		assertEquals(1, jobs.reclaimStuck(Duration.ofMinutes(5)))
+		assertEquals("pending", statusOf(abandoned.id), "a dead worker's work still has to come back")
+	}
+
 	@Test
 	fun `a delete carries the page id because the row will be gone`() {
 		val id = UUID.randomUUID()
