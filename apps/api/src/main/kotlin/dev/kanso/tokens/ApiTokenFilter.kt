@@ -80,6 +80,17 @@ import java.time.OffsetDateTime
 class ApiTokenFilter(
 	private val tokens: ApiTokenService,
 	private val limit: ApiTokenRateLimit,
+	/**
+	 * The stamp, as a function, for the reason `ClientRegistrationService` takes its
+	 * `clientCount` that way: the *policy* is this filter's — a failure to record a use
+	 * must not fail the request — and a policy is only demonstrated by the failure it
+	 * absorbs. There is no way to make the real `UPDATE` fail on demand, and a guard whose
+	 * failing side cannot be reached is a guard nobody can prove is there.
+	 *
+	 * Defaulted to the real call, so `SecurityConfig` and every other caller outside a test
+	 * neither passes it nor knows it exists.
+	 */
+	private val stamp: (AuthenticatedToken) -> Unit = { tokens.stamp(it, OffsetDateTime.now()) },
 ) : OncePerRequestFilter() {
 
 	/**
@@ -105,11 +116,11 @@ class ApiTokenFilter(
 		// No `Authorization` at all is the browser, and `Basic` or anything else is not a
 		// scheme Kanso offers — neither is a claim this filter has been asked to judge, so
 		// both go on to the chain that knows about cookies. A *Bearer* is.
-		if (header == null || !header.startsWith(BEARER, ignoreCase = true)) {
+		if (header == null || !isBearer(header)) {
 			return filterChain.doFilter(request, response)
 		}
 
-		val presented = header.substring(BEARER.length).trim()
+		val presented = header.substring(BEARER_SCHEME.length).trim()
 
 		// One expression, and every failure in it lands on the same refusal: empty after
 		// the scheme, not a token this instance issued, a token deleted since it was
@@ -138,7 +149,7 @@ class ApiTokenFilter(
 		// rollback-only — the request has not opened one yet. Logged at warn and not
 		// swallowed silently: a stamp that fails forever is a real signal about the
 		// database, and the only place it can be noticed is a log line.
-		runCatching { tokens.stamp(bearer.token, OffsetDateTime.now()) }
+		runCatching { stamp(bearer.token) }
 			.onFailure { logger.warn("Could not stamp last_used_at for an API token; serving the request anyway", it) }
 
 		// The scope gate, and it is *after* the stamp on purpose: the credential
@@ -179,6 +190,28 @@ class ApiTokenFilter(
 		)
 
 		filterChain.doFilter(request, response)
+	}
+
+	/**
+	 * Does this header name the `Bearer` scheme?
+	 *
+	 * Not `startsWith("Bearer ")`, and the missing space is a hole rather than a detail:
+	 * `Authorization: Bearer`, with the scheme and nothing after it, does not start with
+	 * `"Bearer "` — so a prefix test with the space baked in decides it is *not* a Bearer
+	 * claim and passes it to the chain. That is the fall-through this whole file exists to
+	 * prevent, reached by a header a client sends when its token variable was empty, which
+	 * is the single likeliest way for a real caller to arrive malformed.
+	 *
+	 * So the scheme is matched on its own and the separator is checked separately. The
+	 * whitespace test is what keeps `BearerToken abc` — a different scheme that merely
+	 * begins with these six letters — from being claimed here. RFC 7235 makes the scheme
+	 * name case-insensitive, and some clients normalise it, so a case-sensitive comparison
+	 * would refuse a perfectly good token from one of them.
+	 */
+	private fun isBearer(header: String): Boolean {
+		if (!header.startsWith(BEARER_SCHEME, ignoreCase = true)) return false
+		val rest = header.substring(BEARER_SCHEME.length)
+		return rest.isEmpty() || rest.first().isWhitespace()
 	}
 
 	/**
@@ -233,7 +266,6 @@ class ApiTokenFilter(
 	}
 
 	companion object {
-		private const val BEARER = "Bearer "
 		private const val BEARER_SCHEME = "Bearer"
 
 		/** `HttpStatus.TOO_MANY_REQUESTS` has no constant on `HttpServletResponse`. */
