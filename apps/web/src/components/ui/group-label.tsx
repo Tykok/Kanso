@@ -11,6 +11,17 @@ import { cn } from "@/lib/utils";
  * itself from the group before it — so the gap before a heading and the gap before
  * the section it starts are the one number, not two that happen to agree today.
  */
+/**
+ * A first guess at one of these in a virtualised list — `pt-group` above, a line of 11px
+ * caption, `pb-2` under.
+ *
+ * Only ever a guess: both grouped lists measure every header the moment it is drawn, so
+ * this being a few pixels out costs nothing but the scrollbar's first position. Here
+ * rather than in the two screens, because a header's height is a fact about this
+ * component and two copies of it would be two numbers that happen to agree today.
+ */
+export const GROUP_LABEL_ESTIMATE = 41;
+
 export function GroupLabel({
   className,
   children,

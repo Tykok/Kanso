@@ -171,12 +171,6 @@ class SavedViewController(
 		return SavedViewResponse.of(view, views.count(id))
 	}
 
-	@GetMapping("/views/{id}/tickets")
-	fun tickets(
-		@PathVariable id: UUID,
-		@RequestParam(defaultValue = "200") limit: Int,
-	): List<TicketResponse> = views.tickets(id, limit.coerceIn(1, 500)).map(TicketResponse::of)
-
 	/**
 	 * The same view, stacked into the buckets it stores a `groupBy` for — and the reason
 	 * a group header can say `Todo · 29` while carrying twenty rows.

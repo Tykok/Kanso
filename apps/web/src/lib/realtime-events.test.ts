@@ -56,6 +56,18 @@ const listKey = (kind: "all" | "team" | "project", id: string, includeArchived =
 const askedKey = (asked: string, kind: "all" | "team" | "project" = "all", id = "") =>
   ["tickets", kind, id, false, asked] as const;
 
+/** The stacked answer the main list draws — `keys.groupedTickets`. */
+const groupedKey = (kind: "all" | "team" | "project" = "all", id = "") =>
+  ["tickets", "grouped", kind, id, false, ""] as const;
+
+/** What `/api/tickets/grouped` answers with, narrowed to what this module reads. */
+const grouped = (buckets: { key: string; count: number; tickets: Ticket[] }[]) => ({
+  groupBy: "status",
+  sortBy: "updated",
+  total: buckets.reduce((sum, bucket) => sum + bucket.count, 0),
+  groups: buckets,
+});
+
 const ticket = (id: string, overrides: Partial<Ticket> = {}): Ticket => ({
   id,
   identifier: `KAN-${id}`,
@@ -311,6 +323,93 @@ describe("finding a row the cache already holds", () => {
   it("answers nothing for a row nobody has loaded", () => {
     const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
     expect(findTicket(store.cache, "t9")).toBeUndefined();
+  });
+
+  /**
+   * The one entry the main list holds is a stacked answer, so a row it cannot see is a
+   * row `lib/optimistic.ts` finds no base for — and no base means no guess is painted at
+   * all. Every edit made from the list would then wait out the round trip in silence,
+   * which is the failure a `handle: 0` is designed never to be noisy about.
+   */
+  it("reads it out of a stacked answer, which is the only entry the list holds", () => {
+    const store = fakeCache([
+      {
+        key: groupedKey(),
+        data: grouped([
+          { key: "todo", count: 40, tickets: [ticket("t1")] },
+          { key: "done", count: 9, tickets: [ticket("t2"), ticket("t3")] },
+        ]),
+      },
+    ]);
+    expect(findTicket(store.cache, "t3")?.id).toBe("t3");
+    expect(findTicket(store.cache, "t9")).toBeUndefined();
+  });
+
+  // A shape older than the current deploy, or an entry still loading: this runs inside a
+  // socket handler where a throw is caught by nothing.
+  it("survives a stacked entry with nothing in it yet", () => {
+    const store = fakeCache([
+      { key: groupedKey(), data: undefined },
+      { key: groupedKey("team", "team-a"), data: { groups: [{}] } },
+    ]);
+    expect(findTicket(store.cache, "t1")).toBeUndefined();
+  });
+});
+
+/**
+ * A stacked answer is refetched whole, and the reason is the counts.
+ *
+ * `count` is the size of the whole match, which only the database knows, and which bucket
+ * a row belongs to now is decided in SQL. Patching the rows and leaving the counts is the
+ * one outcome worse than a refetch: a header that disagrees with what is under it.
+ *
+ * The trap this pins is that the value is an *object*. Before it was named, it failed
+ * `Array.isArray` and then every branch after that, so the most-used screen in the app
+ * silently stopped hearing about edits.
+ */
+describe("the stacked answer the main list draws", () => {
+  it("is refetched, never patched", () => {
+    const store = fakeCache([
+      { key: groupedKey(), data: grouped([{ key: "todo", count: 40, tickets: [ticket("t1")] }]) },
+    ]);
+
+    writeTickets(store.cache, {
+      changed: new Map([["t1", ticket("t1", { status: "done", title: "finished" })]]),
+    });
+
+    expect(store.was(groupedKey())).toBe(true);
+    expect(store.writes).toEqual([]);
+  });
+
+  // Including the echo of an edit this tab made itself, where a flat list gets its
+  // repaint for free by comparing rows. There is no such shortcut here: a bucket's count
+  // is not on the row, so the only honest reading of "something changed" is to ask again.
+  it("is refetched for a row it does not hold either", () => {
+    const store = fakeCache([
+      { key: groupedKey(), data: grouped([{ key: "todo", count: 40, tickets: [ticket("t1")] }]) },
+    ]);
+
+    writeTickets(store.cache, { gone: new Set(["t9"]) });
+
+    expect(store.was(groupedKey())).toBe(true);
+  });
+
+  // The flat entry beside it is still patched row by row. Both live under the one first
+  // segment on purpose — one optimistic write, one invalidation family — so the
+  // distinction has to be the second segment, not the first.
+  it("leaves the flat list beside it to be patched as before", () => {
+    const store = fakeCache([
+      { key: listKey("all", ""), data: [ticket("t1")] },
+      { key: groupedKey(), data: grouped([{ key: "todo", count: 40, tickets: [ticket("t1")] }]) },
+    ]);
+
+    writeTickets(store.cache, {
+      changed: new Map([["t1", ticket("t1", { title: "renamed" })]]),
+    });
+
+    expect(store.read<Ticket[]>(listKey("all", ""))?.map((row) => row.title)).toEqual(["renamed"]);
+    expect(store.was(listKey("all", ""))).toBe(false);
+    expect(store.was(groupedKey())).toBe(true);
   });
 });
 

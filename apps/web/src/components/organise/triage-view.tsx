@@ -222,7 +222,14 @@ function Similar({ rows }: { rows: { ticket: Ticket; similarity: number }[] }) {
       <GroupLabel className="px-0 pt-0">Looks like</GroupLabel>
       {rows.map((row) => (
         <div key={row.ticket.id} className="flex items-center gap-2.5 text-12" data-testid="similar-row">
-          <span className="font-mono text-11 text-faint">{row.ticket.identifier}</span>
+          {/* `shrink-0` for the reason `WillSlip` in `cycle-view.tsx` carries it: a flex
+              item that may shrink is allowed to break `KAN-36` after its hyphen, and the
+              identifier would then sit on two lines over the title beside it. Nothing on
+              screen shows it today only because this panel is capped at 640px — which is
+              correct by accident, and stops being true the day somebody widens the cap.
+              No width, because the identifier is the one cell here that cannot be
+              abbreviated: it takes what it needs and the title truncates into the rest. */}
+          <span className="shrink-0 font-mono text-11 text-faint">{row.ticket.identifier}</span>
           <span className="flex-1 truncate text-muted-foreground">{row.ticket.title}</span>
           <span className="text-11 text-faint">{row.similarity} %</span>
         </div>
