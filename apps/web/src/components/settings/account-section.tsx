@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { API_URL, ApiError, type Me } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -25,13 +25,12 @@ export function AccountSection({ me }: { me: Me }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.me });
 
   const [displayName, setDisplayName] = useState(me.user.displayName);
-  const [notionId, setNotionId] = useState(me.user.notionPersonId ?? "");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
 
   const rename = useMutation({ mutationFn: api.renameMe, onSuccess: refresh });
-  const notion = useMutation({ mutationFn: api.setNotionIdentity, onSuccess: refresh });
+  const notion = useQuery({ queryKey: ["me", "notion-identity"], queryFn: api.myNotionIdentity });
   const unlink = useMutation({ mutationFn: api.unlinkProvider, onSuccess: refresh });
   const password = useMutation({
     mutationFn: api.changePassword,
@@ -88,32 +87,27 @@ export function AccountSection({ me }: { me: Me }) {
         </SettingsNote>
       </SettingsFormField>
 
-      <SettingsFormField>
-        <label htmlFor="notion-id" className="text-13 font-medium">
-          Notion identity
-        </label>
-        <SettingsInline>
-          <input
-            id="notion-id"
-            className="flex-1 min-w-[180px]"
-            placeholder="Notion user id"
-            value={notionId}
-            onChange={(event) => setNotionId(event.target.value)}
-          />
-          <button
-            className="button"
-            disabled={notion.isPending}
-            onClick={() => notion.mutate(notionId.trim() || null)}
-          >
-            Save
-          </button>
-        </SettingsInline>
-        <SettingsNote>
-          Lets the mirror put you in Notion&rsquo;s <code>Assignees</code> property. Without it you
-          appear only as text, because Notion accepts nobody outside its own workspace there.
-        </SettingsNote>
-        <Status saved={notion.isSuccess} error={notion.error} />
-      </SettingsFormField>
+      {notion.data?.connected ? (
+        <SettingsFormField>
+          <span className="text-13 font-medium">Notion identity</span>
+          {notion.data.member ? (
+            <SettingsStatic>
+              {notion.data.member.name ?? "Unnamed"}
+              {notion.data.member.email ? ` · ${notion.data.member.email}` : ""}
+              <span className="block font-mono text-11 text-faint">{notion.data.notionPersonId}</span>
+            </SettingsStatic>
+          ) : (
+            <SettingsStatic>{notion.data.notionPersonId ?? "Not matched"}</SettingsStatic>
+          )}
+          <SettingsNote>
+            Read-only. Which Notion person you are is a fact about that workspace, not a field
+            on this account, so an admin sets it on the import&rsquo;s matching screen. It is what
+            lets the mirror put you in Notion&rsquo;s <code>Assignees</code> property instead of
+            plain text.
+          </SettingsNote>
+          {notion.data.reason ? <SettingsNote error>{notion.data.reason}</SettingsNote> : null}
+        </SettingsFormField>
+      ) : null}
 
       <SettingsFormField>
         <span className="text-13 font-medium">Sign in with Google</span>

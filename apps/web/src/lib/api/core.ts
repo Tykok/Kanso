@@ -54,6 +54,19 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type ProjectHealth = (typeof PROJECT_HEALTHS)[number];
+/**
+ * `connected` is about the instance: false means Notion is not wired up, and the settings
+ * screen omits the section rather than drawing a field nobody can fill. `member` is null
+ * when Notion is connected but this account has not been matched yet — a different state,
+ * and `reason` says which.
+ */
+export type MyNotionIdentity = {
+  connected: boolean;
+  notionPersonId?: string;
+  member?: { id: string; name?: string; email?: string };
+  reason?: string;
+};
+
 export type SyncState = "pending" | "synced" | "failed" | "disabled";
 
 export type Mirror = {
@@ -637,11 +650,13 @@ export const api = {
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request<void>("/api/me/password", { method: "PUT", body: JSON.stringify(body) }),
 
-  setNotionIdentity: (notionPersonId: string | null) =>
-    request<User>("/api/me/notion-identity", {
-      method: "PUT",
-      body: JSON.stringify({ notionPersonId }),
-    }),
+  /**
+   * Read-only, and it used to be a write. Which Notion person an account is belongs to the
+   * workspace, not to the account: it is decided on the import's matching screen, and
+   * setting it here let somebody claim a colleague's identity and have the mirror
+   * attribute that colleague's work to them.
+   */
+  myNotionIdentity: () => request<MyNotionIdentity>("/api/me/notion-identity"),
 
   /** Refused by the server when it would leave no way to sign in. */
   unlinkProvider: (provider: string) =>
