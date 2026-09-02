@@ -94,7 +94,7 @@ class PreferencesTest : PostgresTest() {
 	// --- the sidebar's three modes ------------------------------------------
 
 	/**
-	 * Pinned is the default because it is what every account already had: `V27` carried
+	 * Pinned is the default because it is what every account already had: `V28` carried
 	 * `sidebar_visible = true` over to it, so the deploy moves nobody's column.
 	 */
 	@Test
@@ -138,7 +138,7 @@ class PreferencesTest : PostgresTest() {
 	}
 
 	/**
-	 * `V27`'s `UPDATE … WHERE sidebar_visible = FALSE` is not observable from here — it
+	 * `V28`'s `UPDATE … WHERE sidebar_visible = FALSE` is not observable from here — it
 	 * ran before this container answered its first query, and the column it read is gone
 	 * by the end of the same file, so no test that starts after Flyway can insert a row
 	 * for it to convert. What is observable is that the drop happened: if the column came
@@ -162,7 +162,7 @@ class PreferencesTest : PostgresTest() {
 	// --- remapped keys ------------------------------------------------------
 
 	/**
-	 * Empty, not a copy of the defaults: `V27` argues why at length. A stored copy would
+	 * Empty, not a copy of the defaults: `V28` argues why at length. A stored copy would
 	 * freeze today's key set into the account and a default improved later would never
 	 * reach it.
 	 */

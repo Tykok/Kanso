@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { dayValue, type Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
 import { useRowMetrics } from "@/lib/row-metrics";
+import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
+import type { Group } from "./organise/grouping";
 import { Row, rowActionsTriggerClass } from "./ui/row";
-import { GroupLabel } from "./ui/group-label";
+import { GROUP_LABEL_ESTIMATE, GroupLabel } from "./ui/group-label";
 import { PriorityMark, StatusPill, SyncBadge, TicketIdentifier } from "./pills";
 import { Menu } from "./menu";
 import { useMenuItems } from "./menu-items";
@@ -177,7 +179,16 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
 }
 
 type ListProps = {
-  tickets: Ticket[];
+  /**
+   * The buckets, stacked and counted by the server, already named for the reader.
+   *
+   * Named by the caller rather than here: `nameGroups` resolves a project and a person id
+   * through lists this component has no other reason to hold, and the caller holds both
+   * already. It is also what lets the page put a bucket in front that the server knows
+   * nothing about — the reader's own drafts, which are in no team and therefore in none of
+   * the rooms a status stacks.
+   */
+  groups: Group[];
   selectedId?: string;
   editingId?: string;
   ctx: ActionContext;
@@ -197,7 +208,7 @@ type ListProps = {
 };
 
 export function TicketList({
-  tickets,
+  groups,
   selectedId,
   editingId,
   ctx,
@@ -212,21 +223,36 @@ export function TicketList({
   /** A row's own height plus the air under it — `gap-row` made into a number. */
   const pitch = metrics.height + metrics.gap;
 
+  /**
+   * One sequence, headers and rows alike — the flattened index `lib/virtual.ts` exists
+   * for, and the same one screen 21 addresses its list by.
+   *
+   * A virtualiser per bucket was the alternative and needs a scroller per bucket: `j` off
+   * the bottom of `Todo` and into `In progress` would then have to scroll two elements to
+   * keep the cursor visible, with the header between them belonging to neither. One
+   * sequence keeps "where the cursor is" the single integer it was before any of this.
+   */
+  const flat = useMemo(() => flatten(groups, (ticket) => ticket.id), [groups]);
+
   const virtualizer = useVirtualizer({
     // Nothing until `--row-h` has been read. A count with a zero row height would ask
     // the virtualiser how many zero-tall rows fit in the viewport, and the measurement
     // lands in a layout effect — before the browser paints — so the pass that draws no
     // rows is never seen.
-    count: metrics.height > 0 ? tickets.length : 0,
+    count: metrics.height > 0 ? flat.length : 0,
     getScrollElement: () => scroller.current,
-    estimateSize: () => pitch,
-    // Every row here is exactly `--row-h` tall, so the estimate is the measurement and
-    // no row needs measuring: `measureElement` would be a layout read per row per
-    // scroll for an answer already known.
+    // A header is taller than a row, so the two are estimated apart: one number for both
+    // would misplace the scrollbar the whole length of the list and make the thumb jump
+    // as each header came into view and was measured. Every row is exactly `--row-h`, so
+    // only the headers are ever re-measured — which is what `measureElement` is for, and
+    // why only a header carries the ref below.
+    estimateSize: (index) => sizeAt(flat, index, { row: pitch, header: GROUP_LABEL_ESTIMATE }),
+    measureElement: (element) => element.getBoundingClientRect().height,
     overscan: 8,
     // Keyed by ticket rather than by index, so a realtime insert above the cursor moves
     // the rows rather than re-labelling them — a row mid-rename must keep its input.
-    getItemKey: (index) => tickets[index]?.id ?? index,
+    // `flatten` prefixes a header's key so it can never collide with a row's id.
+    getItemKey: (index) => flat[index]?.key ?? index,
   });
 
   /**
@@ -240,13 +266,20 @@ export function TicketList({
    * `align: "auto"` is `scrollIntoView({ block: "nearest" })` in the virtualiser's own
    * vocabulary: a row already in view is left exactly where it is, so clicking a row
    * never jumps the list under the hand that clicked it.
+   *
+   * `flatIndexOf` is what keeps that answerable now that the list has headers in it: the
+   * cursor is a ticket id, the virtualiser wants an integer, and the conversion has to
+   * count the headers drawn between the buckets.
    */
-  const selectedIndex = selectedId ? tickets.findIndex((row) => row.id === selectedId) : -1;
+  const selectedIndex = flatIndexOf(flat, selectedId);
   useEffect(() => {
     if (selectedIndex >= 0) virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
   }, [selectedIndex, virtualizer]);
 
-  if (tickets.length === 0) {
+  // Rows, not entries: a bucket whose header has arrived and whose page has not is a
+  // real state — `Done · 12` above nothing is twelve rows one scroll away — but a screen
+  // of captions with no row under any of them is the empty state, not a list.
+  if (!flat.some((entry) => entry.kind === "row")) {
     return (
       empty ?? (
         <div className="empty">
@@ -275,7 +308,34 @@ export function TicketList({
             how long the list is rather than about how much of it is mounted. */}
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((item) => {
-            const ticket = tickets[item.index];
+            const entry = flat[item.index];
+            if (entry.kind === "header") {
+              return (
+                <div
+                  key={item.key}
+                  // Only a header carries the ref: `measureElement` on a row of a known
+                  // `--row-h` would be a layout read per row per scroll for an answer
+                  // the CSS already gave.
+                  ref={virtualizer.measureElement}
+                  data-index={item.index}
+                  data-testid="ticket-group"
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  {/* The count is the server's and is never recomputed here: it is the
+                      whole match, so `Todo · 240` above two hundred loaded rows is true
+                      where counting what is held could only ever have said `Todo · 200`. */}
+                  {/* `px-row-x` left at its default, which is the padding `Row` and the
+                      column header above both carry — a caption indented differently
+                      from the rows it introduces is the one thing that would make the
+                      grid look broken. */}
+                  <GroupLabel>
+                    {entry.label} · {entry.count}
+                  </GroupLabel>
+                </div>
+              );
+            }
+            const ticket = entry.item;
             const rowCtx: ActionContext = { ...ctx, selected: ticket };
             return (
               <div

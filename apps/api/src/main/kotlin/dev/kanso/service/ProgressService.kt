@@ -1,0 +1,218 @@
+package dev.kanso.service
+
+import dev.kanso.domain.Project
+import dev.kanso.domain.Ticket
+import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.User
+import dev.kanso.repo.ProjectRepository
+import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketRepository
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
+
+/**
+ * One bar of the delivered-points chart.
+ *
+ * [points] is a Double for the reason `VelocityCycle.points` is: a ticket with two
+ * assignees gives half of itself to each, so a person's share of a cycle is not an
+ * integer. Rounding it here would make the bars disagree with the mean drawn above them.
+ *
+ * [countedTowardsVelocity] is what stops the chart and the headline number from reading as
+ * two contradictory claims. The chart is drawn over [ProgressService.CHART_CYCLES] cycles
+ * and the velocity is measured over [VelocityService.DEFAULT_CYCLES] of them, so some bars
+ * are history the number is not standing on — and a chart that did not say which would
+ * invite the reader to average six bars by eye and get a different answer. False on every
+ * bar when a declared velocity is the one in force, which is correct: it was measured over
+ * nothing.
+ */
+data class DeliveredCycle(
+	val cycle: Cycle,
+	val points: Double,
+	val workingDays: Int,
+	/** Their finished tickets in this cycle that nobody sized — absent from [points], never zero. */
+	val unestimated: Int,
+	val countedTowardsVelocity: Boolean,
+)
+
+/**
+ * One cut of an open plate: how many things, how heavy the sized part is, and how much of
+ * it the weight cannot speak for.
+ *
+ * One type for both cuts — by status and by project — rather than two shapes that would
+ * drift. [unestimated] travels with [points] here for the same reason it does everywhere
+ * else in this package: a sum that quietly leaves out half a plate reads as the whole of
+ * it.
+ */
+data class LoadSlice(val tickets: Int, val points: Int, val unestimated: Int)
+
+/** [project] is null for the tickets that belong to none — a pile, not a project. */
+data class ProjectLoad(val project: Project?, val load: LoadSlice)
+
+/**
+ * What this person is carrying right now, and what that is worth in days.
+ *
+ * [workingDays] is [LoadSlice.points] divided by the velocity in force, and it is null
+ * exactly when there is no velocity to divide by — never zero, which would read as an
+ * empty plate. It is *not* nulled when the plate has no points: an empty plate genuinely
+ * is zero days, and [LoadSlice.unestimated] is what says how much of a non-empty one the
+ * division could not see.
+ */
+data class OpenLoad(val load: LoadSlice, val byStatus: Map<TicketStatus, LoadSlice>, val byProject: List<ProjectLoad>, val workingDays: Double?)
+
+/**
+ * Everything screen 40 draws about one person, computed on read.
+ *
+ * [person] is carried rather than assumed to be the caller. It is the one field that makes
+ * this shape answerable for somebody else, which is what KAN-41 will ask of it.
+ */
+data class Progress(
+	val person: User,
+	val velocity: EffectiveVelocity,
+	/**
+	 * Oldest first, which is the opposite of what `VelocityService` returns.
+	 *
+	 * A trend is read left to right in time, so the wire is already in the order the chart
+	 * draws it. Reversing on the client would mean every future caller — the team view
+	 * included — remembering to, and one that forgot would draw a descent as an ascent.
+	 */
+	val delivered: List<DeliveredCycle>,
+	val load: OpenLoad,
+)
+
+/**
+ * One person's progress: what they delivered, at what pace, and what they are still holding.
+ *
+ * **Nothing here knows who is asking.** [forPerson] takes the subject as an argument and
+ * reads no security context, which is deliberate and is the whole of the seam this file
+ * leaves for the other-person view: that ticket adds a route, a permission rule and
+ * nothing else. Baking "the current user" in at this level is what would force a second
+ * copy of the arithmetic the day a second caller appeared — the mistake `VelocityService`
+ * already refused to make, for the same reason.
+ *
+ * **Computed on read, and nothing is stored.** Same rule as the cycle report and the
+ * velocity underneath it: a stored count of open points is wrong the moment somebody drags
+ * a ticket, and a stored delivered-per-cycle is wrong again when somebody resizes a ticket
+ * that closed last month. There is no migration behind this file.
+ *
+ * **Scoped to one team, like every other screen that draws a cycle.** A cycle is one
+ * team's calendar, so the velocity is per team — and comparing a plate gathered across the
+ * whole instance against one team's pace would divide the wrong numerator by the wrong
+ * denominator. So the load is the subject's open tickets in this team *and its sub-teams*,
+ * which is the same scope `WorkloadService` gathers, and the page names the team it is
+ * about.
+ */
+@Service
+class ProgressService(
+	private val effective: EffectiveVelocityService,
+	private val velocity: VelocityService,
+	private val tickets: TicketRepository,
+	private val projects: ProjectRepository,
+	private val teams: TeamRepository,
+) {
+
+	@Transactional(readOnly = true)
+	fun forPerson(subject: User, teamId: UUID): Progress {
+		// Two reads of the closed cycles rather than one, and the duplication is the cheaper
+		// of the two mistakes available. The arbitration is defined over three cycles by
+		// rule; the chart wants six because two bars are not a trend. Asking for six and
+		// averaging the newest three here would put a second copy of "the mean of the rates,
+		// not the pooled total" in this file, free to disagree with the first the day it
+		// moves. The overlap costs three extra cycle-deliveries on one person's page.
+		val inForce = effective.forPerson(subject, teamId)
+		val history = velocity.forPerson(subject, teamId, over = CHART_CYCLES)
+		return Progress(
+			person = subject,
+			velocity = inForce,
+			delivered = delivered(history, inForce),
+			load = load(subject, teamId, inForce.perWorkingDay),
+		)
+	}
+
+	/**
+	 * The bars, in time order, each knowing whether the headline number stands on it.
+	 *
+	 * The index is the test because both lists come off the same `cycles.closed(teamId)` in
+	 * the same order: the newest [EffectiveVelocity.measuredCycles] of them are exactly the
+	 * ones the mean was taken over. Matching on cycle id instead would be a set lookup that
+	 * says the same thing while hiding that it depends on the order.
+	 */
+	private fun delivered(history: PersonVelocity, inForce: EffectiveVelocity): List<DeliveredCycle> =
+		history.cycles
+			.mapIndexed { newestFirst, measured ->
+				DeliveredCycle(
+					cycle = measured.cycle,
+					points = measured.points,
+					workingDays = measured.workingDays,
+					unestimated = measured.unestimated,
+					countedTowardsVelocity =
+						inForce.source == VelocitySource.MEASURED && newestFirst < inForce.measuredCycles,
+				)
+			}
+			.reversed()
+
+	private fun load(subject: User, teamId: UUID, perWorkingDay: Double?): OpenLoad {
+		val open = tickets.search(
+			teamIds = teams.descendantIds(teamId),
+			statuses = WorkloadService.OPEN_STATUSES,
+			assigneeId = subject.id,
+			// The same cap and the same argument: a person holding more open tickets than
+			// this has a bigger problem than an off-by-some chart, and an uncapped scan is
+			// how one page takes the instance down.
+			limit = WorkloadService.SCAN_LIMIT,
+		)
+		val whole = slice(open)
+		return OpenLoad(
+			load = whole,
+			// Every open status present, zeros included, so the chart's legend is the same
+			// list every time somebody opens the page rather than a shape that changes with
+			// the plate. Keyed off the category, as `WorkloadService` keys its own row.
+			byStatus = WorkloadService.OPEN_STATUSES.associateWith { status ->
+				slice(open.filter { it.status == status })
+			},
+			byProject = byProject(open),
+			// Zero is not a pace anything can be divided by — it is what somebody who has
+			// never delivered looks like from here — and dividing by it would send an
+			// infinity to the client. `EffectiveVelocityService` already refuses a measured
+			// zero; this guards the declared one, which nothing stops being written as 0.
+			workingDays = perWorkingDay?.takeIf { it > 0 }?.let { whole.points / it },
+		)
+	}
+
+	private fun byProject(open: List<Ticket>): List<ProjectLoad> {
+		val grouped = open.groupBy { it.projectId }
+		val named = projects.findAllById(grouped.keys.filterNotNull()).associateBy { it.id }
+		return grouped
+			.map { (projectId, carried) -> ProjectLoad(projectId?.let { named[it] }, slice(carried)) }
+			// Heaviest first, and the no-project pile last however big it is: the question is
+			// which piece of work this plate is mostly made of, and "not filed anywhere" is
+			// the footnote. Points before count, because points are what the days above are
+			// divided from — a project of three 13s outranks one of eight 1s.
+			.sortedWith(
+				compareBy<ProjectLoad> { it.project == null }
+					.thenByDescending { it.load.points }
+					.thenByDescending { it.load.tickets }
+					.thenBy { it.project?.name.orEmpty() },
+			)
+	}
+
+	private fun slice(carried: List<Ticket>) = LoadSlice(
+		tickets = carried.size,
+		points = carried.sumOf { it.estimate ?: 0 },
+		unestimated = carried.count { it.estimate == null },
+	)
+
+	companion object {
+		/**
+		 * Six closed cycles on the chart, against the three the mean is taken over.
+		 *
+		 * Three bars is a mean with a shape drawn round it, not a trend — and the page's
+		 * whole argument is that a personal number means something only against the same
+		 * person over time. Six is roughly a quarter at a fortnightly cadence: long enough
+		 * to see a direction, short enough that it is still this team. The bars beyond the
+		 * measured three are marked rather than hidden, so the reader can see the number's
+		 * window without losing the history around it.
+		 */
+		const val CHART_CYCLES = 6
+	}
+}

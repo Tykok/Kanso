@@ -87,11 +87,11 @@ class SavedViewTest : PostgresTest() {
 		val open = view(mapOf("statusNot" to listOf("done")))
 		val moving = ticket("Echo suppression drops our own writes")
 
-		assertEquals(1, views.tickets(open.id).size)
+		assertEquals(1, views.rows(open.id).size)
 		tickets.patch(admin, moving, TicketPatch(status = TicketStatus.DONE))
 
 		assertTrue(
-			views.tickets(open.id).isEmpty(),
+			views.rows(open.id).isEmpty(),
 			"a saved view that cached its ids would still be showing a done ticket",
 		)
 	}
@@ -106,7 +106,7 @@ class SavedViewTest : PostgresTest() {
 			mapOf("statusNot" to listOf("done"), "priority" to listOf("urgent")),
 		)
 
-		assertEquals(listOf(urgent), views.tickets(chips.id).map { it.ticket.id })
+		assertEquals(listOf(urgent), views.rows(chips.id).map { it.ticket.id })
 	}
 
 	@Test
@@ -119,7 +119,7 @@ class SavedViewTest : PostgresTest() {
 
 		assertEquals(
 			setOf(urgent, low),
-			views.tickets(narrow.id).map { it.ticket.id }.toSet(),
+			views.rows(narrow.id).map { it.ticket.id }.toSet(),
 			"the × on a chip removes a key from `filters`; nothing else about the view changes",
 		)
 	}
@@ -132,7 +132,7 @@ class SavedViewTest : PostgresTest() {
 
 		val unassigned = view(mapOf("unassigned" to true))
 
-		assertEquals(listOf(orphan), views.tickets(unassigned.id).map { it.ticket.id })
+		assertEquals(listOf(orphan), views.rows(unassigned.id).map { it.ticket.id })
 	}
 
 	/**
@@ -154,11 +154,11 @@ class SavedViewTest : PostgresTest() {
 
 		val chip = view(mapOf("label" to listOf(sync.id.toString())))
 
-		assertEquals(listOf(wearing), views.tickets(chip.id).map { it.ticket.id })
+		assertEquals(listOf(wearing), views.rows(chip.id).map { it.ticket.id })
 
 		// And the `×` widens it back, like every other chip's does.
 		views.update(admin, chip.id, filters = emptyMap())
-		assertEquals(2, views.tickets(chip.id).size)
+		assertEquals(2, views.rows(chip.id).size)
 	}
 
 	@Test
@@ -183,7 +183,7 @@ class SavedViewTest : PostgresTest() {
 
 		assertEquals(
 			listOf(mine),
-			views.tickets(everything.id).map { it.ticket.id },
+			views.rows(everything.id).map { it.ticket.id },
 			"a team's saved view is scoped to the team it was saved in, filters or no filters",
 		)
 	}

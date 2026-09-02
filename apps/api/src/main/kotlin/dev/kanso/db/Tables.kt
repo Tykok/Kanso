@@ -96,7 +96,7 @@ object UserPreferences : Table("user_preferences") {
 
 	/**
 	 * Pinned, hover or hidden — three words guarded by `user_preferences_sidebar_mode_chk`.
-	 * Replaces `sidebar_visible`, which `V27` dropped: see [dev.kanso.domain.SidebarMode]
+	 * Replaces `sidebar_visible`, which `V28` dropped: see [dev.kanso.domain.SidebarMode]
 	 * for why two booleans could not have said the same thing.
 	 */
 	val sidebarMode = text("sidebar_mode").default("pinned")

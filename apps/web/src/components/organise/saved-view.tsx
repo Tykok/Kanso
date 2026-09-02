@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { GroupLabel } from "@/components/ui/group-label";
+import { GROUP_LABEL_ESTIMATE, GroupLabel } from "@/components/ui/group-label";
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { Row } from "@/components/ui/row";
 import { actionErrorMessage } from "@/lib/errors";
@@ -377,7 +377,7 @@ function Rows({
     // each header came into view. Rows are exactly `--row-h`, so only the headers are
     // ever re-measured, which is what `measureElement` is attached below for.
     estimateSize: (index) =>
-      sizeAt(flat, index, { row: metrics.height + metrics.gap, header: HEADER_ESTIMATE }),
+      sizeAt(flat, index, { row: metrics.height + metrics.gap, header: GROUP_LABEL_ESTIMATE }),
     measureElement: (element) => element.getBoundingClientRect().height,
     overscan: 8,
     getItemKey: (index) => flat[index]?.key ?? index,
@@ -456,10 +456,3 @@ function Rows({
     </div>
   );
 }
-
-/**
- * A first guess at a `GroupLabel`'s height — `pt-group` above it, a line of 11px caption,
- * `pb-2` under. Only ever a guess: every header is measured the moment it is drawn, which
- * is why this being a few pixels out costs nothing but the scrollbar's first position.
- */
-const HEADER_ESTIMATE = 41;

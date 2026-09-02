@@ -36,14 +36,24 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 object ReadOnlySeat {
 
 	/**
-	 * A viewer's own screen and their own attention.
+	 * A viewer's own screen, their own attention and their own pace — what only they decide.
 	 *
 	 * These write rows, and none of the rows is the team's data. A blanket refusal that
 	 * stopped somebody setting dark mode would be a worse product than a considered list,
 	 * and would also be dishonest about what the seat is: the promise is "you cannot change
 	 * *the work*", not "you cannot change *anything*". Every path here is under `/api/me`
-	 * or `/api/notifications`, is keyed on the actor's own user id inside the service, and
-	 * is invisible to everybody else on the instance.
+	 * or `/api/notifications`, and every row it writes is keyed on the actor's own user id
+	 * inside the service.
+	 *
+	 * **The test is who decides, not who can see.** These were once argued in as "invisible
+	 * to everybody else on the instance", which stopped being true when declared velocity
+	 * moved into preferences: it feeds `/api/tickets/{id}/duration`, so anyone who can read
+	 * a ticket you are assigned to can read your pace back out of it. The exemption stands
+	 * regardless — your own estimate of yourself is yours to state — but the retired sentence
+	 * would have waved the next entry through on a reason that was never the reason. What
+	 * qualifies is that nobody but the actor can set it and that it asserts nothing about the
+	 * work; that somebody else can *read* it is not disqualifying, and being unreadable was
+	 * never the promise.
 	 *
 	 * Favourites are in for the same reason preferences are — a pin is a sidebar, and the
 	 * `favourites` table is keyed per user with a cascade on the account. Marking the inbox
@@ -73,12 +83,28 @@ object ReadOnlySeat {
 	 * Setting *somebody else's* role is not here, and neither is any other `/api/people`
 	 * write: those are admin business, refused to a viewer twice over — once by this
 	 * interceptor and once by `AccountService`.
+	 *
+	 * Creating and revoking an API token is here on the same argument, and the seat is
+	 * exactly why it is safe: a token acts as its owner and cannot exceed them, so a
+	 * viewer's token meets this same interceptor on every write it attempts and is refused
+	 * by the same line for the same reason. Letting a reader mint one is therefore letting
+	 * them read what they can already read, from a script instead of a browser — which is
+	 * the entire premise of the free read-only seat. Refusing it would instead push them
+	 * towards asking somebody with a writing account for a credential, which is a worse
+	 * outcome by every measure.
+	 *
+	 * Note that the scope a viewer asks for is not constrained: a viewer may create a
+	 * `kanso:write` token, and it will be refused every write. That is deliberately not
+	 * special-cased — the day the seat is upgraded to a member, the token they already
+	 * hold starts working, and nothing had to remember to widen it.
 	 */
 	val OWN_ACCOUNT = arrayOf(
 		"PUT /api/me",
 		"PUT /api/me/password",
 		"DELETE /api/me/identities/{provider}",
 		"DELETE /api/oauth/grants/{clientId}",
+		"POST /api/me/tokens",
+		"DELETE /api/me/tokens/{id}",
 	)
 
 	/**

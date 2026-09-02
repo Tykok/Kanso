@@ -82,8 +82,12 @@ describe("the sentence saying which velocity a date came from", () => {
 
     expect(caption.inForce).toContain("No velocity yet");
     // The two ways out are both named: an empty field with no exit reads as a bug.
-    expect(caption.inForce).toContain("Declare one below");
+    expect(caption.inForce).toContain("Declare one in your preferences");
     expect(caption.inForce).toContain("close a cycle");
+    // Not "below". This caption is drawn on the progress page too, which has no field on
+    // it, and a sentence that points at a control that is not there is worse than one that
+    // names where the control lives.
+    expect(caption.inForce).not.toContain("below");
   });
 
   it("names the number in force in every state that has one", () => {

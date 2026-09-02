@@ -54,12 +54,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
    * `/me` first: it is the personal home, and a reader's own work comes before the
    * instance's. `sidebar.tsx` draws it above "All tickets" for the same reason.
    *
-   * There is deliberately no `progress` row beside it. Main carries one — `/progress`,
-   * labelled "My progress", with its own `GET /api/me/progress` — and it overlaps this
-   * screen by half. The maintainer's ruling is that `/me` is the home and screen 40
-   * becomes its **Progress** tab, with `/progress` kept as a redirect so no existing link
-   * breaks. So when main's row arrives in this file it is to be deleted, not merged: two
-   * rows for one personal home is the second selection axis §2 exists to remove.
+   * There is deliberately no `progress` row beside it, and there was one for the length of
+   * a merge. `my-progress` landed on main with `/progress`, labelled "My progress", over
+   * its own `GET /api/me/progress` — half of this screen, arrived from the other
+   * direction. The ruling was that `/me` is the home and screen 40 becomes its **Progress**
+   * tab, `/progress` staying as a redirect so no existing link breaks; so main's row was
+   * deleted here rather than merged. Two rows for one personal home is the second
+   * selection axis §2 exists to remove, and it would have been lit by neither rule.
    */
   { id: "me", label: "My view", href: "/me", live: true },
   { id: "inbox", label: "Inbox", href: "/inbox", live: true, row: false },

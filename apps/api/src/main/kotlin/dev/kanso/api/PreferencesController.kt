@@ -67,7 +67,14 @@ class PreferencesController(
 	@GetMapping
 	fun get(): PreferencesResponse = PreferencesResponse.of(preferences.get(currentUser.requireId()))
 
-	/** Partial: an absent field stays as it was, so the UI can save one toggle. */
+	/**
+	 * Partial: an absent field stays as it was, so the UI can save one toggle.
+	 *
+	 * Exempt from the read-only seat as `ReadOnlySeat.OWN_SCREEN`, which is a constraint on
+	 * what may be added to [PreferencesPatch] rather than a fact about it: a viewer may set
+	 * every field this body carries, so a field that decides something about *the work*
+	 * would arrive already exempted, and does not belong here.
+	 */
 	@PutMapping
 	fun update(@RequestBody patch: PreferencesPatch): PreferencesResponse =
 		PreferencesResponse.of(preferences.save(currentUser.requireId(), patch))

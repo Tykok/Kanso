@@ -325,7 +325,7 @@ enum class OpenTicket(override val wire: String) : Wire {
  * never the two things a reader wanted to choose between: the third is a column that is
  * out of the way until you reach for it. No arrangement of two booleans says that
  * without also spelling a fourth combination meaning nothing, so it is an enum, and
- * `V27` puts a CHECK behind it for the writers that are not this file.
+ * `V28` puts a CHECK behind it for the writers that are not this file.
  *
  * [HIDDEN] is deliberately still reachable *out* of — the top bar keeps a button that
  * opens the column as a temporary overlay. A mode with no way back is the bug the

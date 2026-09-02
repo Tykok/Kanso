@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { patchedTicket, removedTicket, ticketGuesses } from "@/lib/optimistic";
 import { queryCache } from "@/lib/realtime-events";
+import { DRAFTS_GROUP } from "@/components/organise/grouping";
 import { useUi, type Scope } from "@/store/ui";
 import {
   api,
@@ -18,6 +19,7 @@ import {
   type Project,
   type Team,
   type Ticket,
+  type TicketGroups,
   type TicketPriority,
   type TicketStatus,
   type ViewFilters,
@@ -51,10 +53,32 @@ export const keys = {
    */
   tickets: (scope: Scope, includeArchived: boolean, asked = "") =>
     ["tickets", scope.kind, scope.kind === "all" ? "" : scope.id, includeArchived, asked] as const,
+  /**
+   * The same question, stacked into its buckets by the server.
+   *
+   * Under `tickets` deliberately. Ten call sites in this app invalidate the *family*
+   * rather than a key — a reparented team, an import, a bulk edit — and a grouped answer
+   * outside it would be the one entry on the most-used screen that a write never reached.
+   *
+   * `grouped` sits where a scope kind sits in [keys.tickets], and that is what tells the
+   * two apart: `listShape` in `lib/realtime-events.ts` reads the kind off the key, so a
+   * grouped answer can never be mistaken for a list of rows and patched as one.
+   */
+  groupedTickets: (scope: Scope, includeArchived: boolean, asked = "") =>
+    [
+      "tickets",
+      "grouped",
+      scope.kind,
+      scope.kind === "all" ? "" : scope.id,
+      includeArchived,
+      asked,
+    ] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** Per team, because a velocity measured against another team's fortnights is a different number. */
   velocity: (teamId: string) => ["velocity", teamId] as const,
+  /** Per team for the same reason `velocity` is: it is measured against that calendar. */
+  progress: (teamId: string) => ["progress", teamId] as const,
   ticketDuration: (id: string) => ["ticketDuration", id] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
   timeline: (scope: Scope) =>
@@ -198,12 +222,15 @@ export function useSavePreferences() {
         current ? { ...current, preferences: saved } : current,
       );
       // The declared velocity is the one preference that is an *input* to reads living in
-      // other caches: which velocity is in force, and now every ticket's duration. Both are
-      // computed on the server from it, so neither can be patched from the response here.
+      // other caches: which velocity is in force, every ticket's duration, and now the
+      // progress page — where it decides both the headline sentence and how many days the
+      // plate is said to weigh. All three are computed on the server from it, so none can
+      // be patched from the response here.
       // Conditional rather than a blanket invalidate, because a theme change moves nothing.
       if ("declaredVelocity" in patch || (patch.unset ?? []).includes("declaredVelocity")) {
         queryClient.invalidateQueries({ queryKey: ["velocity"] });
         queryClient.invalidateQueries({ queryKey: ["ticketDuration"] });
+        queryClient.invalidateQueries({ queryKey: ["progress"] });
       }
     },
   });
@@ -220,6 +247,21 @@ export const useVelocity = (teamId?: string) =>
   useQuery({
     queryKey: keys.velocity(teamId ?? ""),
     queryFn: () => api.velocity(teamId!),
+    enabled: Boolean(teamId),
+  });
+
+/**
+ * The whole of one person's progress page, in one key.
+ *
+ * Not composed out of `useVelocity` and a workload read. The pace, the delivered cycles
+ * and the plate are one question asked of one snapshot, and three caches refetching
+ * independently would eventually draw a chart of three closed cycles under a sentence
+ * saying the number stands on two. One request, one cache entry, one moment.
+ */
+export const useProgress = (teamId?: string) =>
+  useQuery({
+    queryKey: keys.progress(teamId ?? ""),
+    queryFn: () => api.progress(teamId!),
     enabled: Boolean(teamId),
   });
 
@@ -303,7 +345,7 @@ const withOwnDrafts =
  * it optimistically. Composed, it is `organiseApi.ticketsMatching`, which spells the
  * scope the same way and the facets in the vocabulary the server validates.
  */
-export const useTickets = () => {
+export const useTickets = (enabled = true) => {
   const scope = useUi((state) => state.scope);
   const showArchived = useUi((state) => state.showArchived);
   const filters = useUi((state) => state.filters);
@@ -321,6 +363,78 @@ export const useTickets = () => {
             includeArchived: showArchived,
             limit: 200,
           }),
+    enabled,
+  });
+};
+
+/**
+ * The same drafts [withOwnDrafts] folds in, as a bucket of their own.
+ *
+ * Not dropped into one of the server's buckets. A bucket's `count` is a fact about the
+ * database, so inserting a row under a header would make that header a number nothing on
+ * screen can add up to — and a draft genuinely is not in those buckets: it is in no team,
+ * so it is in none of the rooms a `status` stacking is stacking.
+ *
+ * `drafts.length` is an honest count where bucketing a page never is: `/api/tickets/drafts`
+ * answers with all of them rather than with a page of them.
+ */
+const withOwnDraftGroup =
+  (scope: Scope, asked: string) =>
+  async (answer: TicketGroups): Promise<TicketGroups> => {
+    if (scope.kind !== "all" || asked !== "") return answer;
+    const drafts = await api.drafts().catch(() => [] as Ticket[]);
+    if (drafts.length === 0) return answer;
+    return {
+      ...answer,
+      // Counted into the total for the reason `TicketGroups.total` exists: it is the sum
+      // of the buckets, and a bucket the sum does not see would make screen 15's empty
+      // state disagree with the list beside it.
+      total: answer.total + drafts.length,
+      // Ahead of the rest, which is where the flat door has always put them: a draft is
+      // the thing most recently typed and least likely to be found by scrolling for a
+      // name it does not have.
+      groups: [{ key: DRAFTS_GROUP, count: drafts.length, tickets: drafts }, ...answer.groups],
+    };
+  };
+
+/**
+ * The main list, stacked and counted by the server — the other reading of the same
+ * question [useTickets] asks.
+ *
+ * `enabled` rather than a second query beside the flat one, and the list passes the
+ * opposite of what the board and the chart pass: holding both would be two fetches of one
+ * question that can answer differently, since a ticket edited between them lands in one
+ * and not the other. It is the reason `useViewGroups` gives for *replacing* the flat call
+ * on screen 21 rather than sitting next to it.
+ *
+ * `groupBy` is `status` and is not a parameter. The list is the saved view nobody saved,
+ * and a stacking of one's own is part of a *stored* question — `SaveViewDialog` writes
+ * `status` into the view it makes from this screen, which is this same decision said once
+ * more, and the About page has described the list as grouped by status all along.
+ */
+export const useGroupedTickets = (enabled = true) => {
+  const scope = useUi((state) => state.scope);
+  const showArchived = useUi((state) => state.showArchived);
+  const filters = useUi((state) => state.filters);
+  const asked = useAskedFilters();
+  return useQuery({
+    queryKey: keys.groupedTickets(scope, showArchived, asked),
+    queryFn: () =>
+      organiseApi
+        // One door, filtered or not, unlike [useTickets]: `/api/tickets/grouped` takes
+        // the composed facets and an empty set of them alike, and there is no older
+        // grouped call whose cache entry anything else shares.
+        .groupedTickets(scopedFilters(filters, scope), {
+          teamId: scope.kind === "team" ? scope.id : undefined,
+          includeDescendants: scope.kind === "team" ? true : undefined,
+          includeArchived: showArchived,
+          groupBy: "status",
+          // The same bound the flat door sends. `limit` bounds the rows and not the
+          // buckets, so both doors carry the same amount of the same answer.
+          limit: 200,
+        })
+        .then(withOwnDraftGroup(scope, asked)),
+    enabled,
   });
 };
 

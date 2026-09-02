@@ -450,7 +450,9 @@ completion list; `chips.ts`, `facets.ts` and `filterParams` are untouched.
 
 One migration, additive to one table.
 
-**`V27__sidebar_mode_and_shortcuts.sql`**
+**`V28__sidebar_mode_and_shortcuts.sql`** (written as `V27`, renumbered at the merge:
+`bearer-api-tokens` had taken that version on `main`, and Flyway refuses two migrations
+with one version — a duplicate fails every Spring context rather than one test)
 
 ```sql
 alter table user_preferences

@@ -45,8 +45,14 @@ export function velocityCaption(velocity: EffectiveVelocity): VelocityCaption {
   if (source === "none" || perWorkingDay === undefined) {
     return {
       inForce:
-        "No velocity yet, so Kanso is not estimating any dates for you. Declare one below," +
-        " or close a cycle with finished, sized work in it.",
+        // "Declare one below" until this caption got a second reader. It is true on the
+        // settings screen, where the field is directly under it, and a lie on the progress
+        // page, which has no field on it at all — and a caption that points at nothing is
+        // worse than one that names the screen. Reworded rather than forked: the argument
+        // for one sentence is that two screens showing this number must explain it the same
+        // way, and a per-screen variant is exactly the drift that argument is against.
+        "No velocity yet, so Kanso is not estimating any dates for you. Declare one in your" +
+        " preferences, or close a cycle with finished, sized work in it.",
       reference: null,
     };
   }

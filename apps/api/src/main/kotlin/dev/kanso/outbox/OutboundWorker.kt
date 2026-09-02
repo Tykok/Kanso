@@ -2,8 +2,10 @@ package dev.kanso.outbox
 
 import dev.kanso.config.KansoProperties
 import dev.kanso.repo.OutboundJobRepository
+import jakarta.annotation.PostConstruct
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import org.springframework.scheduling.TaskScheduler
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.support.TransactionTemplate
@@ -33,6 +35,7 @@ class OutboundWorker(
 	private val jobs: OutboundJobRepository,
 	handlers: List<OutboundJobHandler>,
 	private val tx: TransactionTemplate,
+	private val scheduler: TaskScheduler,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -54,18 +57,31 @@ class OutboundWorker(
 	private val workerId: String = runCatching { InetAddress.getLocalHost().hostName }
 		.getOrDefault("unknown") + "/" + UUID.randomUUID().toString().take(8)
 
-	@Scheduled(fixedDelayString = "\${kanso.sync.outbound.poll-interval-ms:500}")
-	fun drain() {
+	/**
+	 * One clock per destination, rather than one clock walking all of them.
+	 *
+	 * The batch size is already a per-destination budget, so a destination that is down
+	 * and filling the queue cannot spend another's share of it. The clock was not: a
+	 * single `fixedDelay` counts from the end of the previous pass, so a GitHub batch
+	 * spending a minute in retries would hold Notion's next tick for that minute,
+	 * though the two share nothing but this loop. Each destination now waits only on
+	 * itself — and still never overlaps itself, which is `fixedDelay`'s other guarantee
+	 * and the reason this stays a scheduler rather than becoming an executor.
+	 *
+	 * Registered by hand because an annotation is one clock for the method, and the
+	 * number of clocks is the number of handlers. They share the scheduler pool that
+	 * `application.yml` sizes for them.
+	 */
+	@PostConstruct
+	fun start() {
 		if (!props.sync.outbound.enabled) return
-		// One claim per destination rather than one across all of them. The batch size
-		// is a budget and a rate limit belongs to a remote, so a destination that is
-		// down and filling the queue must not spend another destination's share of
-		// either — and a slow push must not sit in front of a fast one that has nothing
-		// to do with it.
-		byDestination.values.forEach(::drain)
+		val interval = Duration.ofMillis(props.sync.outbound.pollIntervalMs)
+		byDestination.values.forEach { handler ->
+			scheduler.scheduleWithFixedDelay({ drain(handler) }, interval)
+		}
 	}
 
-	private fun drain(handler: OutboundJobHandler) {
+	fun drain(handler: OutboundJobHandler) {
 		val destination = handler.destination
 		val batch = tx.execute { jobs.claimBatch(destination, props.sync.outbound.batchSize, workerId) }.orEmpty()
 		if (batch.isEmpty()) return
