@@ -73,12 +73,28 @@ object ReadOnlySeat {
 	 * Setting *somebody else's* role is not here, and neither is any other `/api/people`
 	 * write: those are admin business, refused to a viewer twice over — once by this
 	 * interceptor and once by `AccountService`.
+	 *
+	 * Creating and revoking an API token is here on the same argument, and the seat is
+	 * exactly why it is safe: a token acts as its owner and cannot exceed them, so a
+	 * viewer's token meets this same interceptor on every write it attempts and is refused
+	 * by the same line for the same reason. Letting a reader mint one is therefore letting
+	 * them read what they can already read, from a script instead of a browser — which is
+	 * the entire premise of the free read-only seat. Refusing it would instead push them
+	 * towards asking somebody with a writing account for a credential, which is a worse
+	 * outcome by every measure.
+	 *
+	 * Note that the scope a viewer asks for is not constrained: a viewer may create a
+	 * `kanso:write` token, and it will be refused every write. That is deliberately not
+	 * special-cased — the day the seat is upgraded to a member, the token they already
+	 * hold starts working, and nothing had to remember to widen it.
 	 */
 	val OWN_ACCOUNT = arrayOf(
 		"PUT /api/me",
 		"PUT /api/me/password",
 		"DELETE /api/me/identities/{provider}",
 		"DELETE /api/oauth/grants/{clientId}",
+		"POST /api/me/tokens",
+		"DELETE /api/me/tokens/{id}",
 	)
 
 	/**
