@@ -50,6 +50,15 @@ const WRITES = [
   "timeline.unlink",
   "notion.import",
   "organise.saveView",
+  // §6.2's four rulings and §6.4's priority picker. Each of them is claimed by the page
+  // that can perform it, and each ends in a write the server would refuse a reader — so
+  // the flag is what keeps a read-only seat's keyboard as quiet as its menus.
+  "triage.accept",
+  "triage.defer",
+  "triage.duplicate",
+  "triage.reject",
+  "inbox.markAllRead",
+  "ticket.priority.pick",
 ];
 
 /**
@@ -58,6 +67,10 @@ const WRITES = [
  * `favourite.toggle` writes a row and is still here: it changes one person's sidebar, and
  * `ReadOnlySeat.OWN_SCREEN` lets a reader do exactly that. Hiding it would take away
  * something the API is happy to answer.
+ *
+ * `organise.select` and the two `selectRange` halves put a tick in a checkbox; the write
+ * is `BulkStrip`'s, one gesture later, and `organise.saveView` below is the one in that
+ * family that posts.
  *
  * `organise.groupBy` and `organise.sortBy` rearrange the list on screen; nothing is
  * posted. The one in that family that *is* a write is `organise.saveView`, because saving
@@ -89,9 +102,15 @@ const READS = [
   "organise.groupBy",
   "organise.sortBy",
   "organise.select",
-  "organise.selectRange",
-  "organise.clearSelection",
+  "organise.selectRangeDown",
+  "organise.selectRangeUp",
   "favourite.toggle",
+  // Leaving a page, cycling the drawing and opening a ticket in its own tab all move the
+  // reader and change nothing. `ticket.openInPage` in particular is a navigation, not the
+  // panel's own `↵` with a modifier: nothing is patched either way.
+  "app.back",
+  "view.cycleDrawing",
+  "ticket.openInPage",
 ];
 
 /**

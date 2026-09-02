@@ -11,7 +11,7 @@ import { Row, rowActionsTriggerClass } from "./ui/row";
 import { GROUP_LABEL_ESTIMATE, GroupLabel } from "./ui/group-label";
 import { PriorityMark, StatusPill, SyncBadge, TicketIdentifier } from "./pills";
 import { Menu } from "./menu";
-import { menuItems } from "./menu-items";
+import { useMenuItems } from "./menu-items";
 
 /** The list's own grid: id, priority, status, title, project, points, due, mirror,
  *  actions. Shared between the column header and every row so the two always line up. */
@@ -104,6 +104,10 @@ function TitleEditor({
  */
 function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename, onCancelEdit }: RowProps) {
   const project = ctx.projects.find((candidate) => candidate.id === ticket.projectId);
+  // A hook, so it is named here rather than called inside the JSX below: `useMenuItems`
+  // reads the reader's own bindings, which is what makes the `⋯` menu print the key a
+  // remap actually gave `e`.
+  const rowActions = useMenuItems(ctx, ["ticket.rename", "ticket.archive", "ticket.delete"]);
 
   return (
     <Row
@@ -168,7 +172,7 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
             ⋯
           </button>
         }
-        items={menuItems(ctx, ["ticket.rename", "ticket.archive", "ticket.delete"])}
+        items={rowActions}
       />
     </Row>
   );

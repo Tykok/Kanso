@@ -4,9 +4,10 @@ import { useState } from "react";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { inOrder, isOpen, LOAD_ORDER, statusesWhere } from "@/lib/status-order";
 import type { WorkloadRow } from "@/lib/api";
+import { TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { useCycles, useWorkload } from "@/lib/queries";
 import { workloadNote } from "./grouping";
-import { OrganiseShell, useOrganiseTeam } from "./shell";
+import { useOrganiseTeam } from "./team";
 
 /**
  * Screen 23 — open tickets per person, cut by status, counted and weighed.
@@ -45,19 +46,25 @@ export function WorkloadView() {
   const note = workloadNote(rows);
   const active = cycles.data?.find((cycle) => cycle.state === "active");
 
+  /**
+   * `Core / Workload`, or `Core / Workload · cycle 24` once the chart has been narrowed to
+   * one. The rider is part of the leaf rather than a crumb of its own: a cycle is not a
+   * parent of this chart, it is which slice of it is on screen.
+   */
+  usePageShell({
+    crumbs: {
+      team: team?.name,
+      leaf: cycleId && active ? `Workload · cycle ${active.number}` : undefined,
+    },
+  });
+
   return (
-    <OrganiseShell
-      breadcrumb={
-        <>
-          <span>{team?.name ?? "…"}</span>
-          <span>/</span>
-          <span className="text-muted-foreground">
-            Workload{cycleId && active ? ` · cycle ${active.number}` : ""}
-          </span>
-        </>
-      }
-      trailing={<span>open only</span>}
-    >
+    <>
+      <TopbarSlot>
+        <span className="flex-1" />
+        <span>open only</span>
+      </TopbarSlot>
+
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
         <div className="flex max-w-[560px] flex-col gap-2">
           <p className="m-0 text-12 text-muted-foreground">
@@ -99,7 +106,7 @@ export function WorkloadView() {
           </div>
         )}
       </div>
-    </OrganiseShell>
+    </>
   );
 }
 

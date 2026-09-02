@@ -16,6 +16,23 @@ import type { Zoom } from "../timeline-geometry";
  */
 export type ActionGroup = "ticket" | "team" | "project" | "view" | "app";
 
+/**
+ * Which screen a key belongs to.
+ *
+ * The three `View`s — the drawings of one scoped query — plus the two screens that had to
+ * keep their own handler because a key means something else on them and nowhere else:
+ * `x` selects a row on a saved view where it archives a ticket everywhere, and `a` `b`
+ * `d` `x` rule on a triage queue. `resolveShortcut` asks the screen's own bucket before
+ * the shared one, so those five keys are the whole reason this is not just `View`.
+ *
+ * A mode is not a route. `/cycles`, `/trash`, `/docs` and the rest answer the shared
+ * bucket in `list`, because what they draw is a list of records and the keys they need are
+ * the keys every screen needs. A mode is added when a *key* has to mean two things, and
+ * `components/shortcut-sections.test.ts` fails until the `?` sheet has a heading for it —
+ * a mode with no heading is a key the reader is told does not exist.
+ */
+export type ShortcutMode = View | "savedView" | "triage";
+
 export type ActionContext = {
   scope: Scope;
   teams: Team[];
@@ -102,28 +119,38 @@ export type Action = {
   id: string;
   label: string;
   /**
-   * Space-separated `KeyboardEvent.key` values, so one action can own the two
-   * spellings of the same intent (`j` and `ArrowDown`) without a second field
-   * that could disagree with this one.
+   * The chords that reach this action out of the box, in the order they are printed.
    *
-   * Shift is spelled by the key itself: `event.key` for Shift+h is `"H"`, a separate
-   * entry, so nothing here has to carry modifier state.
-   */
-  shortcut?: string;
-  /**
-   * What a menu prints when the key this action answers is not a key `resolveShortcut`
-   * can dispatch on. `hint` is never dispatched; `shortcut` is only printed when there is
-   * no `hint`, so the two cannot disagree about which one does what.
+   * One field where there were two. `shortcut` held space-separated bare
+   * `KeyboardEvent.key` values and was dispatched; `hint` held a string that was *printed*
+   * and never dispatched, and existed because three intentions could not be written as a
+   * bare key at all — `⌘K` needed a modifier, `⇧↑↓` needed one the registry had no way to
+   * read, and `x` on a saved view needed a screen the registry could not name. Each of the
+   * three ended up hardcoded in a page's own `keydown` handler with a matching string
+   * here, and the two halves had to be kept saying the same thing by hand. Twice they were
+   * not: `organise.select` printed `x` and dispatched nothing, and the board's five keys
+   * were dispatched and printed nowhere.
    *
-   * `Mod+` is canonical and expanded at display time: the registry is a module, and which
-   * modifier the reader's keyboard carries is a runtime fact about the reader.
+   * A chord is parseable, so there is now one spelling instead of two fields, and §6.5's
+   * capture UI can *produce* what this holds rather than asking somebody to type it. See
+   * `./chords.ts` for the grammar, including why Shift is a prefix and `?` is not.
+   *
+   * Absent means the keyboard does not reach it — the palette and the row menus do. That
+   * is the right answer for `ticket.delete`, for the five priorities (`Shift+p` opens a
+   * picker over them instead of spending five keys) and for `timeline.schedule`, which
+   * lost its key in §6.4 on the maintainer's ruling and kept both its other doors.
+   *
+   * **Defaults, not bindings.** What a key actually does is `mergeBindings` in
+   * `lib/shortcuts.ts`, which lays these down and then applies the reader's overrides. No
+   * surface reads this field to print a key: they read the effective map, or they would
+   * describe a keyboard the reader has already changed.
    */
-  hint?: string;
+  defaultKeys?: readonly string[];
   /**
-   * The view this action belongs to. Absent means both — most of the registry, since
-   * a status change means the same thing wherever the ticket is drawn.
+   * The screen this action belongs to. Absent means all of them — most of the registry,
+   * since a status change means the same thing wherever the ticket is drawn.
    */
-  mode?: View;
+  mode?: ShortcutMode;
   group: ActionGroup;
   /**
    * Whether running this changes something the whole instance shares.

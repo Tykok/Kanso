@@ -1,5 +1,7 @@
 package dev.kanso.db
 
+import dev.kanso.docs.JsonbColumnType
+import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Table
 // Exposed 1.x `uuid()` yields kotlin.uuid.Uuid; `javaUUID()` keeps java.util.UUID,
 // which is what JDBC, Jackson and the rest of Spring already speak.
@@ -17,6 +19,16 @@ import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
  * self-reference on `teams.parent_team_id` would need the object to exist while
  * it is still being initialised.
  */
+
+/**
+ * The three jsonb columns declared in this file — `activity.payload`,
+ * `outbound_jobs.payload`, `saved_views.filters` — are `text()` because they are written
+ * only through raw SQL that casts explicitly. `user_preferences.shortcuts` is written
+ * through the Exposed upsert alongside nine other columns, so it needs the cast in the
+ * column type instead. `docs/DocTables.kt` already had that problem and solved it; this
+ * is the same solution, addressed rather than copied.
+ */
+private fun Table.jsonb(name: String): Column<String> = registerColumn(name, JsonbColumnType())
 
 object Teams : Table("teams") {
 	val id = javaUUID("id")
@@ -81,9 +93,31 @@ object UserPreferences : Table("user_preferences") {
 	val theme = text("theme")
 	val accent = text("accent")
 	val density = text("density")
-	val sidebarVisible = bool("sidebar_visible")
+
+	/**
+	 * Pinned, hover or hidden — three words guarded by `user_preferences_sidebar_mode_chk`.
+	 * Replaces `sidebar_visible`, which `V28` dropped: see [dev.kanso.domain.SidebarMode]
+	 * for why two booleans could not have said the same thing.
+	 */
+	val sidebarMode = text("sidebar_mode").default("pinned")
 	val showSyncBadges = bool("show_sync_badges")
 	val showStatusBar = bool("show_status_bar")
+
+	/** Whether the top bar draws Filter, Group and Order. Same `default` reasoning as below. */
+	val showViewControls = bool("show_view_controls").default(true)
+
+	/**
+	 * Remapped keys as their jsonb text, parsed by the repository rather than by Exposed.
+	 *
+	 * Written through Exposed like every other column on this table, so the cast to jsonb
+	 * has to live in the column type — pgjdbc sends a Kotlin String as `varchar` and
+	 * Postgres refuses `varchar → jsonb` without one, which is why a plain `text()` here
+	 * would compile and fail on the first save. [JsonbColumnType] is that cast; it is
+	 * borrowed from `docs/DocTables.kt`, where it was first needed, rather than written
+	 * out a second time. If the tree ever wants every table in one file again, the type
+	 * comes with them.
+	 */
+	val shortcuts = jsonb("shortcuts").default("{}")
 	val defaultTeamId = javaUUID("default_team_id").nullable()
 	val onboardedAt = timestampWithTimeZone("onboarded_at").nullable()
 

@@ -55,17 +55,27 @@ export type Dialog =
   | { kind: "saveView"; id?: string }
   | { kind: "importMap" }
   /**
-   * Composing a filter. It carries nothing: the facets it can offer come from the server
-   * and the answer it composes goes into [UiState.filters], so a second copy of either in
-   * here would be a third place the same question is written down. A dialog rather than
-   * an overlay because `page.tsx` stands its whole window key handler down for a dialog,
-   * which is what lets `↑↓↵` inside it mean what they say and not also move the list.
+   * A request to compose a filter — no longer a dialog, despite the name this union gives
+   * it.
+   *
+   * It used to be one, and the reason was the dispatcher: a page stands its keyboard down
+   * entirely while a dialog is open, which is what let `↑↓↵` inside the composer mean what
+   * they said instead of also walking the list. §7 replaced the composer with a text box
+   * that wants the opposite — its own `↑↓↵`, and every other key still live on the rows
+   * behind it — so `filter-input.tsx` **drains** this the moment it arrives: it closes the
+   * dialog and focuses its box in the same commit.
+   *
+   * It stays in the union because it is still the door. `Mod+f` and the Filter button both
+   * open it, and neither knows where the box is; the box knows. What it must never become
+   * again is something drawn, and `lib/actions/organise.ts` keeps the guard that matters —
+   * the chord is refused on the timeline, where no box is mounted to drain it and an
+   * undrained dialog would take the whole keyboard down with it.
+   *
+   * It still carries nothing, for the original reason: the facets come from the server and
+   * the answer goes into [UiState.filters], so a copy of either here would be a third place
+   * one question is written down.
    */
-  | { kind: "filter" }
-  | {
-      kind: "restore";
-      target: { kind: "ticket" | "doc" | "view" | "folder"; id: string };
-    };
+  | { kind: "filter" };
 
 /**
  * Purely local interface state: what is focused, what is open.

@@ -2,14 +2,16 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { ACCENTS, DENSITIES, THEMES, api, type Preferences } from "@/lib/api";
+import { ACCENTS, DENSITIES, SIDEBAR_MODES, THEMES, api, type Preferences } from "@/lib/api";
 import {
   ACCENT_LABELS,
   DENSITY_LABELS,
   SIDEBAR_HINT,
+  SIDEBAR_MODE_LABELS,
   STATUS_BAR_HINT,
   SYNC_BADGES_HINT,
   THEME_LABELS,
+  VIEW_CONTROLS_HINT,
 } from "@/lib/preferences-copy";
 import { keys } from "@/lib/queries";
 import { ChoiceGroup, Toggle, messageFor } from "./fields";
@@ -74,9 +76,13 @@ export function PreferencesStep({ head, value, onChange, onDone, onSkip, onBack 
           theme: value.theme,
           accent: value.accent,
           density: value.density,
-          sidebarVisible: value.sidebarVisible,
+          sidebarMode: value.sidebarMode,
           showSyncBadges: value.showSyncBadges,
           showStatusBar: value.showStatusBar,
+          showViewControls: value.showViewControls,
+          // `shortcuts` is deliberately not here. The wizard has no keyboard to remap
+          // yet — nothing has been learned to want changed — and sending `{}` would
+          // write the same empty document the column already defaults to.
         })
       }
     >
@@ -104,13 +110,24 @@ export function PreferencesStep({ head, value, onChange, onDone, onSkip, onBack 
         onChange={(density) => set("density", density)}
       />
 
-      <div className="flex flex-col gap-2.5">
-        <Toggle
+      {/*
+        * A `ChoiceGroup` rather than a `Toggle`: the sidebar has three modes, and the
+        * hint under it is the one sentence that keeps "Hidden" from being a trap — so it
+        * is printed here, since `ChoiceGroup` carries a label but no hint of its own and
+        * `fields.tsx` belongs to the wizard rather than to this step.
+        */}
+      <div className="flex flex-col gap-1.5">
+        <ChoiceGroup
           label="Sidebar"
-          hint={SIDEBAR_HINT}
-          checked={value.sidebarVisible}
-          onChange={(checked) => set("sidebarVisible", checked)}
+          name="sidebarMode"
+          value={value.sidebarMode}
+          options={SIDEBAR_MODES.map((mode) => ({ value: mode, label: SIDEBAR_MODE_LABELS[mode] }))}
+          onChange={(sidebarMode) => set("sidebarMode", sidebarMode)}
         />
+        <span className="text-11 text-faint">{SIDEBAR_HINT}</span>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
         <Toggle
           label="Sync badges"
           hint={SYNC_BADGES_HINT}
@@ -122,6 +139,12 @@ export function PreferencesStep({ head, value, onChange, onDone, onSkip, onBack 
           hint={STATUS_BAR_HINT}
           checked={value.showStatusBar}
           onChange={(checked) => set("showStatusBar", checked)}
+        />
+        <Toggle
+          label="View controls"
+          hint={VIEW_CONTROLS_HINT}
+          checked={value.showViewControls}
+          onChange={(checked) => set("showViewControls", checked)}
         />
       </div>
 

@@ -5,10 +5,17 @@ import { TicketIdentifier } from "../pills";
 import { cn } from "@/lib/utils";
 import { GroupLabel } from "../ui/group-label";
 import { StatusDot } from "../ui/status-dot";
-import { highlight, type SearchOutcome, type SearchRow } from "./results";
+import {
+  highlight,
+  notionRefKey,
+  pageKey,
+  type SearchOutcome,
+  type SearchRow,
+} from "./results";
 
 /**
- * The result list: three groups drawn as one walkable sequence.
+ * The result list: four groups drawn as one walkable sequence — tickets, the documents
+ * written in Kanso, the Notion pages Kanso only references, and commands.
  *
  * Split out of `command-palette.tsx` so that file holds the decisions — what one query
  * matches, what `↵` and `⇧↵` do, whether the search is on at all — and this one holds the
@@ -70,25 +77,79 @@ export function SearchList({
         </ResultRow>
       ))}
 
-      {found.docs.length > 0 && <GroupLabel>Documents</GroupLabel>}
-      {found.docs.map((doc) => (
-        <ResultRow
-          key={doc.id}
-          row={rows[indexOf(doc.id)]}
-          index={indexOf(doc.id)}
-          active={active?.key === doc.id}
-          onHover={onHover}
-          onOpen={onOpen}
-        >
-          <span aria-hidden className="w-[62px] shrink-0 text-center text-faint">
-            ◈
-          </span>
-          <span className="min-w-0 flex-1 truncate">
-            <Marked text={doc.title ?? doc.notionPageId} query={query} />
-          </span>
-          <span className="shrink-0 text-11 text-faint">Notion</span>
-        </ResultRow>
-      ))}
+      {/*
+        * Documents are two groups and not one.
+        *
+        * A row here is a promise about what ↵ does, and the two kinds of document break
+        * that promise apart: a page written in Kanso opens at `/docs/[id]`, still inside
+        * the application; a Notion reference leaves for another tab in another product.
+        * The three drawings that were considered:
+        *
+        * - One "Documents" group with a badge per row. Rejected: the badge is the only
+        *   thing separating two rows that are otherwise identical — same glyph, same
+        *   title treatment, adjacent — and the eye reads position long before it reads a
+        *   nine-pixel word at the right margin. The confusion this whole fix is about is
+        *   two things that look like one thing; a badge draws them as one thing.
+        * - One group, sorted with the Kanso pages first. Rejected: an ordering nobody is
+        *   told about is not information.
+        * - Two headings. Position now carries the destination, which is the fact the
+        *   reader needs before they press anything, and `search` already caps and counts
+        *   the two apart so the groups cost nothing new.
+        *
+        * The trailing word stays as well, and is not redundant with the heading: the list
+        * scrolls at 60vh and a row can be read with its heading off-screen, so each row
+        * says on its own where ↵ is about to send it. `↗` is the only mark in this list
+        * that means "leaves Kanso".
+        */}
+      {found.pages.length > 0 && <GroupLabel>Documents</GroupLabel>}
+      {found.pages.map((page) => {
+        const key = pageKey(page.id);
+        const index = indexOf(key);
+        return (
+          <ResultRow
+            key={key}
+            row={rows[index]}
+            index={index}
+            active={active?.key === key}
+            onHover={onHover}
+            onOpen={onOpen}
+          >
+            <span aria-hidden className="w-[62px] shrink-0 text-center text-faint">
+              ◈
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              <Marked text={page.title} query={query} />
+            </span>
+            <span className="shrink-0 text-11 text-faint">Kanso</span>
+          </ResultRow>
+        );
+      })}
+
+      {found.notionRefs.length > 0 && <GroupLabel>Notion pages</GroupLabel>}
+      {found.notionRefs.map((notionRef) => {
+        const key = notionRefKey(notionRef.id);
+        const index = indexOf(key);
+        return (
+          <ResultRow
+            key={key}
+            row={rows[index]}
+            index={index}
+            active={active?.key === key}
+            onHover={onHover}
+            onOpen={onOpen}
+          >
+            <span aria-hidden className="w-[62px] shrink-0 text-center text-faint">
+              ◈
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              <Marked text={notionRef.title ?? notionRef.notionPageId} query={query} />
+            </span>
+            <span className="shrink-0 text-11 text-faint">
+              Notion <span aria-hidden>↗</span>
+            </span>
+          </ResultRow>
+        );
+      })}
 
       {found.commands.length > 0 && showCommandHeading && <GroupLabel>Commands</GroupLabel>}
       {found.commands.map((command) => (

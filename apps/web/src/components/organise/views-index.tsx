@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { Row } from "@/components/ui/row";
+import { TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { useSavedViews } from "@/lib/queries";
-import { OrganiseShell, useOrganiseTeam } from "./shell";
+import { useOrganiseTeam } from "./team";
 
 /**
  * `/views` — the list the sidebar's `Saved views` row points at.
@@ -16,17 +17,16 @@ export function SavedViewsIndex() {
   const { team } = useOrganiseTeam();
   const views = useSavedViews(team?.id);
 
+  // `Core / Saved views` — the leaf is the row's own label, so only the team is published.
+  usePageShell({ crumbs: { team: team?.name } });
+
   return (
-    <OrganiseShell
-      breadcrumb={
-        <>
-          <span>{team?.name ?? "…"}</span>
-          <span>/</span>
-          <span className="text-muted-foreground">Saved views</span>
-        </>
-      }
-      trailing={views.data && <span>{views.data.length} views</span>}
-    >
+    <>
+      <TopbarSlot>
+        <span className="flex-1" />
+        {views.data && <span>{views.data.length} views</span>}
+      </TopbarSlot>
+
       {views.isPending && <div className="px-4 py-12 text-center text-faint">Loading…</div>}
 
       {!views.isPending && (views.data ?? []).length === 0 && (
@@ -51,6 +51,6 @@ export function SavedViewsIndex() {
           </Link>
         ))}
       </div>
-    </OrganiseShell>
+    </>
   );
 }

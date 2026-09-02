@@ -2,19 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Menu } from "@/components/menu";
 import { GROUP_LABEL_ESTIMATE, GroupLabel } from "@/components/ui/group-label";
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { Row } from "@/components/ui/row";
 import { actionErrorMessage } from "@/lib/errors";
-import {
-  VIEW_GROUP_BYS,
-  VIEW_SORT_BYS,
-  type SavedView,
-  type TicketGroup,
-  type ViewGroupBy,
-  type ViewSortBy,
-} from "@/lib/api";
+import { type TicketGroup, type ViewGroupBy } from "@/lib/api";
 import {
   useBulkDelete,
   useBulkEdit,
@@ -32,12 +24,14 @@ import { PRIORITY_LABELS } from "@/lib/status";
 import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
 import { useUi } from "@/store/ui";
 import { BulkStrip } from "./bulk-strip";
-import type { ChipNames } from "./chips";
-import { FilterBar } from "./filter-bar";
-import { FilterComposer } from "./filter-composer";
+import { FilterInput } from "./filter-input";
 import { nameGroups } from "./grouping";
+import { ViewControls } from "./view-controls";
 import { FavouriteStar } from "../favourites";
-import { OrganiseShell, useOrganiseTeam } from "./shell";
+import { ShellAside, TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
+import { usePageActions } from "@/components/shell/use-shell-keys";
+import { useActionContext } from "@/lib/use-action-ctx";
+import { useOrganiseTeam } from "./team";
 import { ViewRail } from "./view-rail";
 import { extend, toggle } from "./selection";
 
@@ -96,13 +90,12 @@ export function SavedViewScreen({ id }: { id: string }) {
   const [cursor, setCursor] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   /**
-   * The composer is a store dialog rather than local state, and `F` reaches it from this
-   * page's own handler rather than through the registry, for the two reasons this file
-   * already gives about `x` and `⇧↑↓`: `resolveShortcut` is dispatched by `app/page.tsx`
-   * and this route is not that page. The action exists all the same — `organise.addFilter`
-   * — so the help sheet says the key is there, and the button below is the same door.
+   * `Mod+f` reaches the filter box through the registry — `organise.addFilter`, whose `when`
+   * is already this route — and it does it by opening `dialog.kind === "filter"`, which
+   * `FilterInput` drains into a focus of its own box. The Filter button in the top bar opens
+   * the same one, so the key and the button are one door rather than two.
    */
-  const { dialog, openDialog, close } = useUi();
+  const openDialog = useUi((state) => state.openDialog);
 
   /**
    * The page flattened back out, for everything that walks the list rather than draws it
@@ -148,97 +141,142 @@ export function SavedViewScreen({ id }: { id: string }) {
     [cursor, ids],
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      if (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+  /** `⇧↓` / `⇧↑`: the range grows and the cursor follows it, in one keypress. */
+  const extendBy = useCallback(
+    (delta: number) => {
+      setSelected((current) => extend(ids, current, cursor, delta));
+      move(delta);
+    },
+    [ids, cursor, move],
+  );
 
-      // Nothing behind an open dialog: the composer owns `↑↓↵` while it is up, and this
-      // list must not walk its own rows underneath it.
-      if (dialog.kind !== "none") return;
-
-      if (event.key === "Escape") {
-        clear();
-        return;
-      }
-      if (event.key === "F") {
-        event.preventDefault();
-        openDialog({ kind: "filter" });
-        return;
-      }
-      // `⇧↑↓`: the range grows and the cursor follows it, in one keypress. `event.key` for
-      // Shift+ArrowDown is still `ArrowDown`, which is why this cannot be a registry
-      // shortcut — the registry has no modifier state to read.
-      if (event.shiftKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault();
-        const delta = event.key === "ArrowDown" ? 1 : -1;
-        setSelected((current) => extend(ids, current, cursor, delta));
-        move(delta);
-        return;
-      }
-      if (event.key === "j" || event.key === "ArrowDown") {
-        event.preventDefault();
-        move(1);
-        return;
-      }
-      if (event.key === "k" || event.key === "ArrowUp") {
-        event.preventDefault();
-        move(-1);
-        return;
-      }
-      if (event.key === "x" && cursor !== undefined) {
-        event.preventDefault();
-        setSelected((current) => toggle(current, cursor));
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+  /**
+   * The two gestures this screen owns, and the reason they are claims rather than a
+   * `keydown` of their own.
+   *
+   * All five of screen 21's keys are registry actions now, and this file used to explain
+   * at length why three of them could not be. Two of the three obstacles were the
+   * registry's: `x` collided with `ticket.archive` in the shared bucket and now sits in a
+   * `savedView` mode of its own, and `⇧↑↓` were inexpressible because `event.key` for
+   * Shift+ArrowDown is still `"ArrowDown"` and a shortcut held one bare key. The third is
+   * this page's and always will be: the selection is local state, so the *body* has to be
+   * supplied here even though the *key* belongs in the table with every other key.
+   *
+   * `Escape` is not among them: it is `app.back`, and this screen's own meaning for it is
+   * the `onEscape` claim below — which is what puts clearing a selection *between*
+   * "close what is open" and "leave the page", where neither a second window listener nor
+   * a registry action could have put it.
+   *
+   * `n` `p` `↑` `↓` are not here either. They are `ticket.moveDown` and `ticket.moveUp`,
+   * the same two actions the list and the board answer, running against the context
+   * published below — which is the whole of "next row is written out by hand three times"
+   * being written out once.
+   */
+  usePageActions({
+    "organise.select": () => {
+      if (cursor !== undefined) setSelected((current) => toggle(current, cursor));
+    },
+    "organise.selectRangeDown": () => extendBy(1),
+    "organise.selectRangeUp": () => extendBy(-1),
   });
 
   const onDone = { onError: (failure: unknown) => setError(actionErrorMessage(failure)), onSuccess: clear };
   const edit = (change: Parameters<typeof bulkEdit.mutate>[0]) => bulkEdit.mutate(change, onDone);
 
+  /**
+   * `Escape` on this screen, and the one page in the app that means something of its own
+   * by it: with rows selected it drops the selection and stays. With none it takes the
+   * key back, and the shell leaves — which is what it always should have done here and
+   * could not, since `OrganiseShell` had no `Escape` at all.
+   *
+   * A `useCallback`, because the shell publishes it through a dependency list: an inline
+   * arrow would be a new function on every render and re-publish on every one of them.
+   */
+  const onEscape = useCallback(() => {
+    if (selected.length === 0) return false;
+    clear();
+    return true;
+  }, [selected.length, clear]);
+
+  /**
+   * A context, so that "next row" is core's `ticket.moveDown` here too.
+   *
+   * The rows and the cursor's step are the only two fields this screen fills, and that is
+   * deliberately all: `selected` stays undefined, so `↵`, `e`, `1`–`6` and `x`'s shared
+   * meaning are all inert exactly as they were when this route ran on the shell's blank
+   * context. Filling `selected` from the cursor would quietly turn six keys on and change
+   * what they mean on a screen whose `x` is a checkbox — and no key's meaning changes in
+   * this slice except where §6.4 says so.
+   *
+   * `reportError` goes to this page's own strip rather than the shell's: a failed bulk
+   * edit belongs beside the rows it was about, which is where `error` is already drawn.
+   */
+  const reportError = useCallback(
+    (message: string | null) => setError(message),
+    [],
+  );
+  const noop = useCallback(() => {}, []);
+  const ctx = useActionContext({
+    tickets,
+    selected: undefined,
+    move,
+    startRename: noop,
+    startLink: noop,
+    startUnlink: noop,
+    reportError,
+  });
+
+  usePageShell({ ctx, crumbs: { team: team?.name, leaf: view.data?.name }, onEscape });
+
   return (
-    <OrganiseShell
-      breadcrumb={
-        <>
-          <span>{team?.name ?? "…"}</span>
-          <span>/</span>
-          <span className="text-muted-foreground">{view.data?.name ?? "Saved view"}</span>
-          {/* Beside the name, for the reason the document's is: this screen's key handler
-              is hand-written and never reaches the registry, and `OrganiseShell` mounts no
-              command palette, so `s` has nowhere to land here. */}
-          {view.data && <FavouriteStar target={{ kind: "view", id: id }} label={view.data.name} />}
-        </>
-      }
-      trailing={view.data && <span>{view.data.shared ? "Shared with the team" : "Only yours"}</span>}
-      aside={<ViewRail views={views.data ?? []} currentId={id} />}
-    >
-      <div className="relative flex min-h-0 flex-1 flex-col">
+    <>
+      <TopbarSlot>
+        {/* Beside the name, for the reason the document's is: `s` reaches the registry
+            here now, but the star is what says which way the press will go. */}
+        {view.data && <FavouriteStar target={{ kind: "view", id: id }} label={view.data.name} />}
+
+        {/* §6.6's three controls, at the left of the slot. All three, because this is the
+            one screen where all three intentions mean something: the two menus were down in
+            the chip strip until this slice, and they came up here with their ids. */}
         {view.data && (
-          <Chips
-            view={view.data}
-            names={names}
-            onAdd={() => openDialog({ kind: "filter" })}
-            onFilters={(filters) => patch.mutate({ id, filters })}
-            onGroupBy={(groupBy) => patch.mutate({ id, groupBy })}
-            onSortBy={(sortBy) => patch.mutate({ id, sortBy })}
+          <ViewControls
+            onFilter={() => openDialog({ kind: "filter" })}
+            group={{
+              value: view.data.groupBy,
+              onChange: (groupBy) => patch.mutate({ id, groupBy }),
+            }}
+            order={{
+              value: view.data.sortBy,
+              onChange: (sortBy) => patch.mutate({ id, sortBy }),
+            }}
           />
         )}
 
-        {dialog.kind === "filter" && view.data && (
-          <FilterComposer
+        <span className="flex-1" />
+        {view.data && <span>{view.data.shared ? "Shared with the team" : "Only yours"}</span>}
+      </TopbarSlot>
+
+      <ShellAside>
+        <ViewRail views={views.data ?? []} currentId={id} />
+      </ShellAside>
+
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {view.data && (
+          <FilterInput
             filters={view.data.filters}
             teamId={team?.id}
             /**
-             * Written straight through to the view, not held and saved on closing. A
-             * saved view is a stored question and this *is* the question — every other
-             * edit on this screen lands the same way, and a composer with its own draft
-             * would be the one place on it where what is on screen is not what is stored.
+             * Written straight through to the view, not held and saved on closing. A saved
+             * view is a stored question and this *is* the question — every other edit on
+             * this screen lands the same way.
+             *
+             * Which is also why the box asks on `↵` rather than on every keystroke: a line
+             * being typed passes through states that parse to no filters at all, and each
+             * one of those would be a PATCH that emptied the stored view. `filter-input.tsx`
+             * argues it at length.
              */
             onFilters={(filters) => patch.mutate({ id, filters })}
-            onClose={close}
+            empty={<span className="text-12 text-faint">No filters — everything in the team.</span>}
           />
         )}
 
@@ -292,71 +330,7 @@ export function SavedViewScreen({ id }: { id: string }) {
           />
         )}
       </div>
-    </OrganiseShell>
-  );
-}
-
-/**
- * The strip, plus the two controls only a saved view has.
- *
- * The chips and the `+ Filter` button are `FilterBar`, shared with the main list: the
- * two are one question asked through two doors, and a strip that read differently on
- * each would be the divergence the vocabulary was unified to end.
- */
-function Chips({
-  view,
-  names,
-  onAdd,
-  onFilters,
-  onGroupBy,
-  onSortBy,
-}: {
-  view: SavedView;
-  names: ChipNames;
-  onAdd: () => void;
-  onFilters: (filters: SavedView["filters"]) => void;
-  onGroupBy: (groupBy: ViewGroupBy) => void;
-  onSortBy: (sortBy: ViewSortBy) => void;
-}) {
-  return (
-    <FilterBar
-      filters={view.filters}
-      names={names}
-      onAdd={onAdd}
-      onFilters={onFilters}
-      empty={<span className="text-12 text-faint">No filters — everything in the team.</span>}
-    >
-      {/* `g` and `f` from the shortcut sheet reach these two through the action registry;
-          the menus are what makes them discoverable with a mouse. */}
-      <Menu
-        label="Group by"
-        asChild
-        trigger={
-          <button type="button" id="view-group-by" className="text-12 text-muted-foreground hover:text-foreground">
-            Group: {view.groupBy}
-          </button>
-        }
-        items={VIEW_GROUP_BYS.map((groupBy) => ({
-          id: `view.groupBy.${groupBy}`,
-          label: groupBy,
-          onSelect: () => onGroupBy(groupBy),
-        }))}
-      />
-      <Menu
-        label="Sort by"
-        asChild
-        trigger={
-          <button type="button" id="view-sort-by" className="text-12 text-muted-foreground hover:text-foreground">
-            Sort: {view.sortBy}
-          </button>
-        }
-        items={VIEW_SORT_BYS.map((sortBy) => ({
-          id: `view.sortBy.${sortBy}`,
-          label: sortBy,
-          onSelect: () => onSortBy(sortBy),
-        }))}
-      />
-    </FilterBar>
+    </>
   );
 }
 

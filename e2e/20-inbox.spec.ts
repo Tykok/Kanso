@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, openAs, seedInstance } from "./support";
+import { ADMIN, openAs, seedInstance, sidebarRow } from "./support";
 
 test.beforeAll(seedInstance);
 
@@ -30,16 +30,24 @@ test("scenario 20 — the inbox answers, and an unsent write outlives a reload",
 }) => {
   const page = await openAs(browser, ADMIN);
 
-  // The row is only in the sidebar because `nav-items.ts` says `live: true` — the one
-  // line in a shared file this branch is allowed. Not `sidebarRow`: that helper filters
-  // on a `button`, and every route row is a `Link`.
-  const inboxRow = page
-    .getByTestId("nav-item")
-    .filter({ has: page.getByRole("link", { name: "Inbox", exact: true }) });
-  await expect(inboxRow).toBeVisible();
-
-  await inboxRow.getByRole("link", { name: "Inbox" }).click();
+  /*
+   * The bell in the top bar, which is how this screen is reached now. §4 took the row out
+   * of the column on the grounds that an unread count is true of the session rather than
+   * of a place; `23-navigation.spec.ts` is where the bell itself is under test, and this
+   * is only the way in.
+   */
+  await page.getByTestId("inbox-bell").click();
+  await page.getByTestId("inbox-peek-expand").click();
   await expect(page).toHaveURL(/\/inbox$/);
+
+  // The column is still beside it, and it is the shell's one copy rather than a second
+  // one this page drew for itself. No row is lit, because there is no longer a row for
+  // this route — and `All tickets` in particular is dark, which used to be the other half
+  // of the two-rows complaint on the route it was easiest to see on.
+  await expect(sidebarRow(page, "All tickets")).toBeVisible();
+  await expect(
+    page.locator('[data-testid="nav-item"][data-current="true"]:not([data-favourite="true"])'),
+  ).toHaveCount(0);
 
   // The four tabs, each with its own count. `All` is selected on arrival.
   const tabs = page.getByTestId("inbox-tab");

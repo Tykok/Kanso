@@ -7,6 +7,7 @@ import {
   seedProject,
   seedTeam,
   seedTicket,
+  sidebarRow,
   unique,
   uniqueKey,
 } from "./support";
@@ -62,11 +63,14 @@ test("scenario 21 — a deleted ticket is a countdown, an archived one is a deci
 
   const page = await openAs(browser, ADMIN);
 
-  // The sidebar row is live now — that boolean in `nav-items.ts` is the one shared edit
-  // this slice makes, and this is what it buys.
   await page.getByRole("link", { name: "Trash", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Trash and archives", level: 1 })).toBeVisible();
   await expect(page.getByText(/Emptied after 30 days/)).toBeVisible();
+
+  // The complaint this whole slice started from: "quand je clique sur Trash elle
+  // disparaît". It did not disappear — this route simply never had one, because the
+  // application's frame lived in `app/page.tsx` and `/trash` was not inside it.
+  await expect(sidebarRow(page, "All tickets")).toBeVisible();
 
   // --- the pane, and the parent it names ------------------------------------
 
@@ -122,8 +126,12 @@ test("scenario 21 — a deleted ticket is a countdown, an archived one is a deci
   const back = await api.get(`/api/tickets?teamId=${team.id}`);
   expect(((await back.json()) as { id: string }[]).map((row) => row.id)).toEqual([restored.id]);
 
-  // The way out works, which is the only path off this route.
-  await page.getByRole("link", { name: "Back", exact: true }).click();
+  // The way out works — and it is a `×` now, not the `Back` link that used to stand here.
+  // That link was a `<Link href="/">`: it did not go back, it went home, which is why
+  // arriving at the trash from a team's cycle used to lose the reader's place. The `×`
+  // runs the same thing `esc` does, and `23-navigation.spec.ts` is where both are proved
+  // against every route; this asserts only that this route still has an exit.
+  await page.getByTestId("shell-leave").click();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   await api.dispose();

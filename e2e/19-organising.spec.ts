@@ -47,6 +47,11 @@ async function scopeTo(page: Page, teamName: string) {
  * wipes — so a bare `goto("/cycles/current")` after it landed on whichever team the
  * fallback picked, silently, and the assertions below measured a stranger's cycle. Naming
  * the team is what makes each of these a link rather than a coincidence.
+ *
+ * The sidebar's own rows now do this for themselves: `navHref` in `lib/nav.ts` puts
+ * `?team=` on the cycle, triage, workload, saved-view and document links while a team is
+ * selected, and `AppShell` hydrates the scope back out of it on arrival. This helper stays
+ * because these tests `goto` rather than click — a `goto` is not a row.
  */
 const at = (route: string, teamId: string) => `${route}?team=${teamId}`;
 
@@ -171,6 +176,23 @@ test("scenario 19c — six rows selected, one strip action, and a chip removed w
   await page.getByTestId("view-row").nth(1).click();
   await expect(page.getByRole("toolbar", { name: "2 selected" })).toBeVisible();
 
+  /**
+   * `esc` clears the selection, and does *not* also leave the page.
+   *
+   * This screen is the one place in the app where `Escape` means something of its own, and
+   * the shell's one gesture — close what is open, then leave — has to let it through: the
+   * page claims the key while there is a selection to drop, and hands it back once there
+   * is not. Two window listeners could not have agreed on that, which is why it is a claim
+   * (`shell/topbar-slot.tsx`'s `onEscape`) rather than a race between handlers.
+   */
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("toolbar")).toHaveCount(0);
+  await expect(page.getByTestId("view-row")).toHaveCount(2);
+
+  await page.getByTestId("view-row").nth(0).click();
+  await page.getByTestId("view-row").nth(1).click();
+  await expect(page.getByRole("toolbar", { name: "2 selected" })).toBeVisible();
+
   await page.getByRole("button", { name: "Set status" }).click();
   await page.getByRole("menuitem", { name: "In review" }).click();
 
@@ -248,6 +270,101 @@ test("scenario 19d — workload is a count and an age, never an estimate", async
     page.getByTestId("workload-row").first().getByRole("img", { name: /1 open, oldest 0 days/ }),
   ).toBeVisible();
   await expect(page.getByText(/No estimate in points/)).toBeVisible();
+
+  await api.dispose();
+});
+
+test("scenario 19e — the question is typed, completed by pointer, and read back off the chips", async ({
+  browser,
+}) => {
+  const api = await apiAs(ADMIN);
+  const team = await seedTeam(api, { name: unique("Typed"), key: uniqueKey() });
+  const urgent = await seedTicket(api, { teamId: team.id, title: unique("Urgent one") });
+  const low = await seedTicket(api, { teamId: team.id, title: unique("Low one") });
+  await api.patch(`/api/tickets/${urgent.id}`, { data: { priority: "urgent" } });
+  await api.patch(`/api/tickets/${low.id}`, { data: { priority: "low" } });
+
+  const page = await openAs(browser, ADMIN);
+  await scopeTo(page, team.name);
+  await expect(page.getByTestId("ticket-row")).toHaveCount(2);
+
+  const box = page.getByTestId("filter-query");
+  const suggestions = page.getByTestId("filter-suggestion");
+
+  /**
+   * §6.6's control, and the key beside its label.
+   *
+   * The chord is asserted as *a* keycap rather than as `⌘F`, because it is read from the
+   * effective bindings on the platform the test happens to be running on — which is the
+   * whole point of reading them rather than printing the defaults.
+   */
+  const filter = page.getByTestId("view-filter");
+  await expect(filter).toContainText("Filter");
+  await expect(filter.locator("kbd")).toHaveCount(1);
+
+  // Group and Order are not here: the main list stores neither, and the two chords are
+  // refused off a saved view for the same reason.
+  await expect(page.getByTestId("view-group")).toHaveCount(0);
+  await expect(page.getByTestId("view-order")).toHaveCount(0);
+
+  /*
+   * The whole question composed with the mouse, which is the claim §7 makes about the
+   * completion list: a reader who never types a token can still ask something. The button
+   * focuses the box and opens the list; a key is clicked, then one of its answers.
+   */
+  await filter.click();
+  await expect(box).toBeFocused();
+  await expect(suggestions.filter({ hasText: "priority" })).toBeVisible();
+
+  await suggestions.filter({ hasText: "priority" }).first().click();
+  await expect(box).toHaveValue("priority:");
+
+  // The list is answers to that key now — keys before the colon, values after it.
+  await suggestions.filter({ hasText: "Urgent" }).first().click();
+  await expect(box).toHaveValue("priority:urgent ");
+
+  // Accepting an *answer* asks the question, so the rows have narrowed and the chip is up
+  // without a key having been pressed anywhere.
+  await expect(page.getByTestId("ticket-row")).toHaveCount(1);
+  await expect(page.getByTestId("filter-chip")).toContainText("Urgent");
+
+  /*
+   * A bad word is named rather than the line being refused, and the filter that parsed is
+   * still on: `priority:urgent` stays, `urgnet` is what is complained about.
+   */
+  await box.fill("priority:urgent priority:urgnet");
+  await expect(page.getByRole("status").filter({ hasText: /"urgnet" is not a priority/ })).toBeVisible();
+  await expect(page.getByTestId("ticket-row")).toHaveCount(1);
+
+  // Typed, then applied on `↵` — the line is a draft until then, because a saved view
+  // writes its filters through to the server and `priority:l` parses to nothing at all.
+  await box.fill("priority:low");
+  await expect(page.getByTestId("filter-chip")).toContainText("Urgent");
+  await box.press("Escape");
+  await box.press("Enter");
+  await expect(page.getByTestId("filter-chip")).toContainText("Low");
+  await expect(page.getByTestId("ticket-row")).toHaveCount(1);
+
+  // The `×` rewrites the line as well as the question: the chips are a rendering of the
+  // filters, so a chip that came off has to leave the text it was drawn from.
+  await page.getByRole("button", { name: "Remove Priority filter" }).click();
+  await expect(box).toHaveValue("");
+  await expect(page.getByTestId("filter-chip")).toHaveCount(0);
+  await expect(page.getByTestId("ticket-row")).toHaveCount(2);
+
+  /*
+   * `Mod+f` is the same door as the button — it opens `dialog.kind === "filter"`, which the
+   * box drains into a focus of itself. If it stayed a dialog nothing drew, the dispatcher
+   * would stand down and every other key would go with it; `⌘k` right after is what proves
+   * the keyboard is still live.
+   */
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(box).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByTestId("palette")).toBeVisible();
 
   await api.dispose();
 });

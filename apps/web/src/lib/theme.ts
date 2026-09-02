@@ -2,6 +2,7 @@ import {
   ACCENTS,
   DENSITIES,
   DEFAULT_PREFERENCES,
+  SIDEBAR_MODES,
   THEMES,
   type Preferences,
   type Theme,
@@ -21,6 +22,11 @@ export function applyPreferences(preferences: Preferences) {
   root.dataset.accent = preferences.accent;
   root.dataset.density = preferences.density;
   root.dataset.syncBadges = preferences.showSyncBadges ? "on" : "off";
+  // Not for the shell, which reads `preferences.sidebarMode` like any other component.
+  // This is the attribute the bootstrap below can also set, so the grid is the right
+  // shape in the first paint rather than a 248px column that collapses on hydration.
+  // Set in both places so the two cannot disagree about what mode is in force.
+  root.dataset.sidebar = preferences.sidebarMode;
   // The legacy palette resolves light-dark() off `color-scheme`, which data-theme
   // narrows; the shadcn tokens select on .dark. Two mechanisms, one source, set
   // together here so they cannot drift while the interface migrates between them.
@@ -50,9 +56,11 @@ export function readCachedPreferences(): Preferences {
       theme: oneOf(THEMES, parsed.theme) ?? DEFAULT_PREFERENCES.theme,
       accent: oneOf(ACCENTS, parsed.accent) ?? DEFAULT_PREFERENCES.accent,
       density: oneOf(DENSITIES, parsed.density) ?? DEFAULT_PREFERENCES.density,
-      sidebarVisible: bool(parsed.sidebarVisible, DEFAULT_PREFERENCES.sidebarVisible),
+      sidebarMode: oneOf(SIDEBAR_MODES, parsed.sidebarMode) ?? DEFAULT_PREFERENCES.sidebarMode,
       showSyncBadges: bool(parsed.showSyncBadges, DEFAULT_PREFERENCES.showSyncBadges),
       showStatusBar: bool(parsed.showStatusBar, DEFAULT_PREFERENCES.showStatusBar),
+      showViewControls: bool(parsed.showViewControls, DEFAULT_PREFERENCES.showViewControls),
+      shortcuts: bindings(parsed.shortcuts),
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -77,6 +85,26 @@ function bool(candidate: unknown, fallback: boolean): boolean {
 }
 
 /**
+ * The cached overrides, entry by entry, dropping whatever is not an action id mapped to
+ * chords. Shape only — the same split the server draws, and for the mirrored reason:
+ * `mergeBindings` is what decides whether an id is an action and whether a chord is free.
+ *
+ * Carried through the cache at all so a remapped key works from the first keystroke
+ * rather than from whenever /api/me lands; a bad entry is dropped rather than taking the
+ * whole object down with it, because one unreadable binding must not cost the reader the
+ * rest of their keyboard.
+ */
+function bindings(candidate: unknown): Record<string, string[]> {
+  if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) return {};
+  return Object.fromEntries(
+    Object.entries(candidate as Record<string, unknown>).filter(
+      (entry): entry is [string, string[]] =>
+        Array.isArray(entry[1]) && entry[1].every((chord) => typeof chord === "string"),
+    ),
+  );
+}
+
+/**
  * Runs in <head>, inline and blocking, and it has to be all three.
  *
  * The preferences live behind /api/me, so React cannot know the theme until a round
@@ -86,6 +114,12 @@ function bool(candidate: unknown, fallback: boolean): boolean {
  *
  * Kept in this module so the storage key and the fallbacks cannot drift from the
  * ones the running application uses.
+ *
+ * The sidebar mode is here for the same reason the theme is: the column is part of the
+ * layout, so a first paint that guesses `pinned` and hydrates into `hover` moves the
+ * whole page sideways once. `SIDEBAR_MODES` is inlined rather than imported because this
+ * string is executed before any module exists — which is also why the check is written
+ * out by hand instead of reusing `oneOf`.
  */
 export const PREFERENCE_BOOTSTRAP_SCRIPT = `(function(){try{
 var p=JSON.parse(localStorage.getItem(${JSON.stringify(PREFERENCES_STORAGE_KEY)})||"{}"),d=document.documentElement;
@@ -94,5 +128,6 @@ d.dataset.theme=t;
 d.dataset.accent=p.accent||${JSON.stringify(DEFAULT_PREFERENCES.accent)};
 d.dataset.density=p.density||${JSON.stringify(DEFAULT_PREFERENCES.density)};
 d.dataset.syncBadges=p.showSyncBadges===false?"off":"on";
+d.dataset.sidebar=${JSON.stringify(SIDEBAR_MODES)}.indexOf(p.sidebarMode)<0?${JSON.stringify(DEFAULT_PREFERENCES.sidebarMode)}:p.sidebarMode;
 d.classList.toggle("dark",t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches));
 }catch(e){}})()`;

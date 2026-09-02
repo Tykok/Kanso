@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/api";
 import { useCreateView, useServedFilters } from "@/lib/queries";
 import { chipsOf } from "../organise/chips";
 import { savedViewFilters } from "../organise/facets";
-import { useOrganiseTeam } from "../organise/shell";
+import { useOrganiseTeam } from "../organise/team";
 import { DialogFrame, Field } from "./field";
 import { useUi } from "@/store/ui";
 

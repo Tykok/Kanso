@@ -47,9 +47,21 @@ test("03 — a ticket at page width, reached by the identifier people read out l
   await page.goto(`/t/${ticket.identifier}`);
   await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible();
 
-  // The breadcrumb names the team and the project, and the identifier is the last crumb.
-  await expect(page.getByRole("link", { name: team.name, exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: project.name, exact: true })).toBeVisible();
+  /**
+   * The breadcrumb names the team and the project, and the identifier is the last crumb —
+   * asserted as the whole trail now, and by text rather than by role.
+   *
+   * The two crumbs used to be `<Link href="/">`s that set a scope on the way out. They are
+   * plain text in the shell's bar today, and none of the trail is clickable: the crumbs a
+   * reader could climb are already rows in the column beside them, and the `×` is how you
+   * leave. The bar is drawn once, from the route plus the names the page publishes, which
+   * is why this can assert the sequence instead of two separate elements.
+   */
+  await expect(page.getByTestId("breadcrumb-crumb")).toHaveText([
+    team.name,
+    project.name,
+    ticket.identifier,
+  ]);
 
   // The chips are the panel's own controls at a larger measure — the same wire call, so a
   // status changed here has to reach the server exactly as it does from the panel.
@@ -80,6 +92,14 @@ test("03 — a ticket at page width, reached by the identifier people read out l
   await page.goto(`/t/${ticket.identifier}`);
   await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: title, level: 1 })).toHaveCount(0);
+
+  // The `×` in the bar runs the same thing, for the reader who does not use the keyboard.
+  // One implementation, two ways in — `23-navigation.spec.ts` proves it across the routes
+  // that used to have a `Back` link instead, and this is the pair on one screen.
+  await page.goto(`/t/${ticket.identifier}`);
+  await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible();
+  await page.getByTestId("shell-leave").click();
   await expect(page.getByRole("heading", { name: title, level: 1 })).toHaveCount(0);
 });
 
@@ -218,8 +238,11 @@ test("05 — a project reads as a summary rather than as a second list", async (
   // before the one that was posted.
   await expect(page.getByText("4 Aug → 30 Sep")).toBeVisible();
   // Scoped to the definition list: the team's name is also the sidebar's row and the
-  // breadcrumb's link, and this assertion is about the summary naming its team.
+  // breadcrumb's first crumb, and this assertion is about the summary naming its team.
   await expect(page.getByRole("definition").filter({ hasText: teamName })).toBeVisible();
+  // The trail the shell derives, beside it: `Core / Sync engine`, from the route and the
+  // two names this page publishes.
+  await expect(page.getByTestId("breadcrumb-crumb")).toHaveText([teamName, projectName]);
 
   // One done out of six, canceled excluded from the denominator — see `donePercent`.
   await expect(page.getByText(/· 17%/)).toBeVisible();

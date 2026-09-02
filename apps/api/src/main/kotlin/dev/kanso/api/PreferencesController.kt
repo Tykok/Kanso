@@ -16,10 +16,18 @@ data class PreferencesResponse(
 	val theme: String,
 	val accent: String,
 	val density: String,
-	val sidebarVisible: Boolean,
+	val sidebarMode: String,
 	val showSyncBadges: Boolean,
 	val showStatusBar: Boolean,
+	val showViewControls: Boolean,
 	val openTicket: String,
+	/**
+	 * Remapped keys, and only the remapped ones — an empty object is the common case and
+	 * the honest one. The defaults are derived from the action registry in the browser,
+	 * so sending a full key set from here would be this side inventing an answer it does
+	 * not have, and would freeze today's bindings into every account that reads it.
+	 */
+	val shortcuts: Map<String, List<String>>,
 	val defaultTeamId: UUID?,
 	val onboardedAt: OffsetDateTime?,
 	/**
@@ -36,10 +44,12 @@ data class PreferencesResponse(
 			theme = preferences.theme.wire,
 			accent = preferences.accent.wire,
 			density = preferences.density.wire,
-			sidebarVisible = preferences.sidebarVisible,
+			sidebarMode = preferences.sidebarMode.wire,
 			showSyncBadges = preferences.showSyncBadges,
 			showStatusBar = preferences.showStatusBar,
+			showViewControls = preferences.showViewControls,
 			openTicket = preferences.openTicket.wire,
+			shortcuts = preferences.shortcuts,
 			defaultTeamId = preferences.defaultTeamId,
 			onboardedAt = preferences.onboardedAt,
 			declaredVelocity = preferences.declaredVelocity,

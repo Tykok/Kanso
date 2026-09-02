@@ -1,11 +1,11 @@
 import type { Mirror, TicketPriority, TicketStatus } from "@/lib/api";
-import type { ActionContext } from "@/lib/actions";
+import { PRIORITY_ACTIONS, type ActionContext } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import { StatusDot } from "./ui/status-dot";
 import { PriorityMark as PriorityGlyph } from "./ui/priority-mark";
 import { Menu } from "./menu";
-import { menuItems } from "./menu-items";
+import { useMenuItems } from "./menu-items";
 
 const STATUS_ACTIONS = [
   "ticket.status.backlog",
@@ -14,14 +14,6 @@ const STATUS_ACTIONS = [
   "ticket.status.in_review",
   "ticket.status.done",
   "ticket.status.canceled",
-];
-
-const PRIORITY_ACTIONS = [
-  "ticket.priority.none",
-  "ticket.priority.low",
-  "ticket.priority.medium",
-  "ticket.priority.high",
-  "ticket.priority.urgent",
 ];
 
 /**
@@ -34,6 +26,9 @@ const PRIORITY_ACTIONS = [
  * control.
  */
 export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: ActionContext }) {
+  // Above the early return, because it is a hook: `useMenuItems` answers with an empty
+  // list for the label-only case, which is the same nothing the branch below draws.
+  const items = useMenuItems(ctx, STATUS_ACTIONS);
   const body = (
     <>
       <StatusDot status={status} />
@@ -67,7 +62,7 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
           {body}
         </button>
       }
-      items={menuItems(ctx, STATUS_ACTIONS)}
+      items={items}
     />
   );
 }
@@ -77,6 +72,7 @@ export const statusLabel = (status: TicketStatus) => STATUS_LABELS[status];
 /** The interactive twin of `ui/priority-mark.tsx`'s glyph: same drawing, plus a menu
  *  when there is a `ctx` to run its actions against. */
 export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?: ActionContext }) {
+  const items = useMenuItems(ctx, [...PRIORITY_ACTIONS]);
   const label = PRIORITY_LABELS[priority];
 
   if (!ctx) {
@@ -92,7 +88,7 @@ export function PriorityMark({ priority, ctx }: { priority: TicketPriority; ctx?
           <PriorityGlyph priority={priority} />
         </button>
       }
-      items={menuItems(ctx, PRIORITY_ACTIONS)}
+      items={items}
     />
   );
 }

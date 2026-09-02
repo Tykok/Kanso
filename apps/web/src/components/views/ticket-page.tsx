@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import {
   EFFORT_POINTS,
   TICKET_PRIORITIES,
@@ -21,21 +22,22 @@ import {
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import {
   usePatchTicket,
+  usePreferences,
   useProjects,
   useTeams,
   useTicketByKey,
   useTimeline,
   useUsers,
 } from "@/lib/queries";
+import { useActionContext } from "@/lib/use-action-ctx";
 import { useUi } from "@/store/ui";
-import { SyncBadge, TicketIdentifier } from "../pills";
+import { SyncBadge } from "../pills";
 import { Kbd } from "../ui/kbd";
 import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
 import { TicketDurationNote } from "../ticket-duration";
 import { TicketLabels } from "../ticket-labels";
 import { Avatar } from "./avatar";
-import { ViewsShell } from "./shell";
 
 /**
  * Screen 03 — the panel's content at page width.
@@ -58,6 +60,39 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
   const query = useTicketByKey(ticketKey);
   const ticket = query.data;
 
+  const teams = useTeams();
+  const projects = useProjects();
+  const preferences = usePreferences();
+  const reportError = useReportError();
+
+  /**
+   * One ticket, and it is the selection — which is what makes `e`, `1`–`6` and `x` mean
+   * something on this page. `ViewsShell` took the pair as props; the page publishes them
+   * now, and the shell's own dispatcher runs the registry against them.
+   *
+   * No cursor: this screen draws one record, so `j` and `k` have nothing to step through.
+   */
+  const noop = useCallback(() => {}, []);
+  const ctx = useActionContext({
+    tickets: ticket ? [ticket] : [],
+    selected: ticket,
+    move: noop,
+    startRename: noop,
+    startLink: noop,
+    startUnlink: noop,
+    reportError,
+  });
+
+  // `Core / Onboarding / KAN-142`, and one crumb shorter for a ticket no project claims.
+  usePageShell({
+    ctx,
+    crumbs: {
+      team: teams.data?.find((candidate) => candidate.id === ticket?.teamId)?.name,
+      project: projects.data?.find((candidate) => candidate.id === ticket?.projectId)?.name,
+      leaf: ticket?.identifier ?? undefined,
+    },
+  });
+
   /**
    * A key that does not parse never becomes a request — `useTicketByKey` disables itself —
    * so `isError` stays false and, until this existed, the page drew nothing at all. The
@@ -70,25 +105,7 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
   const unresolvable = parseTicketKey(ticketKey) === null && !isTicketId(ticketKey);
 
   return (
-    <ViewsShell
-      tickets={ticket ? [ticket] : []}
-      selected={ticket}
-      footer={
-        ticket ? (
-          <>
-            <SyncBadge mirror={ticket.mirror} />
-            <span>{ticket.mirror.notionPageId ? "Mirrored in Notion" : "Not in Notion yet"}</span>
-            <span style={{ flex: 1 }} />
-            <span>
-              <kbd>e</kbd> rename
-            </span>
-            <span>
-              <kbd>1</kbd>–<kbd>6</kbd> status
-            </span>
-          </>
-        ) : undefined
-      }
-    >
+    <>
       {query.isLoading && !unresolvable && <div className="empty">Loading…</div>}
       {(query.isError || unresolvable) && (
         <div className="empty error">
@@ -99,19 +116,33 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
         </div>
       )}
       {ticket && <TicketBody ticket={ticket} />}
-    </ViewsShell>
+
+      {preferences.showStatusBar && ticket && (
+        <div className="statusbar">
+          <SyncBadge mirror={ticket.mirror} />
+          <span>{ticket.mirror.notionPageId ? "Mirrored in Notion" : "Not in Notion yet"}</span>
+          <span style={{ flex: 1 }} />
+          <span>
+            <kbd>e</kbd> rename
+          </span>
+          <span>
+            <kbd>1</kbd>–<kbd>6</kbd> status
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 
 function TicketBody({ ticket }: { ticket: Ticket }) {
-  const teams = useTeams();
   const projects = useProjects();
   const users = useUsers();
   const patch = usePatchTicket();
   const router = useRouter();
   const { setScope, select, open } = useUi();
 
-  const team = teams.data?.find((candidate) => candidate.id === ticket.teamId);
+  // The team is resolved by `TicketPageView` for the breadcrumb and is not needed twice;
+  // the project is, because `⤡` collapses into the project's scope when there is one.
   const project = projects.data?.find((candidate) => candidate.id === ticket.projectId);
   const assignees = (users.data ?? []).filter((person) => ticket.assigneeIds.includes(person.id));
 
@@ -135,34 +166,15 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
 
   return (
     <>
-      <div className="flex items-center gap-2.5 bg-card px-5 py-3 text-12 text-faint">
-        {team && (
-          <>
-            {/* A breadcrumb that selects a scope has to land on the screen that draws
-                it, or the click means nothing. */}
-            <Link
-              href="/"
-              className="hover:text-foreground"
-              onClick={() => setScope({ kind: "team", id: team.id })}
-            >
-              {team.name}
-            </Link>
-            <span>/</span>
-          </>
-        )}
-        {project && (
-          <>
-            <Link
-              href="/"
-              className="hover:text-foreground"
-              onClick={() => setScope({ kind: "project", id: project.id })}
-            >
-              {project.name}
-            </Link>
-            <span>/</span>
-          </>
-        )}
-        <TicketIdentifier ticket={ticket} className="font-mono text-muted-foreground" />
+      {/*
+        * The bar's own crumbs are gone: the shell draws `Core / Onboarding / KAN-142`
+        * from the route and the names this page publishes. The two it drew were `<Link
+        * href="/">`s that set a scope on the way — which is the one honest thing a
+        * breadcrumb link could do here and still not what a crumb is for, since the trail
+        * a reader can climb is the column beside it. `TicketIdentifier` goes with them;
+        * the shell's last crumb is that identifier.
+        */}
+      <TopbarSlot>
         <span className="flex-1" />
         {/*
           * The drawing's `⤡`, and the exact inverse of the panel's `⤢`: the same ticket,
@@ -202,8 +214,11 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
             Open in Notion ↗
           </a>
         )}
+        {/* `esc` stays named here, beside the `×` the shell draws at the end of the bar:
+            the key and the button are one gesture, and this is the screen the drawing
+            spells it out on. */}
         <Kbd>esc</Kbd>
-      </div>
+      </TopbarSlot>
 
       <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-10 pt-11 pb-10">
         <div className="flex w-[720px] max-w-full flex-col gap-5">

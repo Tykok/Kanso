@@ -1,11 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import { dayValue, ticketAddress, ticketHref, type Project, type Ticket } from "@/lib/api";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
-import { useDocs, useMe, useProjectTickets, useProjects, useTeams, useUsers } from "@/lib/queries";
+import {
+  useDocs,
+  useMe,
+  usePreferences,
+  useProjectTickets,
+  useProjects,
+  useTeams,
+  useUsers,
+} from "@/lib/queries";
 import { mayWrite } from "@/lib/seat";
+import { useActionContext } from "@/lib/use-action-ctx";
 import { useUi } from "@/store/ui";
 import { StatusPill, SyncBadge, TicketIdentifier } from "../pills";
 import { GroupLabel } from "../ui/group-label";
@@ -15,7 +25,6 @@ import { ActivityFeed } from "./activity-feed";
 import { Avatar } from "./avatar";
 import { donePercent, periodLabel, statusCounts } from "./project-copy";
 import { HealthPill, ProjectHealthPanel } from "./project-health";
-import { ViewsShell } from "./shell";
 
 /** The first five and no more: the list is one screen away and it does this properly. */
 const FIRST_TICKETS = 5;
@@ -33,10 +42,38 @@ const COLS = "grid-cols-[70px_20px_108px_1fr_68px]";
  */
 export function ProjectPageView({ projectId }: { projectId: string }) {
   const projects = useProjects();
+  const teams = useTeams();
   const tickets = useProjectTickets(projectId);
+  const preferences = usePreferences();
   const setScope = useUi((state) => state.setScope);
+  const reportError = useReportError();
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
+  const team = teams.data?.find((candidate) => candidate.id === project?.teamId);
+
+  /**
+   * What the registry may act on here: this project's rows.
+   *
+   * `ViewsShell` took them as a prop and built this; a layout cannot take props, so the
+   * page publishes it instead. The four list-local callbacks stay inert for the reason
+   * that shell gave: this screen draws a summary, so `j` and `k` have nothing to step
+   * through and say so by doing nothing.
+   */
+  const noop = useCallback(() => {}, []);
+  const ctx = useActionContext({
+    tickets: tickets.data ?? [],
+    selected: undefined,
+    move: noop,
+    startRename: noop,
+    startLink: noop,
+    startUnlink: noop,
+    reportError,
+  });
+
+  // `Core / Sync engine`. The two links that used to spell this out are gone: the team
+  // crumb was a `<Link href="/">` that set a scope on the way, which is the click the
+  // sidebar's own rows now make honestly.
+  usePageShell({ ctx, crumbs: { team: team?.name, leaf: project?.name } });
 
   /**
    * Landing here *is* looking at this project, so the scope follows.
@@ -50,24 +87,26 @@ export function ProjectPageView({ projectId }: { projectId: string }) {
   }, [project, setScope]);
 
   return (
-    <ViewsShell
-      tickets={tickets.data ?? []}
-      footer={
-        <>
-          <span>
-            <kbd>c</kbd> new in this project
-          </span>
-          <span style={{ flex: 1 }} />
-          {project && <SyncBadge mirror={project.mirror} />}
-        </>
-      }
-    >
+    <>
       {projects.isLoading && <div className="empty">Loading…</div>}
       {!projects.isLoading && !project && (
         <div className="empty error">No project answers to this address.</div>
       )}
       {project && <ProjectBody project={project} tickets={tickets.data ?? []} />}
-    </ViewsShell>
+
+      {/* The drawing's own footer strip, drawn by the page rather than handed to a shell:
+          each screen names different keys, and the one thing they shared — the preference
+          that hides the strip — is one hook call. */}
+      {preferences.showStatusBar && (
+        <div className="statusbar">
+          <span>
+            <kbd>c</kbd> new in this project
+          </span>
+          <span style={{ flex: 1 }} />
+          {project && <SyncBadge mirror={project.mirror} />}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -102,20 +141,7 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
 
   return (
     <>
-      <div className="flex items-center gap-2.5 bg-card px-5 py-3 text-12 text-faint">
-        {team && (
-          <>
-            <Link
-              href="/"
-              className="hover:text-foreground"
-              onClick={() => setScope({ kind: "team", id: team.id })}
-            >
-              {team.name}
-            </Link>
-            <span>/</span>
-          </>
-        )}
-        <span className="text-muted-foreground">{project.name}</span>
+      <TopbarSlot>
         <span className="flex-1" />
         <button
           type="button"
@@ -133,7 +159,7 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
             New ticket
           </button>
         )}
-      </div>
+      </TopbarSlot>
 
       <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-12 py-9">
         <div className="flex flex-wrap items-start gap-12">

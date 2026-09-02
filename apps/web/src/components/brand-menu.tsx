@@ -1,7 +1,7 @@
 "use client";
 
 import { Seal } from "./ui/seal";
-import { menuItems } from "./menu-items";
+import { useMenuItems } from "./menu-items";
 import { Menu } from "./menu";
 import type { ActionContext } from "@/lib/actions";
 import { useMe } from "@/lib/queries";
@@ -27,7 +27,7 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
   const user = me.data?.user;
   const apiVersion = me.data?.version;
 
-  const items = menuItems(ctx, ["app.settings", "app.help", "app.palette", "app.logout"]);
+  const items = useMenuItems(ctx, ["app.settings", "app.help", "app.palette", "app.logout"]);
 
   return (
     <div data-testid="brand-menu">

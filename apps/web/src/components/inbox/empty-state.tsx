@@ -82,6 +82,15 @@ export function EmptyState({
         <span className="text-12 text-faint">
           Press <Kbd>c</Kbd> to create the first ticket in this view.
         </span>
+        {/* The keystroke stays because it is the one that teaches the key, but it cannot
+            be the only way in: this is the screen with nothing else on it to click, and
+            it is reached by a scope change rather than by the first run, so nobody has
+            been shown where `New` lives yet. Same label and same callback as the
+            first-session card below, not a second wording of the same act — one gesture
+            that two screens offer should not be two sentences to learn. */}
+        <Button className="mt-3" onClick={onCreate}>
+          Create the first one
+        </Button>
       </div>
     );
   }

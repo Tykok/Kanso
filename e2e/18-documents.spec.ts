@@ -7,6 +7,7 @@ import {
   seedInstance,
   seedTeam,
   seedTicket,
+  sidebarRow,
   unique,
   uniqueKey,
 } from "./support";
@@ -51,6 +52,17 @@ test("scenario 18 — a template starts a page, and a mentioned ticket stays liv
   await expect(page).toHaveURL(/\/docs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: "Decision" })).toBeVisible();
   await expect(page.getByTestId("doc-block")).toHaveCount(5);
+
+  /**
+   * The column, and a way out. This route was the worst of the four with no shell: no
+   * sidebar, and — unlike `/trash`, `/settings` and `/docs` — not even a `Back` link, so
+   * following a mention into a document left the reader with nothing but the browser's
+   * own button. The crumb says `Documents / Decision`: the index above it is a page they
+   * can actually climb to, which is why it is a crumb here and the team is elsewhere.
+   */
+  await expect(sidebarRow(page, "All tickets")).toBeVisible();
+  await expect(page.getByTestId("shell-leave")).toBeVisible();
+  await expect(page.getByTestId("breadcrumb-crumb")).toHaveText(["Documents", "Decision"]);
   // Two headings in the template, so two entries in the table of contents — derived
   // from the blocks, never stored, which is why renaming one cannot leave a stale row.
   await expect(page.getByTestId("doc-toc-entry")).toHaveText(["Context", "Options"]);

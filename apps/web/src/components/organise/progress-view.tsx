@@ -7,10 +7,10 @@ import { useProgress } from "@/lib/queries";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { formatRate, velocityCaption } from "@/lib/velocity";
 import { heights, LOAD_BAR_ORDER, progressSegments } from "./burndown";
-import { OrganiseShell, useOrganiseTeam } from "./shell";
+import { useOrganiseTeam } from "./team";
 
 /**
- * Screen 40 — the page a person opens on themselves.
+ * Screen 40 — the pace half of the page a person opens on themselves.
  *
  * Four things in descending order of usefulness: the pace in force and which of the two
  * numbers it is, what was delivered per closed cycle, what is being carried right now
@@ -27,22 +27,26 @@ import { OrganiseShell, useOrganiseTeam } from "./shell";
  * Median cycle time is deliberately absent. It waits on the insights ticket that reads
  * `activity` for time-in-status, and a plausible-looking stub is worse than a gap: nobody
  * ever goes back and checks a number that is already on the screen.
+ *
+ * **It draws no chrome of its own, and used to.** It arrived on `main` as a page rendering
+ * `OrganiseShell`, with a `Team / My progress` crumb and the reader's own name at the right
+ * of the bar. That shell is gone — one shell now, in `app/(app)/layout.tsx` — and this is
+ * no longer a page: it is `/me`'s **Progress** tab, so the crumb belongs to `/me` and the
+ * name is redundant on a screen that is by definition about the person reading it.
+ * `/progress` survives as a redirect, because a link somebody pasted last week is not a
+ * thing to break in a refactor.
+ *
+ * What did *not* change is the arbitration. It still reads `GET /api/me/progress`, still a
+ * per-team rate resolved through `useOrganiseTeam` — which is why it is one tab beside four
+ * that count across every team, rather than merged into their request. `me/progress-tab.tsx`
+ * writes that difference down at more length.
  */
 export function ProgressView() {
   const { team } = useOrganiseTeam();
   const progress = useProgress(team?.id);
 
   return (
-    <OrganiseShell
-      breadcrumb={
-        <>
-          <span>{team?.name ?? "…"}</span>
-          <span>/</span>
-          <span className="text-muted-foreground">My progress</span>
-        </>
-      }
-      trailing={progress.data ? <span>{progress.data.person.displayName}</span> : undefined}
-    >
+    <>
       {progress.isPending && <div className="px-4 py-12 text-center text-faint">Loading…</div>}
 
       {/* A team with no cycles and a person with nothing assigned still renders the whole
@@ -60,7 +64,7 @@ export function ProgressView() {
       )}
 
       {progress.data && <Body progress={progress.data} />}
-    </OrganiseShell>
+    </>
   );
 }
 

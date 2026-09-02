@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { PROJECT_HEALTH_COLORS } from "@/lib/status";
 import { healthLabel } from "./views/project-copy";
-import { menuItems } from "./menu-items";
+import { useMenuItems } from "./menu-items";
 import { Menu } from "./menu";
 import { rowActionsTriggerClass } from "./ui/row";
 import type { ActionContext } from "@/lib/actions";
@@ -95,7 +95,7 @@ export function TeamRow({
   ctx: ActionContext;
   onSelect: () => void;
 }) {
-  const items = menuItems(ctx, [
+  const items = useMenuItems(ctx, [
     // `ctx` here is already scoped to this row, so the toggle acts on this team and not on
     // whatever the list happens to be showing — the same trick every other id in this
     // array relies on.
@@ -162,7 +162,7 @@ export function ProjectRow({
   ctx: ActionContext;
   onSelect: () => void;
 }) {
-  const items = menuItems(ctx, [
+  const items = useMenuItems(ctx, [
     "favourite.toggle",
     "project.edit",
     project.archived ? "project.unarchive" : "project.archive",

@@ -3,7 +3,8 @@ import { boardActions } from "./board";
 import { coreActions } from "./core";
 import { docsActions } from "./docs";
 import { favouriteActions } from "./favourites";
-import { ACTIONS, resolveShortcut } from "./index";
+import { ACTIONS } from "./index";
+import { DEFAULT_MERGE, resolveShortcut } from "../shortcuts";
 import { inboxActions } from "./inbox";
 import { organiseActions } from "./organise";
 import { publikActions } from "./publik";
@@ -45,9 +46,23 @@ describe("the composed action registry", () => {
   });
 
   it("still resolves a core key, in the mode that owns it", () => {
-    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
+    const at = (chord: string, mode: "list" | "timeline") =>
+      resolveShortcut(chord, mode, DEFAULT_MERGE.index);
+    expect(at("n", "list")?.id).toBe("ticket.moveDown");
     // Claimed by the chart alone, so the list must not answer it.
-    expect(resolveShortcut("[", "list")).toBeUndefined();
-    expect(resolveShortcut("[", "timeline")?.id).toBe("timeline.zoomOut");
+    expect(at("[", "list")).toBeUndefined();
+    expect(at("[", "timeline")?.id).toBe("timeline.zoomOut");
+  });
+
+  /**
+   * Six files contribute keys and none of them sees the others' diffs, so the one thing a
+   * composition test can prove that a per-file one cannot is that the *whole* set is
+   * dispatchable: every default is a chord in canonical spelling, and no two claim a
+   * bucket. `indexActions` throws on both at module load — importing this file at all is
+   * most of the proof — and `mergeBindings` reports nothing for the defaults, which is the
+   * same claim said by a function that never throws.
+   */
+  it("lays every default down without a refusal", () => {
+    expect(DEFAULT_MERGE.rejected).toEqual([]);
   });
 });
