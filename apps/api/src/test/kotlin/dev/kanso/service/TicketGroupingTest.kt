@@ -306,9 +306,16 @@ class TicketGroupingTest : PostgresTest() {
 		assertEquals(listOf("backlog", "done"), views.grouped(view.id).map { it.key })
 	}
 
-	/** The flat answer a view has always given is untouched by the grouped one beside it. */
+	/**
+	 * A view answers one number through every door it has.
+	 *
+	 * This used to assert that the flat `views.tickets(id)` was untouched by the grouped
+	 * answer beside it. That door is gone — nothing called the route it served — so what is
+	 * left to hold is the identity that replaced it: the sidebar's count, the sum of the
+	 * buckets and the buckets laid end to end all describe the same match.
+	 */
 	@Test
-	fun `a saved view's flat answer is unchanged`() {
+	fun `a view's count, its buckets and its rows are one answer`() {
 		ticket("Done", status = TicketStatus.DONE)
 		ticket("Open", status = TicketStatus.TODO)
 		val view = views.create(
@@ -321,14 +328,14 @@ class TicketGroupingTest : PostgresTest() {
 			sortBy = ViewSortBy.PRIORITY,
 		)
 
-		assertEquals(1, views.tickets(view.id).size)
+		assertEquals(1, views.rows(view.id).size)
 		assertEquals(1, views.count(view.id))
 		assertEquals(1, views.grouped(view.id).sumOf { it.count })
 	}
 
 	/**
 	 * The sidebar count and the header count are the same number, and both are the
-	 * database's — the header used to be `views.tickets(id).size`, which is a count of a
+	 * database's — the header used to be the size of a page of rows, which is a count of a
 	 * page and stops growing at 200.
 	 */
 	@Test

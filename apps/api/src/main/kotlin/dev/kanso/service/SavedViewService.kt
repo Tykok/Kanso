@@ -62,7 +62,6 @@ class SavedViewService(
 	private val views: SavedViewRepository,
 	private val rows: TicketQueryRepository,
 	private val teams: TeamRepository,
-	private val details: TicketDetails,
 	/** Shared with the main list, so a stored question and an unsaved one stack alike. */
 	private val groups: TicketGroups,
 	private val access: TicketAccess,
@@ -82,27 +81,6 @@ class SavedViewService(
 	fun get(id: UUID): SavedView = requireLive(id).toDomain()
 
 	/**
-	 * The rows, matched now and ordered as the view asks — stacked by the view's own
-	 * `groupBy` before its `sortBy`, so a page of them is contiguous in its buckets and
-	 * [grouped] and this answer are the same list read two ways.
-	 */
-	@Transactional(readOnly = true)
-	fun tickets(id: UUID, limit: Int = 200): List<TicketDetail> {
-		val row = requireLive(id)
-		val found = rows.matching(
-			// `includeArchived` is left at its default and always will be: an archived
-			// ticket is out of every saved view, whatever the view asks. The main list is
-			// the caller that has a choice about it, because the Archives tab is a screen.
-			scope = TicketScope(scopeOf(row.teamId)),
-			filters = parseFilters(row.filters),
-			groupBy = ViewGroupBy.from(row.groupBy),
-			sortBy = ViewSortBy.from(row.sortBy),
-			limit = limit,
-		)
-		return details.of(found)
-	}
-
-	/**
 	 * The same question stacked: every bucket it has, each with a count of the whole
 	 * match and the rows of it this page reached.
 	 *
@@ -110,6 +88,16 @@ class SavedViewService(
 	 * thousand tickets drew `Todo · 29` meaning "twenty-nine of the two hundred you sent
 	 * me". The header now says what the database says, and says it whether or not the
 	 * rows under it have been fetched yet.
+	 *
+	 * The only way to read a view's rows. There was a flat `tickets(id)` beside this one
+	 * answering `/views/{id}/tickets`, kept while the web app was moving over; nothing
+	 * called either after the move, and a second door onto one question is a door that
+	 * drifts. A caller that wants the flat list concatenates the buckets — they are the
+	 * same rows in the same order, since the page boundary is cut against this stacking.
+	 *
+	 * `includeArchived` is left at its default and always will be: an archived ticket is
+	 * out of every saved view, whatever the view asks. The main list is the caller that
+	 * has a choice about it, because the Archives tab is a screen.
 	 */
 	@Transactional(readOnly = true)
 	fun grouped(id: UUID, limit: Int = 200, offset: Long = 0): List<TicketGroup> {
@@ -128,10 +116,10 @@ class SavedViewService(
 	 * How many rows the view answers with — the number in the sidebar, and now also the
 	 * one in its header.
 	 *
-	 * The header used to read `tickets(id).size`, which counts a *page*: a view matching
-	 * two thousand tickets reported two hundred, and stopped moving when the two hundred
-	 * and first arrived. [list] next to it has always asked the database, so the sidebar
-	 * and the header disagreed the moment either was refetched alone.
+	 * The header used to read the size of a page of rows, which is not a count: a view
+	 * matching two thousand tickets reported two hundred, and stopped moving when the two
+	 * hundred and first arrived. [list] next to it has always asked the database, so the
+	 * sidebar and the header disagreed the moment either was refetched alone.
 	 */
 	@Transactional(readOnly = true)
 	fun count(id: UUID): Int {

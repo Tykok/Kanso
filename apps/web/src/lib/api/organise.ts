@@ -365,8 +365,6 @@ export const organiseApi = {
 
   view: (id: string) => request<SavedView>(`/api/views/${id}`),
 
-  viewTickets: (id: string) => request<Ticket[]>(`/api/views/${id}/tickets`),
-
   /**
    * The view's rows, stacked the way the view stores. No `groupBy` parameter: the
    * stacking is part of the stored question, and a caller that could override it would
