@@ -6,10 +6,11 @@ import { Row } from "@/components/ui/row";
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import type { Cycle, CycleReport, Ticket, TicketStatus } from "@/lib/api";
+import { ShellAside, TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { useCycleReport, useCycles, usePlaceInCycle } from "@/lib/queries";
 import { bars, progressSegments } from "./burndown";
 import { groupTickets } from "./grouping";
-import { OrganiseShell, useOrganiseTeam } from "./shell";
+import { useOrganiseTeam } from "./team";
 
 /**
  * Screen 19 — the cycle in progress: how far it has got, what is left, and what will not
@@ -24,20 +25,27 @@ export function CycleView({ number }: { number: string }) {
   const cycles = useCycles(team?.id);
   const report = useCycleReport(team?.id, number);
 
+  /**
+   * `Core / Cycle 24`, assembled by the shell out of the route and these two names.
+   *
+   * Only the words a URL cannot carry are published: `/cycles/24` says which cycle but
+   * not whose, and until the report lands nothing here knows the number is 24 rather
+   * than the literal `current` the sidebar linked to. `breadcrumbOf` prints `Cycle`
+   * meanwhile, so the bar never draws an empty crumb waiting for a fetch.
+   */
+  usePageShell({ crumbs: { team: team?.name, leaf: report.data ? `Cycle ${report.data.cycle.number}` : undefined } });
+
   return (
-    <OrganiseShell
-      breadcrumb={
-        <>
-          <span>{team?.name ?? "…"}</span>
-          <span>/</span>
-          <span className="text-muted-foreground">
-            {report.data ? `Cycle ${report.data.cycle.number}` : "Cycle"}
-          </span>
-        </>
-      }
-      trailing={report.data ? <span>{dateRange(report.data.cycle)}</span> : undefined}
-      aside={<CycleRail cycles={cycles.data ?? []} current={report.data?.cycle.number} />}
-    >
+    <>
+      <TopbarSlot>
+        <span className="flex-1" />
+        {report.data && <span>{dateRange(report.data.cycle)}</span>}
+      </TopbarSlot>
+
+      <ShellAside>
+        <CycleRail cycles={cycles.data ?? []} current={report.data?.cycle.number} />
+      </ShellAside>
+
       {report.isPending && <div className="px-4 py-12 text-center text-faint">Loading…</div>}
 
       {/* A team with no cycle in progress is the common case on a fresh instance, not an
@@ -54,7 +62,7 @@ export function CycleView({ number }: { number: string }) {
       )}
 
       {report.data && <CycleBody report={report.data} nextNumber={report.data.cycle.number + 1} cycles={cycles.data ?? []} />}
-    </OrganiseShell>
+    </>
   );
 }
 

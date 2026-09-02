@@ -12,12 +12,13 @@ import type { Action, ActionContext } from "./types";
  * `s` is one toggle, and the direction is said where a reader is actually looking: the
  * star button on each pinned row, in its `aria-label` and its `title`.
  *
- * **`s`, for the star it draws.** The word would give `f`, and `f` is `organise.sortBy`
- * and `F` is `organise.addFilter` — both in the shared bucket, so `indexActions` would
- * refuse a second claim at module load. Nothing owns `s` anywhere: not in the shared
- * bucket, not in `board`'s and not in the chart's, and `organise.ts` already records it
- * as one of the free-but-poor mnemonics it passed over for "save this view". It is a good
- * one here, because a favourite *is* drawn as a star.
+ * **`s`, for the star it draws.** The word would give `f`, which was taken twice over
+ * when this was written — `f` was `organise.sortBy` and `F` was `organise.addFilter`, both
+ * in the shared bucket, so `indexActions` would have refused a second claim at module
+ * load. §6.4 respelled those two as `Mod+o` and `Mod+f` and handed `f` back, and `s` stays
+ * anyway: the thing this pass protects is a reader's muscle memory, and moving a key that
+ * works to a marginally better mnemonic spends exactly the goodwill the rename was for.
+ * `s` is also not a bad one — a favourite *is* drawn as a star.
  */
 
 /**
@@ -64,7 +65,7 @@ export const favouriteActions: readonly Action[] = [
      * deciding.
      */
     label: "Favourite",
-    shortcut: "s",
+    defaultKeys: ["s"],
     group: "view",
     when: (ctx) => favouriteTarget(ctx) !== undefined,
     run: (ctx) => {

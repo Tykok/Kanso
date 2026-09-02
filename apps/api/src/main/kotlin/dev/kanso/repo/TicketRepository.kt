@@ -341,6 +341,41 @@ class TicketRepository(
 			.where { (Tickets.id inList ids) and (Tickets.teamId inList teamIds) }
 			.map { it[Tickets.id] }
 
+	/**
+	 * What one person finished since [since], newest completion first.
+	 *
+	 * [TicketQueryRepository] cannot express it: `completed_at` is not a facet, and it must
+	 * never become one — a chip nobody can take off is not a filter, and every list in the
+	 * app already runs that predicate. This is a range read over one column for one screen.
+	 *
+	 * `completed_at IS NOT NULL` is the whole of "finished", with no status clause beside
+	 * it. `TicketService.patch` is the only writer: it stamps the column when a ticket
+	 * enters the completed category and clears it when it leaves, so a second condition on
+	 * the status would be a chance for the two to disagree rather than a safeguard.
+	 *
+	 * Archived rows are **included**, unlike every scope query above. Archiving is filing,
+	 * not undoing — a ticket somebody finished in June and tidied away in July is still
+	 * work they finished in June, and dropping it would make a personal history shrink as
+	 * its owner cleaned up. The trash is still excluded: a deleted ticket is gone.
+	 */
+	fun findCompletedSince(assigneeId: UUID, since: OffsetDateTime, limit: Int): List<Ticket> =
+		Tickets.selectAll()
+			.where {
+				(Tickets.completedAt greaterEq since) and
+					// A ticket with no team is a draft, which is in no list on any screen —
+					// `TicketQueryRepository` argues this at length — and has no identifier to
+					// print in one either.
+					Tickets.teamId.isNotNull() and
+					(
+						Tickets.id inSubQuery TicketAssignees.select(TicketAssignees.ticketId)
+							.where { TicketAssignees.userId eq assigneeId }
+						) and
+					(Tickets.id notInSubQuery trashed)
+			}
+			.orderBy(Tickets.completedAt to SortOrder.DESC)
+			.limit(limit)
+			.map { it.toTicket() }
+
 	fun idsByProject(projectId: UUID): List<UUID> =
 		Tickets.select(Tickets.id).where { Tickets.projectId eq projectId }.map { it[Tickets.id] }
 

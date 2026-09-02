@@ -1,6 +1,6 @@
 "use client";
 
-import { menuItems } from "./menu-items";
+import { useMenuItems } from "./menu-items";
 import { Menu } from "./menu";
 import type { ActionContext } from "@/lib/actions";
 
@@ -15,7 +15,7 @@ import type { ActionContext } from "@/lib/actions";
  * dedupe against — one id per entity, always offered, seeded rather than duplicated.
  */
 export function NewMenu({ ctx }: { ctx: ActionContext }) {
-  const items = menuItems(ctx, ["ticket.create", "project.create", "team.create"]);
+  const items = useMenuItems(ctx, ["ticket.create", "project.create", "team.create"]);
 
   return (
     <Menu

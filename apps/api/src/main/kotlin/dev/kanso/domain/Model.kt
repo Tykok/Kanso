@@ -318,13 +318,43 @@ enum class OpenTicket(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * How much window the sidebar is allowed to take.
+ *
+ * Three states rather than the boolean this replaces, because "shown" and "hidden" were
+ * never the two things a reader wanted to choose between: the third is a column that is
+ * out of the way until you reach for it. No arrangement of two booleans says that
+ * without also spelling a fourth combination meaning nothing, so it is an enum, and
+ * `V27` puts a CHECK behind it for the writers that are not this file.
+ *
+ * [HIDDEN] is deliberately still reachable *out* of — the top bar keeps a button that
+ * opens the column as a temporary overlay. A mode with no way back is the bug the
+ * navigation pass exists to remove, not one to add.
+ */
+enum class SidebarMode(override val wire: String) : Wire {
+	PINNED("pinned"), HOVER("hover"), HIDDEN("hidden");
+
+	companion object {
+		fun from(raw: String): SidebarMode = parse(entries.toTypedArray(), raw)
+	}
+}
+
 data class Preferences(
 	val theme: Theme = Theme.SYSTEM,
 	val accent: Accent = Accent.INDIGO,
 	val density: Density = Density.COMFORTABLE,
-	val sidebarVisible: Boolean = true,
+	val sidebarMode: SidebarMode = SidebarMode.PINNED,
 	val showSyncBadges: Boolean = true,
 	val showStatusBar: Boolean = true,
+	/**
+	 * Whether the top bar draws Filter, Group and Order as buttons.
+	 *
+	 * The same three intentions the keyboard reaches with `Mod+f`, `Mod+g` and `Mod+o`,
+	 * for the reader who would rather click. Optional where the bell, the breadcrumb and
+	 * the `×` are not: those are how you get somewhere, these are a second spelling of
+	 * something already reachable.
+	 */
+	val showViewControls: Boolean = true,
 	val openTicket: OpenTicket = OpenTicket.PANEL,
 	val defaultTeamId: UUID? = null,
 	val onboardedAt: OffsetDateTime? = null,
@@ -337,6 +367,19 @@ data class Preferences(
 	 * except the person themselves. `V24` argues both halves.
 	 */
 	val declaredVelocity: Double? = null,
+	/**
+	 * Remapped keys: action id to the chords that reach it. Overrides only — empty means
+	 * "I never changed anything", not "this person has no shortcuts".
+	 *
+	 * Untyped on purpose, and it is the one field here that is. The keys are action ids
+	 * from `lib/actions/`, a front-end module: this side cannot tell `ticket.rename` from
+	 * a typo, so it validates the *shape* — short strings, bounded counts, in
+	 * [dev.kanso.settings.PreferencesPatch] — and leaves meaning to the client, whose
+	 * `mergeBindings` ignores ids it does not recognise. An action deleted in a later
+	 * version therefore leaves the stored document readable instead of unparseable, which
+	 * is the whole reason the split is drawn here rather than in a Kotlin enum.
+	 */
+	val shortcuts: Map<String, List<String>> = emptyMap(),
 )
 
 data class TeamMember(val teamId: UUID, val user: User, val role: MemberRole)

@@ -58,7 +58,19 @@ function PreviewSyncBadge({ mirror }: { mirror: Mirror }) {
  * says this repeats choices the controls above state in words rather than adding one.
  */
 export function PreferencePreview({ preferences }: { preferences: Preferences }) {
-  const { accent, density, sidebarVisible, showSyncBadges, showStatusBar } = preferences;
+  const { accent, density, sidebarMode, showSyncBadges, showStatusBar, showViewControls } =
+    preferences;
+
+  // Only `pinned` spends a column. `hover` draws the hot zone the real sidebar slides out
+  // of — a 12px strip in the app, scaled to 6px here — so the reader can see that "on
+  // hover" is not the same nothing as "hidden"; the column itself is a fixed overlay in
+  // the real shell and has no place in a static tile.
+  const columns =
+    sidebarMode === "pinned"
+      ? "grid grid-cols-[112px_1fr]"
+      : sidebarMode === "hover"
+        ? "grid grid-cols-[6px_1fr]"
+        : "grid grid-cols-1";
 
   return (
     <div
@@ -67,8 +79,8 @@ export function PreferencePreview({ preferences }: { preferences: Preferences })
       data-density={density}
       aria-hidden="true"
     >
-      <div className={sidebarVisible ? "grid grid-cols-[112px_1fr]" : "grid grid-cols-1"}>
-        {sidebarVisible && (
+      <div className={columns}>
+        {sidebarMode === "pinned" && (
           <div className="flex min-w-0 flex-col gap-0.5 border-r border-border p-2">
             <span className="px-1.5 pb-1 text-11 uppercase tracking-wide text-faint">Teams</span>
             <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-12 font-medium text-foreground">
@@ -78,7 +90,28 @@ export function PreferencePreview({ preferences }: { preferences: Preferences })
           </div>
         )}
 
+        {sidebarMode === "hover" && <div className="border-r border-border bg-accent-soft" />}
+
         <div className="min-w-0">
+          {/* The three buttons the list and a saved view push into `shell/topbar.tsx`'s
+              slot — the bar holds them, the page owns them, because Group and Order are
+              menus only a saved view stores a choice for. Named here rather than
+              rendered: the real controls focus a filter box and open two menus, and a
+              tile that did any of that on a click would be a second implementation of
+              them rather than a preview of this setting. */}
+          {showViewControls && (
+            <div className="flex items-center gap-1.5 border-b border-border px-2 py-1.5">
+              {["Filter", "Group", "Order"].map((control) => (
+                <span
+                  key={control}
+                  className="rounded-md border border-border px-1.5 py-0.5 text-11 text-muted-foreground"
+                >
+                  {control}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="flex flex-col gap-row px-2 py-2">
             {ROWS.map((row, position) => (
               <Row
@@ -105,7 +138,7 @@ export function PreferencePreview({ preferences }: { preferences: Preferences })
           {showStatusBar && (
             <div className="flex items-center gap-3 border-t border-border px-2.5 py-1.5">
               <span>
-                <kbd>j</kbd> <kbd>k</kbd> move
+                <kbd>n</kbd> <kbd>p</kbd> move
               </span>
               <span>
                 <kbd>c</kbd> new

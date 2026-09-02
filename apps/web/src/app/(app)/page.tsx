@@ -1,0 +1,608 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { BoardView } from "@/components/board/view";
+import { EmptyState } from "@/components/inbox/empty-state";
+import { NewMenu } from "@/components/new-menu";
+import { ListFilters } from "@/components/organise/list-filters";
+import { ViewControls } from "@/components/organise/view-controls";
+import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
+import { usePageActions } from "@/components/shell/use-shell-keys";
+import { TicketList } from "@/components/tickets";
+import { TimelineView } from "@/components/timeline/view";
+import { actionById, predecessorsOf, PRIORITY_ACTIONS } from "@/lib/actions";
+import {
+  getDevUser,
+  setDevUser,
+  ticketAddress,
+  ticketHref,
+  type Ticket,
+} from "@/lib/api";
+import { actionErrorMessage } from "@/lib/errors";
+import { isMac } from "@/lib/platform";
+import {
+  useAuthMode,
+  useLinkDependency,
+  useMe,
+  usePatchTicket,
+  usePreferences,
+  useProjects,
+  useSyncStatus,
+  useTeams,
+  useTickets,
+  useUnlinkDependency,
+} from "@/lib/queries";
+import { ZOOMS } from "@/lib/timeline-geometry";
+import { hintFor, type Bindings } from "@/lib/shortcuts";
+import { useBindings } from "@/lib/use-bindings";
+import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
+import { useUi } from "@/store/ui";
+
+/**
+ * The ticket list, the board and the chart — three drawings of one scoped query.
+ *
+ * It used to build the application's chrome inline as well: the 248px grid, the sidebar,
+ * the mobile drawer, the auth gates, every overlay and five dialogs. All of that is
+ * `app/(app)/layout.tsx`'s now, which is what makes this file the list again rather than
+ * the list plus a shell two other shells were copied from.
+ *
+ * It no longer owns the keyboard either. It kept its own `keydown` through slice 1
+ * because that handler also drove the inline rename, the dependency picker and `⇧↵`,
+ * "none of which the registry can express while a shortcut is one bare
+ * `KeyboardEvent.key`". Chords express two of the three and `usePageActions` supplies the
+ * bodies the registry cannot hold, so `use-shell-keys.ts` is now the app's only
+ * dispatcher and `ownsKeyboard` is gone. What is left here is what a *page* has to
+ * decide: which ticket is being renamed, which arrow the palette is asking about, and
+ * where `⇧↵` navigates.
+ */
+export default function ListPage() {
+  const router = useRouter();
+  const me = useMe();
+  const preferences = usePreferences();
+  // The reader's own keyboard, for the status bar. The dispatcher reads the same merge
+  // from the same hook, so the strip cannot advertise a key the shell does not answer.
+  const { keys } = useBindings();
+
+  const {
+    scope,
+    selectedId,
+    view,
+    zoom,
+    // `overlay` alone, where this used to read `dialog` beside it: the handler that stood
+    // itself down for either of them is the shell's now, and all this page still asks is
+    // whether the palette is the thing on screen — which is what tells it whether the
+    // picker it opened is still the question being asked.
+    overlay,
+    query,
+    setScope,
+    select,
+    setView,
+    setZoom,
+    open,
+    close,
+    openDialog,
+    setQuery,
+  } = useUi();
+  const [editingId, setEditingId] = useState<string | undefined>();
+  /**
+   * The ticket whose arrows the palette is asking about, and which question it is
+   * asking. Page-local rather than in the store: it lives exactly as long as the overlay
+   * it re-labels, and it is this page that publishes the palette's rows.
+   */
+  const [picker, setPicker] = useState<{
+    kind: "link" | "unlink" | "priority";
+    ticketId: string;
+  }>();
+
+  const teams = useTeams();
+  const tickets = useTickets();
+  const projects = useProjects();
+  const sync = useSyncStatus();
+
+  const patch = usePatchTicket();
+  const link = useLinkDependency();
+  const unlink = useUnlinkDependency();
+
+  /** The strip under the top bar, which the shell draws and every route now shares. */
+  const reportError = useReportError();
+
+  /**
+   * The box stays here, and stays a contains-match over the page — deliberately, now that
+   * grouping and counting have gone to the server for being wrong at volume.
+   *
+   * It is not the same kind of question. A chip narrows the *answer*, so answering it over
+   * a page gives a page of the wrong answer; this narrows what is *on screen* to get the
+   * eye to a row the reader can already see is there, which is why it is a keystroke with
+   * no round trip and why the comment below can say its job is to find a row rather than
+   * to hide a plan. Making it a facet would also be a promise this schema cannot keep
+   * cheaply: `ILIKE '%…%'` is a sequential scan on every keystroke, and doing it honestly
+   * means `pg_trgm` and a GIN index — a migration, and a ticket of its own. Until then the
+   * honest reading of the box is "search what is loaded", which is what it does.
+   */
+  const filtered = useMemo(() => {
+    const rows = tickets.data ?? [];
+    const needle = query.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter(
+      (ticket) =>
+        ticket.title.toLowerCase().includes(needle) ||
+        (ticket.identifier?.toLowerCase().includes(needle) ?? false),
+    );
+  }, [tickets.data, query]);
+
+  /**
+   * The rows on screen — which is not the same list in the two views.
+   *
+   * The chart draws the *timeline* query, which the filter box does not touch, while the
+   * list draws this one filtered. Keeping the cursor inside the filtered list either way
+   * meant that with a filter typed, clicking a bar the filter excluded selected it and
+   * the effect below bounced the cursor straight back to `filtered[0]` — and, less
+   * visibly, that `h`, `l`, `H` and `L` did nothing at all on such a bar, since every
+   * action reads `ctx.selected` and that is looked up in this list.
+   *
+   * So the cursor lives in whatever the view actually draws. Filtering the chart to
+   * match the list instead was the other way to make one list feed both, and it is a
+   * different feature: a Gantt with half its bars hidden draws arrows to tickets that
+   * are not there, and the filter's job here is to find a row, not to hide a plan.
+   *
+   * Archived tickets are dropped in the timeline branch because the timeline endpoint
+   * never returns them, so the cursor could otherwise land on a ticket that appears
+   * nowhere on the chart — the very bug being fixed.
+   */
+  const visible = useMemo(
+    () =>
+      view === "timeline"
+        ? (tickets.data ?? []).filter((ticket) => !ticket.archived)
+        : filtered,
+    [view, tickets.data, filtered],
+  );
+
+  // The cursor follows the list: when a filter or a realtime update removes the
+  // selected row, land on something sensible rather than losing the selection.
+  useEffect(() => {
+    if (visible.length === 0) {
+      if (selectedId) select(undefined);
+      return;
+    }
+    if (!selectedId || !visible.some((ticket) => ticket.id === selectedId)) {
+      select(visible[0].id);
+    }
+  }, [visible, selectedId, select]);
+
+  const selected: Ticket | undefined = visible.find((ticket) => ticket.id === selectedId);
+  const currentTeam =
+    scope.kind === "team" ? teams.data?.find((team) => team.id === scope.id) : undefined;
+
+  /**
+   * What the list is showing, said in the heading.
+   *
+   * A project scope used to read "All tickets" here, which is the one label that is false
+   * for it: the rows *are* filtered, and the header was the only thing on screen claiming
+   * otherwise. Screen 05's "See all" lands exactly here, so the sentence it lands on has to
+   * name the project it came from.
+   *
+   * It stays an `<h1>` in the top bar rather than becoming the shell's breadcrumb, because
+   * the two say different things: a crumb is a trail to somewhere, and this is the subject
+   * of the page. `breadcrumbOf` answers with nothing at `/` for exactly that reason.
+   */
+  const currentProject =
+    scope.kind === "project" ? projects.data?.find((row) => row.id === scope.id) : undefined;
+  const heading = currentTeam?.name ?? currentProject?.name ?? "All tickets";
+
+  const move = useCallback(
+    (delta: number) => {
+      if (visible.length === 0) return;
+      const index = visible.findIndex((ticket) => ticket.id === selectedId);
+      const next = Math.min(Math.max((index < 0 ? 0 : index) + delta, 0), visible.length - 1);
+      select(visible[next].id);
+    },
+    [visible, selectedId, select],
+  );
+
+  const startRename = useCallback((id: string) => setEditingId(id), []);
+
+  /**
+   * `d` and `D` on the chart. The predecessor is picked from the palette the app already
+   * has rather than from a link mode of its own: nothing else in this interface is modal,
+   * and one keyboard gesture is not worth teaching a second way to be in a state.
+   */
+  const startLink = useCallback(
+    (successorId: string) => {
+      setPicker({ kind: "link", ticketId: successorId });
+      open("palette");
+    },
+    [open],
+  );
+
+  const startUnlink = useCallback(
+    (successorId: string) => {
+      setPicker({ kind: "unlink", ticketId: successorId });
+      open("palette");
+    },
+    [open],
+  );
+
+  /**
+   * The palette is one overlay with three lists, so leaving it has to put the ordinary
+   * one back — otherwise ⌘K afterwards would still be asking about a dependency.
+   *
+   * Read rather than cleared, now that the overlay is mounted by the shell and this page
+   * no longer owns every way of closing it. Whatever closed it — `Escape`, the backdrop,
+   * a command that ran — the question is over once the overlay is off screen, so this is
+   * a fact about what is drawn and not a second piece of state to keep in step with it.
+   * `startLink` and `startUnlink` overwrite the value before reopening, so the one left
+   * behind is never read again.
+   */
+  const asking = overlay === "palette" ? picker : undefined;
+
+  const ctx = useActionContext({
+    tickets: visible,
+    selected,
+    move,
+    startRename,
+    startLink,
+    startUnlink,
+    reportError,
+  });
+
+  /**
+   * The four gestures the registry cannot run, supplied by the page that can.
+   *
+   * This is what is left of a 60-line `keydown` handler. Each one needs something
+   * `ActionContext` deliberately does not carry — the router, the palette's rows, the
+   * store's `view` on the one route that draws all three drawings — and each is a real
+   * registry action all the same, so `?` lists it and §6.5 can remap it. See
+   * `lib/actions/claims.ts` for why this is a claim and not four more context fields.
+   *
+   * `⇧↵` is the exhibit. It could not be an action at all while a shortcut was one bare
+   * key: `event.key` for Shift+Enter is `"Enter"`, the same string the panel's own `↵`
+   * dispatches on. It is now `"Shift+Enter"` and the modifier is in the chord.
+   */
+  usePageActions({
+    "ticket.openInPage": () => {
+      if (selected) router.push(ticketHref(ticketAddress(selected)));
+    },
+    "ticket.priority.pick": () => {
+      if (!selected) return;
+      setPicker({ kind: "priority", ticketId: selected.id });
+      open("palette");
+    },
+    "view.cycleDrawing": () => setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]),
+  });
+
+  /**
+   * The palette's rows, but only while it is being asked about an arrow.
+   *
+   * `undefined` the rest of the time, which is what lets the shell list the registry and
+   * the teams itself — one assembly of that list rather than one per route. Asked for a
+   * predecessor, the palette lists tickets instead of commands: same overlay, same
+   * filtering, same keys, so `d` costs nobody a new mental model.
+   */
+  const commands = useMemo(() => {
+    if (asking?.kind === "link") {
+      return visible
+        .filter((candidate) => candidate.id !== asking.ticketId)
+        .map((candidate) => ({
+          id: `timeline.link.${candidate.id}`,
+          label: `Wait for ${candidate.identifier}: ${candidate.title}`,
+          run: () => {
+            link.mutate(
+              { successorId: asking.ticketId, predecessorId: candidate.id },
+              {
+                // A cycle is a 409 naming the chain. It belongs on the screen the
+                // arrow was drawn on, in the same strip every other refusal uses.
+                onError: (error) => reportError(actionErrorMessage(error)),
+                onSuccess: () => reportError(null),
+              },
+            );
+            close();
+          },
+        }));
+    }
+
+    // The inverse list, in the same overlay. "Stop waiting for" against "Wait for", so
+    // the two are legible as opposites rather than as two unrelated pickers.
+    if (asking?.kind === "unlink") {
+      const successorId = asking.ticketId;
+      return predecessorsOf(ctx, successorId).map((predecessor) => ({
+        id: `timeline.unlink.${predecessor.id}`,
+        label: `Stop waiting for ${predecessor.identifier}: ${predecessor.title}`,
+        run: () => {
+          unlink.mutate(
+            { successorId, predecessorId: predecessor.id },
+            {
+              // Nothing here is optimistic — freeing slack pulls nothing earlier — so a
+              // refusal has no row snapping back to serve as its signal, and goes to the
+              // strip every other failed action reports into.
+              onError: (error) => reportError(actionErrorMessage(error)),
+              onSuccess: () => reportError(null),
+            },
+          );
+          close();
+        },
+      }));
+    }
+
+    /*
+     * The third question, and the cheapest of the three: `⇧p` asks which priority, over
+     * the five actions the registry already holds. Their `run` closes the palette itself,
+     * so there is nothing to add but the label — which is the argument for asking here
+     * rather than spending five more keys on a choice made once in a while.
+     */
+    if (asking?.kind === "priority") {
+      return PRIORITY_ACTIONS.map((id) => {
+        const action = actionById(id);
+        return { id, label: action.label, run: () => action.run(ctx) };
+      });
+    }
+
+    return undefined;
+  }, [ctx, asking, visible, link, unlink, reportError, close]);
+
+  usePageShell({ ctx, commands });
+
+  return (
+    <>
+      <TopbarSlot>
+        <h1 className="m-0 text-13 font-medium text-foreground">{heading}</h1>
+        <span className="font-mono text-11 text-faint">{visible.length}</span>
+
+        {/*
+          * §6.6's controls — Filter alone here, and only off the chart.
+          *
+          * Group and Order are a saved view's, since the main list stores neither: the two
+          * chords are refused off `/views/` for that reason, and a button that opened a
+          * menu whose choice nothing stored would be worse than no button. Filter follows
+          * the same rule for a sharper reason — `ListFilters` below is not mounted on the
+          * timeline, so opening the dialog there would leave the store holding a `filter`
+          * nothing drains and the dispatcher standing down over it. Same condition, said
+          * once: whatever mounts the box is what offers the button.
+          */}
+        {view !== "timeline" && (
+          <ViewControls onFilter={() => openDialog({ kind: "filter" })} />
+        )}
+
+        <span className="flex-1" />
+
+        {view === "timeline" && (
+          <div className="segmented" role="group" aria-label="Zoom">
+            {ZOOMS.map((level) => (
+              <button
+                key={level}
+                type="button"
+                aria-pressed={zoom === level}
+                onClick={() => setZoom(level)}
+              >
+                {level[0].toUpperCase() + level.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="segmented" role="group" aria-label="View">
+          <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")}>
+            List
+          </button>
+          <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>
+            Board
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "timeline"}
+            onClick={() => setView("timeline")}
+          >
+            Timeline
+          </button>
+        </div>
+
+        <input
+          id={FILTER_INPUT_ID}
+          className="w-[180px] rounded-md border border-transparent bg-accent px-2 py-1.5 text-12"
+          placeholder="Filter…  /"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setQuery("");
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        <NewMenu ctx={ctx} />
+      </TopbarSlot>
+
+      {/*
+        * The composed filters, and the one control that adds one.
+        *
+        * Not on the chart. The timeline draws its own query, which these facets do not
+        * reach: a strip of chips over a chart they are not narrowing would say the plan
+        * had been filtered when it had not. `visible` in this file already documents the
+        * same split for the cursor, and for the same reason.
+        */}
+      {view !== "timeline" && <ListFilters />}
+
+      {/*
+       * Read-only is a fact about the scope, not the chart's own state, so it is said
+       * once here rather than by every bar refusing the pointer one at a time — a
+       * feature indistinguishable from a bug is a bug.
+       */}
+      {view === "timeline" && scope.kind === "all" && (
+        <div className="topbar-note" role="status">
+          Read-only — open a team or a project to plan.
+        </div>
+      )}
+
+      {view === "timeline" ? (
+        <TimelineView reportError={reportError} />
+      ) : view === "board" ? (
+        <BoardView reportError={reportError} />
+      ) : tickets.error ? (
+        <div className="empty error">{(tickets.error as Error).message}</div>
+      ) : (
+        <TicketList
+          // `filtered`, not `visible`: the two are the same object in this branch, and
+          // naming the filtered one here is what says the list is the thing the filter
+          // box was written for.
+          tickets={filtered}
+          /**
+           * Screen 15's empty states and screen 08's three gestures, both of which need
+           * to tell "the filter found nothing" from "there is nothing" — so they need
+           * the count before the filter and the count across the instance, neither of
+           * which the list itself has. `ticketsAnywhere` is summed from the teams query
+           * rather than fetched: `Team.ticketCount` is already on every row, and a
+           * second request to learn whether this is a new install would be one more
+           * thing to keep in step.
+           */
+          empty={
+            <EmptyState
+              total={(tickets.data ?? []).length}
+              filter={query}
+              ticketsAnywhere={(teams.data ?? []).reduce((sum, team) => sum + team.ticketCount, 0)}
+              onClearFilter={() => setQuery("")}
+              onSeeAll={() => {
+                setQuery("");
+                setScope({ kind: "all" });
+              }}
+              onCreate={() => open("composer")}
+              notionConnected={sync.data?.bootstrapped ?? false}
+              onConnectNotion={() => open("settings")}
+            />
+          }
+          selectedId={selectedId}
+          editingId={editingId}
+          ctx={ctx}
+          onSelect={select}
+          onOpen={(id) => {
+            select(id);
+            open("detail");
+          }}
+          onRename={(id, title) => {
+            patch.mutate({ id, title });
+            setEditingId(undefined);
+          }}
+          onCancelEdit={() => setEditingId(undefined)}
+        />
+      )}
+
+      {preferences.showStatusBar && (
+        <div className="statusbar">
+          {/*
+            * Ten keys, and until this slice all ten were string literals — the only
+            * key-printing surface in the app that did not read the registry. After §6.4
+            * dropped `j` and `k` it would have gone on advertising them, and after §6.5
+            * it would have advertised a keyboard the reader had personally changed. Every
+            * entry now names an *action* and asks `hintFor` what reaches it, which is the
+            * same function the `?` sheet and every row menu ask.
+            */}
+          <Keys keys={keys} ids={["ticket.moveDown", "ticket.moveUp"]}>move</Keys>
+          {/* Absent for a read-only seat. The keys are already inert for them —
+              `permits` sees to that — and a strip that advertises keys that do
+              nothing teaches the wrong thing about the product on every screen. */}
+          {ctx.canWrite && (
+            <>
+              <Keys
+                keys={keys}
+                ids={["ticket.status.backlog", "ticket.status.canceled"]}
+                join="–"
+              >
+                status
+              </Keys>
+              <Keys keys={keys} ids={["ticket.create"]}>new</Keys>
+            </>
+          )}
+          {/* The chart's keys are not guessable and are worth one line while it is
+              on screen; `?` lists them all, grouped by the view they belong to. */}
+          {view === "timeline" && (
+            <>
+              <Keys keys={keys} ids={["timeline.shiftEarlier", "timeline.shiftLater"]}>
+                move
+              </Keys>
+              <Keys keys={keys} ids={["timeline.zoomOut", "timeline.zoomIn"]}>zoom</Keys>
+              <Keys keys={keys} ids={["timeline.today"]}>today</Keys>
+              <Keys keys={keys} ids={["timeline.link"]}>depends on</Keys>
+            </>
+          )}
+          <Keys keys={keys} ids={["app.palette"]}>commands</Keys>
+          <Keys keys={keys} ids={["app.settings"]}>settings</Keys>
+          <Keys keys={keys} ids={["app.help"]}>help</Keys>
+          <span style={{ flex: 1 }} />
+          {me.data && <DevUserSwitcher email={me.data.user.email} />}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * The three drawings, in the order `Mod+v` walks them.
+ *
+ * The same order the segmented control draws, so the key and the buttons agree about what
+ * "next" means — and it is written here rather than in `store/ui.ts` because it is a fact
+ * about this page's controls, not about the store's type.
+ */
+const VIEWS = ["list", "board", "timeline"] as const;
+
+/**
+ * One entry of the status bar: the keys an intention answers, then what it does.
+ *
+ * Prints nothing at all when the intention has no key — which is now possible, since a
+ * reader may unbind one. An empty `<kbd>` box beside a word is worse than a shorter strip.
+ */
+function Keys({
+  ids,
+  keys,
+  join = " ",
+  children,
+}: {
+  ids: string[];
+  keys: Bindings;
+  join?: string;
+  children: ReactNode;
+}) {
+  const mac = isMac();
+  const printed = ids.flatMap((id) => hintFor(actionById(id), keys, mac) ?? []);
+  if (printed.length === 0) return null;
+
+  return (
+    <span>
+      {printed.map((chord, at) => (
+        <Fragment key={chord}>
+          {at > 0 && join}
+          <kbd>{chord}</kbd>
+        </Fragment>
+      ))}{" "}
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Dev-mode affordance only: act as somebody else without an OAuth round trip, so
+ * two-user behaviour (realtime, assignment) can be exercised from one browser.
+ */
+function DevUserSwitcher({ email }: { email: string }) {
+  const authMode = useAuthMode();
+  const [value, setValue] = useState(getDevUser() ?? "");
+
+  if (authMode.data?.mode !== "dev") return <span>{email}</span>;
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        setDevUser(value.trim() || null);
+        window.location.reload();
+      }}
+      style={{ display: "flex", gap: 6, alignItems: "center" }}
+    >
+      <span title="Dev auth: identity comes from a header, nothing is verified">dev as</span>
+      <input
+        style={{ width: 180, padding: "2px 6px", fontSize: 11 }}
+        placeholder={email}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+      />
+    </form>
+  );
+}

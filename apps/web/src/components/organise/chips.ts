@@ -62,6 +62,14 @@ export function chipsOf(filters: ViewFilters, names: ChipNames): Chip[] {
  * The `×`. Deletes the key rather than emptying it: the server validates the keys it is
  * sent, and `{ project: [] }` would be a chip the screen no longer draws still riding along
  * on every write of the view.
+ *
+ * No screen calls it any more, and that is worth stating rather than leaving a reader to
+ * hunt for the call site. §7 gave the strip a text box beside it, so a chip's `×` now has
+ * two truths to edit — the question *and* the line — and `filter-text.ts`'s `withoutFacet`
+ * does both, deleting the key exactly as this does and then removing the word the language
+ * writes for it. The rule this function states is still the one in force, which is why it
+ * and its tests stay: `facets.ts` and `facets.test.ts` both cite it by name as the reason
+ * an emptied facet must be absent rather than present-and-empty.
  */
 export function withoutChip(filters: ViewFilters, key: keyof ViewFilters): ViewFilters {
   const next = { ...filters };

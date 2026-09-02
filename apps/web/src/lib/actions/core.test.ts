@@ -6,12 +6,26 @@ import {
   hintOf,
   indexActions,
   predecessorsOf,
-  resolveShortcut,
-  shortcutRows,
   type Action,
   type ActionContext,
+  type ShortcutMode,
 } from "./index";
+import {
+  DEFAULT_BINDINGS,
+  DEFAULT_MERGE,
+  hintFor,
+  resolveShortcut,
+  shortcutRows,
+} from "../shortcuts";
 import type { Project, Team, Ticket, TimelineDependency } from "../api";
+
+/**
+ * The registry's own keys, resolved. `mergeBindings` is what a running app dispatches
+ * against; with no overrides its index is the defaults, which is what these assertions are
+ * about — `lib/shortcuts.test.ts` is where a *remapped* keyboard is exercised.
+ */
+const resolve = (chord: string, mode: ShortcutMode) =>
+  resolveShortcut(chord, mode, DEFAULT_MERGE.index);
 
 const core: Team = {
   id: "team-core",
@@ -171,6 +185,15 @@ const REQUIRED_IDS = [
   "timeline.today",
   "timeline.link",
   "timeline.unlink",
+  "app.back",
+  "view.cycleDrawing",
+  "ticket.openInPage",
+  "ticket.priority.pick",
+  "inbox.markAllRead",
+  "triage.accept",
+  "triage.defer",
+  "triage.duplicate",
+  "triage.reject",
 ];
 
 describe("the registry", () => {
@@ -205,54 +228,85 @@ describe("the registry", () => {
 });
 
 describe("resolveShortcut", () => {
-  it("maps each key the inbox handles today to exactly one action", () => {
-    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("ArrowDown", "list")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("k", "list")?.id).toBe("ticket.moveUp");
-    expect(resolveShortcut("ArrowUp", "list")?.id).toBe("ticket.moveUp");
-    expect(resolveShortcut("Enter", "list")?.id).toBe("ticket.open");
-    expect(resolveShortcut("c", "list")?.id).toBe("ticket.create");
-    expect(resolveShortcut("e", "list")?.id).toBe("ticket.rename");
-    expect(resolveShortcut("x", "list")?.id).toBe("ticket.archive");
-    expect(resolveShortcut("1", "list")?.id).toBe("ticket.status.backlog");
-    expect(resolveShortcut("2", "list")?.id).toBe("ticket.status.todo");
-    expect(resolveShortcut("3", "list")?.id).toBe("ticket.status.in_progress");
-    expect(resolveShortcut("4", "list")?.id).toBe("ticket.status.in_review");
-    expect(resolveShortcut("5", "list")?.id).toBe("ticket.status.done");
-    expect(resolveShortcut("6", "list")?.id).toBe("ticket.status.canceled");
-    expect(resolveShortcut("/", "list")?.id).toBe("view.filter");
-    expect(resolveShortcut(",", "list")?.id).toBe("app.settings");
-    expect(resolveShortcut("?", "list")?.id).toBe("app.help");
+  /**
+   * Every key the list answered before the registry existed, and §6.4's two respellings.
+   *
+   * `j` and `k` are gone, on the maintainer's ruling, and `n` and `p` answer "next" and
+   * "previous" in every drawing — with the arrows kept as the second spelling of both, so
+   * nothing became unreachable. Nothing else in this list moved: `c`, `↵`, `e`, `x`,
+   * `1`–`6`, `/`, `,` and `?` mean exactly what they meant, which is the whole point of a
+   * rename that is supposed to protect muscle memory rather than spend it.
+   */
+  it("maps each key the list handles to exactly one action", () => {
+    expect(resolve("n", "list")?.id).toBe("ticket.moveDown");
+    expect(resolve("ArrowDown", "list")?.id).toBe("ticket.moveDown");
+    expect(resolve("p", "list")?.id).toBe("ticket.moveUp");
+    expect(resolve("ArrowUp", "list")?.id).toBe("ticket.moveUp");
+    expect(resolve("Enter", "list")?.id).toBe("ticket.open");
+    expect(resolve("c", "list")?.id).toBe("ticket.create");
+    expect(resolve("e", "list")?.id).toBe("ticket.rename");
+    expect(resolve("x", "list")?.id).toBe("ticket.archive");
+    expect(resolve("1", "list")?.id).toBe("ticket.status.backlog");
+    expect(resolve("2", "list")?.id).toBe("ticket.status.todo");
+    expect(resolve("3", "list")?.id).toBe("ticket.status.in_progress");
+    expect(resolve("4", "list")?.id).toBe("ticket.status.in_review");
+    expect(resolve("5", "list")?.id).toBe("ticket.status.done");
+    expect(resolve("6", "list")?.id).toBe("ticket.status.canceled");
+    expect(resolve("/", "list")?.id).toBe("view.filter");
+    expect(resolve(",", "list")?.id).toBe("app.settings");
+    expect(resolve("?", "list")?.id).toBe("app.help");
+  });
+
+  /** The two §6.4 drops, asserted as drops: a reader pressing them gets nothing. */
+  it("no longer answers j or k anywhere", () => {
+    for (const mode of ["list", "board", "timeline"] as const) {
+      expect(resolve("j", mode)).toBeUndefined();
+      expect(resolve("k", mode)).toBeUndefined();
+    }
+  });
+
+  /** `p` was `timeline.schedule` and is now "previous". The chart's `p` is gone with it. */
+  it("gives p to the cursor, and leaves scheduling to the palette and the row menu", () => {
+    expect(resolve("p", "timeline")?.id).toBe("ticket.moveUp");
+    expect(actionById("timeline.schedule").defaultKeys).toBeUndefined();
   });
 
   it("one key means different things in the two views", () => {
-    expect(resolveShortcut("h", "timeline")?.id).toBe("timeline.shiftEarlier");
-    expect(resolveShortcut("h", "list")).toBeUndefined();
+    expect(resolve("h", "timeline")?.id).toBe("timeline.shiftEarlier");
+    expect(resolve("h", "list")).toBeUndefined();
   });
 
   it("a shared key still resolves in both", () => {
-    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("j", "timeline")?.id).toBe("ticket.moveDown");
+    expect(resolve("n", "list")?.id).toBe("ticket.moveDown");
+    expect(resolve("n", "timeline")?.id).toBe("ticket.moveDown");
   });
 
-  it("the shift and resize pair are distinct keys, not a modifier", () => {
-    // `event.key` for Shift+h is "H", so the registry needs no modifier plumbing.
-    expect(resolveShortcut("H", "timeline")?.id).toBe("timeline.shrinkEnd");
-    expect(resolveShortcut("l", "timeline")?.id).toBe("timeline.shiftLater");
-    expect(resolveShortcut("L", "timeline")?.id).toBe("timeline.growEnd");
+  /**
+   * The shift pair, respelled. It used to be `"H"` and `"L"` — the `event.key` of the
+   * press — which worked for letters and for nothing else, which is why `⇧↑↓` could not be
+   * written at all. The chord carries the modifier now and the two halves of a bar edit
+   * read as a pair.
+   */
+  it("spells the shift pair as a prefix rather than as a letter's case", () => {
+    expect(resolve("Shift+h", "timeline")?.id).toBe("timeline.shrinkEnd");
+    expect(resolve("l", "timeline")?.id).toBe("timeline.shiftLater");
+    expect(resolve("Shift+l", "timeline")?.id).toBe("timeline.growEnd");
+    // The retired spelling reaches nothing, and cannot: `chordOf` never produces it.
+    expect(resolve("H", "timeline")).toBeUndefined();
+    expect(resolve("L", "timeline")).toBeUndefined();
   });
 
   it("keeps a key the list owns out of the timeline's reach when the mode says so", () => {
     // Renaming edits a row of the list; there is no row to edit on the chart, and
     // `e` there would arm an editor nothing renders and swallow every later key.
-    expect(resolveShortcut("e", "timeline")).toBeUndefined();
+    expect(resolve("e", "timeline")).toBeUndefined();
   });
 
   it("lets no two actions claim the same key inside one mode", () => {
     const claimed = new Map<string, string>();
     for (const action of ACTIONS) {
-      for (const key of action.shortcut?.split(" ") ?? []) {
-        const bucket = `${action.mode ?? "any"}:${key}`;
+      for (const chord of action.defaultKeys ?? []) {
+        const bucket = `${action.mode ?? "any"}:${chord}`;
         expect(claimed.get(bucket)).toBeUndefined();
         claimed.set(bucket, action.id);
       }
@@ -264,22 +318,32 @@ describe("resolveShortcut", () => {
      * Legal by the registry's rules — a mode bucket wins over `any` — and refused here
      * anyway, because in general it means one printed key doing two things.
      *
-     * The exceptions are listed, not permitted by category. `j`, `k` and `↵` on the board
+     * The exceptions are listed, not permitted by category. `n`, `p` and `↵` on the board
      * are the same intent as in the list — next item, previous item, open this — and a
-     * board has no rows to walk, so the shared action would do nothing there. Anything
-     * else that wants to shadow a shared key has to be added to this set, which is the
-     * point: the rule still refuses by default and the exception is a diff somebody reads.
+     * board has no rows to walk, so the shared action would do nothing there.
+     * `organise.select` and `triage.reject` are the two that made `savedView` and `triage`
+     * modes at all: `x` is a checkbox on a saved view and "close without action" in the
+     * queue, and neither screen has a selected ticket for the shared `x` to archive.
+     * Anything else that wants to shadow a shared key has to be added to this set, which
+     * is the point: the rule still refuses by default and the exception is a diff somebody
+     * reads.
      */
-    const MAY_SHADOW = new Set(["board.moveDown", "board.moveUp", "board.open"]);
+    const MAY_SHADOW = new Set([
+      "board.moveDown",
+      "board.moveUp",
+      "board.open",
+      "organise.select",
+      "triage.reject",
+    ]);
     const shared = new Set(
       ACTIONS.filter((action) => action.mode === undefined).flatMap(
-        (action) => action.shortcut?.split(" ") ?? [],
+        (action) => action.defaultKeys ?? [],
       ),
     );
     for (const action of ACTIONS.filter((candidate) => candidate.mode !== undefined)) {
       if (MAY_SHADOW.has(action.id)) continue;
-      for (const key of action.shortcut?.split(" ") ?? []) {
-        expect({ id: action.id, shadows: shared.has(key) }).toEqual({
+      for (const chord of action.defaultKeys ?? []) {
+        expect({ id: action.id, shadows: shared.has(chord) }).toEqual({
           id: action.id,
           shadows: false,
         });
@@ -290,16 +354,32 @@ describe("resolveShortcut", () => {
   it("a duplicate key inside one mode is still a build-time error", () => {
     // The guard that made the registry trustworthy must survive the split.
     const clashing: Action[] = [
-      { id: "a", label: "A", shortcut: "z", mode: "timeline", group: "view", when: () => true, run: () => {} },
-      { id: "b", label: "B", shortcut: "z", mode: "timeline", group: "view", when: () => true, run: () => {} },
+      { id: "a", label: "A", defaultKeys: ["z"], mode: "timeline", group: "view", when: () => true, run: () => {} },
+      { id: "b", label: "B", defaultKeys: ["z"], mode: "timeline", group: "view", when: () => true, run: () => {} },
     ];
     expect(() => indexActions(clashing)).toThrow(/claimed by both/);
   });
 
+  /**
+   * The third throw, new with chords: a default that is not a chord is a key nobody can
+   * ever press, and `"E"` in particular is the retired spelling this grammar exists to
+   * remove. A developer's typo stops the build; a reader's stored preference never does —
+   * `mergeBindings` refuses that one with a sentence instead.
+   */
+  it("refuses a default that is not a chord in canonical spelling", () => {
+    const typo = (chord: string): Action[] => [
+      { id: "a", label: "A", defaultKeys: [chord], group: "view", when: () => true, run: () => {} },
+    ];
+    expect(() => indexActions(typo("E"))).toThrow(/not a chord/);
+    expect(() => indexActions(typo("Shift+E"))).toThrow(/not a chord/);
+    expect(() => indexActions(typo("Cmd+k"))).toThrow(/not a chord/);
+    expect(() => indexActions(typo("Shift+e"))).not.toThrow();
+  });
+
   it("lets the two modes claim the same key, which is the point of the split", () => {
     const both: Action[] = [
-      { id: "a", label: "A", shortcut: "z", mode: "timeline", group: "view", when: () => true, run: () => {} },
-      { id: "b", label: "B", shortcut: "z", mode: "list", group: "view", when: () => true, run: () => {} },
+      { id: "a", label: "A", defaultKeys: ["z"], mode: "timeline", group: "view", when: () => true, run: () => {} },
+      { id: "b", label: "B", defaultKeys: ["z"], mode: "list", group: "view", when: () => true, run: () => {} },
     ];
     expect(() => indexActions(both)).not.toThrow();
   });
@@ -313,13 +393,22 @@ describe("resolveShortcut", () => {
   });
 
   it("leaves an unbound key alone", () => {
-    expect(resolveShortcut("z", "list")).toBeUndefined();
-    expect(resolveShortcut("Escape", "list")).toBeUndefined();
-    expect(resolveShortcut("z", "timeline")).toBeUndefined();
+    expect(resolve("z", "list")).toBeUndefined();
+    expect(resolve("z", "timeline")).toBeUndefined();
   });
 
-  it("keeps the palette off the bare keys, since it needs a modifier", () => {
-    expect(actionById("app.palette").shortcut).toBeUndefined();
+  /**
+   * `Escape` and `⌘K` were the two keys the registry could not hold, for opposite reasons:
+   * `Escape` was "not an action but the way out of whatever is on top of the list", and
+   * `⌘K` needed a modifier a bare key could not carry. Both are ordinary bindings now,
+   * which is what lets `?` list them from the same table as `c`.
+   */
+  it("holds the two keys that used to live outside it", () => {
+    expect(resolve("Escape", "list")?.id).toBe("app.back");
+    expect(resolve("Mod+k", "list")?.id).toBe("app.palette");
+    // And `k` alone is still nobody's: it was `ticket.moveUp` and is now unbound, which is
+    // the collision `hint: "Mod+K"` existed to dodge, gone rather than worked around.
+    expect(resolve("k", "list")).toBeUndefined();
   });
 });
 
@@ -524,12 +613,17 @@ describe("timeline.unlink", () => {
     expect(ctx.patchTicket).not.toHaveBeenCalled();
   });
 
-  it("answers Shift+D on the chart and nothing in the list", () => {
-    // `event.key` for Shift+d is "D" — the same convention `H` and `L` follow, so the
-    // registry still carries no modifier state.
-    expect(resolveShortcut("D", "timeline")?.id).toBe("timeline.unlink");
-    expect(resolveShortcut("D", "list")).toBeUndefined();
-    expect(resolveShortcut("d", "timeline")?.id).toBe("timeline.link");
+  it("answers ⇧d on the chart and nothing in the list", () => {
+    // `"Shift+d"`, where this used to be `"D"` — the `event.key` of the same press. The
+    // chord carries the modifier, so `d` and its inverse read as a pair rather than as two
+    // letters that happen to differ in case.
+    expect(resolve("Shift+d", "timeline")?.id).toBe("timeline.unlink");
+    expect(resolve("Shift+d", "list")).toBeUndefined();
+    expect(resolve("d", "timeline")?.id).toBe("timeline.link");
+    // `d` in the queue is the third meaning of the letter, and the mode is what keeps the
+    // three apart: nothing in the shared bucket answers it at all.
+    expect(resolve("d", "triage")?.id).toBe("triage.duplicate");
+    expect(resolve("d", "list")).toBeUndefined();
   });
 });
 
@@ -736,29 +830,23 @@ describe("running an action", () => {
   });
 });
 
-describe("hintOf", () => {
+describe("hintOf, the default a menu prints", () => {
   it("prints the palette's key as the one the reader actually has", () => {
     const palette = actionById("app.palette");
     expect(hintOf(palette, true)).toBe("⌘K");
     expect(hintOf(palette, false)).toBe("Ctrl+K");
   });
 
-  it("keeps that hint out of the dispatch table", () => {
-    // The whole point of a second field: ⌘K is intercepted ahead of the registry, and
-    // `k` there would collide with `ticket.moveUp`.
-    expect(actionById("app.palette").shortcut).toBeUndefined();
-    expect(resolveShortcut("K", "list")).toBeUndefined();
-    expect(resolveShortcut("k", "list")?.id).toBe("ticket.moveUp");
-  });
-
-  it("falls back to the first spelling of a shortcut, printed for a human", () => {
-    expect(hintOf(actionById("ticket.moveDown"), true)).toBe("j");
+  it("prints the first spelling of a chord, for a human", () => {
+    expect(hintOf(actionById("ticket.moveDown"), true)).toBe("n");
     expect(hintOf(actionById("app.help"), true)).toBe("?");
+    expect(hintOf(actionById("timeline.shrinkEnd"), true)).toBe("⇧h");
+    expect(hintOf(actionById("app.back"), true)).toBe("Esc");
 
     const arrowOnly: Action = {
       id: "test.arrow",
       label: "Arrow",
-      shortcut: "ArrowDown",
+      defaultKeys: ["ArrowDown"],
       group: "view",
       when: () => true,
       run: () => {},
@@ -768,15 +856,28 @@ describe("hintOf", () => {
 
   it("prints nothing for an action the keyboard cannot reach", () => {
     expect(hintOf(actionById("project.create"), true)).toBeUndefined();
+    // The one action that lost a key in §6.4, and the palette entry it kept.
+    expect(hintOf(actionById("timeline.schedule"), true)).toBeUndefined();
+  });
+
+  /**
+   * `hintOf` reads the defaults and `hintFor` reads the reader's own, and the two agree
+   * for anybody who has changed nothing — which is what makes the command palette's one
+   * remaining call to `hintOf` honest until §6.5 repoints it.
+   */
+  it("agrees with the effective hint on an unremapped keyboard", () => {
+    for (const action of ACTIONS) {
+      expect(hintFor(action, DEFAULT_BINDINGS, true)).toBe(hintOf(action, true));
+    }
   });
 });
 
 describe("shortcutRows", () => {
+  const rowsOf = (isMac: boolean) => shortcutRows(DEFAULT_BINDINGS, isMac);
+
   it("is derived from the actions the keyboard can reach, not written by hand", () => {
-    const bound = ACTIONS.filter(
-      (action) => action.shortcut !== undefined || action.hint !== undefined,
-    );
-    const rows = shortcutRows(true);
+    const bound = ACTIONS.filter((action) => (action.defaultKeys ?? []).length > 0);
+    const rows = rowsOf(true);
 
     expect(rows).toHaveLength(bound.length);
     for (const action of bound) {
@@ -785,29 +886,43 @@ describe("shortcutRows", () => {
   });
 
   it("carries the palette's row, which the overlay used to draw by hand", () => {
-    expect(shortcutRows(true).find((row) => row.label === "Command palette")).toEqual({
+    expect(rowsOf(true).find((row) => row.label === "Command palette")).toEqual({
       mode: undefined,
       keys: "⌘K",
       label: "Command palette",
     });
-    expect(shortcutRows(false).find((row) => row.label === "Command palette")?.keys).toBe("Ctrl+K");
+    expect(rowsOf(false).find((row) => row.label === "Command palette")?.keys).toBe("Ctrl+K");
+  });
+
+  /**
+   * The `Esc  Close` row `help-overlay.tsx` used to draw by hand under the generated list,
+   * because "Escape is not an action but the way out of whatever is on top of the list".
+   * It is an action now, so the sheet stops having a hand-written half.
+   */
+  it("carries Escape from the registry rather than from the markup", () => {
+    expect(rowsOf(true).find((row) => row.keys === "Esc")?.label).toBe(
+      "Close what is open, then leave",
+    );
   });
 
   it("prints the arrow keys as arrows rather than as DOM key names", () => {
-    const rows = shortcutRows(true);
-    expect(rows.find((row) => row.label === "Move down")?.keys).toBe("j / ↓");
-    expect(rows.find((row) => row.label === "Move up")?.keys).toBe("k / ↑");
+    const rows = rowsOf(true);
+    expect(rows.find((row) => row.label === "Move down")?.keys).toBe("n / ↓");
+    expect(rows.find((row) => row.label === "Move up")?.keys).toBe("p / ↑");
+    expect(rows.find((row) => row.label === "Extend selection down")?.keys).toBe("⇧↓");
   });
 
   it("carries no row for an action the keyboard cannot reach", () => {
-    expect(shortcutRows(true).some((row) => row.label === "New project")).toBe(false);
+    expect(rowsOf(true).some((row) => row.label === "New project")).toBe(false);
   });
 
   it("names the mode of every row, so the help overlay can group them", () => {
-    const rows = shortcutRows(true);
+    const rows = rowsOf(true);
     // Undefined, not "list": the row belongs to both views and the overlay says so.
     expect(rows.find((row) => row.label === "Move down")?.mode).toBeUndefined();
     expect(rows.find((row) => row.label === "Move bar earlier")?.mode).toBe("timeline");
     expect(rows.find((row) => row.label === "Rename ticket")?.mode).toBe("list");
+    expect(rows.find((row) => row.label === "Select row")?.mode).toBe("savedView");
+    expect(rows.find((row) => row.label === "Mark duplicate")?.mode).toBe("triage");
   });
 });

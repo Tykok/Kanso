@@ -4,6 +4,7 @@ import {
   DENSITIES,
   OPEN_TICKET_MODES,
   openTicketMode,
+  SIDEBAR_MODES,
   THEMES,
   type OpenTicketMode,
   type Preferences,
@@ -13,10 +14,12 @@ import {
   DENSITY_HINT,
   DENSITY_LABELS,
   SIDEBAR_HINT,
+  SIDEBAR_MODE_LABELS,
   STATUS_BAR_HINT,
   SYNC_BADGES_HINT,
   THEME_HINT,
   THEME_LABELS,
+  VIEW_CONTROLS_HINT,
 } from "@/lib/preferences-copy";
 import { PreferencePreview } from "@/components/setup/preview";
 import { usePreferences, useSaveOpenTicket, useSavePreferences } from "@/lib/queries";
@@ -82,12 +85,22 @@ export function AppearanceSection() {
           />
         </SettingsField>
 
+        {/*
+          * A `Segmented` and not a `Toggle`, because the sidebar has three modes and
+          * `Toggle` reduces everything to Shown/Hidden. This is also the only control
+          * that reaches `hidden`: the `PanelLeft` buttons swap pinned and hover, and a
+          * button whose third state you discover by pressing it twice is exactly what
+          * this pass exists to remove.
+          */}
         <SettingsField label="Sidebar" hint={SIDEBAR_HINT}>
-          <Toggle
-            bare
+          <Segmented
             label="Sidebar"
-            value={preferences.sidebarVisible}
-            onChange={(sidebarVisible) => set({ sidebarVisible })}
+            value={preferences.sidebarMode}
+            options={SIDEBAR_MODES.map((mode) => ({
+              value: mode,
+              label: SIDEBAR_MODE_LABELS[mode],
+            }))}
+            onChange={(sidebarMode) => set({ sidebarMode })}
           />
         </SettingsField>
 
@@ -106,6 +119,20 @@ export function AppearanceSection() {
             label="Status bar"
             value={preferences.showStatusBar}
             onChange={(showStatusBar) => set({ showStatusBar })}
+          />
+        </SettingsField>
+
+        {/*
+          * A `Toggle` and not three, because the three buttons are one decision: they
+          * are the same intention drawn three times, and a reader who wants Filter but
+          * not Group has a screen problem this setting could not fix.
+          */}
+        <SettingsField label="View controls" hint={VIEW_CONTROLS_HINT}>
+          <Toggle
+            bare
+            label="View controls"
+            value={preferences.showViewControls}
+            onChange={(showViewControls) => set({ showViewControls })}
           />
         </SettingsField>
 

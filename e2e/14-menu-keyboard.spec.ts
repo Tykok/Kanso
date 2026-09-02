@@ -53,9 +53,11 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   await expect(menu).toBeVisible();
   await expect(selected).toContainText(second);
 
-  // Invariant 1 — arrows walk the menu and do NOT reach the window handler in
-  // page.tsx. Without the popover's stopPropagation, each press would also move the
-  // list cursor off `second`.
+  // Invariant 1 — arrows walk the menu and do NOT reach the shell's window handler.
+  // Without the popover's stopPropagation, each press would also move the list cursor off
+  // `second`. The handler moved out of page.tsx and into `use-shell-keys.ts` with §6.2,
+  // which changes nothing here: it is still one `window` listener, and the arrows are
+  // still `ticket.moveDown` / `ticket.moveUp` in the shared bucket.
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await expect(selected).toContainText(second);
@@ -107,6 +109,12 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   const withMenuOpen = await focusSignature();
   expect(withMenuOpen).toBe(baseline);
 
+  // The `⋯` menu's own hints are read off the effective bindings since §6.3
+  // (`useMenuItems`), so this menu prints whatever `e`, `x` and delete are currently bound
+  // to rather than what the registry shipped. Nothing here asserts the strings: the unit
+  // suite owns that claim (`lib/shortcuts.test.ts`), and pinning them here would make
+  // every remap a two-file edit.
+  //
   // Invariant 3 — an entry that opens a dialog leaves a focus-return target that
   // still exists once the popover is gone. The ticket row's own "Rename" is NOT the
   // right exhibit for this, even though it looked like the obvious one: it opens the
@@ -162,7 +170,7 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   expect(afterInlineEdit).toBe("BODY");
 
   // One press, one thing. Enter on a trigger opens that trigger's menu and nothing else:
-  // `page.tsx`'s window listener holds Enter as `ticket.open`, and a trigger that lets the
+  // the shell's window listener holds Enter as `ticket.open`, and a trigger that lets the
   // key through would open its menu *and* the selected ticket's panel behind it. Written
   // when the move to Radix made that reachable — the hand-written trigger opened on the
   // activation click, which `page.tsx` cancelled with its own `preventDefault()`, so the

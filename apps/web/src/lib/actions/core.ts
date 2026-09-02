@@ -5,6 +5,7 @@ import type {
   TicketPriority,
   TicketStatus,
 } from "../api";
+import { claimed, runClaim } from "./claims";
 import { creationSeed } from "../creation-seed";
 import type { PatchInput } from "../queries";
 import { dayKey, laterBy, today, ZOOMS } from "../timeline-geometry";
@@ -116,12 +117,28 @@ const zoomBy = (delta: number) => (ctx: ActionContext) => {
   ctx.setZoom(ZOOMS[Math.min(Math.max(index, 0), ZOOMS.length - 1)]);
 };
 
+/**
+ * The five priorities, in the order they are offered.
+ *
+ * Named here rather than in the two surfaces that list them — the priority pill's menu and
+ * the palette `⇧p` opens — because the order is a fact about the vocabulary and a second
+ * copy would be a second answer to "which comes first". `STATUS_ACTIONS` stays in
+ * `pills.tsx`: `1`–`6` already pin that order in the registry itself.
+ */
+export const PRIORITY_ACTIONS: readonly string[] = [
+  "ticket.priority.none",
+  "ticket.priority.low",
+  "ticket.priority.medium",
+  "ticket.priority.high",
+  "ticket.priority.urgent",
+];
+
 export const coreActions: readonly Action[] = [
   {
     id: "ticket.create",
     writes: true,
     label: "New ticket",
-    shortcut: "c",
+    defaultKeys: ["c"],
     group: "ticket",
     when: () => true,
     run: (ctx) => ctx.open("composer"),
@@ -129,10 +146,29 @@ export const coreActions: readonly Action[] = [
   {
     id: "ticket.open",
     label: "Open ticket",
-    shortcut: "Enter",
+    defaultKeys: ["Enter"],
     group: "ticket",
     when: hasSelection,
     run: (ctx) => ctx.open("detail"),
+  },
+  /**
+   * `⇧↵`, which could not be an action until a chord could hold a modifier.
+   *
+   * `event.key` for Shift+Enter is `"Enter"` — the same string `ticket.open` dispatches on
+   * — so the old registry had no way to tell the two apart and `app/page.tsx` read the
+   * modifier in its own handler. That handler is gone; this is where it went.
+   *
+   * Claimed rather than run from the context, because opening a ticket's own page needs
+   * the router and `ActionContext` deliberately has none — see `./claims.ts`. The page
+   * that draws the rows is the page that can navigate to one.
+   */
+  {
+    id: "ticket.openInPage",
+    label: "Open ticket in its own page",
+    defaultKeys: ["Shift+Enter"],
+    group: "ticket",
+    when: (ctx) => hasSelection(ctx) && claimed("ticket.openInPage"),
+    run: () => runClaim("ticket.openInPage"),
   },
   // The one existing action the split had to claim: renaming edits a row of the list
   // in place, and the chart has no row to edit. Left shared, `e` on the timeline would
@@ -142,7 +178,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.rename",
     writes: true,
     label: "Rename ticket",
-    shortcut: "e",
+    defaultKeys: ["e"],
     mode: "list",
     group: "ticket",
     when: (ctx) => hasSelection(ctx) && ctx.view === "list",
@@ -152,7 +188,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.archive",
     writes: true,
     label: "Archive / unarchive ticket",
-    shortcut: "x",
+    defaultKeys: ["x"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => ctx.patchTicket({ id: ticket.id, archived: !ticket.archived })),
@@ -168,7 +204,7 @@ export const coreActions: readonly Action[] = [
   {
     id: "ticket.moveDown",
     label: "Move down",
-    shortcut: "j ArrowDown",
+    defaultKeys: ["n", "ArrowDown"],
     group: "ticket",
     when: (ctx) => ctx.tickets.length > 0,
     run: (ctx) => ctx.move(1),
@@ -176,7 +212,7 @@ export const coreActions: readonly Action[] = [
   {
     id: "ticket.moveUp",
     label: "Move up",
-    shortcut: "k ArrowUp",
+    defaultKeys: ["p", "ArrowUp"],
     group: "ticket",
     when: (ctx) => ctx.tickets.length > 0,
     run: (ctx) => ctx.move(-1),
@@ -188,7 +224,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.status.backlog",
     writes: true,
     label: "Set status: Backlog",
-    shortcut: "1",
+    defaultKeys: ["1"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => {
@@ -200,7 +236,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.status.todo",
     writes: true,
     label: "Set status: Todo",
-    shortcut: "2",
+    defaultKeys: ["2"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => {
@@ -212,7 +248,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.status.in_progress",
     writes: true,
     label: "Set status: In progress",
-    shortcut: "3",
+    defaultKeys: ["3"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => {
@@ -224,7 +260,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.status.in_review",
     writes: true,
     label: "Set status: In review",
-    shortcut: "4",
+    defaultKeys: ["4"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => {
@@ -236,7 +272,7 @@ export const coreActions: readonly Action[] = [
     id: "ticket.status.done",
     writes: true,
     label: "Set status: Done",
-    shortcut: "5",
+    defaultKeys: ["5"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => {
@@ -248,13 +284,36 @@ export const coreActions: readonly Action[] = [
     id: "ticket.status.canceled",
     writes: true,
     label: "Set status: Canceled",
-    shortcut: "6",
+    defaultKeys: ["6"],
     group: "ticket",
     when: hasSelection,
     run: onSelected((ctx, ticket) => {
       ctx.patchTicket({ id: ticket.id, status: "canceled" satisfies TicketStatus });
       ctx.close();
     }),
+  },
+
+  /**
+   * One key for five priorities, through the palette.
+   *
+   * The five below have no keys and are not going to get any: `1`–`6` are already the
+   * status vocabulary, and a second run of digits over the same rows would be the kind of
+   * thing a reader has to look up every time. So `⇧p` asks *which*, in the list the app
+   * already has — the same trick `startLink` uses for a predecessor, and for the same
+   * reason its comment gives: nothing in this interface is modal, and one gesture is not
+   * worth teaching a second way of being in a state.
+   *
+   * Claimed, because the palette's rows are published by the page (`PageShell.commands`)
+   * and the shell has no business assembling a list about a ticket it does not hold.
+   */
+  {
+    id: "ticket.priority.pick",
+    writes: true,
+    label: "Set priority…",
+    defaultKeys: ["Shift+p"],
+    group: "ticket",
+    when: (ctx) => hasSelection(ctx) && claimed("ticket.priority.pick"),
+    run: () => runClaim("ticket.priority.pick"),
   },
 
   {
@@ -440,13 +499,40 @@ export const coreActions: readonly Action[] = [
   {
     id: "view.filter",
     label: "Filter tickets",
-    shortcut: "/",
+    defaultKeys: ["/"],
     group: "view",
     when: () => true,
     run: (ctx) => {
       ctx.close();
       ctx.focusFilter();
     },
+  },
+  /**
+   * List → board → timeline → list, on one chord.
+   *
+   * The three drawings had no key at all: the only way between them was the segmented
+   * control in the top bar. One key that cycles rather than three that each land
+   * somewhere, because there are exactly three and a reader pressing it twice has learned
+   * the whole control — where `Mod+1/2/3` would spend three chords on a choice nobody
+   * makes from memory.
+   *
+   * **`Mod+v` deliberately shadows paste**, and this is the note asking the next reader
+   * not to "fix" it. Over a list of rows paste did nothing at all; inside every input,
+   * textarea and document the typing guard stands the dispatcher down, so pasting still
+   * works everywhere pasting means something. It is the only chord in the set that
+   * overlays a system reflex, it is argued in §11 of the design, and bindings are data —
+   * so it is one line here and one click in Settings if it proves wrong in use.
+   *
+   * Claimed: only the route that draws all three may cycle them, and `ctx.view` is a store
+   * value every route shares — cycling it from `/trash` would set a value nothing draws.
+   */
+  {
+    id: "view.cycleDrawing",
+    label: "Next drawing: list, board, timeline",
+    defaultKeys: ["Mod+v"],
+    group: "view",
+    when: () => claimed("view.cycleDrawing"),
+    run: () => runClaim("view.cycleDrawing"),
   },
 
   /*
@@ -458,7 +544,7 @@ export const coreActions: readonly Action[] = [
     id: "timeline.shiftEarlier",
     writes: true,
     label: "Move bar earlier",
-    shortcut: "h",
+    defaultKeys: ["h"],
     mode: "timeline",
     group: "ticket",
     when: (ctx) =>
@@ -469,7 +555,7 @@ export const coreActions: readonly Action[] = [
     id: "timeline.shiftLater",
     writes: true,
     label: "Move bar later",
-    shortcut: "l",
+    defaultKeys: ["l"],
     mode: "timeline",
     group: "ticket",
     when: (ctx) =>
@@ -480,7 +566,7 @@ export const coreActions: readonly Action[] = [
     id: "timeline.shrinkEnd",
     writes: true,
     label: "Pull the end in",
-    shortcut: "H",
+    defaultKeys: ["Shift+h"],
     mode: "timeline",
     group: "ticket",
     when: (ctx) => canPlan(ctx) && onTimeline(ctx) && ctx.selected?.due !== undefined,
@@ -490,7 +576,7 @@ export const coreActions: readonly Action[] = [
     id: "timeline.growEnd",
     writes: true,
     label: "Push the end out",
-    shortcut: "L",
+    defaultKeys: ["Shift+l"],
     mode: "timeline",
     group: "ticket",
     when: (ctx) => canPlan(ctx) && onTimeline(ctx) && ctx.selected?.due !== undefined,
@@ -500,7 +586,13 @@ export const coreActions: readonly Action[] = [
     id: "timeline.schedule",
     writes: true,
     label: "Schedule this ticket",
-    shortcut: "p",
+    /*
+     * No key, on the maintainer's ruling (§6.4). It is the one action in the registry that
+     * gets quieter in this pass, and it had to lose something: `p` is now "previous" in
+     * every drawing, and scheduling a bar is a once-per-ticket gesture where moving the
+     * cursor is a once-per-row one. Both its other doors — the palette and the row menu —
+     * are untouched, which is the difference between quieter and gone.
+     */
     mode: "timeline",
     group: "ticket",
     when: (ctx) =>
@@ -516,7 +608,7 @@ export const coreActions: readonly Action[] = [
     id: "timeline.unschedule",
     writes: true,
     label: "Send back to the tray",
-    shortcut: "u",
+    defaultKeys: ["u"],
     mode: "timeline",
     group: "ticket",
     when: (ctx) =>
@@ -527,7 +619,7 @@ export const coreActions: readonly Action[] = [
   {
     id: "timeline.zoomOut",
     label: "Zoom out",
-    shortcut: "[",
+    defaultKeys: ["["],
     mode: "timeline",
     group: "view",
     when: onTimeline,
@@ -536,7 +628,7 @@ export const coreActions: readonly Action[] = [
   {
     id: "timeline.zoomIn",
     label: "Zoom in",
-    shortcut: "]",
+    defaultKeys: ["]"],
     mode: "timeline",
     group: "view",
     when: onTimeline,
@@ -545,7 +637,7 @@ export const coreActions: readonly Action[] = [
   {
     id: "timeline.today",
     label: "Recentre on today",
-    shortcut: "t",
+    defaultKeys: ["t"],
     mode: "timeline",
     group: "view",
     // No selection needed: finding today again is about the viewport, not a ticket.
@@ -556,7 +648,7 @@ export const coreActions: readonly Action[] = [
     id: "timeline.link",
     writes: true,
     label: "Add a dependency",
-    shortcut: "d",
+    defaultKeys: ["d"],
     mode: "timeline",
     group: "ticket",
     when: (ctx) => canPlan(ctx) && onTimeline(ctx) && hasSelection(ctx) && ctx.tickets.length > 1,
@@ -566,8 +658,10 @@ export const coreActions: readonly Action[] = [
     id: "timeline.unlink",
     writes: true,
     label: "Remove a dependency",
-    // `D`, the `event.key` of Shift+d, so `d` and its inverse are one keystroke apart.
-    shortcut: "D",
+    // One keystroke apart from `d`, and now spelled as one: `"Shift+d"` where this used to
+    // be `"D"` — the `event.key` of the same press. See `./chords.ts` on why the case of a
+    // letter is no longer where a modifier hides.
+    defaultKeys: ["Shift+d"],
     mode: "timeline",
     group: "ticket",
     // It always opens the picker, even with a single predecessor: one key doing two
@@ -584,10 +678,13 @@ export const coreActions: readonly Action[] = [
   {
     id: "app.palette",
     label: "Command palette",
-    // No `shortcut`: ⌘K is intercepted in `page.tsx` ahead of the registry, and `k` here
-    // would collide with `ticket.moveUp`. `hint` is display only, which is what lets the
-    // menus print a key the registry does not dispatch.
-    hint: "Mod+K",
+    /*
+     * A binding like any other now. It was `hint: "Mod+K"` — printed, never dispatched —
+     * and two files intercepted `⌘K` ahead of the registry, because a bare
+     * `KeyboardEvent.key` could not hold a modifier and `k` alone was `ticket.moveUp`.
+     * With chords there is one entry, one dispatcher and nothing to keep in step.
+     */
+    defaultKeys: ["Mod+k"],
     group: "app",
     when: () => true,
     run: (ctx) => ctx.open("palette"),
@@ -595,7 +692,7 @@ export const coreActions: readonly Action[] = [
   {
     id: "app.settings",
     label: "Settings",
-    shortcut: ",",
+    defaultKeys: [","],
     group: "app",
     when: () => true,
     run: (ctx) => ctx.open("settings"),
@@ -603,10 +700,34 @@ export const coreActions: readonly Action[] = [
   {
     id: "app.help",
     label: "Keyboard shortcuts",
-    shortcut: "?",
+    defaultKeys: ["?"],
     group: "app",
     when: () => true,
     run: (ctx) => ctx.open("help"),
+  },
+  /**
+   * Close what is open, then leave. One gesture with two meanings, in the order a reader
+   * expects — and one implementation for the two ways in, because `topbar.tsx` draws a `×`
+   * that runs the same thing.
+   *
+   * The one action the shell runs itself rather than through `run`. Leaving a page needs
+   * the router, the overlay state and the page's own claim on `Escape`
+   * (`PageShell.onEscape`, which is how a saved view drops a selection *between* "close"
+   * and "leave") — three things `ActionContext` does not carry and should not, since
+   * thirty-odd other actions would then be able to reach a router that means nothing to
+   * them. `use-shell-keys.ts` reads this action's binding and calls its own `leave`.
+   *
+   * It is in the registry all the same, and that is the point: `?` lists `Escape` from the
+   * same table as every other key instead of drawing it by hand, and §6.5 can rebind it.
+   * `run` is empty because nobody dispatches through it — the comment is the contract.
+   */
+  {
+    id: "app.back",
+    label: "Close what is open, then leave",
+    defaultKeys: ["Escape"],
+    group: "app",
+    when: () => true,
+    run: () => {},
   },
   {
     id: "app.logout",

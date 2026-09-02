@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ACCENTS, DENSITIES, THEMES, type Preferences } from "@/lib/api";
-import { DENSITY_LABELS, THEME_LABELS } from "@/lib/preferences-copy";
+import { ACCENTS, DENSITIES, SIDEBAR_MODES, THEMES, type Preferences } from "@/lib/api";
+import { DENSITY_LABELS, SIDEBAR_MODE_LABELS, THEME_LABELS } from "@/lib/preferences-copy";
 import { useMe, usePreferences, useSavePreferences, useSyncStatus } from "@/lib/queries";
 import { canConfigure as configures } from "@/lib/seat";
 import { Backdrop } from "@/components/overlays";
@@ -51,7 +51,8 @@ export function Segmented<T extends string>({
 }
 
 /**
- * Shown/Hidden, the one either/or every panel toggle reduces to. `bare` drops the
+ * Shown/Hidden, the either/or most panel settings reduce to — but no longer the sidebar,
+ * which has three modes and so reaches for [Segmented] directly. `bare` drops the
  * visible label: the compact `,` panel wants the row to carry it, but
  * `AppearanceSection` already draws a label and a hint of its own next to the
  * control, through `SettingsField` — with both, the name would be printed twice.
@@ -183,11 +184,21 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
             />
           </div>
 
-          <Toggle
-            label="Sidebar"
-            value={preferences.sidebarVisible}
-            onChange={(sidebarVisible) => set({ sidebarVisible })}
-          />
+          {/* The row `Toggle` would have drawn, drawn by hand: three modes do not fit
+              through a Shown/Hidden control, and the `,` panel has no room for a hint
+              explaining what the two quiet ones do — `/settings` carries that copy. */}
+          <div className="flex min-h-[26px] items-center gap-3">
+            <span className="flex-1 text-13">Sidebar</span>
+            <Segmented
+              label="Sidebar"
+              value={preferences.sidebarMode}
+              options={SIDEBAR_MODES.map((mode) => ({
+                value: mode,
+                label: SIDEBAR_MODE_LABELS[mode],
+              }))}
+              onChange={(sidebarMode) => set({ sidebarMode })}
+            />
+          </div>
           <Toggle
             label="Sync badges"
             value={preferences.showSyncBadges}
@@ -197,6 +208,11 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
             label="Status bar"
             value={preferences.showStatusBar}
             onChange={(showStatusBar) => set({ showStatusBar })}
+          />
+          <Toggle
+            label="View controls"
+            value={preferences.showViewControls}
+            onChange={(showViewControls) => set({ showViewControls })}
           />
 
           {save.isError && (
@@ -211,6 +227,19 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           away without leaving the list; account, people and connections are a
           page because they are forms, and a form in a transient overlay loses
           what you typed the moment something else takes focus.
+
+          §6.5's shortcuts table is not here either, and it is the clearest case of
+          the rule rather than an exception to it. Three reasons, any one of them
+          enough. It is sixty-nine rows across four columns with a search box over
+          them — this panel is 70vh of a column narrower than the table's own
+          header. Its interactive part is a *key capture*, inside an overlay whose
+          own `Escape` closes it: the two gestures collide on the one key that has
+          to mean "cancel this capture" and does not, so a reader escaping a wrong
+          combination would lose the panel instead. And a keyboard is not judged by
+          looking at it, which is the whole argument for putting appearance in a
+          transient overlay — you judge it by pressing the keys somewhere else, and
+          the place you can do that from is a page you can leave behind. So the
+          panel points at it, and that is the entire integration.
         */}
         <div className="flex flex-col gap-2.5">
           <div className="text-11 font-medium uppercase tracking-wide text-faint">Instance</div>
@@ -218,8 +247,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           <div className="flex min-h-[26px] items-center gap-3">
             <span className="text-11 text-faint">
               {canReconfigure
-                ? "Account, people and connections."
-                : "Account and your Notion identity."}
+                ? "Shortcuts, account, people and connections."
+                : "Shortcuts, account and your Notion identity."}
             </span>
             <Button asChild variant="outline" size="sm">
               <Link href="/settings" onClick={onClose}>

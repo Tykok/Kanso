@@ -1,24 +1,25 @@
 "use client";
 
-import { shortcutRows } from "@/lib/actions";
 import { isMac } from "@/lib/platform";
-import type { View } from "@/store/ui";
+import { shortcutRows } from "@/lib/shortcuts";
+import { useBindings } from "@/lib/use-bindings";
 import { Backdrop } from "./overlays";
+import { SHORTCUT_SECTIONS } from "./shortcut-sections";
 import { Button } from "./ui/button";
 import { Kbd } from "./ui/kbd";
 
 /**
- * The three sections, in the order they are shown. A key that works everywhere is
- * listed once at the top rather than repeated under both views.
+ * `?`, reading the **effective** bindings.
+ *
+ * It used to read the registry's defaults, which was the same thing right up until a
+ * reader could change a key — and this is the one screen whose whole purpose is to say
+ * which keys exist, so a sheet describing a keyboard the reader does not have is worse
+ * than no sheet at all. `useBindings()` is the same merge the dispatcher resolves against,
+ * so the two cannot disagree.
  */
-const SHORTCUT_SECTIONS: { mode: View | undefined; title: string }[] = [
-  { mode: undefined, title: "Anywhere" },
-  { mode: "list", title: "In the list" },
-  { mode: "timeline", title: "On the timeline" },
-];
-
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
-  const rows = shortcutRows(isMac());
+  const { keys } = useBindings();
+  const rows = shortcutRows(keys, isMac());
 
   return (
     <Backdrop onClose={onClose}>
@@ -37,7 +38,7 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-4 pb-4">
         {/*
-          Grouped by mode, because a flat list would offer the chart's `h` `l` `H` `L`
+          Grouped by mode, because a flat list would offer the chart's `h` `l` `⇧h` `⇧l`
           to somebody in the list, where those keys resolve to nothing at all. A
           section with no rows is not printed: an empty heading reads as a gap.
         */}
@@ -55,17 +56,6 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
                     <span className="text-13 text-muted-foreground">{row.label}</span>
                   </div>
                 ))}
-                {/*
-                  The one key the registry cannot own as a shortcut: Escape is not an
-                  action but the way out of whatever is on top of the list. ⌘K used to be
-                  drawn here beside it and now comes from `app.palette`'s `hint`.
-                */}
-                {section.mode === undefined && (
-                  <div className="contents">
-                    <Kbd className="justify-self-start">Esc</Kbd>
-                    <span className="text-13 text-muted-foreground">Close</span>
-                  </div>
-                )}
               </div>
             </div>
           );

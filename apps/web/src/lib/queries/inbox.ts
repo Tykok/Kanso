@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   inboxApi,
   notionImportApi,
@@ -28,6 +28,18 @@ export const useInbox = (tab: InboxTab) =>
     // fails without anybody's keystroke — so this one asks again rather than waiting
     // for a navigation.
     refetchInterval: 60_000,
+    /**
+     * All four counts ride on whichever tab was asked for, so a switch with no
+     * placeholder leaves the strip with no data at all and the page falls back to four
+     * zeros — the first click on `Failures` blanks the very number it was clicking
+     * towards, then fills it back in a moment later. Keeping the previous tab's counts
+     * is the honest thing to show for the length of the request: they are the last true
+     * answer this client had, and a zero is not a stale answer but a false one. The
+     * alternative — a spinner or a dash in place of each count — costs the reader the
+     * numbers as well, and buys nothing, because the counts are the same four numbers
+     * whichever tab returns them.
+     */
+    placeholderData: keepPreviousData,
   });
 
 /**

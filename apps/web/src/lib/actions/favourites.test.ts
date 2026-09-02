@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ACTIONS, resolveShortcut, type ActionContext } from "./index";
+import { ACTIONS, type ActionContext, type ShortcutMode } from "./index";
+import { DEFAULT_MERGE, resolveShortcut } from "../shortcuts";
+
+const resolve = (chord: string, mode: ShortcutMode) =>
+  resolveShortcut(chord, mode, DEFAULT_MERGE.index);
 import { favouriteActions, favouriteTarget } from "./favourites";
 
 /** Only what the one favourite action reads; everything else throws if it is reached. */
@@ -59,21 +63,31 @@ const toggle = () => {
 
 describe("the key the favourite gesture answers", () => {
   /**
-   * The whole reason `s` and not `f`: `f` is `organise.sortBy` and `F` is
-   * `organise.addFilter`, both in the shared bucket, and `indexActions` throws at module
-   * load on a second claim. Importing this file at all is most of the proof that `s` was
-   * free; these say which action it now belongs to, in every mode, so that a later slice
-   * claiming it fails here with a sentence rather than by quietly winning the bucket.
+   * The whole reason `s` and not `f`: when this was written `f` was `organise.sortBy` and
+   * `F` was `organise.addFilter`, both in the shared bucket, and `indexActions` throws at
+   * module load on a second claim. Importing this file at all is most of the proof that
+   * `s` was free; these say which action it now belongs to, in every mode, so that a later
+   * slice claiming it fails here with a sentence rather than by quietly winning the
+   * bucket.
    */
   it("is `s`, in every mode, and it is the toggle", () => {
-    expect(resolveShortcut("s", "list")?.id).toBe("favourite.toggle");
-    expect(resolveShortcut("s", "board")?.id).toBe("favourite.toggle");
-    expect(resolveShortcut("s", "timeline")?.id).toBe("favourite.toggle");
+    expect(resolve("s", "list")?.id).toBe("favourite.toggle");
+    expect(resolve("s", "board")?.id).toBe("favourite.toggle");
+    expect(resolve("s", "timeline")?.id).toBe("favourite.toggle");
+    expect(resolve("s", "savedView")?.id).toBe("favourite.toggle");
+    expect(resolve("s", "triage")?.id).toBe("favourite.toggle");
   });
 
-  it("did not take a key something else already answered", () => {
-    expect(resolveShortcut("f", "list")?.id).toBe("organise.sortBy");
-    expect(resolveShortcut("F", "list")?.id).toBe("organise.addFilter");
+  /**
+   * §6.4 respelled the two keys `s` was chosen around — `Mod+o` orders and `Mod+f` filters
+   * now — so `f` and `F` reach nothing at all, and `s` stayed put anyway. A key that works
+   * is not moved for a better mnemonic: muscle memory is the thing this pass protects.
+   */
+  it("kept its key when the two that crowded it gave theirs up", () => {
+    expect(resolve("f", "list")).toBeUndefined();
+    expect(resolve("F", "list")).toBeUndefined();
+    expect(resolve("Mod+o", "savedView")?.id).toBe("organise.sortBy");
+    expect(resolve("Mod+f", "list")?.id).toBe("organise.addFilter");
   });
 
   it("is in the composed registry, so the palette lists it", () => {

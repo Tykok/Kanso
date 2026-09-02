@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { Favourite, FavouriteKind, FavouriteTarget } from "@/lib/api";
+import { currentSelection, isCurrentRecord, isCurrentScope } from "@/lib/nav";
 import { useFavourites, useToggleFavourite } from "@/lib/queries";
 import { useUi, type Scope } from "@/store/ui";
 import { GroupLabel } from "./ui/group-label";
@@ -61,8 +62,30 @@ const KIND_NAME: Record<FavouriteKind, string> = {
 export function Favourites({ onNavigate }: { onNavigate?: () => void }) {
   const { scope, setScope, showArchived } = useUi();
   const pathname = usePathname();
+  const router = useRouter();
   const favourites = useFavourites();
   const { mutate: flip } = useToggleFavourite();
+
+  /**
+   * The same answer the rest of the column reads, and this section used to hold a fourth
+   * copy of the question: a pinned team compared itself to `useUi().scope` and nothing
+   * else, so on `/workload` it lit a row about a page that was not showing that team —
+   * and lit it *beside* the `Workload` row, which is the two-rows complaint exactly.
+   */
+  const selection = currentSelection(pathname, scope);
+
+  /**
+   * A pinned team or project navigates, like the tree rows below it now do.
+   *
+   * It did not, and `OrganiseShell` passed no `onNavigate` either, so clicking a pinned
+   * team from `/workload` set a scope nothing drew and left the reader where they were.
+   * A shortcut that goes nowhere is the one thing a shortcut may not be.
+   */
+  const goTo = (target: Scope) => {
+    setScope(target);
+    if (pathname !== "/") router.push("/");
+    onNavigate?.();
+  };
 
   /**
    * Filtered here rather than asked for: the server sends every pin with its `archived`
@@ -85,9 +108,12 @@ export function Favourites({ onNavigate }: { onNavigate?: () => void }) {
       {rows.map((favourite) => {
         const route = routeOf(favourite);
         const target = scopeOf(favourite);
+        // Record-level for the two kinds that are pages, scope-level for the two that are
+        // not — the same split `routeOf` and `scopeOf` above already draw, now answered by
+        // the one function every other row in the column asks.
         const current = route
-          ? pathname === route
-          : scope.kind !== "all" && scope.kind === favourite.kind && scope.id === favourite.id;
+          ? isCurrentRecord(pathname, route)
+          : target !== undefined && isCurrentScope(target, selection);
 
         const label = favourite.label || "…";
 
@@ -128,10 +154,7 @@ export function Favourites({ onNavigate }: { onNavigate?: () => void }) {
                   favourite.archived && "opacity-55",
                 )}
                 aria-current={current}
-                onClick={() => {
-                  if (target) setScope(target);
-                  onNavigate?.();
-                }}
+                onClick={() => target && goTo(target)}
                 title={`${label} — ${KIND_NAME[favourite.kind]}`}
               >
                 <Glyph kind={favourite.kind} />

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Ticket, TicketStatus } from "../api";
 import { useBoard } from "@/store/board";
-import { resolveShortcut, type ActionContext } from "./index";
+import { type ActionContext, type ShortcutMode } from "./index";
+import { DEFAULT_MERGE, resolveShortcut } from "../shortcuts";
+
+const resolve = (chord: string, mode: ShortcutMode) =>
+  resolveShortcut(chord, mode, DEFAULT_MERGE.index);
 import { boardActions, boardKeysAwaitingTheGuard } from "./board";
 
 function ticket(identifier: string, status: TicketStatus): Ticket {
@@ -68,19 +72,19 @@ const actionById = (id: string) => {
 
 describe("the board's keys against the shared registry", () => {
   /**
-   * `h` and `l` are the two the board may have today: nothing owns them in the shared
+   * `h` and `l` are the two the board may have outright: nothing owns them in the shared
    * bucket, so claiming them for `board` shadows nothing. The chart owns its own pair and
    * must keep them, which is the point of asking per mode rather than globally.
    */
   it("claims the column keys on the board without taking them from the chart", () => {
-    expect(resolveShortcut("h", "board")?.id).toBe("board.columnLeft");
-    expect(resolveShortcut("l", "board")?.id).toBe("board.columnRight");
-    expect(resolveShortcut("ArrowLeft", "board")?.id).toBe("board.columnLeft");
+    expect(resolve("h", "board")?.id).toBe("board.columnLeft");
+    expect(resolve("l", "board")?.id).toBe("board.columnRight");
+    expect(resolve("ArrowLeft", "board")?.id).toBe("board.columnLeft");
 
-    expect(resolveShortcut("h", "timeline")?.id).toBe("timeline.shiftEarlier");
-    expect(resolveShortcut("l", "timeline")?.id).toBe("timeline.shiftLater");
+    expect(resolve("h", "timeline")?.id).toBe("timeline.shiftEarlier");
+    expect(resolve("l", "timeline")?.id).toBe("timeline.shiftLater");
     // Nothing owns `h` in the list, and the board taking it must not have changed that.
-    expect(resolveShortcut("h", "list")).toBeUndefined();
+    expect(resolve("h", "list")).toBeUndefined();
   });
 
   /**
@@ -90,14 +94,14 @@ describe("the board's keys against the shared registry", () => {
    * to walk, so the shared `j` would move a cursor nothing draws. The guard still refuses
    * by default and now carries these three ids as a written-down exception.
    */
-  it("answers j, k and ↵ itself, and leaves the list's own alone", () => {
-    expect(resolveShortcut("j", "board")?.id).toBe("board.moveDown");
-    expect(resolveShortcut("k", "board")?.id).toBe("board.moveUp");
-    expect(resolveShortcut("Enter", "board")?.id).toBe("board.open");
+  it("answers n, p and ↵ itself, and leaves the list's own alone", () => {
+    expect(resolve("n", "board")?.id).toBe("board.moveDown");
+    expect(resolve("p", "board")?.id).toBe("board.moveUp");
+    expect(resolve("Enter", "board")?.id).toBe("board.open");
 
     // The shared entries are untouched: shadowing is per mode, not a reassignment.
-    expect(resolveShortcut("j", "list")?.id).toBe("ticket.moveDown");
-    expect(resolveShortcut("Enter", "list")?.id).toBe("ticket.open");
+    expect(resolve("n", "list")?.id).toBe("ticket.moveDown");
+    expect(resolve("Enter", "list")?.id).toBe("ticket.open");
 
     expect(boardActions.map((action) => action.id)).toEqual([
       "board.columnLeft",
@@ -114,11 +118,11 @@ describe("the board's keys against the shared registry", () => {
    * the thing this split was meant to prevent.
    */
   it("borrows the six status keys rather than re-registering them", () => {
-    expect(resolveShortcut("1", "board")?.id).toBe("ticket.status.backlog");
-    expect(resolveShortcut("6", "board")?.id).toBe("ticket.status.canceled");
+    expect(resolve("1", "board")?.id).toBe("ticket.status.backlog");
+    expect(resolve("6", "board")?.id).toBe("ticket.status.canceled");
     expect(
       [...boardActions, ...boardKeysAwaitingTheGuard].some((action) =>
-        /^[1-6]$/.test(action.shortcut ?? ""),
+        (action.defaultKeys ?? []).some((chord) => /^[1-6]$/.test(chord)),
       ),
     ).toBe(false);
   });

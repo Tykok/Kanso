@@ -9,11 +9,15 @@ test.beforeAll(seedInstance);
  * The maintainer's ruling stands: below 720px, navigation is a hamburger opening a
  * 288px off-canvas drawer (`task-9-reference.md`'s RULING), not the three-tab bar
  * the newer mobile mockups draw. `Sidebar`'s own copy is still in the document at
- * this width (`page.tsx`'s `contents max-[720px]:hidden` wrapper only hides it) —
- * the drawer, reusing `<Sidebar>` verbatim rather than a second nav tree, is the
- * only way back to it. Nothing exercised any of this until now: 129 unit tests and
- * 16 prior e2e scenarios never opened it once. 390×844 is the mobile mockups' own
+ * this width (`shell/sidebar-frame.tsx`'s `contents max-[720px]:hidden` wrapper only
+ * hides it) — the drawer, reusing `<Sidebar>` verbatim rather than a second nav tree,
+ * is the only way back to it. Nothing exercised any of this until now: 129 unit tests
+ * and 16 prior e2e scenarios never opened it once. 390×844 is the mobile mockups' own
  * frame size, not a number invented for this test.
+ *
+ * The drawer used to be mounted three times, once per shell, and not at all on the four
+ * routes that had none — so under 720px `/trash` and `/docs` had no navigation whatever.
+ * `shell/topbar.tsx` mounts it once, which the second half of this scenario is about.
  */
 test("scenario 16 — the mobile drawer traps focus, reaches a team, and closes by navigation, scrim and Escape", async ({
   browser,
@@ -81,4 +85,26 @@ test("scenario 16 — the mobile drawer traps focus, reaches a team, and closes 
   await page.keyboard.press("Escape");
   await expect(page.locator("#mobile-nav-drawer")).toHaveCount(0);
   await expect(trigger).toBeFocused();
+
+  /**
+   * And it is there on a destination too, which it was not before.
+   *
+   * `/trash` rendered no shell at all, so under 720px it had neither the column nor the
+   * `☰` that reaches it: the reader who tapped Trash on a phone had no navigation left on
+   * the screen and no way back but the browser's own button. The drawer is the shell's
+   * now, so every route in the group has it.
+   */
+  await page.goto("/trash");
+  await expect(page.getByRole("heading", { name: "Trash and archives", level: 1 })).toBeVisible();
+  const onTrash = page.getByTestId("mobile-nav-trigger");
+  await expect(onTrash).toBeVisible();
+  await onTrash.click();
+  const reopened = page.locator("#mobile-nav-drawer");
+  await expect(reopened).toBeVisible();
+  await reopened.getByRole("button", { name: team, exact: true }).click();
+  // Picking a subject from a destination navigates as well as scoping — a row that
+  // changed state without moving is the click this pass exists to fix — so the drawer
+  // closes and the list it named is what is behind it.
+  await expect(page.locator("#mobile-nav-drawer")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: team, level: 1 })).toBeVisible();
 });

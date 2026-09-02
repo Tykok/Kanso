@@ -58,13 +58,35 @@ export function SearchPreview({ row, projects }: { row?: SearchRow; projects: Pr
         </>
       )}
 
-      {row.kind === "doc" && (
+      {/*
+        * The two kinds of document, and the pane's job is to say which one is highlighted
+        * before ↵ is pressed rather than after. The kicker names the destination — "In
+        * Kanso" against "Notion page" — and the reference prints its url, which is both
+        * the only detail it has and the plainest possible statement that ↵ opens a tab
+        * somewhere else. A page prints when it was last edited instead: it is what a
+        * reader deciding between two similarly-titled documents of their own actually
+        * asks, and `DocPage` carries it without a second request.
+        */}
+      {row.kind === "page" && (
         <>
-          <span className="text-11 text-faint">Notion page</span>
-          <span className="text-15 font-medium tracking-tight text-pretty">
-            {row.doc.title ?? row.doc.notionPageId}
+          <span className="text-11 text-faint">Document · In Kanso</span>
+          <span className="text-15 font-medium tracking-tight text-pretty">{row.page.title}</span>
+          {/* The date and not `editedLabel`'s "3 days ago": that one needs a clock passed
+              in so the server and the first client render agree, and the palette has no
+              clock to pass. A date is the same fact without the hydration argument. */}
+          <span className="text-12 text-muted-foreground">
+            Edited {row.page.updatedAt.slice(0, 10)}
           </span>
-          <span className="text-12 break-all text-muted-foreground">{row.doc.url}</span>
+        </>
+      )}
+
+      {row.kind === "notionRef" && (
+        <>
+          <span className="text-11 text-faint">Notion page · Opens in Notion</span>
+          <span className="text-15 font-medium tracking-tight text-pretty">
+            {row.notionRef.title ?? row.notionRef.notionPageId}
+          </span>
+          <span className="text-12 break-all text-muted-foreground">{row.notionRef.url}</span>
         </>
       )}
 

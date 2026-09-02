@@ -309,6 +309,19 @@ export type Density = (typeof DENSITIES)[number];
 export const OPEN_TICKET = ["panel", "page"] as const;
 export type OpenTicket = (typeof OPEN_TICKET)[number];
 
+/**
+ * How much window the sidebar is allowed to take, in the order the segmented control
+ * draws them: most present to least.
+ *
+ * Three states rather than the boolean this replaces, because "shown" and "hidden" were
+ * never the two things a reader wanted to choose between — the third is a column that is
+ * out of the way until you reach for it, revealed by a 12px hot zone down the left edge.
+ * `hidden` drops the hot zone too, and is reachable only from Appearance: a control whose
+ * third state you discover by pressing it twice is what this pass exists to remove.
+ */
+export const SIDEBAR_MODES = ["pinned", "hover", "hidden"] as const;
+export type SidebarMode = (typeof SIDEBAR_MODES)[number];
+
 export type Preferences = {
   theme: Theme;
   accent: Accent;
@@ -321,9 +334,32 @@ export type Preferences = {
    * without changing it — the preference is the default, not the only way through.
    */
   openTicket: OpenTicket;
-  sidebarVisible: boolean;
+  sidebarMode: SidebarMode;
   showSyncBadges: boolean;
   showStatusBar: boolean;
+  /**
+   * Whether the top bar draws Filter, Group and Order as buttons.
+   *
+   * The same three intentions `Mod+f`, `Mod+g` and `Mod+o` reach, for the reader who
+   * would rather click. Optional where the bell, the breadcrumb and the `×` are not:
+   * those are how you get somewhere, these are a second spelling of something already
+   * reachable, so hiding them takes nothing away.
+   */
+  showViewControls: boolean;
+  /**
+   * Remapped keys: action id to the chords that reach it — **overrides only**.
+   *
+   * Never a full copy of the defaults. Those are derived from the action registry by
+   * `DEFAULT_BINDINGS`, so a stored copy would freeze one release's key set into the
+   * account and a default improved later would never reach it. `{}` is the honest
+   * representation of "I never changed anything", and it is the common case.
+   *
+   * The server validates shape and nothing else — it has no way to know whether an
+   * action id exists, since the registry is a module in this bundle. `mergeBindings` is
+   * where meaning is decided, and it ignores ids it does not recognise so that an action
+   * deleted in a later version cannot make a stored preference unreadable.
+   */
+  shortcuts: Record<string, string[]>;
   defaultTeamId?: string;
   /** Set once the user has been through (or skipped) the preferences step. */
   onboardedAt?: string;
@@ -343,9 +379,15 @@ export const DEFAULT_PREFERENCES: Preferences = {
   accent: "indigo",
   density: "comfortable",
   openTicket: "panel",
-  sidebarVisible: true,
+  sidebarMode: "pinned",
   showSyncBadges: true,
   showStatusBar: true,
+  showViewControls: true,
+  // Empty, and never a copy of `DEFAULT_BINDINGS`: the defaults come from the registry
+  // at read time, so the account that has changed nothing follows them as they improve.
+  // Read-only, like the rest of this object — a spread of `DEFAULT_PREFERENCES` shares
+  // this `{}` by reference, so an override is a new object, never a write into this one.
+  shortcuts: {},
 };
 
 // --- velocity ----------------------------------------------------------------

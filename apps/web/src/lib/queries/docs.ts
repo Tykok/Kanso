@@ -23,8 +23,20 @@ export const docKeys = {
 export const useDocFolders = (teamId?: string) =>
   useQuery({ queryKey: docKeys.folders(teamId), queryFn: () => docsApi.folders(teamId) });
 
-export const useDocPages = (teamId?: string) =>
-  useQuery({ queryKey: docKeys.pages(teamId), queryFn: () => docsApi.pages({ teamId }) });
+/**
+ * `enabled` defaults true, so the two screens that list the tree read as they always did.
+ * It exists for the command palette, which mounts this hook on every `⌘K` and searches
+ * only once somebody types: without the flag, opening the palette and closing it again
+ * paid for a request nobody read. `useDocs` and `useSearchableTickets` next door already
+ * take the same argument for the same reason — the palette gates all three or none, and
+ * one ungated hook is enough to make the gate a decoration.
+ */
+export const useDocPages = (teamId?: string, enabled = true) =>
+  useQuery({
+    queryKey: docKeys.pages(teamId),
+    queryFn: () => docsApi.pages({ teamId }),
+    enabled,
+  });
 
 export const useDocPage = (id: string) =>
   useQuery({ queryKey: docKeys.page(id), queryFn: () => docsApi.page(id), enabled: id !== "" });

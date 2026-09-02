@@ -39,7 +39,7 @@ const step = (direction: BoardDirection) => (ctx: ActionContext) => {
 const columnLeft: Action = {
   id: "board.columnLeft",
   label: "Previous column",
-  shortcut: "h ArrowLeft",
+  defaultKeys: ["h", "ArrowLeft"],
   mode: "board",
   group: "ticket",
   when: canStep,
@@ -49,7 +49,7 @@ const columnLeft: Action = {
 const columnRight: Action = {
   id: "board.columnRight",
   label: "Next column",
-  shortcut: "l ArrowRight",
+  defaultKeys: ["l", "ArrowRight"],
   mode: "board",
   group: "ticket",
   when: canStep,
@@ -59,7 +59,7 @@ const columnRight: Action = {
 const cardDown: Action = {
   id: "board.moveDown",
   label: "Next card in this column",
-  shortcut: "j ArrowDown",
+  defaultKeys: ["n", "ArrowDown"],
   mode: "board",
   group: "ticket",
   when: canStep,
@@ -69,7 +69,7 @@ const cardDown: Action = {
 const cardUp: Action = {
   id: "board.moveUp",
   label: "Previous card in this column",
-  shortcut: "k ArrowUp",
+  defaultKeys: ["p", "ArrowUp"],
   mode: "board",
   group: "ticket",
   when: canStep,
@@ -79,7 +79,7 @@ const cardUp: Action = {
 const openCard: Action = {
   id: "board.open",
   label: "Open card",
-  shortcut: "Enter",
+  defaultKeys: ["Enter"],
   mode: "board",
   group: "ticket",
   when: hasSelection,
@@ -96,10 +96,10 @@ const openCard: Action = {
 };
 
 /**
- * Whether the board may answer `j`, `k` and `↵` itself.
+ * Whether the board may answer `n`, `p` and `↵` itself.
  *
- * It should: the drawing prints `j k carte` and `↵ ouvrir` in the board's own footer,
- * a column is not the list — `/api/tickets` orders by `updated_at DESC`, so core's `j`
+ * It should: a card is not a row,
+ * a column is not the list — `/api/tickets` orders by `updated_at DESC`, so core's `n`
  * hops between columns by recency — and `↵` is the one key that has to read
  * `preferences.openTicket`. The registry permits all three: a `board:` bucket wins over
  * `any:`, which is the whole point of `mode`, and `indexActions` raises nothing.
@@ -111,7 +111,7 @@ const openCard: Action = {
  * this constant and relaxing that one expectation is the whole edit; the three actions
  * above are written, tested and waiting for it.
  *
- * Until then the board keeps core's `j`, `k` and `↵`, and the preference is honoured on
+ * Until then the board keeps core's `n`, `p` and `↵`, and the preference is honoured on
  * the two paths slice A does own: a card's double-click, and `↵` in the palette.
  */
 const BOARD_MAY_SHADOW_SHARED_KEYS = true;
@@ -124,7 +124,7 @@ export const boardActions: readonly Action[] = [
 
 /**
  * The three above, reachable by name. They dispatch now: the integration pass decided the
- * guard's premise did not hold for them — `j`, `k` and `↵` on the board are the same
+ * guard's premise did not hold for them — `n`, `p` and `↵` on the board are the same
  * intent as in the list ("next item", "open this"), drawn differently, which is what
  * `mode` exists for. `core.test.ts` carries them as a written-down exception rather than
  * relaxing the rule, so the next key that wants to shadow one still has to argue for it.

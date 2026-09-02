@@ -56,6 +56,12 @@ function invalidateOrganise(queryClient: ReturnType<typeof useQueryClient>) {
     "tickets",
     "timeline",
     "labels",
+    // `myStats` because a triage decision, a bulk edit and a cycle move each change a
+    // status, an estimate or an assignee — which is all four numbers of `/me`'s strip and
+    // the last of its twelve bars. `queries/me-stats.ts` states the gap this closes: the
+    // key is its own family, so nothing reached it, and a screen whose numbers are stale
+    // after the action that changed them is a control that lies.
+    "myStats",
   ]) {
     queryClient.invalidateQueries({ queryKey: [family] });
   }

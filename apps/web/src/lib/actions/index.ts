@@ -1,5 +1,5 @@
-import type { View } from "@/store/ui";
 import { boardActions } from "./board";
+import { canonicalChord, formatChord } from "./chords";
 import { coreActions } from "./core";
 import { docsActions } from "./docs";
 import { favouriteActions } from "./favourites";
@@ -7,20 +7,32 @@ import { inboxActions } from "./inbox";
 import { organiseActions } from "./organise";
 import { publikActions } from "./publik";
 import { trashActions } from "./trash";
-import type { Action, ActionContext } from "./types";
+import type { Action, ActionContext, ShortcutMode } from "./types";
 
-export type { Action, ActionContext, ActionGroup } from "./types";
-export { canPlan, predecessorsOf } from "./core";
+export type { Action, ActionContext, ActionGroup, ShortcutMode } from "./types";
+export { canPlan, predecessorsOf, PRIORITY_ACTIONS } from "./core";
+export { claim, claimed, clearClaims, runClaim } from "./claims";
+export {
+  canonicalChord,
+  chordOf,
+  formatChord,
+  parseChord,
+  type Chord,
+  type ChordEvent,
+  type ParsedChord,
+} from "./chords";
 
 /**
  * One registry, composed rather than written.
  *
  * `ACTIONS` used to be a single 467-line array literal, which made it the one expression
  * six branches would all have had to append to at once. Each slice now owns a file and
- * this list names it; the order is fixed and `core` comes first, because
- * [resolveShortcut] answers with the first match and a slice must not be able to take a
+ * this list names it; the order is fixed and `core` comes first, because it is also the
+ * order `mergeBindings` lays the defaults down in and a slice must not be able to take a
  * key core already owns by being loaded earlier. [indexActions] refuses the ambiguity
- * outright at module load, so "first wins" is a tie-break that never runs.
+ * outright at module load, so "first wins" is a tie-break that never runs *for the
+ * defaults* — and for a reader's overrides it is what decides which of two colliding
+ * claims is the one refused.
  */
 export const ACTIONS: readonly Action[] = [
   ...coreActions,
@@ -33,19 +45,30 @@ export const ACTIONS: readonly Action[] = [
   ...favouriteActions,
 ];
 
-/** Where a key lives: one bucket per mode, plus `any` for the keys both views share. */
-const bucket = (mode: View | undefined, key: string) => `${mode ?? "any"}:${key}`;
+/**
+ * Where a chord lives: one bucket per mode, plus `any` for the chords every screen shares.
+ *
+ * Exported because `lib/shortcuts.ts` builds the same buckets out of the reader's own
+ * bindings, and two spellings of one key would be a bug that only shows up on a remapped
+ * keyboard — the hardest kind to be told about.
+ */
+export const bucketOf = (mode: ShortcutMode | undefined, chord: string) =>
+  `${mode ?? "any"}:${chord}`;
 
 /**
  * Indexes a set of actions, refusing a set that cannot be resolved unambiguously.
- * Both throws are load-bearing and both run at module load below: a duplicate id
- * silently loses an action a menu still names, and two actions on one key make a
- * keypress mean whichever was written last.
+ * All three throws are load-bearing and all three run at module load below: a duplicate id
+ * silently loses an action a menu still names, two actions on one chord make a keypress
+ * mean whichever was written last, and a chord that is not a chord is a key nobody can
+ * ever press.
  *
- * The key check is per mode, not global — `h` on the chart and `h` in the list are two
- * different intents and the whole point of the split — so it is the *bucket* that must
- * be unique, not the key. Exported so the guard can be exercised on a set of its own
- * rather than by breaking the real registry.
+ * The chord check is per mode, not global — `h` on the chart and `h` in the list are two
+ * different intents and the whole point of the split — so it is the *bucket* that must be
+ * unique, not the chord. Exported so the guard can be exercised on a set of its own rather
+ * than by breaking the real registry.
+ *
+ * This stays a throw where `mergeBindings` refuses and reports: a developer's typo should
+ * stop the build, and a reader's stored preference must never be able to stop the app.
  */
 export function indexActions(actions: readonly Action[]) {
   const byId = new Map<string, Action>();
@@ -55,28 +78,22 @@ export function indexActions(actions: readonly Action[]) {
     if (byId.has(action.id)) throw new Error(`Duplicate action id "${action.id}"`);
     byId.set(action.id, action);
 
-    for (const key of action.shortcut?.split(" ") ?? []) {
-      const claimed = byKey.get(bucket(action.mode, key));
-      if (claimed) {
-        throw new Error(`Key "${key}" is claimed by both "${claimed.id}" and "${action.id}"`);
+    for (const chord of action.defaultKeys ?? []) {
+      if (canonicalChord(chord) !== chord) {
+        throw new Error(`"${chord}" is not a chord in canonical spelling ("${action.id}")`);
       }
-      byKey.set(bucket(action.mode, key), action);
+      const claimed = byKey.get(bucketOf(action.mode, chord));
+      if (claimed) {
+        throw new Error(`Key "${chord}" is claimed by both "${claimed.id}" and "${action.id}"`);
+      }
+      byKey.set(bucketOf(action.mode, chord), action);
     }
   }
 
   return { byId, byKey };
 }
 
-const { byId: BY_ID, byKey: BY_KEY } = indexActions(ACTIONS);
-
-/**
- * The action a bare keypress means in [mode], before `when` is consulted. The mode's
- * own bucket first, then the shared one, so a view can claim a key without the keys
- * every view answers having to be repeated in each.
- */
-export function resolveShortcut(key: string, mode: View): Action | undefined {
-  return BY_KEY.get(bucket(mode, key)) ?? BY_KEY.get(bucket(undefined, key));
-}
+const { byId: BY_ID } = indexActions(ACTIONS);
 
 /**
  * Whether [action] is offered at all, right now.
@@ -107,48 +124,28 @@ export function actionById(id: string): Action {
   return action;
 }
 
-const KEY_LABELS: Record<string, string> = {
-  ArrowDown: "↓",
-  ArrowUp: "↑",
-};
-
-/**
- * The key to print for [action], or nothing when the keyboard cannot reach it.
- *
- * One function for the three surfaces that used to spell this out themselves — the row
- * menus, the command palette and the help overlay — so a display rule cannot hold in one
- * and not the others. [isMac] is passed rather than read here: this module is imported by
- * the test suite under `environment: "node"`, where there is no `navigator` to ask.
- */
-export function hintOf(action: Action, isMac: boolean): string | undefined {
-  if (action.hint !== undefined) return action.hint.replace("Mod+", isMac ? "⌘" : "Ctrl+");
-  // The first spelling only: `ticket.moveDown` owns both `j` and `ArrowDown`, and a menu
-  // entry reading "j ArrowDown" teaches nothing.
-  const first = action.shortcut?.split(" ")[0];
-  return first === undefined ? undefined : (KEY_LABELS[first] ?? first);
+/** Whether [id] is an action at all. What `mergeBindings` asks of a stored override. */
+export function isActionId(id: string): boolean {
+  return BY_ID.has(id);
 }
 
 /**
- * Rows for the help overlay, generated from the shortcuts.
+ * The **default** key to print for [action], for the one surface that cannot yet ask for
+ * the reader's own.
  *
- * Each row carries its mode — undefined for the keys both views answer — because a
- * flat list would offer `h` `l` `H` `L` to someone in the list, where they do nothing
- * at all.
+ * Every other surface reads the effective bindings — `hintFor` in `lib/shortcuts.ts`, fed
+ * by `useBindings()`, which is what makes the help sheet, the row menus and the status bar
+ * agree with the dispatcher whatever the reader has remapped. The command palette's rows
+ * are assembled in `components/shell/overlays.tsx`, which this slice does not own; until
+ * that one call site moves to `hintFor`, it prints the default, and on a remapped keyboard
+ * the palette is the only place in the interface that can be out of date.
  *
- * An action carrying only a `hint` gets a row too: that is what replaced the hardcoded
- * `⌘K` pair the overlay used to draw beneath the generated list.
+ * [isMac] is passed rather than read here: this module is imported by the test suite under
+ * `environment: "node"`, where there is no `navigator` to ask.
  */
-export function shortcutRows(
-  isMac: boolean,
-): { mode: View | undefined; keys: string; label: string }[] {
-  return ACTIONS.flatMap((action) => {
-    const keys =
-      action.hint !== undefined
-        ? hintOf(action, isMac)
-        : action.shortcut
-            ?.split(" ")
-            .map((key) => KEY_LABELS[key] ?? key)
-            .join(" / ");
-    return keys === undefined ? [] : [{ mode: action.mode, keys, label: action.label }];
-  });
+export function hintOf(action: Action, isMac: boolean): string | undefined {
+  // The first spelling only: `ticket.moveDown` owns both `n` and `ArrowDown`, and a menu
+  // entry reading "n ↓" teaches nothing.
+  const first = action.defaultKeys?.[0];
+  return first === undefined ? undefined : formatChord(first, isMac);
 }

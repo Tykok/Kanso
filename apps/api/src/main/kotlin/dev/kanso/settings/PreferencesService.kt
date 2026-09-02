@@ -4,6 +4,7 @@ import dev.kanso.domain.Accent
 import dev.kanso.domain.Density
 import dev.kanso.domain.OpenTicket
 import dev.kanso.domain.Preferences
+import dev.kanso.domain.SidebarMode
 import dev.kanso.domain.Theme
 import dev.kanso.service.BadRequestException
 import org.springframework.stereotype.Service
@@ -20,10 +21,18 @@ data class PreferencesPatch(
 	val theme: String? = null,
 	val accent: String? = null,
 	val density: String? = null,
-	val sidebarVisible: Boolean? = null,
+	val sidebarMode: String? = null,
 	val showSyncBadges: Boolean? = null,
 	val showStatusBar: Boolean? = null,
+	val showViewControls: Boolean? = null,
 	val openTicket: String? = null,
+	/**
+	 * The complete override document, replacing whatever was stored — not a merge.
+	 *
+	 * Absent still means "leave unchanged", like every other field here; an empty map is
+	 * the settings page's `Reset everything`, which a merge would have no way to express.
+	 */
+	val shortcuts: Map<String, List<String>>? = null,
 	val defaultTeamId: UUID? = null,
 	/** True stamps the moment the wizard was finished; false sends the user back through it. */
 	val onboarded: Boolean? = null,
@@ -46,10 +55,12 @@ data class PreferencesPatch(
 			theme = theme?.let { parse("theme", it, Theme::from) } ?: current.theme,
 			accent = accent?.let { parse("accent", it, Accent::from) } ?: current.accent,
 			density = density?.let { parse("density", it, Density::from) } ?: current.density,
-			sidebarVisible = sidebarVisible ?: current.sidebarVisible,
+			sidebarMode = sidebarMode?.let { parse("sidebarMode", it, SidebarMode::from) } ?: current.sidebarMode,
 			showSyncBadges = showSyncBadges ?: current.showSyncBadges,
 			showStatusBar = showStatusBar ?: current.showStatusBar,
+			showViewControls = showViewControls ?: current.showViewControls,
 			openTicket = openTicket?.let { parse("openTicket", it, OpenTicket::from) } ?: current.openTicket,
+			shortcuts = shortcuts?.also(::checkShortcuts) ?: current.shortcuts,
 			defaultTeamId = if ("defaultTeamId" in unset) null else defaultTeamId ?: current.defaultTeamId,
 			onboardedAt = when (onboarded) {
 				null -> current.onboardedAt
@@ -83,6 +94,50 @@ data class PreferencesPatch(
 	}
 
 	/**
+	 * Shape, and only shape — which is the whole of what this side can honestly check.
+	 *
+	 * The keys are action ids from the front end's `lib/actions/`, so the server has no
+	 * way to know whether `ticket.rename` exists: refusing an unknown id would mean
+	 * redeploying the API every time the web bundle renamed one, and would turn a
+	 * front-end refactor into a wall of 400s. `mergeBindings` on the client is what
+	 * decides meaning, and it ignores what it does not recognise, so an id this method
+	 * waves through is a row that stays readable rather than a keyboard that misbehaves.
+	 *
+	 * What is left is worth checking anyway, because a jsonb column with no CHECK is the
+	 * one place in this schema where a client could store an unbounded document. Every
+	 * bound below is far above anything the registry could produce and far below anything
+	 * that costs a read: they exist to keep the column a set of bindings rather than a
+	 * blob store, not to second-guess a capture UI.
+	 */
+	private fun checkShortcuts(bindings: Map<String, List<String>>) {
+		if (bindings.size > MAX_ACTIONS) {
+			throw BadRequestException("shortcuts may name at most $MAX_ACTIONS actions; got ${bindings.size}")
+		}
+		bindings.forEach { (action, chords) ->
+			if (action.isBlank()) throw BadRequestException("A shortcuts key must name an action")
+			if (action.length > MAX_ACTION_LENGTH) {
+				throw BadRequestException(
+					"Action id '${action.take(MAX_ACTION_LENGTH)}…' is longer than $MAX_ACTION_LENGTH characters"
+				)
+			}
+			if (chords.size > MAX_CHORDS) {
+				throw BadRequestException("'$action' may have at most $MAX_CHORDS chords; got ${chords.size}")
+			}
+			chords.forEach { chord ->
+				// Blank is refused rather than dropped: a chord nobody can press is a
+				// binding somebody meant to make, and silently discarding it would leave
+				// the settings table showing a key the dispatcher never received.
+				if (chord.isBlank()) throw BadRequestException("'$action' has a blank chord")
+				if (chord.length > MAX_CHORD_LENGTH) {
+					throw BadRequestException(
+						"'$action' has a chord longer than $MAX_CHORD_LENGTH characters"
+					)
+				}
+			}
+		}
+	}
+
+	/**
 	 * The enums refuse anything outside the vocabulary, and so does a CHECK
 	 * constraint on the table. Catching here turns what would surface as a 500 from
 	 * the database into the 400 it always was.
@@ -98,6 +153,18 @@ data class PreferencesPatch(
 
 		/** Mirrors the CHECK. See `V24` for why a ceiling exists at all. */
 		const val MAX_DECLARED = 100.0
+
+		/** The registry is around fifty actions; two hundred leaves it room to double twice. */
+		const val MAX_ACTIONS = 200
+
+		/** `organise.selectRange` is the longest id today, at nineteen characters. */
+		const val MAX_ACTION_LENGTH = 100
+
+		/** One intention, one or two spellings — `n` and `↓`. Eight is generous. */
+		const val MAX_CHORDS = 8
+
+		/** `"Shift+ArrowDown"` is fifteen. Forty is a modifier stack nobody can hold down. */
+		const val MAX_CHORD_LENGTH = 40
 	}
 }
 

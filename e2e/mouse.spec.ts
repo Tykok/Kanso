@@ -240,12 +240,14 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
 
   // The exact list: an item leaking in or out fails this rather than a "contains",
   // and so does a hint going missing. `,` and `?` are the keys `resolveShortcut`
-  // dispatches on for the same two overlays from anywhere. The palette dispatches on
-  // no key at all — ⌘K is caught in `page.tsx` ahead of the registry — and shows one
-  // anyway, because `Action.hint` is a label, not a binding; which modifier prints
-  // depends on the machine the browser runs on, so the palette's entry is matched
-  // loosely and sign-out's is not. Sign-out owns neither a key nor a hint, and is the
-  // one entry here that still shows nothing.
+  // dispatches on for the same two overlays from anywhere — and "anywhere" is true for
+  // the first time now that the shell mounts them on every route rather than two of the
+  // three shells mounting their own copies (`23-navigation.spec.ts` asserts that). The
+  // palette dispatches on no key at all — ⌘K is caught ahead of the registry, in this
+  // page's handler and in `shell/use-shell-keys.ts` — and shows one anyway, because
+  // `Action.hint` is a label, not a binding; which modifier prints depends on the machine
+  // the browser runs on, so the palette's entry is matched loosely and sign-out's is not.
+  // Sign-out owns neither a key nor a hint, and is the one entry here that shows nothing.
   await expect(menu.getByRole("menuitem")).toHaveText([
     "Settings ,",
     "Keyboard shortcuts ?",

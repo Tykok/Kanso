@@ -3,7 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { openTicketMode, ticketAddress, ticketHref } from "@/lib/api";
-import { usePreferences, useProjects, useSearchableTickets, useDocs } from "@/lib/queries";
+import {
+  usePreferences,
+  useProjects,
+  useSearchableTickets,
+  useDocPages,
+  useDocs,
+} from "@/lib/queries";
 import { useUi } from "@/store/ui";
 import {
   countLabel,
@@ -27,6 +33,13 @@ import { Kbd } from "./ui/kbd";
  * with its own field, its own keys and its own idea of what a result is would be the same
  * gesture taught twice. So what is typed here searches tickets, documents *and* commands
  * at once, with the drawing's preview pane on the right to decide without opening.
+ *
+ * "Documents" is two things, and this file reads both. A **page** (`DocPage`) is a
+ * document written in Kanso and opens at `/docs/[id]`; a **Notion reference** (`Doc`,
+ * imported by `search/results.ts` as `NotionRef`) is a page Kanso only points at and
+ * opens in Notion. For most of screen 07's life this palette read only the second, so a
+ * document written here could not be found by the search Kanso puts on ⌘K. See the long
+ * note in `search/results.ts` for the two names and the rename they want.
  *
  * The prop shape is deliberately unchanged. `app/page.tsx` passes `commands` and
  * `onClose` and is frozen for the fan-out; more importantly, `d` and `D` on the chart
@@ -68,10 +81,20 @@ export function CommandPalette({
   // rewrite must not do, so a picker searches nothing.
   const searching = only !== "commands" && !isPickerList(commands);
 
-  // `enabled` on both: the picker pays for neither query, and neither does a ⌘K that is
-  // closed again before anything is typed — these are two extra requests otherwise.
+  // `enabled` on both of these: the picker pays for neither query, and neither does a ⌘K
+  // that is closed again before anything is typed — these are two extra requests
+  // otherwise.
   const tickets = useSearchableTickets(searching);
-  const docs = useDocs(searching);
+  const notionRefs = useDocs(searching);
+
+  /**
+   * The documents written here — the half of "documents" this palette used to miss.
+   *
+   * Gated like the two above, on the same keystroke. `undefined` is every team rather than
+   * none: the palette searches across teams, as `useSearchableTickets` does, and a team's
+   * own tree is what the `teamId` argument is for on screens 07 and 22.
+   */
+  const pages = useDocPages(undefined, searching);
 
   const found = useMemo(
     () =>
@@ -79,10 +102,11 @@ export function CommandPalette({
         query,
         tab,
         tickets: searching ? (tickets.data ?? []) : [],
-        docs: searching ? (docs.data ?? []) : [],
+        pages: searching ? (pages.data ?? []) : [],
+        notionRefs: searching ? (notionRefs.data ?? []) : [],
         commands,
       }),
-    [query, tab, searching, tickets.data, docs.data, commands],
+    [query, tab, searching, tickets.data, pages.data, notionRefs.data, commands],
   );
 
   const rows = found.rows;
@@ -91,9 +115,21 @@ export function CommandPalette({
   /**
    * Opening a result.
    *
-   * `page` is `⇧↵` and the drawing says so; `↵` is `preferences.openTicket`, the column
-   * screen 02 said this setting lives in. A document opens where it actually lives, which
-   * is Notion — Kanso has no reader for one until slice B builds screen 07.
+   * `inPage` is `⇧↵` and the drawing says so; `↵` is `preferences.openTicket`, the column
+   * screen 02 said this setting lives in.
+   *
+   * A document opens where it lives, and the two kinds do not live in the same place. A
+   * page written here has a reader — slice B built screen 07 — so it opens in the app,
+   * like the sidebar's Documents and `favourites.tsx` already do. Only a Notion reference
+   * leaves the application, and it does so unconditionally: `search` hands back no
+   * reference without a `url`, so there is no `if (url)` here to fall through into a row
+   * that closes the palette and does nothing. That fall-through was the second half of
+   * this bug, and the type `OpenableNotionRef` is what keeps it from coming back.
+   *
+   * The old comment here said Kanso had no reader for a document "until slice B builds
+   * screen 07". Slice B built it. The comment went stale and the behaviour it justified
+   * stayed — which is worth a line here, because a condition written into a comment is a
+   * claim nothing re-checks.
    */
   const openRow = (row: SearchRow | undefined, inPage: boolean) => {
     if (!row) return;
@@ -101,8 +137,13 @@ export function CommandPalette({
       row.command.run();
       return;
     }
-    if (row.kind === "doc") {
-      if (row.doc.url) window.open(row.doc.url, "_blank", "noreferrer");
+    if (row.kind === "page") {
+      onClose();
+      router.push(`/docs/${row.page.id}`);
+      return;
+    }
+    if (row.kind === "notionRef") {
+      window.open(row.notionRef.url, "_blank", "noreferrer");
       onClose();
       return;
     }

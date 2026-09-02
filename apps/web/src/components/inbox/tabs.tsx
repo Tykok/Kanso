@@ -31,7 +31,20 @@ export function InboxTabs({
   onSelect: (tab: InboxTab) => void;
 }) {
   return (
-    <div className="flex gap-5 px-6 pt-[22px] pb-3" role="tablist" aria-label="Inbox">
+    /*
+     * `role="group"` with `aria-pressed`, like the command palette's search strip — and
+     * deliberately not the `tablist`/`tab` the trash view keeps properly. Of the two ways
+     * this repo already does this, only one is available here: `role="tab"` promises a
+     * keyboard `aria-controls` pointing at a `tabpanel`, and the panel is the row list in
+     * `app/inbox/page.tsx`, which this branch does not own and so cannot give an id. The
+     * choice was between a role kept in full and a role worn with two of its three
+     * promises missing, and a `tablist` whose tabs control nothing is worse for a screen
+     * reader than four honest toggle buttons: it announces a widget whose panel can never
+     * be found. Four tab stops is then correct rather than a bug — a group of buttons is
+     * exactly what this is, so no roving `tabIndex` and no arrow keys are owed. When the
+     * panel side gains an id, this becomes the trash view's version verbatim.
+     */
+    <div className="flex gap-5 px-6 pt-[22px] pb-3" role="group" aria-label="Inbox">
       {INBOX_TABS.map((tab) => {
         const current = tab === active;
         const count = counts[tab];
@@ -39,9 +52,8 @@ export function InboxTabs({
           <button
             key={tab}
             type="button"
-            role="tab"
             data-testid="inbox-tab"
-            aria-selected={current}
+            aria-pressed={current}
             className={cn(
               "pb-[5px] text-12",
               current

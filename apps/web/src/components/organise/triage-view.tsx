@@ -1,12 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { GroupLabel } from "@/components/ui/group-label";
 import { Kbd } from "@/components/ui/kbd";
 import { actionErrorMessage } from "@/lib/errors";
 import type { Ticket, TriageDecision } from "@/lib/api";
+import { ShellAside, TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
+import { usePageActions } from "@/components/shell/use-shell-keys";
+import { actionById } from "@/lib/actions";
+import { isMac } from "@/lib/platform";
+import { hintFor } from "@/lib/shortcuts";
+import { useActionContext } from "@/lib/use-action-ctx";
+import { useBindings } from "@/lib/use-bindings";
 import { useDecide, useSimilar, useTriageQueue } from "@/lib/queries";
-import { OrganiseShell, useOrganiseTeam } from "./shell";
+import { useOrganiseTeam } from "./team";
+
+/**
+ * The four rulings, each naming the registry action that carries its key and its label.
+ *
+ * They used to carry both here — a `key` and a `label` in this literal, dispatched by this
+ * file's own `keydown` and printed on its own buttons. So the queue was the fourth place
+ * in the app where a key was written down, and the only surface that could not be told
+ * about a remap. `?` did not list these four at all. The keys are unchanged; where they
+ * are written down is not.
+ */
+const DECISIONS: { action: string; decision: TriageDecision; primary?: boolean }[] = [
+  { action: "triage.accept", decision: "accepted", primary: true },
+  { action: "triage.defer", decision: "backlogged" },
+  { action: "triage.duplicate", decision: "duplicate" },
+  { action: "triage.reject", decision: "closed" },
+];
 
 /**
  * Screen 20 — one incoming ticket at a time, four keys, each advancing to the next.
@@ -16,13 +39,6 @@ import { OrganiseShell, useOrganiseTeam } from "./shell";
  * index survives that and lands on whatever moved up into the slot, which is what "each
  * decision passes to the next ticket" means.
  */
-const DECISIONS: { key: string; decision: TriageDecision; label: string; primary?: boolean }[] = [
-  { key: "a", decision: "accepted", label: "Accept into the cycle", primary: true },
-  { key: "b", decision: "backlogged", label: "Send to backlog" },
-  { key: "d", decision: "duplicate", label: "Mark duplicate" },
-  { key: "x", decision: "closed", label: "Close without action" },
-];
-
 export function TriageView() {
   const { team } = useOrganiseTeam();
   const queue = useTriageQueue(team?.id);
@@ -30,22 +46,25 @@ export function TriageView() {
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const items = queue.data?.items ?? [];
+  // Memoised because it feeds `useActionContext`, which memoises on it: `?? []` is a
+  // fresh array every render, and the context rebuilt on every render would re-publish to
+  // the shell and re-attach the one `keydown` listener with it.
+  const items = useMemo(() => queue.data?.items ?? [], [queue.data]);
   /**
    * The queue shrinks under the cursor as decisions land, so the stored index can point
    * past the end. It is clamped here, during the render that needs it, rather than
    * corrected by an effect: writing state back from an effect is a second render for a
    * value this expression already knows, and the stored index is deliberately left alone
-   * so that walking back with `k` returns to where it was.
+   * so that walking back with `p` returns to where it was.
    */
   const at = Math.min(cursor, Math.max(items.length - 1, 0));
   const current = items[at];
   const similar = useSimilar(current?.id);
 
   /**
-   * `d` needs something to point at, and the only candidate on screen is the top of the
-   * similarity list — which is exactly what the panel is for. With nothing to point at,
-   * `d` is refused rather than silently downgraded to "close": a duplicate of nothing is
+   * `triage.duplicate` needs something to point at, and the only candidate on screen is
+   * the top of the similarity list — which is exactly what the panel is for. With nothing,
+   * it is refused rather than silently downgraded to "close": a duplicate of nothing is
    * not a duplicate, and the server refuses it too.
    */
   const rule = (decision: TriageDecision) => {
@@ -62,54 +81,74 @@ export function TriageView() {
     );
   };
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      if (target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
-
-      if (event.key === "j" || event.key === "ArrowDown") {
-        event.preventDefault();
-        setCursor(Math.min(at + 1, Math.max(items.length - 1, 0)));
-        return;
-      }
-      if (event.key === "k" || event.key === "ArrowUp") {
-        event.preventDefault();
-        setCursor(Math.max(at - 1, 0));
-        return;
-      }
-      const ruling = DECISIONS.find((entry) => entry.key === event.key);
-      if (ruling) {
-        event.preventDefault();
-        rule(ruling.decision);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+  /**
+   * The four rulings, claimed, and the cursor left to the registry.
+   *
+   * `rule` needs the queue, the cursor and the similarity list — three things
+   * `ActionContext` does not carry and must not grow — so this screen supplies the bodies
+   * and the registry owns the keys (`lib/actions/claims.ts`). `mode: "triage"` is what
+   * lets `x` close a ticket here and archive one everywhere else.
+   *
+   * `n` `p` `↑` `↓` are gone from this file entirely: the context below publishes the
+   * queue and a step, so they are `ticket.moveDown` and `ticket.moveUp` — the same two
+   * actions the list and the board answer, which is "next row, written out by hand three
+   * times" written out once. `selected` stays undefined on purpose, so the six status
+   * keys and `↵` remain as inert as they were before this route had a context at all: a
+   * triage decision is not a status change, and offering both would be two ways to rule.
+   */
+  usePageActions({
+    "triage.accept": () => rule("accepted"),
+    "triage.defer": () => rule("backlogged"),
+    "triage.duplicate": () => rule("duplicate"),
+    "triage.reject": () => rule("closed"),
   });
 
+  const reportError = useCallback((message: string | null) => setError(message), []);
+  const noop = useCallback(() => {}, []);
+  const step = useCallback(
+    (delta: number) => setCursor(Math.min(Math.max(at + delta, 0), Math.max(items.length - 1, 0))),
+    [at, items.length],
+  );
+  const ctx = useActionContext({
+    tickets: items,
+    selected: undefined,
+    move: step,
+    startRename: noop,
+    startLink: noop,
+    startUnlink: noop,
+    reportError,
+  });
+
+  // `Core / Triage`. The queue's own position is in the bar's right end, not in the crumb:
+  // "3 of 40" is where the reader is *in* the queue, not where the queue is in the app.
+  usePageShell({ ctx, crumbs: { team: team?.name } });
+
+  const { keys } = useBindings();
+  const mac = isMac();
+  const keyOf = (id: string) => hintFor(actionById(id), keys, mac);
+
   return (
-    <OrganiseShell
-      breadcrumb={
-        <>
-          <span>{team?.name ?? "…"}</span>
-          <span>/</span>
-          <span className="text-muted-foreground">Triage</span>
-        </>
-      }
-      trailing={
+    <>
+      <TopbarSlot>
+        <span className="flex-1" />
         <span className="flex items-center gap-2">
           {items.length > 0 && (
             <span>
               {at + 1} of {queue.data?.total ?? items.length}
             </span>
           )}
-          <Kbd>j</Kbd>
-          <Kbd>k</Kbd>
+          {/* Read off the effective bindings, not typed: these printed `j` and `k`, both
+              of which §6.4 drops. */}
+          {[keyOf("ticket.moveDown"), keyOf("ticket.moveUp")].flatMap((chord) =>
+            chord === undefined ? [] : [<Kbd key={chord}>{chord}</Kbd>],
+          )}
         </span>
-      }
-      aside={<Queue items={items} total={queue.data?.total ?? 0} at={at} onPick={setCursor} />}
-    >
+      </TopbarSlot>
+
+      <ShellAside>
+        <Queue items={items} total={queue.data?.total ?? 0} at={at} onPick={setCursor} />
+      </ShellAside>
+
       {queue.isPending && <div className="px-4 py-12 text-center text-faint">Loading…</div>}
 
       {!queue.isPending && current === undefined && (
@@ -149,13 +188,14 @@ export function TriageView() {
           <div className="mt-auto flex flex-wrap gap-2">
             {DECISIONS.map((entry) => (
               <button
-                key={entry.key}
+                key={entry.action}
                 type="button"
                 className={entry.primary ? "button button-primary" : "button"}
                 disabled={decide.isPending}
                 onClick={() => rule(entry.decision)}
               >
-                {entry.label} <span className="font-mono text-11 opacity-70">{entry.key}</span>
+                {actionById(entry.action).label}{" "}
+                <span className="font-mono text-11 opacity-70">{keyOf(entry.action)}</span>
               </button>
             ))}
           </div>
@@ -166,7 +206,7 @@ export function TriageView() {
           </span>
         </div>
       )}
-    </OrganiseShell>
+    </>
   );
 }
 

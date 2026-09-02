@@ -448,6 +448,10 @@ export function usePatchTicket() {
       // A patch may have cascaded into tickets this mutation never named, and it
       // changes slack and criticality for others that did not move at all.
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      // A status, an estimate or a due date is four of `/me`'s numbers and one of its
+      // bars. Not patchable from the response: the strip counts rows the client has
+      // never fetched, so the only honest refresh is to ask again.
+      queryClient.invalidateQueries({ queryKey: ["myStats"] });
     },
   });
 }
@@ -478,6 +482,9 @@ export function useLinkDependency() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      // `strip.blocked` is a count of incoming arrows whose far end is unfinished, so
+      // drawing one is the only edit in the app that changes it without touching a status.
+      queryClient.invalidateQueries({ queryKey: ["myStats"] });
     },
   });
 }
@@ -496,6 +503,9 @@ export function useUnlinkDependency() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      // And erasing one is the only edit that can make somebody unblocked without
+      // anybody finishing anything.
+      queryClient.invalidateQueries({ queryKey: ["myStats"] });
     },
   });
 }
@@ -521,6 +531,9 @@ export function useCreateTicket() {
       ticketGuesses.arrived(cache, created);
       // The team row carries a ticket count, so it is stale too.
       queryClient.invalidateQueries({ queryKey: ["teams"] });
+      // A ticket created with `assigneeIds` is a plate one row heavier, and one created
+      // with a due date in the past is overdue the moment it exists.
+      queryClient.invalidateQueries({ queryKey: ["myStats"] });
     },
   });
 }
@@ -545,6 +558,9 @@ export function useDeleteTicket() {
     onSettled: (_data, error, _id, context) => {
       if (context) ticketGuesses.close(cache, context.handle, error ? undefined : null);
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
+      // A deleted ticket leaves its owner's plate, and stops blocking whatever waited
+      // on it — `MyStatsService.blocked` reads a missing predecessor as no block at all.
+      queryClient.invalidateQueries({ queryKey: ["myStats"] });
     },
   });
 }
