@@ -267,7 +267,10 @@ class ProgressLeakTest : MockMvcTest() {
 		history()
 		val body = mvc.get("/api/teams/${mobile.id}/progress") {
 			header(DevAuthenticationFilter.HEADER, owner.email)
-		}.andReturn().response.contentAsString
+			// The status is asserted before the sweep, and that is not belt-and-braces: a
+			// refusal's `ProblemDetail` carries no display name either, so a sweep on its own
+			// would go green the moment this reader lost the right to make the request at all.
+		}.andExpect { status { isOk() } }.andReturn().response.contentAsString
 
 		for (name in listOf(subject.displayName, plain.displayName, lead.displayName, owner.displayName)) {
 			assertFalse(body.contains(name), "the team response names $name: $body")
