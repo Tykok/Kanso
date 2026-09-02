@@ -53,6 +53,25 @@ data class PersonVelocity(
 data class TeamVelocity(val cycles: List<Cycle>, val rows: List<PersonVelocity>)
 
 /**
+ * A whole team's pace, and the closed cycles it was taken over.
+ *
+ * [VelocityCycle] reused for the rows rather than a team-shaped twin of it, because that
+ * type never knew whose cycle it was describing — it carries a cycle, a haul, a length and
+ * a rate, and all four mean the same thing one height up.
+ *
+ * [perWorkingDay] is null when [cycles] is empty, and the distinction is the one
+ * [PersonVelocity] makes: zero is a team that closed nothing across finished cycles, null
+ * is a team with no finished cycle to ask. There is no `source` field and no arbitration
+ * behind this number — a declared velocity is one person's estimate of themselves, and
+ * nobody declares a team's.
+ */
+data class TeamPace(
+	val perWorkingDay: Double?,
+	/** Newest first, like [PersonVelocity.cycles]. */
+	val cycles: List<VelocityCycle>,
+)
+
+/**
  * Velocity: what a person actually delivered, in points per working day.
  *
  * Three choices make the number mean anything, and each of them is a refusal.
@@ -122,6 +141,49 @@ class VelocityService(
 	fun forPerson(person: User, teamId: UUID, over: Int = DEFAULT_CYCLES): PersonVelocity =
 		row(person, measure(teamId, over))
 
+	/**
+	 * The team's own pace — and it is **not** the sum of its members' paces.
+	 *
+	 * Two differences, both deliberate. It counts a delivered ticket nobody was assigned,
+	 * which [forPerson] cannot: an unowned ticket has no person to credit, but a team that
+	 * shipped it shipped it. And it never splits an estimate between assignees, because
+	 * there is nobody to split it between — the split in [delivered] exists so that an 8
+	 * done by two people is not reported as sixteen points, and at team level the 8 is
+	 * simply an 8.
+	 *
+	 * So this is the same question [CycleService.report] answers for one cycle in points,
+	 * asked over the last [over] closed ones and divided by their working days. It shares
+	 * every primitive with the per-person read — [measurable] picks the cycles, [finishedIn]
+	 * decides what counts as delivered — so the two can disagree about a team's history
+	 * only by disagreeing about those, which is the point of them being one function each.
+	 *
+	 * There is no per-person breakdown on this shape and there is not going to be one.
+	 * [TeamVelocity] already carries the rows and deliberately never reached a controller;
+	 * this type is what a team screen can be handed without handing it a league table.
+	 */
+	@Transactional(readOnly = true)
+	fun paceForTeam(teamId: UUID, over: Int = DEFAULT_CYCLES): TeamPace {
+		val perCycle = measurable(teamId, over).map { cycle ->
+			val finished = finishedIn(cycle)
+			val days = workingDays(cycle)
+			val points = finished.sumOf { it.estimate ?: 0 }.toDouble()
+			VelocityCycle(
+				cycle = cycle,
+				points = points,
+				workingDays = days,
+				perWorkingDay = points / days,
+				unestimated = finished.count { it.estimate == null },
+			)
+		}
+		return TeamPace(
+			// The mean of the rates, for the reason `row` takes the mean of the rates: each
+			// closed cycle is one observation of how this team works, and pooling would let a
+			// long quiet fortnight outvote two short busy ones on length alone.
+			perWorkingDay = if (perCycle.isEmpty()) null else perCycle.map { it.perWorkingDay }.average(),
+			cycles = perCycle,
+		)
+	}
+
 	// --- the measurement -------------------------------------------------------
 
 	/**
@@ -132,10 +194,13 @@ class VelocityService(
 	 * would quietly narrow the sample that the answer is standing on.
 	 */
 	private fun measure(teamId: UUID, over: Int): List<Pair<Cycle, Map<UUID, Delivered>>> =
+		measurable(teamId, over).map { it to delivered(it) }
+
+	/** The cycles themselves, for the reader that wants no attribution — see [paceForTeam]. */
+	private fun measurable(teamId: UUID, over: Int): List<Cycle> =
 		cycles.closed(teamId)
 			.filter { workingDays(it) > 0 }
 			.take(over)
-			.map { it to delivered(it) }
 
 	private fun row(person: User, measured: List<Pair<Cycle, Map<UUID, Delivered>>>): PersonVelocity {
 		val perCycle = measured.map { (cycle, byPerson) ->
@@ -177,7 +242,7 @@ class VelocityService(
 	 * ticket has no person to attribute it to.
 	 */
 	private fun delivered(cycle: Cycle): Map<UUID, Delivered> {
-		val finished = membership.ticketsIn(cycle.id).filter { it.reachedDoneDuring(cycle) }
+		val finished = finishedIn(cycle)
 		if (finished.isEmpty()) return emptyMap()
 
 		val assignees = tickets.assigneeIdsFor(finished.map { it.id })
@@ -220,6 +285,15 @@ class VelocityService(
 	 * a seventh status means it, this has to follow without anybody remembering the line
 	 * is here.
 	 */
+	/**
+	 * What this cycle delivered, before anybody asks who delivered it.
+	 *
+	 * One function so that "delivered during this cycle" is one rule. The per-person read
+	 * and the team read differ in what they do with the list, never in what is on it.
+	 */
+	private fun finishedIn(cycle: Cycle): List<Ticket> =
+		membership.ticketsIn(cycle.id).filter { it.reachedDoneDuring(cycle) }
+
 	private fun Ticket.reachedDoneDuring(cycle: Cycle): Boolean {
 		if (status.category != StatusCategory.COMPLETED) return false
 		val on = completedAt?.toLocalDate() ?: return false
