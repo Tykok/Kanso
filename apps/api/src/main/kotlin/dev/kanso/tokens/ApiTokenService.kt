@@ -1,8 +1,11 @@
 package dev.kanso.tokens
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.domain.ActivityEntity
+import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
+import dev.kanso.service.ActivityService
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.NotFoundException
 import org.springframework.stereotype.Service
@@ -45,6 +48,8 @@ class ApiTokenService(
 	private val currentUser: CurrentUser,
 	private val tokens: ApiTokenRepository,
 	private val users: UserRepository,
+	/** Only [revoke] writes to it — see there for why a deleted row still leaves a record. */
+	private val activity: ActivityService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -84,13 +89,33 @@ class ApiTokenService(
 	 * forget.
 	 *
 	 * A 404 for an id that is not the actor's, deliberately indistinguishable from an id
-	 * that never existed.
+	 * that never existed. **That refusal is unchanged by the event below**, and the pairing
+	 * is the point of KAN-63 rather than a wrinkle in it: a caller presenting a dead token
+	 * still gets `ApiTokenFilter`'s single 401 and still cannot tell "revoked" from "never
+	 * existed", while somebody who can already see the account can now read exactly that.
+	 * Two audiences, two answers, on purpose.
+	 *
+	 * The row is named in the log and not resurrected in the table. It carried a digest of a
+	 * secret that no longer works, so keeping it would answer no question anybody asks —
+	 * `V27` and `V30` both argue it at length.
 	 */
 	@Transactional
 	fun revoke(id: UUID) {
-		if (!tokens.delete(currentUser.requireId(), id)) {
-			throw NotFoundException("No API token $id")
-		}
+		val actor = currentUser.requireId()
+		val revoked = tokens.delete(actor, id) ?: throw NotFoundException("No API token $id")
+		// `entityId` is the account and `actorId` is who acted, and today they are always
+		// the same person because this service takes no user id and so cannot reach anybody
+		// else's tokens. They are still two different questions, and writing both means an
+		// admin-revocation path — if one is ever argued for — changes the actor and leaves
+		// the feed on the owner's account, which is where its owner would look for it.
+		activity.record(
+			entity = ActivityEntity.USER,
+			entityId = actor,
+			actorId = actor,
+			kind = ActivityKind.TOKEN_REVOKED,
+			// Name and prefix, never the digest. `RevokedToken` has no field for one.
+			payload = mapOf("name" to revoked.name, "prefix" to revoked.prefix),
+		)
 	}
 
 	/**

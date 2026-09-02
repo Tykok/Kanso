@@ -7,7 +7,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.java.javaUUID
 import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
-import org.jetbrains.exposed.v1.jdbc.deleteWhere
+import org.jetbrains.exposed.v1.jdbc.deleteReturning
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -54,6 +54,17 @@ data class AuthenticatedToken(
 	val scopes: Set<String>,
 	val lastUsedAt: OffsetDateTime?,
 )
+
+/**
+ * A token as revocation last saw it — what it was called, and how it began.
+ *
+ * Exists so the `activity` row KAN-63 writes can name the credential a person recognises,
+ * after the only place that knew is gone. Two fields and no `hash`, and that is a promise
+ * rather than an omission: a digest names nothing to anybody, so putting one in a feed
+ * would move the single column `api_tokens` exists to keep quiet somewhere far easier to
+ * read, in exchange for nothing.
+ */
+data class RevokedToken(val name: String, val prefix: String)
 
 @Repository
 class ApiTokenRepository {
@@ -135,12 +146,27 @@ class ApiTokenRepository {
 	 *
 	 * One statement, so there is no window between "is this yours" and "delete it" and no
 	 * call site that can perform the first check and skip it. A member naming somebody
-	 * else's token id deletes nothing and is told nothing — the false return reaches them
+	 * else's token id deletes nothing and is told nothing — the null return reaches them
 	 * as the same 404 an id that never existed gets, which is deliberate: distinguishing
 	 * the two would confirm that a guessed id belongs to a real token on this instance.
+	 *
+	 * `DELETE … RETURNING` rather than a read followed by a delete, which is what KAN-63
+	 * needed and is why this returns [RevokedToken] instead of a `Boolean`. The event has
+	 * to name the token, and the row that knows its name is the row being destroyed — so
+	 * either the name comes back out of the delete, or a `SELECT` goes in front of it and
+	 * the paragraph above stops being true. Postgres hands it over in the same statement,
+	 * so the invariant survives having a second use.
+	 *
+	 * `name` and `prefix` and not `columns`: this is a credential table, and a query that
+	 * asks for everything is a query whose result set a future edit can log.
 	 */
-	fun delete(userId: UUID, id: UUID): Boolean =
-		ApiTokens.deleteWhere { (ApiTokens.id eq id) and (ApiTokens.userId eq userId) } > 0
+	fun delete(userId: UUID, id: UUID): RevokedToken? =
+		ApiTokens
+			.deleteReturning(listOf(ApiTokens.name, ApiTokens.prefix)) {
+				(ApiTokens.id eq id) and (ApiTokens.userId eq userId)
+			}
+			.singleOrNull()
+			?.let { row -> RevokedToken(name = row[ApiTokens.name], prefix = row[ApiTokens.prefix]) }
 
 	fun stamp(id: UUID, at: OffsetDateTime) {
 		ApiTokens.update({ ApiTokens.id eq id }) { it[lastUsedAt] = at }
