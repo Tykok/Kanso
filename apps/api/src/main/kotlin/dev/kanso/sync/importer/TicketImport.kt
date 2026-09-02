@@ -64,7 +64,7 @@ class TicketImport(
 				// The container this base already has, from a page of this run or from a run
 				// last month — see [container] for why both are the same lookup.
 				?: rows.project(base.base.dataSourceId)
-				?: container(base, fallbackTeam, rows).also { containers++ }
+				?: container(actor, base, fallbackTeam, rows).also { containers++ }
 
 			// `!!`: unlike a project, a ticket must have a team, and `perform` already
 			// refused before a page was read unless the request or this base supplies one.
@@ -92,8 +92,9 @@ class TicketImport(
 	 * Created only when a ticket actually needs it, so a base whose every ticket resolves
 	 * to a real project creates no project at all.
 	 */
-	private fun container(base: PlannedBase, fallbackTeam: UUID?, rows: ImportedRows): UUID {
+	private fun container(actor: User, base: PlannedBase, fallbackTeam: UUID?, rows: ImportedRows): UUID {
 		val project = projects.create(
+			actor = actor,
 			name = base.base.name,
 			// In progress, not planned: the pages being imported are work somebody has
 			// already been doing somewhere else.

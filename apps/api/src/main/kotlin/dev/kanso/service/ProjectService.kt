@@ -56,6 +56,7 @@ class ProjectService(
 	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val trash: TrashDisposal,
+	private val access: TicketAccess,
 ) {
 
 	@Transactional(readOnly = true)
@@ -92,6 +93,7 @@ class ProjectService(
 
 	@Transactional
 	fun create(
+		actor: User,
 		name: String,
 		status: ProjectStatus,
 		start: KansoInstant?,
@@ -101,7 +103,12 @@ class ProjectService(
 		docIds: List<UUID>,
 	): ProjectDetail {
 		validateDates(start, end)
-		teamId?.let { requireTeam(it) }
+		// Filing a project into a team is editing that team's plan, so it takes the team
+		// rule and not `requireConfigurator` — the distinction `ProjectUpdateService`
+		// draws for this package: daily work versus configuring the instance. A project
+		// with no team is left open for the reason stated there too, that the transverse
+		// ones are the least likely to have anybody watching them.
+		teamId?.let { requireTeamExists(it); access.requireTeam(actor, it) }
 		leadUserId?.let { requireUser(it) }
 		requireDocs(docIds)
 
@@ -116,6 +123,7 @@ class ProjectService(
 
 	@Transactional
 	fun update(
+		actor: User,
 		id: UUID,
 		name: String,
 		status: ProjectStatus,
@@ -127,7 +135,12 @@ class ProjectService(
 	): ProjectDetail {
 		val existing = projects.findById(id) ?: throw NotFoundException("No project $id")
 		validateDates(start, end)
-		teamId?.let { requireTeam(it) }
+		// Both sides of a move, the way `TicketService.patch` checks both: asking only
+		// about the destination would make `teamId` a second request that carries a
+		// project out of a team the actor may not edit, and asking only about the origin
+		// would let them push one into a team that is not theirs.
+		existing.teamId?.let { access.requireTeam(actor, it) }
+		teamId?.let { requireTeamExists(it); access.requireTeam(actor, it) }
 		leadUserId?.let { requireUser(it) }
 		docIds?.let { requireDocs(it) }
 
@@ -284,7 +297,7 @@ class ProjectService(
 		}
 	}
 
-	private fun requireTeam(id: UUID) {
+	private fun requireTeamExists(id: UUID) {
 		teams.findById(id) ?: throw BadRequestException("No team $id")
 	}
 
