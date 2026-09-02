@@ -151,9 +151,12 @@ class OutboundWorkerTest : PostgresTest() {
 
 		worker.drain(handler)
 
+		// Counted for this entity rather than over everything the drain touched: a drain
+		// claims a whole batch, so a total would be a statement about the shared queue and
+		// would go red on somebody else's leftover row instead of on a replay.
 		assertEquals(
 			1,
-			handler.handled.size,
+			handler.handled.count { it.entityId == id },
 			"the same operation went out twice while the first send was still in the air",
 		)
 		assertEquals("done", statusOf(id))

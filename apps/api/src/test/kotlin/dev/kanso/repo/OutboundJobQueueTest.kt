@@ -52,16 +52,61 @@ class OutboundJobQueueTest : PostgresTest() {
 		assertEquals(1, jobs.claimBatch(Destination.NOTION, 10, "test-worker").size, "the later edit must still be queued")
 	}
 
+	/**
+	 * What is queued for these entities, in the order the ready queue is walked in.
+	 *
+	 * Read, never claimed — the shape `NotionInboundTeamTest` arrived at for the same
+	 * family of flake, one screen along. `claimBatch` is a batch-limited
+	 * `FOR UPDATE SKIP LOCKED` across a whole destination, so what it hands back is a fact
+	 * about the entire table: three rows fall outside a batch of ten the moment somebody
+	 * else has left eight queued, and `outbound_jobs` is shared with every class in the
+	 * run — `ImportCommitTest` is not `@Transactional` and commits into it. An assertion
+	 * built on a claim therefore answers "what is in the queue", which depends on
+	 * execution order, when the question it means to ask is "which of *these three* comes
+	 * first". Filtering on the entities under test asks that one, and a filter has no
+	 * business taking a lock or spending an attempt to get an answer.
+	 *
+	 * The `ORDER BY` is `claimBatch`'s, spelled out rather than borrowed, and reading the
+	 * ordering key straight off the rows is the point: what encodes the dependency order
+	 * is `OutboundEntityType.priority`, `enqueue` is what writes it, and this is where a
+	 * change to either becomes visible.
+	 */
+	private fun queuedOrder(entityIds: List<UUID>): List<OutboundEntityType> = jdbc.sql(
+		"""
+		SELECT entity_type FROM outbound_jobs
+		 WHERE destination = :destination AND status = 'pending' AND next_attempt_at <= now()
+		   AND entity_id IN (:ids)
+		 ORDER BY priority, next_attempt_at, id
+		""".trimIndent()
+	)
+		.param("destination", Destination.NOTION.wire)
+		.param("ids", entityIds)
+		.query { rs, _ -> OutboundEntityType.from(rs.getString("entity_type")) }
+		.list()
+
 	@Test
 	fun `dependency order puts teams before projects before tickets`() {
-		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, UUID.randomUUID(), OutboundOperation.UPSERT)
-		jobs.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, UUID.randomUUID(), OutboundOperation.UPSERT)
-		jobs.enqueue(Destination.NOTION, OutboundEntityType.TEAM, UUID.randomUUID(), OutboundOperation.UPSERT)
+		val ticket = UUID.randomUUID()
+		val project = UUID.randomUUID()
+		val team = UUID.randomUUID()
+		val mine = listOf(ticket, project, team)
 
-		val order = jobs.claimBatch(Destination.NOTION, 10, "test-worker").map { it.entityType }
+		// `enqueue` coalesces onto an existing pending row, so a leftover job for one of
+		// these ids would be edited rather than added and the miss would be silent. Fresh
+		// UUIDs mean this deletes nothing in practice; it is here so that "these three
+		// rows and no others" holds by construction rather than by luck.
+		jdbc.sql("DELETE FROM outbound_jobs WHERE entity_id IN (:ids)").param("ids", mine).update()
+
+		// Queued in the reverse of the expected order, so passing cannot be insertion
+		// order wearing a priority's clothes: `id` is the last tiebreaker, and on it alone
+		// these three come back ticket-first.
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, ticket, OutboundOperation.UPSERT)
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, project, OutboundOperation.UPSERT)
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TEAM, team, OutboundOperation.UPSERT)
+
 		assertEquals(
 			listOf(OutboundEntityType.TEAM, OutboundEntityType.PROJECT, OutboundEntityType.TICKET),
-			order,
+			queuedOrder(mine),
 			"a relation target has to reach Notion before whatever points at it",
 		)
 	}
@@ -178,7 +223,11 @@ class OutboundJobQueueTest : PostgresTest() {
 		// And the worker holding it is alive, and says so.
 		jobs.heartbeat(listOf(running.id))
 
-		assertEquals(0, jobs.reclaimStuck(Duration.ofMinutes(5)))
+		jobs.reclaimStuck(Duration.ofMinutes(5))
+
+		// The row, not the count `reclaimStuck` returns. That count is global — the sweep
+		// takes no destination, by design — so asserting a number on it would be the same
+		// mistake `queuedOrder` exists to avoid, one method along.
 		assertEquals(
 			"running",
 			statusOf(running.id),
@@ -197,7 +246,8 @@ class OutboundJobQueueTest : PostgresTest() {
 		// the lock — on the age of the lock, this job is not stuck at all.
 		backdate(abandoned.id, lockHeld = Duration.ZERO, unheardFrom = Duration.ofMinutes(10))
 
-		assertEquals(1, jobs.reclaimStuck(Duration.ofMinutes(5)))
+		jobs.reclaimStuck(Duration.ofMinutes(5))
+
 		assertEquals("pending", statusOf(abandoned.id), "a dead worker's work still has to come back")
 	}
 
