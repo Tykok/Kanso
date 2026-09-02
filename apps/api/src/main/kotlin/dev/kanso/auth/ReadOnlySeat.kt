@@ -36,14 +36,24 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 object ReadOnlySeat {
 
 	/**
-	 * A viewer's own screen and their own attention.
+	 * A viewer's own screen, their own attention and their own pace — what only they decide.
 	 *
 	 * These write rows, and none of the rows is the team's data. A blanket refusal that
 	 * stopped somebody setting dark mode would be a worse product than a considered list,
 	 * and would also be dishonest about what the seat is: the promise is "you cannot change
 	 * *the work*", not "you cannot change *anything*". Every path here is under `/api/me`
-	 * or `/api/notifications`, is keyed on the actor's own user id inside the service, and
-	 * is invisible to everybody else on the instance.
+	 * or `/api/notifications`, and every row it writes is keyed on the actor's own user id
+	 * inside the service.
+	 *
+	 * **The test is who decides, not who can see.** These were once argued in as "invisible
+	 * to everybody else on the instance", which stopped being true when declared velocity
+	 * moved into preferences: it feeds `/api/tickets/{id}/duration`, so anyone who can read
+	 * a ticket you are assigned to can read your pace back out of it. The exemption stands
+	 * regardless — your own estimate of yourself is yours to state — but the retired sentence
+	 * would have waved the next entry through on a reason that was never the reason. What
+	 * qualifies is that nobody but the actor can set it and that it asserts nothing about the
+	 * work; that somebody else can *read* it is not disqualifying, and being unreadable was
+	 * never the promise.
 	 *
 	 * Favourites are in for the same reason preferences are — a pin is a sidebar, and the
 	 * `favourites` table is keyed per user with a cascade on the account. Marking the inbox
