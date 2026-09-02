@@ -29,6 +29,21 @@ data class PeopleMatch(val notion: NotionMember, val userId: UUID?, val suggeste
 data class PeopleView(val available: Boolean, val reason: String?, val people: List<PeopleMatch>)
 
 /**
+ * One account's own Notion identity, read-only.
+ *
+ * [connected] is about the instance, not the person: false means Notion is not wired up at
+ * all, and the screen omits the section instead of drawing a field nobody can ever fill.
+ * [member] is null when Notion is connected but this account has not been matched to a
+ * workspace member — a real state, and a different one from having no Notion at all.
+ */
+data class MyNotionIdentity(
+	val connected: Boolean,
+	val notionPersonId: String?,
+	val member: NotionMember?,
+	val reason: String?,
+)
+
+/**
  * The standing correspondence between Notion people and Kanso accounts.
  *
  * `users.notion_person_id` is the only truth this reads or writes — [view] never
@@ -88,6 +103,27 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	 * writing the wrong `people` value, so this keeps the correspondence
 	 * one-to-one even though the schema does not enforce it.
 	 */
+	/**
+	 * The profile is fetched from the workspace rather than read off Kanso's row, so a name
+	 * or an address changed in Notion reads correctly here with nothing synced. If the
+	 * workspace cannot be reached the id is still returned — knowing *which* id you are is
+	 * the part that does not depend on Notion answering.
+	 */
+	@Transactional(readOnly = true)
+	fun mine(actor: User): MyNotionIdentity {
+		if (!client.enabled) return MyNotionIdentity(false, null, null, NO_TOKEN)
+		val id = actor.notionPersonId
+			?: return MyNotionIdentity(true, null, null, "This account is not matched to a Notion member yet.")
+		return try {
+			val member = runBlocking { client.listUsers() }.firstOrNull { it.id == id }
+			MyNotionIdentity(true, id, member, if (member == null) "That id names nobody in the workspace any more." else null)
+		} catch (e: NotionRateLimited) {
+			MyNotionIdentity(true, id, null, "Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
+		} catch (e: NotionApiException) {
+			MyNotionIdentity(true, id, null, if (e.status == 403) CAPABILITY_MISSING else "Notion refused the request: ${e.message}")
+		}
+	}
+
 	@Transactional
 	fun link(actor: User, assignments: Map<String, UUID?>) {
 		val accounts = users.findAll()

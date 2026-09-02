@@ -5,6 +5,8 @@ import dev.kanso.auth.CurrentUser
 import dev.kanso.auth.InvitationService
 import dev.kanso.domain.InstanceRole
 import dev.kanso.repo.UserRepository
+import dev.kanso.sync.notion.MyNotionIdentity
+import dev.kanso.sync.notion.NotionPeople
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
@@ -41,6 +43,7 @@ class AccountController(
 	private val currentUser: CurrentUser,
 	private val account: AccountService,
 	private val users: UserRepository,
+	private val people: NotionPeople,
 ) {
 
 	@PutMapping
@@ -53,16 +56,26 @@ class AccountController(
 		account.changePassword(currentUser.requireId(), request.currentPassword, request.newPassword)
 
 	/**
-	 * Binds this account to a Notion workspace member, which is what lets the mirror
-	 * put them in a `people` property instead of a line of plain text.
+	 * Which Notion person this account is, to look at and not to set.
+	 *
+	 * It used to be a `PUT`, and the hole that made was the mirror's: nothing checked that
+	 * the id was unclaimed, so anybody could point their own row at a colleague's Notion
+	 * identity and have the mirror attribute that colleague's work to them. Refusing the
+	 * duplicate would have closed it, but the honest fix was to notice that this is not a
+	 * field about you. Who you are in a Notion workspace is a fact about that workspace,
+	 * and `NotionPeople.link` — the import's matching screen, a configurator's act — is
+	 * where it is decided. An account holder reads the answer.
+	 *
+	 * When Notion is not connected there is no answer to read, and `connected = false` is
+	 * what lets the screen omit the section rather than draw an empty one: a field that
+	 * can never be filled teaches somebody to go looking for the button that fills it.
+	 *
+	 * The profile comes from the workspace rather than from Kanso's own row, so a name or
+	 * an address changed in Notion reads correctly here without anything being synced.
 	 */
-	@PutMapping("/notion-identity")
-	@Transactional
-	fun setNotionIdentity(@RequestBody body: Map<String, String?>): UserResponse {
-		val id = currentUser.requireId()
-		users.setNotionPersonId(id, body["notionPersonId"]?.trim()?.takeIf { it.isNotEmpty() })
-		return UserResponse.of(requireNotNull(users.findById(id)))
-	}
+	@GetMapping("/notion-identity")
+	@Transactional(readOnly = true)
+	fun notionIdentity(): MyNotionIdentity = people.mine(currentUser.require())
 
 	@DeleteMapping("/identities/{provider}")
 	fun unlink(@PathVariable provider: String): UserResponse =

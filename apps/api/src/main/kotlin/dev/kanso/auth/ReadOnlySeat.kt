@@ -66,10 +66,9 @@ object ReadOnlySeat {
 	 * a provider could not leave. Renaming yourself is here because the alternative is an
 	 * instance where a typo in a display name needs an admin.
 	 *
-	 * `notion-identity` is the only debatable one, and it is in: it says which Notion person
-	 * this account *is*, which is what lets the mirror name a viewer in a `people` property
-	 * when somebody assigns them something. A viewer authors nothing, so the field can only
-	 * ever make an existing row read correctly.
+	 * `notion-identity` used to be here, argued in as the one debatable entry. It is gone
+	 * because the route is: who you are in a Notion workspace turned out not to be a field
+	 * about you at all, and it is read-only now for everybody, seat or no seat.
 	 *
 	 * Setting *somebody else's* role is not here, and neither is any other `/api/people`
 	 * write: those are admin business, refused to a viewer twice over — once by this
@@ -78,7 +77,6 @@ object ReadOnlySeat {
 	val OWN_ACCOUNT = arrayOf(
 		"PUT /api/me",
 		"PUT /api/me/password",
-		"PUT /api/me/notion-identity",
 		"DELETE /api/me/identities/{provider}",
 		"DELETE /api/oauth/grants/{clientId}",
 	)
