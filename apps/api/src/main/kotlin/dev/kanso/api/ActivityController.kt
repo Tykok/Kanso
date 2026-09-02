@@ -1,6 +1,8 @@
 package dev.kanso.api
 
+import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.ActivityEntity
+import dev.kanso.service.TicketAccess
 import dev.kanso.service.ActivityRow
 import dev.kanso.service.ActivityService
 import org.springframework.web.bind.annotation.GetMapping
@@ -45,14 +47,23 @@ data class ActivityResponse(
  */
 @RestController
 @RequestMapping("/api/activity")
-class ActivityController(private val activity: ActivityService) {
+class ActivityController(
+	private val activity: ActivityService,
+	private val currentUser: CurrentUser,
+	private val access: TicketAccess,
+) {
 
 	@GetMapping
 	fun list(
 		@RequestParam entityType: String,
 		@RequestParam entityId: UUID,
 		@RequestParam(defaultValue = "50") limit: Int,
-	): List<ActivityResponse> = activity
-		.forEntity(ActivityEntity.from(entityType), entityId, limit.coerceIn(1, 200))
-		.map(ActivityResponse::of)
+	): List<ActivityResponse> {
+		val entity = ActivityEntity.from(entityType)
+		// Only a ticket's feed can be a draft's. A project, a team or a doc is named by
+		// something the reader could already list, and asking the ticket rule about one
+		// would be asking the wrong question of the wrong id.
+		if (entity == ActivityEntity.TICKET) access.requireReadable(currentUser.require(), entityId)
+		return activity.forEntity(entity, entityId, limit.coerceIn(1, 200)).map(ActivityResponse::of)
+	}
 }

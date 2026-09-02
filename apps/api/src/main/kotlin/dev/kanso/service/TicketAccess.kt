@@ -3,6 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.User
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketRepository
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -23,7 +24,29 @@ import java.util.UUID
  * [requireTeam], so none of them needed a clause of their own.
  */
 @Service
-class TicketAccess(private val teams: TeamRepository) {
+class TicketAccess(
+	private val teams: TeamRepository,
+	private val tickets: TicketRepository,
+) {
+
+	/**
+	 * Refuses a reader who may not see this ticket, the way a missing one is refused.
+	 *
+	 * A draft belongs to whoever wrote it until a team claims it, and [mayRead] says so —
+	 * but only [TicketService.get] and the drafts list asked. The four reads that hang off
+	 * a ticket id took no actor at all, so a draft's comments, its feed, its labels and its
+	 * duration answered anybody holding the id.
+	 *
+	 * `NotFoundException`, with the sentence a genuinely missing row gets, and not
+	 * `AccessDeniedException`: a 403 tells somebody walking UUIDs that the row is there,
+	 * which is the one thing a private draft must not say. [TicketService.get] already
+	 * answers this way; this is that answer for the readers that are not it.
+	 */
+	@Transactional(readOnly = true)
+	fun requireReadable(actor: User, ticketId: UUID) {
+		val ticket = tickets.findById(ticketId) ?: throw NotFoundException("No ticket $ticketId")
+		if (!mayRead(actor, ticket)) throw NotFoundException("No ticket $ticketId")
+	}
 
 	@Transactional(readOnly = true)
 	fun mayEdit(actor: User, ticket: Ticket): Boolean =

@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.service.TicketAccess
 import dev.kanso.service.EffectiveVelocity
 import dev.kanso.service.EffectiveVelocityService
 import dev.kanso.service.TicketDuration
@@ -132,9 +133,17 @@ data class TicketDurationResponse(
  * which anyone who can read the ticket can already read.
  */
 @RestController
-class TicketDurationController(private val durations: TicketDurationService) {
+class TicketDurationController(
+	private val durations: TicketDurationService,
+	private val currentUser: CurrentUser,
+	private val access: TicketAccess,
+) {
 
 	@GetMapping("/api/tickets/{id}/duration")
-	fun forTicket(@PathVariable id: UUID): TicketDurationResponse =
-		TicketDurationResponse.of(durations.forTicket(id))
+	fun forTicket(@PathVariable id: UUID): TicketDurationResponse {
+		// A duration is read off its assignees' pace, so answering for a draft would also
+		// disclose whose it is.
+		access.requireReadable(currentUser.require(), id)
+		return TicketDurationResponse.of(durations.forTicket(id))
+	}
 }
