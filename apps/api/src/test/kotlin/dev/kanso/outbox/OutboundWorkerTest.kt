@@ -5,10 +5,15 @@ import dev.kanso.config.KansoProperties
 import dev.kanso.repo.OutboundJobRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.scheduling.TaskScheduler
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,6 +36,13 @@ class OutboundWorkerTest : PostgresTest() {
 	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var jdbc: JdbcClient
 	@Autowired lateinit var tx: TransactionTemplate
+
+	/**
+	 * Handed over but never used: `start` is what registers a clock on it, and a worker
+	 * built by hand never has `@PostConstruct` called. Every drain below is this test's
+	 * own call, on this test's thread, which is what makes the assertions worth making.
+	 */
+	@Autowired lateinit var scheduler: TaskScheduler
 
 	/** Records what it was asked to do, and fails on command. */
 	private class FakeHandler(
@@ -64,6 +76,7 @@ class OutboundWorkerTest : PostgresTest() {
 		jobs = jobs,
 		handlers = listOf(handler),
 		tx = tx,
+		scheduler = scheduler,
 	)
 
 	private fun statusOf(entityId: UUID): String? = jdbc.sql(
@@ -79,7 +92,7 @@ class OutboundWorkerTest : PostgresTest() {
 		queue(id)
 		val handler = FakeHandler()
 
-		worker(handler).drain()
+		worker(handler).drain(handler)
 
 		assertEquals(1, handler.handled.size)
 		assertEquals(handler.handled.single().id, handler.recorded.single())
@@ -92,7 +105,7 @@ class OutboundWorkerTest : PostgresTest() {
 		queue(id)
 		val handler = FakeHandler(failWith = IllegalStateException("Notion said 500"))
 
-		worker(handler).drain()
+		worker(handler).drain(handler)
 
 		assertEquals("pending", statusOf(id), "a retryable failure goes back in the queue")
 		assertTrue(handler.givenUp.isEmpty(), "one bad attempt out of eight is not giving up")
@@ -107,7 +120,7 @@ class OutboundWorkerTest : PostgresTest() {
 			verdict = { Failure.Defer(it.message ?: "", Duration.ZERO) },
 		)
 
-		worker(handler).drain()
+		worker(handler).drain(handler)
 
 		// The claim spent one; the deferral gave it back. Claiming again spends the same one.
 		assertEquals(1, jobs.claimBatch(Destination.NOTION, 1, "test").single().attempts)
@@ -122,7 +135,7 @@ class OutboundWorkerTest : PostgresTest() {
 			verdict = { Failure.Fatal(it.message ?: "") },
 		)
 
-		worker(handler).drain()
+		worker(handler).drain(handler)
 
 		assertEquals("failed", statusOf(id))
 		assertEquals(1, handler.givenUp.size, "the handler gets its last rites before the row is written")
@@ -135,16 +148,71 @@ class OutboundWorkerTest : PostgresTest() {
 		val handler = FakeHandler(failWith = IllegalStateException("still 500"))
 
 		// max-attempts of one: the claim spends the only attempt there was.
-		worker(handler, maxAttempts = 1).drain()
+		worker(handler, maxAttempts = 1).drain(handler)
 
 		assertEquals("failed", statusOf(id))
 		assertEquals(1, handler.givenUp.size)
 	}
 
+	/**
+	 * Counts the clocks `start` asks for, and runs none of them.
+	 *
+	 * Subclasses the scheduler the application actually gets, rather than stubbing the
+	 * five members of the interface that this never reaches.
+	 */
+	private class RecordingScheduler : ThreadPoolTaskScheduler() {
+		val delays = mutableListOf<Duration>()
+		private val parked = ScheduledThreadPoolExecutor(1)
+
+		override fun scheduleWithFixedDelay(task: Runnable, delay: Duration): ScheduledFuture<*> {
+			delays += delay
+			// A real future for a task due in a day: what was asked for is the whole
+			// assertion, and a drain firing here would race it.
+			return parked.schedule({}, 1, TimeUnit.DAYS)
+		}
+	}
+
+	@Test
+	fun `every handler gets its own clock, at the configured interval`() {
+		val scheduler = RecordingScheduler()
+
+		OutboundWorker(
+			props = KansoProperties(
+				sync = KansoProperties.Sync(outbound = KansoProperties.Outbound(pollIntervalMs = 250)),
+			),
+			jobs = jobs,
+			handlers = listOf(FakeHandler()),
+			tx = tx,
+			scheduler = scheduler,
+		).start()
+
+		assertEquals(listOf(Duration.ofMillis(250)), scheduler.delays)
+	}
+
+	@Test
+	fun `an outbound worker that is switched off registers no clock at all`() {
+		val scheduler = RecordingScheduler()
+
+		OutboundWorker(
+			props = KansoProperties(
+				sync = KansoProperties.Sync(outbound = KansoProperties.Outbound(enabled = false)),
+			),
+			jobs = jobs,
+			handlers = listOf(FakeHandler()),
+			tx = tx,
+			scheduler = scheduler,
+		).start()
+
+		assertTrue(
+			scheduler.delays.isEmpty(),
+			"a registered clock claims jobs from under every test in the suite, which is what `enabled: false` buys",
+		)
+	}
+
 	@Test
 	fun `two handlers for one destination is refused rather than half-obeyed`() {
 		val clash = runCatching {
-			OutboundWorker(KansoProperties(), jobs, listOf(FakeHandler(), FakeHandler()), tx)
+			OutboundWorker(KansoProperties(), jobs, listOf(FakeHandler(), FakeHandler()), tx, scheduler)
 		}
 
 		assertTrue(

@@ -19,12 +19,15 @@ spring:
     # to turn off here — WRITE_DATES_AS_TIMESTAMPS is gone from SerializationFeature.
     default-property-inclusion: non_null
 
-  # Outbound worker, inbound poller and the stuck-job sweeper all run on this
-  # scheduler; a single thread would serialise them.
+  # One thread per recurring task, or they serialise: the inbound poller, the
+  # stuck-job sweeper, the trash sweep, and one outbound clock per sync destination
+  # (see OutboundWorker.start). A task that finds no free thread waits for one, which
+  # is the exact coupling those per-destination clocks exist to remove — so this is
+  # sized for the second destination before there is one, and keeps a spare.
   task:
     scheduling:
       pool:
-        size: 4
+        size: 6
 
 server:
   port: 8080
