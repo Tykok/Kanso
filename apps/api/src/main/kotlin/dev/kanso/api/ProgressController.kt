@@ -234,13 +234,19 @@ class ProgressController(
 	private val currentUser: CurrentUser,
 	private val progress: ProgressService,
 	private val readable: ProgressAccess,
+	private val teams: TeamService,
 ) {
 
 	@GetMapping("/api/me/progress")
 	@Transactional(readOnly = true)
 	fun mine(@RequestParam teamId: UUID): ProgressResponse {
+		// A `teamId` naming no team answered 200 and a wholly empty body until KAN-66. The
+		// same `TeamService.get` the velocity route calls, deliberately, so the two cannot
+		// drift into two refusals; the argument for the 404 is written down once, on
+		// `VelocityController`.
+		val team = teams.get(teamId)
 		val me = currentUser.require()
-		return ProgressResponse.of(progress.forPerson(me, teamId), readable.readers(me, teamId))
+		return ProgressResponse.of(progress.forPerson(me, team.id), readable.readers(me, team.id))
 	}
 }
 

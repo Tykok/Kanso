@@ -170,6 +170,44 @@ class OwnProgressTest : MockMvcTest() {
 		}
 	}
 
+	/**
+	 * KAN-66, and it is one test for two routes on purpose.
+	 *
+	 * Both answered 200 with a wholly empty body for a `teamId` naming no team. Split into
+	 * two tests they could each be fixed alone, which the ticket judged worse than the bug —
+	 * two neighbouring routes refusing one mistake in two ways, with nothing saying why. One
+	 * test is the cheapest way to make the next person to change either of them break this.
+	 *
+	 * The second half is what stops the cure being worse: a team that *does* exist and has
+	 * nothing to report must still answer 200. The empty body was indistinguishable between
+	 * those two cases, and turning both into errors would have deleted a real answer.
+	 */
+	@Test
+	fun `a teamId naming no team is refused, on both routes, while an empty team still answers`() {
+		val nobodys = UUID.randomUUID()
+
+		for (route in listOf("/api/me/progress", "/api/me/velocity")) {
+			val response = mvc.get("$route?teamId=$nobodys") {
+				header(DevAuthenticationFilter.HEADER, viewer.email)
+			}.andReturn().response
+
+			assertEquals(
+				404,
+				response.status,
+				"$route answered ${response.status} for a team that does not exist, which is an" +
+					" answer about a calendar nobody has",
+			)
+		}
+
+		// The real team, with no closed cycle and nothing assigned. Still an answer.
+		mvc.get("/api/me/velocity?teamId=${team.id}") {
+			header(DevAuthenticationFilter.HEADER, viewer.email)
+		}.andExpect {
+			status { isOk() }
+			jsonPath("$.source") { value("none") }
+		}
+	}
+
 	@Test
 	fun `the team is required, because a pace measured against another team's fortnights is another number`() {
 		val response = mvc.get("/api/me/progress") {

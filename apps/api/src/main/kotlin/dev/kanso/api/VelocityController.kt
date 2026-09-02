@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.service.TeamService
 import dev.kanso.service.TicketAccess
 import dev.kanso.service.EffectiveVelocity
 import dev.kanso.service.EffectiveVelocityService
@@ -62,16 +63,47 @@ data class EffectiveVelocityResponse(
  * calendar, so "your velocity" is not a question with one answer for somebody in two
  * teams, and picking one for them would silently show a number measured against the wrong
  * fortnight.
+ *
+ * **And a [teamId] naming no team is a 404, which is the decision this file records for
+ * both routes.**
+ *
+ * It used to be a 200 with a wholly empty body, here and on `/api/me/progress`. That
+ * disclosed nothing — the empty body was identical for a team that does not exist and for a
+ * team where this person has delivered nothing, so it could not be used to enumerate
+ * anything — but it was an answer that lied about the question asked. There is no pace to
+ * report against a calendar that does not exist, and "no pace" is a sentence about the
+ * person.
+ *
+ * A 404 rather than a 200 carrying a field that distinguishes the two, which was the other
+ * candidate and is the more useful of the two to a screen that must render something. Three
+ * reasons went the other way. A new field is a field every existing caller ignores, so the
+ * lie would keep being told to everything already written, while a status code is the one
+ * part of a response no HTTP client can overlook. The neighbouring failure of this very
+ * parameter — omitting it — is already a 400, and answering "absent" with a 4xx and
+ * "nonsense" with a 200 would be two verdicts on one mistake. And the screen loses nothing:
+ * it has to tell "this team is gone" from "you have nothing yet" either way, and a status
+ * code separates those without it having to read a field it might not have.
+ *
+ * It is not an enumeration oracle, which the 200 was praised for not being. Team existence
+ * is not a secret Kanso keeps: `GET /api/teams` lists every team in the instance to any
+ * authenticated reader. The 404 discloses nothing that route does not hand over in full.
+ *
+ * Both routes reach it through the same `TeamService.get`, so they cannot come to answer
+ * differently — two neighbours refusing the same mistake in two ways, with nothing saying
+ * why, is the state the ticket judged worse than the bug.
  */
 @RestController
 class VelocityController(
 	private val currentUser: CurrentUser,
 	private val velocity: EffectiveVelocityService,
+	private val teams: TeamService,
 ) {
 
 	@GetMapping("/api/me/velocity")
-	fun mine(@RequestParam teamId: UUID): EffectiveVelocityResponse =
-		EffectiveVelocityResponse.of(velocity.forPerson(currentUser.require(), teamId))
+	fun mine(@RequestParam teamId: UUID): EffectiveVelocityResponse {
+		val team = teams.get(teamId)
+		return EffectiveVelocityResponse.of(velocity.forPerson(currentUser.require(), team.id))
+	}
 }
 
 /**
