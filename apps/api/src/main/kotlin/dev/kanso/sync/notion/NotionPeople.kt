@@ -78,6 +78,27 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	}
 
 	/**
+	 * The profile is fetched from the workspace rather than read off Kanso's row, so a name
+	 * or an address changed in Notion reads correctly here with nothing synced. If the
+	 * workspace cannot be reached the id is still returned — knowing *which* id you are is
+	 * the part that does not depend on Notion answering.
+	 */
+	@Transactional(readOnly = true)
+	fun mine(actor: User): MyNotionIdentity {
+		if (!client.enabled) return MyNotionIdentity(false, null, null, NO_TOKEN)
+		val id = actor.notionPersonId
+			?: return MyNotionIdentity(true, null, null, "This account is not matched to a Notion member yet.")
+		return try {
+			val member = runBlocking { client.listUsers() }.firstOrNull { it.id == id }
+			MyNotionIdentity(true, id, member, if (member == null) "That id names nobody in the workspace any more." else null)
+		} catch (e: NotionRateLimited) {
+			MyNotionIdentity(true, id, null, "Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
+		} catch (e: NotionApiException) {
+			MyNotionIdentity(true, id, null, if (e.status == 403) CAPABILITY_MISSING else "Notion refused the request: ${e.message}")
+		}
+	}
+
+	/**
 	 * Writes `users.notion_person_id` for a whole batch in one call — a screen
 	 * resends its whole table, not one row, and [Map] already makes that first
 	 * class. The guard lives here, not beside the caller: a private check the
@@ -102,28 +123,28 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	 * accounts claiming one Notion person is exactly how the mirror ends up
 	 * writing the wrong `people` value, so this keeps the correspondence
 	 * one-to-one even though the schema does not enforce it.
+	 *
+	 * **That last sentence is a divergence, and `KAN-54` is the reason it stays one.** This
+	 * takes a claimed Notion id away from whoever holds it. The account holder's own side of
+	 * the same question — "I am this Notion person" — does not exist at all: there is no
+	 * `PUT /api/me/notion-identity`, [mine] reads and nothing writes, and
+	 * `AccountIsNotEditableTest` is what keeps it that way. Two rules, on purpose, and
+	 * neither is the other's oversight:
+	 *
+	 * - Here the actor is a configurator matching a whole workspace to a whole instance, and
+	 *   moving a link is the correction they are on this screen to make. Refusing it would
+	 *   leave an instance with a wrong match and no way to fix it.
+	 * - There the actor would be claiming one identity, their own, with nobody checking. The
+	 *   legitimate case that a self-service write served — recovering your own identity after
+	 *   an email change re-matched you to nobody — is rare, visible, and repairable by hand
+	 *   or by a configurator's reassignment. Claiming a colleague's is none of those: the
+	 *   mirror silently credits their work to you in a workspace Kanso does not control, and
+	 *   nothing anywhere says it happened.
+	 *
+	 * So do not harmonise the two. If a self-service write is ever wanted back, it refuses a
+	 * taken id — 409, not a steal — because the two acts differ in who is checking, not in
+	 * what they write.
 	 */
-	/**
-	 * The profile is fetched from the workspace rather than read off Kanso's row, so a name
-	 * or an address changed in Notion reads correctly here with nothing synced. If the
-	 * workspace cannot be reached the id is still returned — knowing *which* id you are is
-	 * the part that does not depend on Notion answering.
-	 */
-	@Transactional(readOnly = true)
-	fun mine(actor: User): MyNotionIdentity {
-		if (!client.enabled) return MyNotionIdentity(false, null, null, NO_TOKEN)
-		val id = actor.notionPersonId
-			?: return MyNotionIdentity(true, null, null, "This account is not matched to a Notion member yet.")
-		return try {
-			val member = runBlocking { client.listUsers() }.firstOrNull { it.id == id }
-			MyNotionIdentity(true, id, member, if (member == null) "That id names nobody in the workspace any more." else null)
-		} catch (e: NotionRateLimited) {
-			MyNotionIdentity(true, id, null, "Notion is rate-limiting this integration. Try again in ${e.retryAfter.toSeconds()}s.")
-		} catch (e: NotionApiException) {
-			MyNotionIdentity(true, id, null, if (e.status == 403) CAPABILITY_MISSING else "Notion refused the request: ${e.message}")
-		}
-	}
-
 	@Transactional
 	fun link(actor: User, assignments: Map<String, UUID?>) {
 		val accounts = users.findAll()

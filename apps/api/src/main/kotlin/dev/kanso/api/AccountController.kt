@@ -72,6 +72,12 @@ class AccountController(
 	 *
 	 * The profile comes from the workspace rather than from Kanso's own row, so a name or
 	 * an address changed in Notion reads correctly here without anything being synced.
+	 *
+	 * `NotionPeople.link` *does* take a claimed id off whoever holds it, and that asymmetry
+	 * is deliberate rather than a rule somebody forgot to copy across — it is argued where
+	 * the steal happens, and the short version is that the two differ in who is checking: a
+	 * configurator matching a workspace, against an account holder naming themselves with
+	 * nobody watching. Harmonising them is the tempting mistake, in either direction.
 	 */
 	@GetMapping("/notion-identity")
 	@Transactional(readOnly = true)
