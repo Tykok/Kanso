@@ -492,6 +492,59 @@ export type Progress = {
   velocity: EffectiveVelocity;
   delivered: DeliveredCycle[];
   load: OpenLoad;
+  readers: ProgressReaders;
+};
+
+/** A team named and nothing else — the heading of a page, or a clause in a sentence. */
+export type TeamRef = { id: string; name: string; key: string };
+
+/**
+ * Who else can read a person's figures.
+ *
+ * On every version of the page, including the caller's own, and *especially* there: it is
+ * the only place a person will look to find out that somebody else can read this. Both
+ * lists are other people — the subject is in neither, and neither is a team whose only
+ * titled administrator is the subject themselves.
+ *
+ * Two empty lists together are the common and honest answer on a small instance: nobody
+ * but you.
+ */
+export type ProgressReaders = {
+  instanceAdmins: { id: string; displayName: string; avatarUrl?: string }[];
+  teams: TeamRef[];
+};
+
+// --- a team's progress -------------------------------------------------------
+
+/**
+ * A team's pace. No `source`, because nobody declares a team's velocity.
+ *
+ * Deliberately not an `EffectiveVelocity` with three fields left absent: that type's whole
+ * subject is which of two numbers is in force, and a client handed it would caption a
+ * team's number with a rule that was never applied to it.
+ */
+export type TeamPace = {
+  /** Absent — never `0` — when no closed cycle could be measured. */
+  perWorkingDay?: number;
+  /** How many closed cycles the mean stands on. Zero means there was nothing to measure. */
+  measuredCycles: number;
+};
+
+/**
+ * A team's figures, and **no field that names a person.**
+ *
+ * That absence is the feature. Ranking people by points delivered is out of scope by the
+ * ticket, and a response with no row to sort is how it stays out of scope rather than by a
+ * decision the next person to touch this file has to rediscover. `byStatus` and `byProject`
+ * cut the plate by things; the per-person cut of the same plate is the workload screen,
+ * which has been open to every reader since screen 23 and is not repeated here.
+ */
+export type TeamProgress = {
+  team: TeamRef;
+  pace: TeamPace;
+  /** Oldest first — the order the chart draws. */
+  delivered: DeliveredCycle[];
+  load: OpenLoad;
 };
 
 /**
@@ -808,6 +861,28 @@ export const api = {
    * are closed. `teamId` is required for the reason `velocity` requires it.
    */
   progress: (teamId: string) => request<Progress>(`/api/me/progress${query({ teamId })}`),
+
+  /**
+   * Somebody else's progress page, same shape, admin-only on the server.
+   *
+   * The rule is `ProgressAccess`, not this function: a 403 here is the product working. The
+   * client's job is to render the refusal as a sentence rather than to guess in advance who
+   * may ask — a page that hid itself and an endpoint that answered anyway would be the
+   * failure the ticket is about.
+   */
+  personProgress: (userId: string, teamId: string) =>
+    request<Progress>(`/api/people/${userId}/progress${query({ teamId })}`),
+
+  /**
+   * A team's figures, in aggregates.
+   *
+   * It doubles as the capability probe for this screen, which is why nothing else has to be
+   * added to `/api/me`: the rule that governs it is *exactly* the rule that governs reading
+   * another person, minus the "you always read yourself" branch. So a caller who gets an
+   * answer here may read anybody in this team, and one who gets a 403 may read only
+   * themselves.
+   */
+  teamProgress: (teamId: string) => request<TeamProgress>(`/api/teams/${teamId}/progress`),
 
   /**
    * Beside the ticket rather than on it: this costs a walk of the team's closed cycles and
