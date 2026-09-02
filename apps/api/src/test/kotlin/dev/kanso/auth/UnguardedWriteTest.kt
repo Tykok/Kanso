@@ -280,6 +280,15 @@ class UnguardedWriteTest : MockMvcTest() {
 		 * property of the signature. Naming it here rather than loosening the check to "or a
 		 * service that holds one" keeps that argument visible.
 		 *
+		 * `ApiTokenController` is that same argument, on the credential this time rather than
+		 * on the grant, and it is the case where it matters most: `ApiTokenService.list`,
+		 * `create` and `revoke` take no user id, so nothing a controller could pass — a path
+		 * variable, a body field, a query parameter — could aim one of them at somebody
+		 * else's API tokens. `revoke` goes further and puts the owner inside the `DELETE`'s
+		 * own predicate, so there is not even a window between "is this yours" and "delete
+		 * it". A `CurrentUser` field here would be an unused dependency whose only effect is
+		 * to satisfy this sweep, which is the wrong direction to move a guard in.
+		 *
 		 * `BasicErrorController` is Spring's, serves `/error`, and is reached by a forward
 		 * rather than by a client.
 		 */
@@ -287,6 +296,7 @@ class UnguardedWriteTest : MockMvcTest() {
 			"PublicController",
 			"ClientRegistrationController",
 			"GrantsController",
+			"ApiTokenController",
 			"BasicErrorController",
 		)
 	}

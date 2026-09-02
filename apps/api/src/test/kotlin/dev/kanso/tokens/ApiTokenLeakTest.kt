@@ -234,9 +234,21 @@ class ApiTokenLeakTest : MockMvcTest() {
 	 *
 	 * The token carries `kanso:write`, deliberately, so the scope gate cannot be what
 	 * refuses it — and the sentence is asserted, not just the code, because a 403 from
-	 * somewhere else would let a genuinely unguarded route look green. What has to answer is
-	 * `ReadOnlySeatInterceptor`, reading the owner's role out of the database off a
-	 * principal that arrived by Bearer, with no line of code anywhere about tokens.
+	 * somewhere else would let a genuinely unguarded route look green.
+	 *
+	 * **What this test cannot tell you, and it is worth knowing.** Two independent things
+	 * refuse this request, and disabling either one alone leaves this green:
+	 * `ReadOnlySeatInterceptor` in `preHandle`, and `TicketAccess.requireSeatThatWrites` in
+	 * the domain. Exempting `KansoTokenUser` from the interceptor — the plausible mistake,
+	 * "a machine caller is not a seat" — was tried, and this test did not notice, because
+	 * the domain caught it one layer in. That is defence in depth working as intended
+	 * rather than a hole, but it means the assertion below is about the *outcome* and not
+	 * about which guard produced it.
+	 *
+	 * What makes it a real test is that both layers read one property —
+	 * `InstanceRole.mayWrite`, which its own comment calls "the whole of the read-only seat,
+	 * in one line". Mutating that property to `true` does turn this red, which is the proof
+	 * that a Bearer caller reaches the seat rule at all rather than routing around it.
 	 */
 	@Test
 	fun `a read-only seat's token is refused every write, even granted the write scope`() {
