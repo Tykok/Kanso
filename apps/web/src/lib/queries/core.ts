@@ -77,6 +77,8 @@ export const keys = {
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** Per team, because a velocity measured against another team's fortnights is a different number. */
   velocity: (teamId: string) => ["velocity", teamId] as const,
+  /** Per team for the same reason `velocity` is: it is measured against that calendar. */
+  progress: (teamId: string) => ["progress", teamId] as const,
   ticketDuration: (id: string) => ["ticketDuration", id] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
   timeline: (scope: Scope) =>
@@ -220,12 +222,15 @@ export function useSavePreferences() {
         current ? { ...current, preferences: saved } : current,
       );
       // The declared velocity is the one preference that is an *input* to reads living in
-      // other caches: which velocity is in force, and now every ticket's duration. Both are
-      // computed on the server from it, so neither can be patched from the response here.
+      // other caches: which velocity is in force, every ticket's duration, and now the
+      // progress page — where it decides both the headline sentence and how many days the
+      // plate is said to weigh. All three are computed on the server from it, so none can
+      // be patched from the response here.
       // Conditional rather than a blanket invalidate, because a theme change moves nothing.
       if ("declaredVelocity" in patch || (patch.unset ?? []).includes("declaredVelocity")) {
         queryClient.invalidateQueries({ queryKey: ["velocity"] });
         queryClient.invalidateQueries({ queryKey: ["ticketDuration"] });
+        queryClient.invalidateQueries({ queryKey: ["progress"] });
       }
     },
   });
@@ -242,6 +247,21 @@ export const useVelocity = (teamId?: string) =>
   useQuery({
     queryKey: keys.velocity(teamId ?? ""),
     queryFn: () => api.velocity(teamId!),
+    enabled: Boolean(teamId),
+  });
+
+/**
+ * The whole of one person's progress page, in one key.
+ *
+ * Not composed out of `useVelocity` and a workload read. The pace, the delivered cycles
+ * and the plate are one question asked of one snapshot, and three caches refetching
+ * independently would eventually draw a chart of three closed cycles under a sentence
+ * saying the number stands on two. One request, one cache entry, one moment.
+ */
+export const useProgress = (teamId?: string) =>
+  useQuery({
+    queryKey: keys.progress(teamId ?? ""),
+    queryFn: () => api.progress(teamId!),
     enabled: Boolean(teamId),
   });
 

@@ -378,6 +378,80 @@ export type EffectiveVelocity = {
   cyclesUntilMeasured: number;
 };
 
+// --- my progress -------------------------------------------------------------
+
+/**
+ * One bar of the delivered-points chart: what this person shipped in one closed cycle.
+ *
+ * `points` is fractional because a ticket with two assignees gives half of itself to each,
+ * so a share of an 8 is a 4 and a share of a 5 is not an integer at all.
+ *
+ * `countedTowardsVelocity` is what keeps the chart and the number above it from reading as
+ * two contradictory claims. The chart is drawn over six closed cycles and the velocity is
+ * measured over three of them, so some bars are history the number is not standing on —
+ * and false on every bar when a declared velocity is in force, which is correct: it was
+ * measured over nothing.
+ */
+export type DeliveredCycle = {
+  cycleId: string;
+  number: number;
+  /** `YYYY-MM-DD`, both of them — a cycle is whole days, so no timezone. */
+  startsOn: string;
+  endsOn: string;
+  points: number;
+  workingDays: number;
+  /** Finished tickets in this cycle that nobody sized. Absent from `points`, never zero. */
+  unestimated: number;
+  countedTowardsVelocity: boolean;
+};
+
+/**
+ * One cut of an open plate. `unestimated` travels with `points` everywhere it is drawn,
+ * because a sum that quietly leaves out half a plate reads as the whole of it.
+ */
+export type LoadSlice = { tickets: number; points: number; unestimated: number };
+
+/** `projectId` and `projectName` are absent together: the tickets filed under no project. */
+export type ProjectLoad = { projectId?: string; projectName?: string; load: LoadSlice };
+
+export type OpenLoad = {
+  load: LoadSlice;
+  /** Keyed by the status wire value, and every open status is present, including zeros. */
+  byStatus: Record<string, LoadSlice>;
+  /** Heaviest first, and the unfiled pile last however big it is. */
+  byProject: ProjectLoad[];
+  /**
+   * The plate's points divided by the pace in force — "you are carrying 6.5 days of work".
+   *
+   * Absent, never `0`, when there is no pace to divide by. It is *not* absent for an empty
+   * plate: nought days is the honest reading of nothing, and it is the one zero on this
+   * page that is a measurement rather than a gap.
+   */
+  workingDays?: number;
+};
+
+/**
+ * Everything the personal-progress screen draws, with the arbitration already done.
+ *
+ * `person` is on the response even though `/api/me/progress` only answers for the caller:
+ * the shape is the one the admin view of somebody else will serve, and a page that could
+ * not name its own subject would need a second request to write its heading.
+ *
+ * `delivered` is **oldest first** — the order the chart draws, decided on the server so
+ * that no caller can forget to reverse it and draw a rise as a fall.
+ */
+export type Progress = {
+  /**
+   * Spelled out rather than imported as `Person`, which lives in `organise.ts` — and
+   * `organise.ts` imports from here, so naming it would be a module cycle. TypeScript is
+   * structural, so `@/lib/api`'s `Person` is assignable to this and back.
+   */
+  person: { id: string; displayName: string; avatarUrl?: string };
+  velocity: EffectiveVelocity;
+  delivered: DeliveredCycle[];
+  load: OpenLoad;
+};
+
 /**
  * How long a ticket should take, or which of three reasons Kanso will not say.
  *
@@ -682,6 +756,16 @@ export const api = {
    * picking one for them would show a number measured against the wrong one.
    */
   velocity: (teamId: string) => request<EffectiveVelocity>(`/api/me/velocity${query({ teamId })}`),
+
+  /**
+   * Your own progress page, in one request.
+   *
+   * One call rather than the velocity plus a workload read plus a cycle list: the three
+   * are one question — how fast do you go, and how much are you carrying at that speed —
+   * and answered separately they would be three caches free to disagree about which cycles
+   * are closed. `teamId` is required for the reason `velocity` requires it.
+   */
+  progress: (teamId: string) => request<Progress>(`/api/me/progress${query({ teamId })}`),
 
   /**
    * Beside the ticket rather than on it: this costs a walk of the team's closed cycles and
