@@ -26,6 +26,7 @@ import dev.kanso.sync.notion.NotionMember
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionQueryPage
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
@@ -59,6 +60,7 @@ class NotionInboundTeamTest : PostgresTest() {
 	@Autowired lateinit var tx: TransactionTemplate
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var jdbc: JdbcClient
 
 	private val admin: User by lazy {
 		users.createLocalUser(
@@ -71,6 +73,42 @@ class NotionInboundTeamTest : PostgresTest() {
 
 	private fun newTeam(name: String, parentId: UUID? = null) =
 		teams.create(admin, name, "N${UUID.randomUUID().toString().take(5).uppercase()}", parentId)
+
+	/**
+	 * What is queued for one entity — read, never claimed.
+	 *
+	 * Deliberately not `claimBatch`, which these tests used to observe the queue with.
+	 * `claimBatch` is `FOR UPDATE SKIP LOCKED` across the whole destination under a batch
+	 * limit, so which rows it hands back depends on what every other test in the run happens
+	 * to be holding at that instant: it skips a row locked elsewhere, the next call returns
+	 * that row, and an assertion about what is queued fails once in a loaded full suite and
+	 * never in isolation. `@Transactional` isolates this test's *data*; it does not isolate
+	 * anybody's *locks*. The question asked here is only ever "what is queued for this team",
+	 * which is a filter and has no business taking a lock to answer.
+	 */
+	private fun queuedFor(entityId: UUID): List<OutboundOperation> = jdbc.sql(
+		"""
+		SELECT operation FROM outbound_jobs
+		 WHERE destination = :destination AND entity_id = :id AND status = 'pending'
+		""".trimIndent()
+	)
+		.param("destination", Destination.NOTION.wire)
+		.param("id", entityId)
+		.query { rs, _ -> OutboundOperation.from(rs.getString("operation")) }
+		.list()
+
+	/**
+	 * Drops what building the fixture queued, so that whatever [queuedFor] finds afterwards
+	 * can only be the poll's doing.
+	 *
+	 * Something has to clear it, because `enqueue` coalesces onto an existing pending row:
+	 * a poll that queued the wrong operation would edit that row rather than add one, and
+	 * would be invisible. One entity and a delete, rather than a claim over the batch, for
+	 * [queuedFor]'s reason.
+	 */
+	private fun clearQueued(entityId: UUID) {
+		jdbc.sql("DELETE FROM outbound_jobs WHERE entity_id = :id").param("id", entityId).update()
+	}
 
 	/** Answers one page for the teams data source and nothing else. */
 	private class OnePageClient(private val page: NotionPage) : NotionClient {
@@ -145,7 +183,7 @@ class NotionInboundTeamTest : PostgresTest() {
 	fun `archiving a team in Notion does not archive it in Kanso`() {
 		val core = newTeam("Core")
 		val mobile = newTeam("Mobile", core.id)
-		jobs.claimBatch(Destination.NOTION, 200, "drain")
+		clearQueued(core.id)
 
 		pollWith(core.id, notionArchived = true)
 
@@ -158,8 +196,8 @@ class NotionInboundTeamTest : PostgresTest() {
 			"and letting it through would have left this one live under an archived ancestor",
 		)
 		assertEquals(
-			OutboundOperation.UPSERT,
-			jobs.claimBatch(Destination.NOTION, 200, "test").single { it.entityId == core.id }.operation,
+			listOf(OutboundOperation.UPSERT),
+			queuedFor(core.id),
 			"Notion is pushed back to Kanso's truth rather than left disagreeing forever",
 		)
 	}
@@ -169,7 +207,7 @@ class NotionInboundTeamTest : PostgresTest() {
 		val core = newTeam("Core")
 		val mobile = newTeam("Mobile", core.id)
 		teams.archive(admin, core.id, DispositionPlan(subTeams = DispositionChoice.TAKE))
-		jobs.claimBatch(Destination.NOTION, 200, "drain")
+		clearQueued(mobile.id)
 
 		pollWith(mobile.id, notionArchived = false)
 
@@ -177,21 +215,19 @@ class NotionInboundTeamTest : PostgresTest() {
 			teams.get(mobile.id).archived,
 			"the other direction breaks the same invariant: a live team under an archived one",
 		)
-		assertEquals(
-			OutboundOperation.ARCHIVE,
-			jobs.claimBatch(Destination.NOTION, 200, "test").single { it.entityId == mobile.id }.operation,
-		)
+		assertEquals(listOf(OutboundOperation.ARCHIVE), queuedFor(mobile.id))
 	}
 
 	@Test
 	fun `a page that already agrees queues nothing`() {
 		val core = newTeam("Core")
-		jobs.claimBatch(Destination.NOTION, 200, "drain")
+		clearQueued(core.id)
 
 		pollWith(core.id, notionArchived = false)
 
-		assertTrue(
-			jobs.claimBatch(Destination.NOTION, 200, "test").none { it.entityId == core.id },
+		assertEquals(
+			emptyList(),
+			queuedFor(core.id),
 			"nothing disagrees, so there is nothing to correct",
 		)
 	}
