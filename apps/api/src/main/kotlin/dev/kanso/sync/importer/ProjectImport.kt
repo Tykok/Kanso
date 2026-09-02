@@ -53,6 +53,7 @@ class ProjectImport(
 				?: base.fallback.teamId
 				?: fallbackTeam
 			val project = projects.create(
+				actor = actor,
 				name = requireNotNull(base.reader.title(page)) { "an unadoptable page reached the writer" },
 				status = base.reader.projectStatus(page) ?: ProjectStatus.IN_PROGRESS,
 				start = base.reader.start(page),

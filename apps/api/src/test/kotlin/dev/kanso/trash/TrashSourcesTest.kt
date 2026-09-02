@@ -448,6 +448,7 @@ class TrashSourcesTest : PostgresTest() {
 	fun `deleting a project forgets the entry of a ticket it destroys`() {
 		val team = newTeam()
 		val project = projects.create(
+			actor = admin,
 			name = "Product",
 			status = ProjectStatus.PLANNED,
 			start = null,

@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.service.TicketAccess
 import dev.kanso.domain.Accent
 import dev.kanso.domain.Label
 import dev.kanso.service.LabelService
@@ -39,6 +40,7 @@ data class LabelResponse(val id: UUID, val teamId: UUID, val name: String, val c
 class LabelController(
 	private val labels: LabelService,
 	private val currentUser: CurrentUser,
+	private val access: TicketAccess,
 ) {
 
 	@GetMapping("/teams/{teamId}/labels")
@@ -51,8 +53,10 @@ class LabelController(
 		LabelResponse.of(labels.create(currentUser.require(), teamId, request.name, request.colour))
 
 	@GetMapping("/tickets/{ticketId}/labels")
-	fun forTicket(@PathVariable ticketId: UUID): List<LabelResponse> =
-		labels.forTicket(ticketId).map(LabelResponse::of)
+	fun forTicket(@PathVariable ticketId: UUID): List<LabelResponse> {
+		access.requireReadable(currentUser.require(), ticketId)
+		return labels.forTicket(ticketId).map(LabelResponse::of)
+	}
 
 	/**
 	 * The whole set, like `PUT /api/tickets/{id}/assignees` beside it: the pill row knows

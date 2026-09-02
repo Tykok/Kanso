@@ -39,6 +39,7 @@ class DispositionCountsTest : PostgresTest() {
 	private fun key() = "C${UUID.randomUUID().toString().take(5).uppercase()}"
 
 	private fun newProject(teamId: UUID?) = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.PLANNED,
 		start = null,

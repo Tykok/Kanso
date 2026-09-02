@@ -76,6 +76,7 @@ class ProjectController(
 	@ResponseStatus(HttpStatus.CREATED)
 	fun create(@Valid @RequestBody request: ProjectRequest): ProjectResponse = ProjectResponse.of(
 		projects.create(
+			actor = currentUser.require(),
 			name = request.name,
 			status = ProjectStatus.from(request.status),
 			start = request.start?.toDomain(),
@@ -90,6 +91,7 @@ class ProjectController(
 	fun update(@PathVariable id: UUID, @Valid @RequestBody request: ProjectRequest): ProjectResponse =
 		ProjectResponse.of(
 			projects.update(
+				actor = currentUser.require(),
 				id = id,
 				name = request.name,
 				status = ProjectStatus.from(request.status),

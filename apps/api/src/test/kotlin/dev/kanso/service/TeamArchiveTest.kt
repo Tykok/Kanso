@@ -51,6 +51,7 @@ class TeamArchiveTest : PostgresTest() {
 	private fun newTeam(name: String, parentId: UUID? = null) = teams.create(admin, name, key(), parentId)
 
 	private fun newProject(teamId: UUID?) = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.PLANNED,
 		start = null,

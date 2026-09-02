@@ -63,6 +63,7 @@ class TeamlessTicketTest : PostgresTest() {
 		teams.create(admin, name, "T${UUID.randomUUID().toString().take(5).uppercase()}", null)
 
 	private fun newProject(teamId: UUID?) = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.PLANNED,
 		start = null,

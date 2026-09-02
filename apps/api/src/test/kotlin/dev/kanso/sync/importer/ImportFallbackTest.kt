@@ -65,6 +65,7 @@ class ImportFallbackTest : ImportTestBase() {
 	@Test
 	fun `a fallback project is used instead of creating one named after the base`() {
 		val existing = projectService.create(
+			actor = outsider,
 			name = "Existing", status = ProjectStatus.IN_PROGRESS, start = null, end = null,
 			leadUserId = null, teamId = team.id, docIds = emptyList(),
 		).project

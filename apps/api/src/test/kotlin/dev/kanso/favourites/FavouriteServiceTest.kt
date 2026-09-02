@@ -68,6 +68,7 @@ class FavouriteServiceTest : PostgresTest() {
 	private fun newTeam(name: String = "Core") = teams.create(tykok, name, key(), null)
 
 	private fun newProject(name: String, teamId: UUID?) = projects.create(
+		actor = tykok,
 		name = name,
 		status = ProjectStatus.PLANNED,
 		start = null,

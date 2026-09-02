@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.service.TicketAccess
 import dev.kanso.service.CommentRow
 import dev.kanso.service.CommentService
 import dev.kanso.service.CreateComment
@@ -55,12 +56,17 @@ data class CommentResponse(
 class CommentController(
 	private val comments: CommentService,
 	private val currentUser: CurrentUser,
+	private val access: TicketAccess,
 ) {
 
 	/** Open, like every other read. A thread comes back oldest first. */
 	@GetMapping
-	fun list(@RequestParam ticketId: UUID): List<CommentResponse> =
-		comments.forTicket(ticketId).map(CommentResponse::of)
+	fun list(@RequestParam ticketId: UUID): List<CommentResponse> {
+		// The discussion on a draft is the draft: `create` beside this has always taken the
+		// actor, and this did not.
+		access.requireReadable(currentUser.require(), ticketId)
+		return comments.forTicket(ticketId).map(CommentResponse::of)
+	}
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
