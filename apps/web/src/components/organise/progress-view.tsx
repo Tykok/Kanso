@@ -142,51 +142,82 @@ function Chart({ delivered }: { delivered: DeliveredCycle[] }) {
 
   return (
     <>
+      {/* Three sibling rows over one flex template, and not one column per cycle holding
+          its own label, bar and number. A bar's `height: %` resolves against its flex
+          parent's content box, so a column that also held two lines of text gave the tallest
+          bars a basis two text lines short of the chart — they hit the clamp together and 21
+          points drew the same height as 26. The bug is invisible in a suite and obvious on
+          screen, which is exactly the reason `burndown.ts` keeps the arithmetic out here: the
+          numbers were right and the box was wrong. So the middle row is the chart and nothing
+          else is in it. */}
       <div
-        className="flex h-[132px] items-end gap-2"
+        className="flex flex-col gap-1.5"
         role="img"
         aria-label={delivered
           .map((cycle) => `cycle ${cycle.number}: ${formatRate(cycle.points)} points`)
           .join(", ")}
       >
-        {delivered.map((cycle, at) => (
-          <div key={cycle.cycleId} className="flex h-full flex-1 flex-col justify-end gap-1.5">
-            <span className="text-center font-mono text-11 text-muted-foreground">
+        <div className="flex items-end gap-2">
+          {delivered.map((cycle) => (
+            <span
+              key={cycle.cycleId}
+              className="flex-1 text-center font-mono text-11 text-muted-foreground"
+            >
               {formatRate(cycle.points)}
             </span>
-            <span
-              title={
-                `Cycle ${cycle.number}: ${formatRate(cycle.points)} points over` +
-                ` ${cycle.workingDays} working days` +
-                `${cycle.countedTowardsVelocity ? "" : " (outside the measured window)"}`
-              }
-              // Two fills, not a hatch. A hatch means "nobody measured this day" on the
-              // burn-down next door, and every one of these cycles is measured — the
-              // distinction here is whether the *pace above* was averaged over it, which is
-              // a weaker statement and gets the quieter of two solid colours.
-              className={
-                cycle.countedTowardsVelocity
-                  ? "w-full rounded-t-[2px] bg-primary"
-                  : "w-full rounded-t-[2px] bg-accent"
-              }
-              // A cycle somebody delivered nothing in keeps a visible stub rather than
-              // vanishing: the gap in the series is part of their own trend, and a missing
-              // bar would compress it out and flatter the line.
-              style={{ height: `${Math.max(tall[at], 2)}%` }}
-            />
-            <span className="text-center text-11 text-faint">{cycle.number}</span>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        <div className="flex h-[120px] items-end gap-2">
+          {delivered.map((cycle, at) => (
+            // The column is what the gaps sit between; the bar inside it is capped so a
+            // person with two closed cycles gets two bars and not two slabs half the width
+            // of the page.
+            <div key={cycle.cycleId} className="flex h-full flex-1 items-end justify-center">
+              <span
+                title={
+                  `Cycle ${cycle.number}: ${formatRate(cycle.points)} points over` +
+                  ` ${cycle.workingDays} working days` +
+                  `${cycle.countedTowardsVelocity ? "" : " (outside the measured window)"}`
+                }
+                // Two fills, not a hatch. A hatch means "nobody measured this day" on the
+                // burn-down next door, and every one of these cycles is measured — the
+                // distinction here is whether the *pace above* was averaged over it, which
+                // is a weaker statement and gets the quieter of two solid colours.
+                className={
+                  cycle.countedTowardsVelocity
+                    ? "w-full max-w-[64px] rounded-t-[2px] bg-primary"
+                    : "w-full max-w-[64px] rounded-t-[2px] bg-primary/30"
+                }
+                // A cycle somebody delivered nothing in keeps a visible stub rather than
+                // vanishing: the gap in the series is part of their own trend, and a
+                // missing bar would compress it out and flatter the line.
+                style={{ height: `${Math.max(tall[at], 2)}%` }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          {delivered.map((cycle) => (
+            <span key={cycle.cycleId} className="flex-1 text-center text-11 text-faint">
+              {cycle.number}
+            </span>
+          ))}
+        </div>
       </div>
+
       {/* The caption says what the two fills mean and what the sum cannot see. A chart with
           two colours and no legend is a chart two people read two ways. */}
       <p className="m-0 max-w-[620px] text-11 text-muted-foreground">
         {formatRate(total)} points over {delivered.length} closed cycles
         {measured > 0 && measured < delivered.length
-          ? ` · the solid ${measured} are the ones your pace is measured over`
+          ? ` · the darker ${measured} are the ones your pace is measured over`
           : ""}
         {measured === 0 ? " · your pace is not measured over any of them yet" : ""}
-        {unestimated > 0 ? ` · ${unestimated} delivered tickets carried no estimate` : ""}
+        {unestimated > 0
+          ? ` · ${unestimated} delivered ticket${unestimated === 1 ? "" : "s"} carried no estimate`
+          : ""}
       </p>
     </>
   );
