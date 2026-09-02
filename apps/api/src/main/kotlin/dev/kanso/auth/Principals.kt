@@ -94,3 +94,37 @@ class KansoAgentUser(
 
 	val authorities: Collection<GrantedAuthority> = listOf(SimpleGrantedAuthority("ROLE_USER"))
 }
+
+/**
+ * A member, as reached through a token *they* created — not through an application they
+ * authorised.
+ *
+ * Its own class rather than a reuse of [KansoAgentUser], and the field it does not have is
+ * the reason: an agent user carries a `clientId`, because an OAuth grant was given to a
+ * registered application and the activity feed can name it. An API token was made by the
+ * member for themselves, and there is no third party to name. Widening [KansoAgentUser]
+ * with a nullable `clientId` would push "sometimes there is no application" into every
+ * reader of `activity.via_client_id`, which is a question that column has already
+ * answered.
+ *
+ * What the two share is the part that matters, and it is the same argument
+ * [KansoAgentUser] makes: this implements [KansoAuthenticatedUser], so [CurrentUser] reads
+ * `kansoUserId` off it exactly as it does off a cookie's principal, and every service,
+ * every `TicketAccess` check and `ReadOnlySeatInterceptor` apply unchanged. A token is not
+ * a new kind of user with a permission system of its own — it is a member with a different
+ * way in, and it can no more exceed their rights than their browser can.
+ *
+ * [scopes] narrows it *further*, never wider: `ApiTokenScopes` can refuse a write the
+ * owner would have been allowed, and there is no scope that permits one they would not.
+ */
+class KansoTokenUser(
+	override val kansoUserId: UUID,
+	override val kansoEmail: String,
+	private val displayName: String,
+	val tokenId: UUID,
+	val scopes: Set<String>,
+) : Principal, KansoAuthenticatedUser {
+	override fun getName(): String = displayName
+
+	val authorities: Collection<GrantedAuthority> = listOf(SimpleGrantedAuthority("ROLE_USER"))
+}

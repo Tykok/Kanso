@@ -7,6 +7,9 @@ import dev.kanso.oauth.OAuthRoutes
 import dev.kanso.oauth.ReturnUrlSuccessHandler
 import dev.kanso.publik.PublicRoutes
 import dev.kanso.repo.UserRepository
+import dev.kanso.tokens.ApiTokenFilter
+import dev.kanso.tokens.ApiTokenRateLimit
+import dev.kanso.tokens.ApiTokenService
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -27,9 +30,17 @@ import org.springframework.security.web.authentication.logout.HttpStatusReturnin
 import org.springframework.transaction.PlatformTransactionManager
 
 /**
- * Two ways in — an OAuth2 round trip, or an email and a password — and one way
- * out of both: a session cookie. The same cookie authenticates the WebSocket
+ * Two ways in for a *person* — an OAuth2 round trip, or an email and a password — and one
+ * way out of both: a session cookie. The same cookie authenticates the WebSocket
  * handshake, so realtime needs no token plumbing of its own.
+ *
+ * Two more for something that is not a browser, and they are two rather than one because
+ * they answer different questions. `McpBearerFilter` holds `/api/mcp` and takes an OAuth2
+ * access token — interactive, minted through a consent screen, naming the application
+ * that asked. `ApiTokenFilter` holds everything else and takes a token a member created
+ * for themselves — non-interactive, because a webhook signer and a cron job have no
+ * browser to start a flow in. Both end in a `KansoAuthenticatedUser`, which is what keeps
+ * every authorisation rule downstream ignorant of how the caller arrived.
  *
  * CSRF tokens are off, and that is a deliberate, bounded decision: the session
  * cookie is `SameSite=Lax`, so a third-party site cannot make the browser attach
@@ -67,6 +78,8 @@ class SecurityConfig(
 		clients: RegisteredClientRepository,
 		users: UserRepository,
 		transactionManager: PlatformTransactionManager,
+		apiTokens: ApiTokenService,
+		apiTokenRateLimit: ApiTokenRateLimit,
 	): SecurityFilterChain {
 		http
 			.cors { }
@@ -135,6 +148,26 @@ class SecurityConfig(
 		// It filters itself down to that one path; see its `shouldNotFilter`.
 		http.addFilterBefore(
 			McpBearerFilter(authorizations, clients, users, transactionManager, props.auth.effectiveMode),
+			UsernamePasswordAuthenticationFilter::class.java,
+		)
+
+		// The non-interactive door: a token a member made, for a CLI, an SDK or a webhook
+		// signer. Added *after* `McpBearerFilter` and *before* dev mode's filter, and both
+		// halves of that placement are load-bearing.
+		//
+		// After the MCP filter, because the two partition the `Authorization` header by
+		// path and the MCP one must get first refusal on its own endpoint — see
+		// `ApiTokenFilter`'s `shouldNotFilter`, which stands aside on `/api/mcp/**` so a
+		// valid OAuth token is never looked up in `api_tokens` and refused.
+		//
+		// Before `DevAuthenticationFilter`, because that filter names any unauthenticated
+		// caller `dev@kanso.local` — an admin. A bad Bearer that reached it would be served
+		// with every right on the instance, which is the fall-through `ApiTokenFilter`
+		// exists to close; it closes it by answering 401 itself and never chaining. This
+		// filter is therefore wired in both modes, unlike the MCP one, since dev mode is
+		// where the fall-through is worst rather than where it does not matter.
+		http.addFilterBefore(
+			ApiTokenFilter(apiTokens, apiTokenRateLimit),
 			UsernamePasswordAuthenticationFilter::class.java,
 		)
 

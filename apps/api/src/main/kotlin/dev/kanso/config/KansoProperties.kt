@@ -8,6 +8,7 @@ data class KansoProperties(
 	val webOrigin: String = "http://localhost:3000",
 	val auth: Auth = Auth(),
 	val oauth: OAuth = OAuth(),
+	val apiTokens: ApiTokens = ApiTokens(),
 	val notion: Notion = Notion(),
 	val sync: Sync = Sync(),
 	val realtime: Realtime = Realtime(),
@@ -54,6 +55,28 @@ data class KansoProperties(
 			val perIpPerHour: Int = 5,
 		)
 	}
+
+	/**
+	 * Bearer API tokens — the non-interactive door, which is the opposite of both [Auth]
+	 * (Kanso as a client) and [OAuth] (Kanso as an authorisation server).
+	 */
+	data class ApiTokens(
+		/**
+		 * Requests one token may make in a minute.
+		 *
+		 * Two a second sustained, which is chosen against the callers this door exists for
+		 * rather than against a load test: a webhook signer sends one request per event, a
+		 * GitHub sync polls, and a CLI is driven by a person's hands. None of them
+		 * approaches this, and a runaway retry loop — the failure mode every one of them
+		 * shares — passes it in half a second.
+		 *
+		 * Configuration and not a constant because the number is a property of a
+		 * deployment's hardware and its integrations, and the person running the instance
+		 * is the one who finds out. `ApiTokenRateLimit` records the more important caveat:
+		 * this is per instance, so the real ceiling is this times the number of replicas.
+		 */
+		val perMinute: Int = 120,
+	)
 
 	data class Provider(val clientId: String = "", val clientSecret: String = "") {
 		val configured: Boolean get() = clientId.isNotBlank() && clientSecret.isNotBlank()

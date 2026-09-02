@@ -42,6 +42,20 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      # Requests one API token may make per minute. Counted in the api container's
+      # own heap, so this is a limit per replica and not per instance: run two and a
+      # token gets twice the quota. `ApiTokenRateLimit` is where that assumption is
+      # written down and where a shared counter would have to replace it.
+      #
+      # The default is spelled out here rather than left empty, for `NOTION_BASE_URL`'s
+      # reason one field along — an empty value overrides `application.yml`'s own
+      # default with the empty string. It bites harder on this one: the property binds
+      # to an `Int`, so an empty string is not a blank setting but a conversion failure:
+      # the container refuses to start with `Failed to bind properties under
+      # 'kanso.api-tokens.per-minute' to int`, which is at least loud. The cost
+      # is the number appearing twice; that is the trade `NOTION_API_VERSION` already
+      # makes two lines below.
+      KANSO_API_TOKEN_RATE_LIMIT: ${KANSO_API_TOKEN_RATE_LIMIT:-120}
       NOTION_TOKEN: ${NOTION_TOKEN:-}
       NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
       NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}

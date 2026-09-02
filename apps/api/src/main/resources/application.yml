@@ -84,6 +84,16 @@ kanso:
       client-id: ${GITHUB_CLIENT_ID:}
       client-secret: ${GITHUB_CLIENT_SECRET:}
 
+  # Bearer tokens a member creates for a CLI, an SDK or a webhook signer. There is no
+  # enable flag: the door is the feature, and an instance that did not want it would
+  # simply have no rows in api_tokens.
+  api-tokens:
+    # Per token, per minute, counted in this process's heap — so with more than one
+    # replica the effective limit is this times the number of them. See
+    # ApiTokenRateLimit, which is where that assumption is written down and where the
+    # move to a shared counter would have to happen.
+    per-minute: ${KANSO_API_TOKEN_RATE_LIMIT:120}
+
   notion:
     # Empty token => the no-op client. Sync jobs are still queued and completed,
     # so the queue is exercised without any network call.
