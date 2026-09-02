@@ -80,6 +80,7 @@ class TimelineServiceTest : PostgresTest() {
 	@Test
 	fun `a project with no explicit bounds derives them from its tickets`() {
 		val project = projects.create(
+			actor = admin,
 			name = "Derived",
 			status = ProjectStatus.IN_PROGRESS,
 			start = null,
@@ -101,6 +102,7 @@ class TimelineServiceTest : PostgresTest() {
 	@Test
 	fun `an explicit bound wins over the derivation, one bound at a time`() {
 		val project = projects.create(
+			actor = admin,
 			name = "Half posed",
 			status = ProjectStatus.IN_PROGRESS,
 			start = day(1),
@@ -122,6 +124,7 @@ class TimelineServiceTest : PostgresTest() {
 	@Test
 	fun `a project whose tickets are only done falls back to when they were done`() {
 		val project = projects.create(
+			actor = admin,
 			name = "Retrospective",
 			status = ProjectStatus.COMPLETED,
 			start = null,
@@ -184,6 +187,7 @@ class TimelineServiceTest : PostgresTest() {
 		// Team-less on purpose: `TicketService` refuses a ticket whose project belongs to
 		// another team, so the transverse project is the only shape a shared one can have.
 		val project = projects.create(
+			actor = admin,
 			name = "Shared",
 			status = ProjectStatus.IN_PROGRESS,
 			start = null,

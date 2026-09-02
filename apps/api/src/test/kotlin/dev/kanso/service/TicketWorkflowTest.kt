@@ -213,6 +213,7 @@ class TicketWorkflowTest : PostgresTest() {
 	fun `a project groups tickets across the team that owns them`() {
 		val team = newTeam()
 		val project = projects.create(
+			actor = admin,
 			name = "Ship it",
 			status = ProjectStatus.IN_PROGRESS,
 			start = KansoInstant(LocalDate.of(2026, 8, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),

@@ -48,6 +48,7 @@ class ProjectDispositionTest : PostgresTest() {
 		teams.create(admin, "Team ${UUID.randomUUID().toString().take(4)}", "P${UUID.randomUUID().toString().take(5).uppercase()}", null)
 
 	private fun newProject(teamId: UUID?) = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.PLANNED,
 		start = null,

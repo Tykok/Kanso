@@ -56,6 +56,7 @@ class ProjectHealthTest : PostgresTest() {
 
 	/** Team-less on purpose unless a test says otherwise: the transverse case. */
 	private fun newProject(teamId: UUID? = null): Project = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.IN_PROGRESS,
 		start = null,
@@ -242,6 +243,7 @@ class ProjectHealthTest : PostgresTest() {
 		updates.post(admin, project.id, ProjectHealth.AT_RISK, "One dependency late.")
 
 		projects.update(
+			actor = admin,
 			id = project.id,
 			name = project.name,
 			status = ProjectStatus.PAUSED,

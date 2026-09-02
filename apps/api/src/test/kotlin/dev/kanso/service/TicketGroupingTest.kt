@@ -109,7 +109,7 @@ class TicketGroupingTest : PostgresTest() {
 
 	@Test
 	fun `groups by project, and the ones in none land in a bucket of their own`() {
-		val alpha = projects.create("Alpha", ProjectStatus.PLANNED, null, null, null, team.id, emptyList())
+		val alpha = projects.create(actor = admin, "Alpha", ProjectStatus.PLANNED, null, null, null, team.id, emptyList())
 		ticket("In a project", projectId = alpha.project.id)
 		ticket("In no project")
 

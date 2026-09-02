@@ -40,6 +40,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		teams.create(admin, name, "X${UUID.randomUUID().toString().take(5).uppercase()}", null)
 
 	private fun newProject(teamId: UUID?) = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.PLANNED,
 		start = null,
@@ -52,6 +53,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 	/** The one field under test; everything else is handed back unchanged. */
 	private fun moveProject(id: UUID, teamId: UUID?) = projects.get(id).let { current ->
 		projects.update(
+			actor = admin,
 			id = id,
 			name = current.project.name,
 			status = current.project.status,

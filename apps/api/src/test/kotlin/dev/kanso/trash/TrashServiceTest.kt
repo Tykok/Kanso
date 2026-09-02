@@ -64,6 +64,7 @@ class TrashServiceTest : PostgresTest() {
 	private fun newTeam(name: String = "Core") = teams.create(admin, name, key(), null)
 
 	private fun newProject(name: String, teamId: UUID?) = projects.create(
+		actor = admin,
 		name = name,
 		status = ProjectStatus.PLANNED,
 		start = null,

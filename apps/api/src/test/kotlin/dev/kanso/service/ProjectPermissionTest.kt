@@ -35,7 +35,10 @@ class ProjectPermissionTest : PostgresTest() {
 		role = role,
 	)
 
+	private val admin: User by lazy { user(InstanceRole.ADMIN) }
+
 	private fun newProject() = projects.create(
+		actor = admin,
 		name = "Project ${UUID.randomUUID().toString().take(4)}",
 		status = ProjectStatus.PLANNED,
 		start = null,

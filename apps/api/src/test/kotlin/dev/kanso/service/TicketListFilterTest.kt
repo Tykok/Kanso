@@ -490,6 +490,7 @@ class TicketListFilterTest : PostgresTest() {
 	// --- helpers ----------------------------------------------------------------
 
 	private fun project(name: String): UUID = projects.create(
+		actor = admin,
 		name = name,
 		status = ProjectStatus.IN_PROGRESS,
 		start = null,

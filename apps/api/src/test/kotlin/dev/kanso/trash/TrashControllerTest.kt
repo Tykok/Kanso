@@ -70,6 +70,7 @@ class TrashControllerTest : PostgresTest() {
 	private fun thrownAwayTicket(): Pair<UUID, String> {
 		val team = teams.create(admin, "Core", "C${UUID.randomUUID().toString().take(4).uppercase()}", null)
 		val product = projects.create(
+			actor = admin,
 			name = "Product",
 			status = ProjectStatus.PLANNED,
 			start = null,
