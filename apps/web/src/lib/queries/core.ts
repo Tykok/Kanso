@@ -33,6 +33,12 @@ export const keys = {
   people: ["people"] as const,
   invitations: ["invitations"] as const,
   sync: ["sync"] as const,
+  /**
+   * Kept apart from `sync` rather than made a second segment of it: the two answers have
+   * two audiences, and a member's cache must never be able to hold the detailed one under
+   * a key something else invalidates into.
+   */
+  syncDetail: ["syncDetail"] as const,
 
   // Everything below is keyed on what was asked for, so two different answers
   // never share one cache entry. `applyEvents` finds them on the first segment,
@@ -468,6 +474,17 @@ export const useContents = (kind: "team" | "project", id: string) =>
 
 export const useSyncStatus = () =>
   useQuery({ queryKey: keys.sync, queryFn: api.syncStatus, refetchInterval: 10_000 });
+
+/**
+ * The mirror's failure reasons, which the API refuses to anyone but a configurator.
+ *
+ * `enabled` is what keeps a member's screen from asking a question it is going to be told
+ * 403 for: the answer would be identical either way, but a red console entry every ten
+ * seconds is how a correct guard gets reported as a bug. Not on an interval for the same
+ * reason nothing else on the settings screen is — it is read when opened, not watched.
+ */
+export const useSyncDetail = (enabled: boolean) =>
+  useQuery({ queryKey: keys.syncDetail, queryFn: api.syncDetail, enabled });
 
 export const useTeamMembers = (teamId: string) =>
   useQuery({ queryKey: keys.teamMembers(teamId), queryFn: () => api.teamMembers(teamId) });

@@ -601,11 +601,33 @@ export type PendingInvitation = {
   expired: boolean;
 };
 
+/**
+ * What the status bar reads, on every shell, every ten seconds, for every member.
+ *
+ * `jobs` is the whole queue grouped by status, so `jobs.failed` is the true count and not
+ * the length of a list capped at fifty — which is what the badge used to count, and why an
+ * instance three hundred pushes behind said "50 failed".
+ *
+ * There is no `databases` and no error string here on purpose: those name pages in a Notion
+ * workspace this instance does not own, and they are `SyncDetail`'s. See
+ * `SyncAdminController.status`.
+ */
 export type SyncStatus = {
   mirrorEnabled: boolean;
   bootstrapped: boolean;
   jobs: Record<string, number>;
+};
+
+/** The same reading with the identifiers in it, refused to anyone but a configurator. */
+export type SyncDetail = SyncStatus & {
+  databases: { kind: string; databaseId: string; dataSourceId: string }[];
   failed: { id: number; entity: string; entityId: string; attempts: number; error?: string }[];
+  cursors: {
+    dataSourceId: string;
+    lastEditTime?: string;
+    lastRunAt?: string;
+    lastError?: string;
+  }[];
 };
 
 export class ApiError extends Error {
@@ -989,4 +1011,5 @@ export const api = {
 
   users: () => request<User[]>("/api/users"),
   syncStatus: () => request<SyncStatus>("/api/admin/sync"),
+  syncDetail: () => request<SyncDetail>("/api/admin/sync/detail"),
 };

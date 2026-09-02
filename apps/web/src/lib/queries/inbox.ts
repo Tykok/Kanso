@@ -119,6 +119,10 @@ export function useRetryFailedPushes() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: inboxKeys.all });
       client.invalidateQueries({ queryKey: ["sync"] });
+      // The queue's own rows live under a second key since `KAN-53` split the answer, and
+      // the button that empties the queue is the one place both have to be dropped: the
+      // count would drop to zero beside a list still naming the rows it counted.
+      client.invalidateQueries({ queryKey: ["syncDetail"] });
     },
   });
 }
