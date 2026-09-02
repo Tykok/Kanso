@@ -92,9 +92,14 @@ export function loadSentence(load: OpenLoad, velocity: EffectiveVelocity): strin
   // arbitration here would be a second place for it to be got wrong.
   return (
     `You are carrying ${points(open)} across ${count(tickets)} — about` +
-    ` ${days(load.workingDays)} of work at the ${formatRate(velocity.perWorkingDay ?? 0)} points` +
-    ` per working day in force.${blindSpot(unestimated, tickets)}`
+    ` ${days(load.workingDays)} of work at the ${rate(velocity.perWorkingDay ?? 0)}` +
+    ` in force.${blindSpot(unestimated, tickets)}`
   );
+}
+
+/** `2 points per working day` / `1 point per working day`. */
+function rate(value: number): string {
+  return `${points(value)} per working day`;
 }
 
 /**

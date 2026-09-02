@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RemainingDay } from "@/lib/api";
-import { bars, progressSegments } from "./burndown";
+import { bars, heights, LOAD_BAR_ORDER, progressSegments } from "./burndown";
 
 /**
  * Screen 19's two charts, as geometry.
@@ -103,5 +103,68 @@ describe("progressSegments", () => {
 
   it("draws no bar for an empty cycle", () => {
     expect(progressSegments({}, 0)).toEqual([]);
+  });
+});
+
+/**
+ * The scaling rule on its own, which is what screen 40's delivered-points chart is drawn
+ * with. Asserted here rather than there because it is the same arithmetic `bars` runs, and
+ * two charts sharing one function is the whole point of not writing a second engine.
+ */
+describe("heights", () => {
+  it("scales against the largest value, so a rise reads as a rise", () => {
+    expect(heights([5, 9, 14])).toEqual([(5 / 14) * 100, (9 / 14) * 100, 100]);
+  });
+
+  // Somebody who has shipped nothing sized across six closed cycles. 0/0 must be a flat
+  // empty chart and never NaN, which a browser drops silently — a chart that renders as
+  // nothing at all with no error anywhere.
+  it("comes out flat rather than NaN when every value is zero", () => {
+    expect(heights([0, 0, 0])).toEqual([0, 0, 0]);
+  });
+
+  // `Math.max()` on no arguments is -Infinity, which would turn every height into a NaN.
+  it("answers nothing for an empty series rather than dividing by minus infinity", () => {
+    expect(heights([])).toEqual([]);
+  });
+
+  it("keeps a fractional value fractional, because a shared ticket splits its points", () => {
+    expect(heights([4.5, 9])).toEqual([50, 100]);
+  });
+});
+
+describe("progressSegments, over the load vocabulary", () => {
+  // Not a restriction of the cycle bar's order: `LOAD_ORDER` puts `in_progress` before
+  // `in_review` and `PROGRESS_ORDER` over the same four reverses them. Merging the two
+  // would swap the first two segments of screen 40's load bar.
+  it("puts what is in hand first, not what is furthest along", () => {
+    const load = { in_review: 1, in_progress: 2, todo: 3, backlog: 4 };
+
+    expect(progressSegments(load, 10, LOAD_BAR_ORDER).map((segment) => segment.status)).toEqual([
+      "in_progress",
+      "in_review",
+      "todo",
+      "backlog",
+    ]);
+    expect(progressSegments(load, 10).map((segment) => segment.status)).toEqual([
+      "in_review",
+      "in_progress",
+      "todo",
+      "backlog",
+    ]);
+  });
+
+  // The load map arrives keyed by the open statuses only, so a settled ticket cannot be in
+  // it — and the order must not invent a segment for one either.
+  it("has no place for a settled status", () => {
+    expect(LOAD_BAR_ORDER).not.toContain("done");
+    expect(LOAD_BAR_ORDER).not.toContain("canceled");
+  });
+
+  it("still defaults to the cycle bar, so screen 19 reads as it always did", () => {
+    expect(progressSegments({ done: 1, todo: 1 }, 2).map((segment) => segment.status)).toEqual([
+      "done",
+      "todo",
+    ]);
   });
 });
