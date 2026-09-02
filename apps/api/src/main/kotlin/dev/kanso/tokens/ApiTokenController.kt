@@ -87,6 +87,22 @@ data class NewApiTokenResponse(
 data class CreateApiTokenRequest(val name: String, val scopes: List<String>?)
 
 /**
+ * One scope a token may be granted, and the sentence that offers it.
+ *
+ * Sent to the client rather than written there, which is the same call `scopeProse` makes
+ * on a listed token and it matters more here. A creation form needs the vocabulary
+ * *before* a token exists, and the only other way to have it is a literal list in
+ * TypeScript — a second answer to "what may a token do", free to disagree with
+ * [OAuthScopes] the day a third scope is argued about. The disagreement would also be
+ * invisible, because the checkboxes and the validator that refuses them would be written
+ * in different languages and neither would fail to compile.
+ *
+ * Fetched, the form's options *are* the list `ApiTokenScopes.requested` checks against, so
+ * a scope this instance would refuse cannot be offered by the screen that asks for it.
+ */
+data class ApiTokenScopeChoice(val scope: String, val prose: String)
+
+/**
  * Under `/api/me`, beside preferences and favourites, because that is what a token is: a
  * fact about the person asking. There is no path here that names a user and there will not
  * be one — an admin does not read, and cannot revoke, somebody else's credentials, any
@@ -101,6 +117,23 @@ class ApiTokenController(private val tokens: ApiTokenService) {
 
 	@GetMapping
 	fun list(): List<ApiTokenResponse> = tokens.list().map(ApiTokenResponse::of)
+
+	/**
+	 * The vocabulary, for a form to draw its checkboxes from — see [ApiTokenScopeChoice].
+	 *
+	 * Static, so there is no service call under it: `OAuthScopes` is a compile-time list
+	 * and this endpoint exists to move it across the wire, not to decide anything. It
+	 * keeps no secret either — both strings are already on the consent screen and in the
+	 * protected-resource metadata `ProtectedResourceController` publishes — so sitting
+	 * under `/api/me` behind a session is right without being what protects it.
+	 *
+	 * A path segment and not a query on the collection, because it answers a different
+	 * question: `GET /api/me/tokens` is "what do I have", this is "what could I ask for",
+	 * and the second has an answer on an account with no tokens at all.
+	 */
+	@GetMapping("/scopes")
+	fun scopes(): List<ApiTokenScopeChoice> =
+		OAuthScopes.ALL.map { ApiTokenScopeChoice(it, OAuthScopes.prose(it)) }
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
