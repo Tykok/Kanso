@@ -44,6 +44,19 @@ export type Group = {
 const PRIORITY_ORDER: TicketPriority[] = ["urgent", "high", "medium", "low", "none"];
 
 /**
+ * The one bucket key that is not a value of any facet.
+ *
+ * A ticket no team has claimed is in none of the rooms a `groupBy` stacks: it has no
+ * status the team is working through, no project and nobody on it. `queries/core.ts`
+ * folds the caller's own drafts into the unscoped list because that is the only place
+ * they can be seen at all, and this is what the header over them reads.
+ *
+ * It cannot collide with a key the server sends: `status` and `priority` are closed
+ * vocabularies, and an assignee or a project is a UUID.
+ */
+export const DRAFTS_GROUP = "drafts";
+
+/**
  * The server's buckets, named for the reader — and nothing else.
  *
  * No reordering and no recounting. The order the buckets arrive in is the order the page
@@ -166,6 +179,9 @@ function labelOf(
   groupBy: Exclude<ViewGroupBy, "none">,
   names?: { person?: (id: string) => string; project?: (id: string) => string },
 ): string {
+  // Before the switch, because a draft answers to no facet: whichever way the list is
+  // stacked, the bucket is the same one and reads the same way.
+  if (key === DRAFTS_GROUP) return "Drafts";
   switch (groupBy) {
     case "status":
       return STATUS_LABELS[key as TicketStatus] ?? key;

@@ -13,6 +13,7 @@ import { TeamDialog } from "@/components/dialogs/team-dialog";
 import { LoginScreen } from "@/components/login";
 import { MobileNavDrawer } from "@/components/mobile-nav";
 import { NewMenu } from "@/components/new-menu";
+import { nameGroups } from "@/components/organise/grouping";
 import { ListFilters } from "@/components/organise/list-filters";
 import { Composer } from "@/components/composer";
 import { CommandPalette, DetailPanel, HelpOverlay } from "@/components/overlays";
@@ -33,6 +34,7 @@ import { actionErrorMessage } from "@/lib/errors";
 import { isMac } from "@/lib/platform";
 import {
   useAuthMode,
+  useGroupedTickets,
   useLinkDependency,
   useMe,
   usePatchTicket,
@@ -48,6 +50,17 @@ import { ZOOMS } from "@/lib/timeline-geometry";
 import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
 import { cn } from "@/lib/utils";
 import { useUi, type Scope } from "@/store/ui";
+
+/**
+ * The filter box's predicate, written once.
+ *
+ * This file now applies it twice — over the buckets the list draws, and over the flat
+ * rows the chart and the board draw — and two copies of it in one file would be the drift
+ * `board/view.tsx` warns about at its own call site, at much closer range.
+ */
+const matches = (needle: string) => (ticket: Ticket) =>
+  ticket.title.toLowerCase().includes(needle) ||
+  (ticket.identifier?.toLowerCase().includes(needle) ?? false);
 
 const isTypingTarget = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -86,7 +99,19 @@ export default function InboxPage() {
   const [picker, setPicker] = useState<{ kind: "link" | "unlink"; ticketId: string }>();
 
   const teams = useTeams();
-  const tickets = useTickets();
+  /**
+   * The two readings of one question, and never both at once.
+   *
+   * The list draws the stacked answer — that is what puts a true count on a group header
+   * — while the board and the chart draw the flat one, so each view enables exactly the
+   * door it renders. Holding both would be two fetches of one question that can answer
+   * differently: a ticket edited between them lands in one and not the other, which is
+   * the reason `useViewGroups` gives for replacing the flat call on screen 21 rather than
+   * sitting beside it. `BoardView` asks `useTickets` for itself and keys the same entry,
+   * so the board still pays for one fetch and not two.
+   */
+  const tickets = useTickets(view !== "list");
+  const groups = useGroupedTickets(view === "list");
   const projects = useProjects();
   const sync = useSyncStatus();
 
@@ -107,15 +132,46 @@ export default function InboxPage() {
    * means `pg_trgm` and a GIN index — a migration, and a ticket of its own. Until then the
    * honest reading of the box is "search what is loaded", which is what it does.
    */
-  const filtered = useMemo(() => {
+  const shown = useMemo(() => {
+    /*
+     * Named here and counted nowhere: `nameGroups` puts a reader's word on each of the
+     * server's bucket keys and touches neither the order they arrived in nor the numbers
+     * on them.
+     *
+     * No `names` argument, because this screen asks for `status` and a status names
+     * itself out of `lib/status.ts`. The day a stacking control lands on the list, an
+     * assignee and a project are ids and this is where the two lookups come in — a
+     * header reading a UUID is what a missing one looks like.
+     */
+    const named = nameGroups(groups.data?.groups ?? [], groups.data?.groupBy ?? "status");
+    const needle = query.trim().toLowerCase();
+    if (!needle) return named;
+    return named
+      .map((group) => ({ ...group, tickets: group.tickets.filter(matches(needle)) }))
+      // A bucket the needle emptied is dropped rather than left as a caption over
+      // nothing. With no needle typed, a header above no rows means "these are one
+      // scroll away", which is true and worth drawing; while somebody is typing it would
+      // mean the opposite, and `Done · 12` over a gap reads as a broken list.
+      .filter((group) => group.tickets.length > 0);
+  }, [groups.data, query]);
+
+  /**
+   * The list flattened back out, for everything that walks it rather than draws it — the
+   * cursor, the palette, the action context. It is the same rows in the order the server
+   * stacked them, so `j` still runs straight down the screen through the headers.
+   */
+  const filtered = useMemo(() => shown.flatMap((group) => group.tickets), [shown]);
+
+  /**
+   * The same box over the flat door, for the two views that draw that one.
+   *
+   * Not derivable from [shown]: the grouped query is switched off while the board or the
+   * chart is up, so a board cursor read out of it would be a cursor over nothing.
+   */
+  const flatFiltered = useMemo(() => {
     const rows = tickets.data ?? [];
     const needle = query.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter(
-      (ticket) =>
-        ticket.title.toLowerCase().includes(needle) ||
-        (ticket.identifier?.toLowerCase().includes(needle) ?? false),
-    );
+    return needle ? rows.filter(matches(needle)) : rows;
   }, [tickets.data, query]);
 
   /**
@@ -141,8 +197,12 @@ export default function InboxPage() {
     () =>
       view === "timeline"
         ? (tickets.data ?? []).filter((ticket) => !ticket.archived)
-        : filtered,
-    [view, tickets.data, filtered],
+        : // Three views, two doors: only the list reads the stacked answer, and the board
+          // reads the flat one it renders its own columns from.
+          view === "board"
+          ? flatFiltered
+          : filtered,
+    [view, tickets.data, flatFiltered, filtered],
   );
 
   // The cursor follows the list: when a filter or a realtime update removes the
@@ -424,7 +484,14 @@ export default function InboxPage() {
         <div className="flex items-center gap-3 bg-card px-5 py-3">
           <MobileNavDrawer ctx={ctx} syncSummary={mirrorSummary} />
           <h1 className="m-0 text-13 font-medium">{heading}</h1>
-          <span className="font-mono text-11 text-faint">{visible.length}</span>
+          {/* The whole match while the list is up and nothing is typed, which is a number
+              only the server has: `visible.length` counts the *page*, so an instance with
+              two thousand tickets read `200` here — the same lie about a fetch that KAN-6
+              took off the group headers. With a needle typed it is the rows on screen,
+              because that is the question the box asked and nobody asked the server. */}
+          <span className="font-mono text-11 text-faint">
+            {view === "list" && query.trim() === "" ? (groups.data?.total ?? 0) : visible.length}
+          </span>
           <span className="flex-1" />
 
           {view === "timeline" && (
@@ -513,14 +580,14 @@ export default function InboxPage() {
           <TimelineView reportError={reportError} />
         ) : view === "board" ? (
           <BoardView reportError={reportError} />
-        ) : tickets.error ? (
-          <div className="empty error">{(tickets.error as Error).message}</div>
+        ) : groups.error ? (
+          <div className="empty error">{(groups.error as Error).message}</div>
         ) : (
           <TicketList
-            // `filtered`, not `visible`: the two are the same object in this branch, and
-            // naming the filtered one here is what says the list is the thing the filter
-            // box was written for.
-            tickets={filtered}
+            // `shown`, not `groups.data.groups`: these are the buckets already named and
+            // already narrowed by the filter box, which is the thing the box was written
+            // for. The counts inside them are still the server's.
+            groups={shown}
             /**
              * Screen 15's empty states and screen 08's three gestures, both of which need
              * to tell "the filter found nothing" from "there is nothing" — so they need
@@ -532,7 +599,11 @@ export default function InboxPage() {
              */
             empty={
               <EmptyState
-                total={(tickets.data ?? []).length}
+                // The server's total, not the page's length: this is the number that
+                // decides whether the sentence blames the filter box or says the scope is
+                // empty, and a page that came back empty because the offset ran off the
+                // end would have made it blame the wrong one.
+                total={groups.data?.total ?? 0}
                 filter={query}
                 ticketsAnywhere={(teams.data ?? []).reduce(
                   (sum, team) => sum + team.ticketCount,

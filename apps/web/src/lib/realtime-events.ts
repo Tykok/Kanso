@@ -316,6 +316,23 @@ export function writeTickets(cache: EventCache, write: TicketWrite): void {
 
   const teams = knownTeams(cache);
   for (const entry of cache.entries("tickets")) {
+    /*
+     * A stacked answer is refetched whole, never patched.
+     *
+     * A bucket's `count` is the whole match, which only the database knows, and which
+     * bucket a row belongs to now is decided in SQL — so patching the rows and leaving
+     * the counts alone would produce the one outcome worse than a moment of latency: a
+     * header that disagrees with what is under it. It is the same answer, for the same
+     * reason, that a filtered list gets below.
+     *
+     * Named first because it has to be. The value is an object rather than an array, so
+     * it fails every branch after this one *silently* — which is how the main list would
+     * stop hearing about edits with nothing on screen admitting it.
+     */
+    if (isGrouped(entry)) {
+      cache.invalidate(entry.key);
+      continue;
+    }
     const list = listShape(entry);
     if (list) patchList(cache, entry.key, list, changed, gone, teams);
     else if (isTicket(entry.data)) patchRow(cache, entry.key, entry.data, changed, gone);
@@ -335,6 +352,16 @@ export function writeTickets(cache: EventCache, write: TicketWrite): void {
  */
 export function findTicket(cache: EventCache, id: string): Ticket | undefined {
   for (const entry of cache.entries("tickets")) {
+    // A stacked answer holds rows too, and on the main list it is the *only* entry that
+    // does. Skipping it would answer `undefined` for a row plainly on screen, and
+    // `lib/optimistic.ts` reads that as "nothing to paint" — so every edit made from the
+    // list would wait for the round trip in silence.
+    const stacked = groupedRows(entry);
+    if (stacked) {
+      const row = stacked.find((candidate) => candidate.id === id);
+      if (row) return row;
+      continue;
+    }
     const list = listShape(entry);
     if (list) {
       const row = list.rows.find((candidate) => candidate.id === id);
@@ -344,6 +371,32 @@ export function findTicket(cache: EventCache, id: string): Ticket | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Whether this entry is a `keys.groupedTickets(...)` answer.
+ *
+ * Read off the key, like [listShape], and for the reason that file gives: `queries/core.ts`
+ * builds these and the shape of the key is what tells one kind of tickets entry from
+ * another. `grouped` sits where a scope kind sits in `keys.tickets`, and it is not one —
+ * so no list entry can answer to this and no grouped entry can answer to [listShape].
+ */
+const isGrouped = (entry: CacheEntry) => entry.key[1] === "grouped";
+
+/**
+ * The rows a stacked answer holds, concatenated — or `null` when this is not one.
+ *
+ * Guarded rather than cast: a cache written by an older tab, or by a redeploy that
+ * changed the shape, would otherwise throw inside a socket handler where nothing catches.
+ */
+function groupedRows(entry: CacheEntry): Ticket[] | null {
+  if (!isGrouped(entry)) return null;
+  const groups = (entry.data as { groups?: unknown } | null | undefined)?.groups;
+  if (!Array.isArray(groups)) return null;
+  return groups.flatMap((group) => {
+    const rows = (group as { tickets?: unknown }).tickets;
+    return Array.isArray(rows) ? (rows as Ticket[]) : [];
+  });
 }
 
 /**
