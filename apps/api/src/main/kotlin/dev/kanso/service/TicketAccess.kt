@@ -149,6 +149,44 @@ class TicketAccess(
 		return teamIds.filterTo(mutableSetOf()) { id -> claimedBy(mine, id, chains.getValue(id), withMembers) }
 	}
 
+	/**
+	 * The subset of [teamIds] this actor administers — by title, here or from above.
+	 *
+	 * [editableTeams]' sibling on the other axis. `MemberRole.ADMIN` gated nothing at all
+	 * until this method existed — `TeamService.addMember` says as much where it refuses to
+	 * hand the title to a read-only seat — and what it now gates is reading somebody else's
+	 * figures. The ancestry is the one [claimedBy] documents and it runs in the same
+	 * direction: an administrator of Product administers Product / Mobile, and never the
+	 * reverse, or joining the smallest team in the instance would be a way to read the
+	 * largest.
+	 *
+	 * **[claimedBy]'s third part is deliberately absent, and this is the whole difference
+	 * between the two methods.** The open-chain clause exists so that an instance whose
+	 * `team_members` is still empty is usable at all — a board nobody can move is a broken
+	 * install. Applied to this question it would say the opposite of usable: every member of
+	 * a fresh instance would be able to read every other member's productivity figures, on
+	 * the grounds that nobody had got round to drawing the boundary yet. A boundary nobody
+	 * has drawn is closed here, not open, and nobody is locked out of their own instance by
+	 * that — an instance owner or admin still reads everything, and a person always reads
+	 * themselves.
+	 *
+	 * The read-only seat is not consulted, unlike in [editableTeams]. That seat is a rule
+	 * about writing and this is a read; the combination it would turn away — a viewer titled
+	 * administrator of a team — cannot be created today anyway.
+	 */
+	@Transactional(readOnly = true)
+	fun teamsLedBy(actor: User, teamIds: Set<UUID>): Set<UUID> {
+		if (teamIds.isEmpty()) return emptySet()
+		if (actor.instanceRole.canConfigureInstance) return teamIds
+		// Before the ancestor walks: somebody titled administrator of nothing leads nothing,
+		// whatever the shape of the tree above these teams.
+		val titled = teams.adminTeamIdsFor(actor.id).toSet()
+		if (titled.isEmpty()) return emptySet()
+		return teamIds.filterTo(mutableSetOf()) { id ->
+			id in titled || teams.ancestorIds(id).any { it in titled }
+		}
+	}
+
 	private fun mayEditTeam(actor: User, teamId: UUID): Boolean {
 		if (!actor.instanceRole.mayWrite) return false
 		if (actor.instanceRole.canConfigureInstance) return true
