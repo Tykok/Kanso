@@ -143,23 +143,43 @@ class CycleTimeService(
 	 */
 	@Transactional(readOnly = true)
 	fun forCycles(cycles: List<Cycle>, teamId: UUID, assigneeId: UUID?, now: OffsetDateTime = OffsetDateTime.now()): Insights {
-		val perCycle = cycles.map { cycle -> cycle to mine(velocity.finishedIn(cycle), assigneeId) }
+		// Cycle membership is per cycle, so `finishedIn` is one read each. Everything after
+		// it is read **once for the whole page** rather than once per bar: one assignee join
+		// and one pass over `activity` for every ticket the closed cycles delivered. That is
+		// not only cheaper, it is what makes the headline and the trend provably the same
+		// sample — both are folded out of one list of spans rather than from two reads free
+		// to disagree.
+		val theirs = mine(cycles.map { cycle -> cycle to velocity.finishedIn(cycle) }, assigneeId)
+		val startedAt = activity.firstEnteredAt(
+			theirs.flatMap { it.second }.map { it.id },
+			IN_FLIGHT_WIRE,
+		)
+		val spans = theirs.map { (cycle, delivered) -> cycle to spans(delivered, startedAt) }
+
 		return Insights(
-			// Pooled, not the mean of the medians below. See `Insights.cycleTime`.
-			cycleTime = measure(perCycle.flatMap { it.second }),
-			trend = perCycle.map { (cycle, delivered) -> CycleTimePoint(cycle, measure(delivered)) }.reversed(),
+			// Pooled from the very spans the points below are drawn from, and not the mean of
+			// their medians. See `Insights.cycleTime`.
+			cycleTime = cycleTimeOf(
+				hours = spans.flatMap { it.second.hours },
+				unmeasured = spans.sumOf { it.second.unmeasured },
+			),
+			trend = spans
+				.map { (cycle, span) -> CycleTimePoint(cycle, cycleTimeOf(span.hours, span.unmeasured)) }
+				.reversed(),
 			wip = wip(teamId, assigneeId, now),
 		)
 	}
 
 	/**
-	 * The median elapsed hours over a set of delivered tickets, and what it could not see.
+	 * The elapsed hours of each delivered ticket that has both ends, and a count of the rest.
 	 *
-	 * One function for the pooled figure and for every point of the trend, so the headline
-	 * and the chart under it cannot come to disagree about what a cycle time is.
+	 * Kept as raw spans rather than reduced to a median here, which is the whole point of the
+	 * split: the pooled figure is the median of every span and each trend point is the median
+	 * of one cycle's, and both come off this one list. A version returning a [CycleTime] would
+	 * force the caller either to read `activity` a second time for the pooled number or to
+	 * average six medians — the two mistakes this shape rules out.
 	 */
-	private fun measure(delivered: List<Ticket>): CycleTime {
-		val startedAt = activity.firstEnteredAt(delivered.map { it.id }, IN_FLIGHT_WIRE)
+	private fun spans(delivered: List<Ticket>, startedAt: Map<UUID, OffsetDateTime>): Spans {
 		val hours = delivered.mapNotNull { ticket ->
 			val from = startedAt[ticket.id] ?: return@mapNotNull null
 			val to = ticket.completedAt ?: return@mapNotNull null
@@ -167,12 +187,11 @@ class CycleTimeService(
 			// and a negative hour in a median is worse than a gap in the sample.
 			elapsedHours(from, to).takeIf { it >= 0 }
 		}
-		return CycleTime(
-			medianHours = median(hours),
-			measured = hours.size,
-			unmeasured = delivered.size - hours.size,
-		)
+		return Spans(hours, unmeasured = delivered.size - hours.size)
 	}
+
+	private fun cycleTimeOf(hours: List<Double>, unmeasured: Int) =
+		CycleTime(medianHours = median(hours), measured = hours.size, unmeasured = unmeasured)
 
 	/**
 	 * What is in somebody's hands right now, and since when.
@@ -216,12 +235,25 @@ class CycleTimeService(
 	private fun elapsedHours(from: OffsetDateTime, to: OffsetDateTime): Double =
 		Duration.between(from, to).toMinutes() / 60.0
 
-	/** One person's share of a delivered set, or all of it when nobody was named. */
-	private fun mine(delivered: List<Ticket>, assigneeId: UUID?): List<Ticket> {
+	/**
+	 * One person's share of every cycle's delivered set, or all of it when nobody was named.
+	 *
+	 * Takes the whole grouped list rather than one cycle's at a time so the assignee join
+	 * runs once for the page instead of once per bar.
+	 */
+	private fun mine(
+		delivered: List<Pair<Cycle, List<Ticket>>>,
+		assigneeId: UUID?,
+	): List<Pair<Cycle, List<Ticket>>> {
 		if (assigneeId == null) return delivered
-		val assignees = tickets.assigneeIdsFor(delivered.map { it.id })
-		return delivered.filter { assigneeId in assignees[it.id].orEmpty() }
+		val assignees = tickets.assigneeIdsFor(delivered.flatMap { it.second }.map { it.id })
+		return delivered.map { (cycle, all) ->
+			cycle to all.filter { assigneeId in assignees[it.id].orEmpty() }
+		}
 	}
+
+	/** The two halves of a sample: what could be measured, and how much could not. */
+	private data class Spans(val hours: List<Double>, val unmeasured: Int)
 
 	/** Null on an empty sample, and the mean of the two middles on an even one. */
 	private fun median(values: List<Double>): Double? {
