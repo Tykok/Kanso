@@ -145,8 +145,34 @@ export function useShellKeys({ ctx, page }: { ctx: ActionContext; page: PageShel
     else router.push("/");
   }, [overlay, dialog, close, page, pathname, router]);
 
+  /**
+   * Everything the handler reads, in a ref, written after every render.
+   *
+   * `ctx` used to be a dependency of the effect below, and that made the listener one
+   * React commit late — not by design, by the route the value takes. A page's context
+   * reaches this hook through `usePageShell`: the page renders with a new cursor, *its*
+   * effect publishes, `AppShell` sets state, and only then does this effect tear the
+   * listener down and put a current one up. Two keys pressed inside that window both ran
+   * against the context from before the first one.
+   *
+   * That is not a theoretical window. `p` then `3` on the ticket list moved the cursor and
+   * then set the status of **the row the cursor had just left** — a write to a ticket
+   * nobody was looking at, answered 200, whose only visible symptom was a key that seemed
+   * to do nothing. `keyboard.spec.ts`' "dispatched once, not once per shell" caught it as
+   * a flake, which is the closest anything came to noticing.
+   *
+   * The remedy is the one [usePageActions] above already applies to a page's claims: the
+   * ref is written after every render and the handler reads it when the key arrives, so
+   * there is no window — and one registration for the life of the shell rather than one
+   * per published context. `mode` and the `back` set are derived per event for the same
+   * reason; a keystroke is rare enough to afford a `Set`.
+   */
+  const latest = useRef({ ctx, overlay, dialog, view, pathname, keys, index, leave });
   useEffect(() => {
-    const mode = modeFor(pathname, view);
+    latest.current = { ctx, overlay, dialog, view, pathname, keys, index, leave };
+  });
+
+  useEffect(() => {
     /*
      * Which chords mean "close what is open, then leave".
      *
@@ -162,9 +188,10 @@ export function useShellKeys({ ctx, page }: { ctx: ActionContext; page: PageShel
      * preference that left somebody with no way out of an overlay is the class of bug
      * `mergeBindings` refuses rather than throws over.
      */
-    const back = new Set(["Escape", ...chordsFor("app.back", keys)]);
-
     const onKeyDown = (event: KeyboardEvent) => {
+      const { ctx, overlay, dialog, view, pathname, keys, index, leave } = latest.current;
+      const mode = modeFor(pathname, view);
+      const back = new Set(["Escape", ...chordsFor("app.back", keys)]);
       const chord = chordOf(event);
 
       /*
@@ -206,7 +233,9 @@ export function useShellKeys({ ctx, page }: { ctx: ActionContext; page: PageShel
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [ctx, overlay, dialog, leave, pathname, view, keys, index]);
+    // Empty on purpose: every value the handler needs is read out of `latest` at event
+    // time. A dependency here would put the window this fixes straight back.
+  }, []);
 
   return { leave };
 }

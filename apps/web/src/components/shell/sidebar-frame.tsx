@@ -262,7 +262,16 @@ function SidebarReveal({
         data-testid="sidebar-reveal"
         data-open={open}
         className={cn(
-          "fixed inset-y-0 left-0 z-30 flex w-[248px] flex-col overflow-y-auto overscroll-contain bg-card shadow-float transition-transform duration-150 max-[720px]:hidden",
+          // `pt-14` is the top bar's 56px, kept clear — the same clearance
+          // `MobileNavDrawer` gives the `☰` it slides out from, and for the same reason.
+          // Without it this panel's own brand seal landed on exactly the 24px square the
+          // bar's `PanelLeft` occupies, so the control that had just opened the panel was
+          // *underneath* it: `aria-expanded="true"`, an `aria-label` reading "Hide the
+          // navigation", and a press that could never arrive. Under `hidden` that press is
+          // the reader's most obvious way back out, and it retried for 45 seconds against
+          // the seal instead. The clearance is what the button is raised *over*; see
+          // `SidebarRevealButton`.
+          "fixed inset-y-0 left-0 z-30 flex w-[248px] flex-col overflow-y-auto overscroll-contain bg-card pt-14 shadow-float transition-transform duration-150 max-[720px]:hidden",
           open ? "translate-x-0" : "-translate-x-full",
         )}
         onMouseEnter={() => hold({ pointer: true })}
@@ -342,7 +351,11 @@ export function SidebarRevealButton() {
       aria-controls={REVEAL_ID}
       aria-label={open ? "Hide the navigation" : "Show the navigation"}
       title="Navigation"
-      className="-ml-1 grid size-6 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground max-[720px]:hidden"
+      // `relative z-40`, above the panel's `z-30`: it is a toggle, and the panel it
+      // toggles is drawn over the bar. The panel keeps `pt-14` clear for it, so what this
+      // is raised over is empty surface rather than the panel's own seal — one icon in one
+      // place, still, and now a second press that lands.
+      className="-ml-1 relative z-40 grid size-6 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground max-[720px]:hidden"
       onClick={() => (open ? hold(NOTHING_HELD) : hold({ button: true }))}
     >
       <PanelLeft size={14} aria-hidden />
