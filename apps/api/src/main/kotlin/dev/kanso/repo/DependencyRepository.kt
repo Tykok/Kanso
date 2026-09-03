@@ -1,7 +1,8 @@
 package dev.kanso.repo
 
-import dev.kanso.db.TicketDependencies
+import dev.kanso.db.TicketLinks
 import dev.kanso.db.Tickets
+import dev.kanso.domain.TicketLinkType
 import dev.kanso.schedule.Edge
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -11,36 +12,58 @@ import org.springframework.stereotype.Repository
 import java.time.OffsetDateTime
 import java.util.UUID
 
+/**
+ * The scheduler's door onto the ticket graph, and the only thing in Kanso that turns a
+ * row into an [Edge].
+ *
+ * Since `V33` the table it reads holds three kinds of edge and exactly one of them is a
+ * schedule. Every read here therefore says `type = 'blocks'`, and that is deliberately
+ * *here* rather than in the call sites downstream: `Cascade`, `CriticalPath`,
+ * `TimelineService` and `MyStatsService.blocked` all take a `Collection<Edge>` and have
+ * no way to tell one kind from another, so a filter each of them was responsible for
+ * applying would be a filter one of them eventually forgot. What that costs is not an
+ * exception — a `relates` edge joins two components that have nothing to do with each
+ * other, and every date derived from the merged component comes out wrong by a few days,
+ * silently. `TicketLinkTest` holds this boundary from the outside.
+ *
+ * The navigable graph — all three types, for a ticket page — is [TicketLinkRepository].
+ */
 @Repository
 class DependencyRepository(private val jdbc: JdbcClient) {
 
+	private val blocks = TicketLinkType.BLOCKS.wire
+
 	fun insert(predecessorId: UUID, successorId: UUID) {
-		TicketDependencies.insert {
-			it[TicketDependencies.predecessorId] = predecessorId
-			it[TicketDependencies.successorId] = successorId
+		TicketLinks.insert {
+			it[TicketLinks.fromTicketId] = predecessorId
+			it[TicketLinks.toTicketId] = successorId
+			it[type] = TicketLinkType.BLOCKS.wire
 			it[createdAt] = OffsetDateTime.now()
 		}
 	}
 
 	fun delete(predecessorId: UUID, successorId: UUID): Boolean =
-		TicketDependencies.deleteWhere {
-			(TicketDependencies.predecessorId eq predecessorId) and
-				(TicketDependencies.successorId eq successorId)
+		TicketLinks.deleteWhere {
+			(TicketLinks.fromTicketId eq predecessorId) and
+				(TicketLinks.toTicketId eq successorId) and
+				(TicketLinks.type eq blocks)
 		} > 0
 
 	fun exists(predecessorId: UUID, successorId: UUID): Boolean =
-		TicketDependencies.selectAll().where {
-			(TicketDependencies.predecessorId eq predecessorId) and
-				(TicketDependencies.successorId eq successorId)
+		TicketLinks.selectAll().where {
+			(TicketLinks.fromTicketId eq predecessorId) and
+				(TicketLinks.toTicketId eq successorId) and
+				(TicketLinks.type eq blocks)
 		}.limit(1).any()
 
 	/** Every edge with at least one end inside [ticketIds]. */
 	fun edgesTouching(ticketIds: Collection<UUID>): List<Edge> {
 		if (ticketIds.isEmpty()) return emptyList()
-		return TicketDependencies.selectAll().where {
-			(TicketDependencies.predecessorId inList ticketIds) or
-				(TicketDependencies.successorId inList ticketIds)
-		}.map { Edge(it[TicketDependencies.predecessorId], it[TicketDependencies.successorId]) }
+		return TicketLinks.selectAll().where {
+			((TicketLinks.fromTicketId inList ticketIds) or
+				(TicketLinks.toTicketId inList ticketIds)) and
+				(TicketLinks.type eq blocks)
+		}.map { Edge(it[TicketLinks.fromTicketId], it[TicketLinks.toTicketId]) }
 	}
 
 	/**
@@ -54,10 +77,10 @@ class DependencyRepository(private val jdbc: JdbcClient) {
 	 * the project and doc relations already do.
 	 */
 	fun predecessorPageIds(ticketId: UUID): Map<UUID, String?> =
-		TicketDependencies
-			.join(Tickets, JoinType.INNER, TicketDependencies.predecessorId, Tickets.id)
+		TicketLinks
+			.join(Tickets, JoinType.INNER, TicketLinks.fromTicketId, Tickets.id)
 			.select(Tickets.id, Tickets.notionPageId)
-			.where { TicketDependencies.successorId eq ticketId }
+			.where { (TicketLinks.toTicketId eq ticketId) and (TicketLinks.type eq blocks) }
 			.associate { it[Tickets.id] to it[Tickets.notionPageId] }
 
 	/**
@@ -79,9 +102,10 @@ class DependencyRepository(private val jdbc: JdbcClient) {
 			WITH RECURSIVE component AS (
 			    SELECT id FROM tickets WHERE id IN (:seed)
 			  UNION
-			    SELECT CASE WHEN d.predecessor_id = c.id THEN d.successor_id ELSE d.predecessor_id END
-			      FROM ticket_dependencies d
-			      JOIN component c ON d.predecessor_id = c.id OR d.successor_id = c.id
+			    SELECT CASE WHEN d.from_ticket_id = c.id THEN d.to_ticket_id ELSE d.from_ticket_id END
+			      FROM ticket_links d
+			      JOIN component c ON d.from_ticket_id = c.id OR d.to_ticket_id = c.id
+			     WHERE d.type = 'blocks'
 			)
 			SELECT id FROM component
 			""".trimIndent()
@@ -105,10 +129,10 @@ class DependencyRepository(private val jdbc: JdbcClient) {
 			WITH RECURSIVE walk AS (
 			    SELECT :from::uuid AS id, ARRAY[:from::uuid] AS path
 			  UNION ALL
-			    SELECT d.successor_id, w.path || d.successor_id
-			      FROM ticket_dependencies d
-			      JOIN walk w ON d.predecessor_id = w.id
-			     WHERE NOT d.successor_id = ANY(w.path)
+			    SELECT d.to_ticket_id, w.path || d.to_ticket_id
+			      FROM ticket_links d
+			      JOIN walk w ON d.from_ticket_id = w.id
+			     WHERE d.type = 'blocks' AND NOT d.to_ticket_id = ANY(w.path)
 			)
 			SELECT path FROM walk WHERE id = :to::uuid LIMIT 1
 			""".trimIndent()
