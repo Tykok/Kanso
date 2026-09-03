@@ -119,7 +119,7 @@ function Flow({ progress, voice }: { progress: Progress; voice: Voice }) {
   const { insights } = progress;
 
   return (
-    <section className="flex flex-col gap-4 border-t border-border pt-5">
+    <section className="flex flex-col gap-4 border-t border-border pt-5" data-testid="insights-section">
       <GroupLabel className="px-0 pt-0">Cycle time and work in flight</GroupLabel>
       <InsightsFigures insights={insights} />
       <p className="m-0 max-w-[620px] text-13" data-testid="cycle-time-sentence">

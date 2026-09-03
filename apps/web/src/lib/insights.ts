@@ -53,6 +53,35 @@ export function duration(hours: number): string {
 }
 
 /**
+ * One unit for a whole series, chosen from its biggest value.
+ *
+ * [duration] is right for a figure in a sentence and **wrong for the labels of a chart**,
+ * which is a mistake this feature shipped for one afternoon and a screenshot caught. Three
+ * bars labelled `7.6 days`, `45 hours`, `38 hours` are three units in one axis: the reader
+ * compares 45 against 7.6, gets the ranking backwards, and the bars beneath them say the
+ * opposite. A chart therefore picks one unit off its tallest bar, every label is a bare
+ * number in it, and the unit is named once in the caption — which is what an axis is for.
+ *
+ * The threshold is [duration]'s own: below two days a series reads in hours, at or above it
+ * in days to one decimal. So the caption of a chart and the sentence above it never disagree
+ * about which unit this work is measured in.
+ */
+export type DurationScale = {
+  /** `hours` / `days` — for the caption, not for each label. */
+  unit: string;
+  /** The bare number a label draws. */
+  format: (hours: number) => string;
+};
+
+export function durationScale(values: readonly number[]): DurationScale {
+  // `Math.max` of nothing is `-Infinity`, which would pick a unit off a series that has no
+  // values — the same trap `burndown.ts`'s `heights` guards with the same zero.
+  const tallest = Math.max(0, ...values);
+  if (tallest < 48) return { unit: "hours", format: (hours) => `${Math.round(hours)}` };
+  return { unit: "days", format: (hours) => `${Math.round((hours / 24) * 10) / 10}` };
+}
+
+/**
  * The headline, or what it cannot say — and it never says nothing.
  *
  * Four branches, and the three that are not the happy one all name *why*, because an empty

@@ -148,7 +148,7 @@ function TeamBody({ progress }: { progress: TeamProgress }) {
       {/* KAN-23's trend, "par équipe" as the ticket asks — and it reopens no ranking.
           A median over the team's delivered tickets has no row to sort, because this
           response still carries no per-person field to put one on. */}
-      <section className="flex flex-col gap-4 border-t border-border pt-5">
+      <section className="flex flex-col gap-4 border-t border-border pt-5" data-testid="insights-section">
         <GroupLabel className="px-0 pt-0">Cycle time and work in flight</GroupLabel>
         <InsightsFigures insights={progress.insights} />
         <p className="m-0 max-w-[620px] text-13" data-testid="team-cycle-time-sentence">

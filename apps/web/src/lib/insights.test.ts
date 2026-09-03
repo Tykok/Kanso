@@ -4,6 +4,7 @@ import {
   cycleTimeSentence,
   cycleTimeTrend,
   duration,
+  durationScale,
   teamCycleTimeSentence,
   wipSentence,
 } from "./insights";
@@ -74,6 +75,38 @@ describe("duration", () => {
   it("agrees its own plural", () => {
     expect(duration(24 * 1 + 24)).toBe("2 days");
     expect(duration(24)).toBe("24 hours");
+  });
+});
+
+describe("durationScale", () => {
+  it("puts a whole series in one unit, chosen off its tallest bar", () => {
+    // The bug a screenshot caught: labelled with `duration`, this series read "7.6 days",
+    // "45 hours", "38 hours" — three units in one axis, so the reader compares 45 against
+    // 7.6 and gets the ranking backwards.
+    const scale = durationScale([183, 45, 37.5]);
+    expect(scale.unit).toBe("days");
+    expect([183, 45, 37.5].map(scale.format)).toEqual(["7.6", "1.9", "1.6"]);
+  });
+
+  it("stays in hours for a series that never reaches two days", () => {
+    const scale = durationScale([45, 37.5, 26]);
+    expect(scale.unit).toBe("hours");
+    expect([45, 37.5, 26].map(scale.format)).toEqual(["45", "38", "26"]);
+  });
+
+  it("uses the same threshold as the prose, so a caption and a sentence agree", () => {
+    expect(durationScale([47.9]).unit).toBe("hours");
+    expect(durationScale([48]).unit).toBe("days");
+    expect(duration(47.9)).toContain("hours");
+    expect(duration(48)).toContain("days");
+  });
+
+  it("picks a unit for an empty series without reaching -Infinity", () => {
+    // `Math.max()` of nothing is `-Infinity`, which is how a chart renders as nothing with
+    // no error anywhere — the trap `burndown.ts` guards with the same zero.
+    const scale = durationScale([]);
+    expect(scale.unit).toBe("hours");
+    expect(scale.format(0)).toBe("0");
   });
 });
 

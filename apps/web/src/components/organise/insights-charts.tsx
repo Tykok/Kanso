@@ -2,7 +2,7 @@
 
 import { GroupLabel } from "@/components/ui/group-label";
 import type { CycleTimePoint, Insights } from "@/lib/api";
-import { cycleTimeTrend, duration } from "@/lib/insights";
+import { cycleTimeTrend, duration, durationScale } from "@/lib/insights";
 import { heights } from "./burndown";
 
 /**
@@ -68,6 +68,9 @@ function Chart({ trend }: { trend: CycleTimePoint[] }) {
   const tall = heights(trend.map((point) => point.cycleTime.medianHours ?? 0));
   const measured = trend.filter((point) => point.cycleTime.medianHours !== undefined);
   const unmeasured = trend.reduce((sum, point) => sum + point.cycleTime.unmeasured, 0);
+  // One unit across the whole axis, off the tallest bar. Absent medians are not in the
+  // choice: a cycle that delivered nothing must not decide what unit the others read in.
+  const scale = durationScale(measured.map((point) => point.cycleTime.medianHours ?? 0));
 
   return (
     <>
@@ -88,11 +91,12 @@ function Chart({ trend }: { trend: CycleTimePoint[] }) {
               key={point.cycleId}
               className="flex-1 text-center font-mono text-11 text-muted-foreground"
             >
-              {/* An em dash, not a 0. A cycle with nothing delivered took no time because
-                  nothing happened in it, which is not the same as happening instantly. */}
+              {/* A bare number in the axis's one unit — see `durationScale`. An em dash, not
+                  a 0, where there is no median: a cycle with nothing delivered took no time
+                  because nothing happened in it, which is not the same as instantly. */}
               {point.cycleTime.medianHours === undefined
                 ? "—"
-                : duration(point.cycleTime.medianHours)}
+                : scale.format(point.cycleTime.medianHours)}
             </span>
           ))}
         </div>
@@ -139,8 +143,8 @@ function Chart({ trend }: { trend: CycleTimePoint[] }) {
           is not a cycle where they did badly, and this number cannot tell the difference —
           see the head of `lib/insights.ts`. */}
       <p className="m-0 max-w-[620px] text-11 text-muted-foreground">
-        Taller is slower · elapsed time, weekends included · {measured.length} of{" "}
-        {trend.length} closed cycles could be measured
+        Median {scale.unit} per cycle · taller is slower · elapsed time, weekends included ·{" "}
+        {measured.length} of {trend.length} closed cycles could be measured
         {unmeasured > 0
           ? ` · ${unmeasured} delivered ticket${unmeasured === 1 ? "" : "s"} recorded no start`
           : ""}
