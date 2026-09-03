@@ -17,6 +17,7 @@ import dev.kanso.service.TicketDetail
 import dev.kanso.service.TicketService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 /**
  * A large ticket becomes a parent and its parts become sub-tickets, in **one**
@@ -113,26 +114,44 @@ class SplitTicketTool(
 			"$address belongs to no team, and a part has to be filed in one",
 		)
 
-		val filed = parts.map { part ->
+		// **Every part read and every name resolved before the first insert.** The transaction
+		// below would undo a half-done split anyway, but a refusal that never wrote is a
+		// better refusal than one that has to be rolled back: it is provable from outside,
+		// and an agent that misspelled `titel` in the ninth part is told so without nine
+		// tickets having existed for a moment in somebody's realtime feed. It is
+		// `kanso_update_ticket`'s rule about refusing before reading, applied to a list.
+		val described = parts.map { part ->
 			part.refuseUnknown("title", "description", "status", "estimate", "assignees")
-			val child = tickets.create(
-				actor = actor,
-				teamId = teamId,
+			Part(
 				title = part.requiredString("title"),
 				description = part.string("description"),
 				status = TicketStatus.from(part.string("status") ?: TicketStatus.TODO.wire),
+				estimate = part.integer("estimate"),
+				assigneeIds = people.resolve(part.strings("assignees").orEmpty()),
+			)
+		}
+
+		val filed = described.map { part ->
+			val child = tickets.create(
+				actor = actor,
+				teamId = teamId,
+				title = part.title,
+				description = part.description,
+				status = part.status,
+				// Inherited, not asked for — see this file's header. A part of an urgent ticket
+				// is urgent until somebody says otherwise.
 				priority = parent.ticket.priority,
 				start = null,
 				due = null,
 				projectId = parent.ticket.projectId,
-				assigneeIds = people.resolve(part.strings("assignees").orEmpty()),
+				assigneeIds = part.assigneeIds,
 				docIds = emptyList(),
-				estimate = part.integer("estimate"),
+				estimate = part.estimate,
 			)
-			// Inside the same transaction as the insert that made it, which is what "all or
-			// none" means here. `SubTicketService.setParent` is the authority on whether the
-			// parenthood is allowed and it runs on every child, so a refusal on the fifth rolls
-			// back the four before it and the parent's own row was never touched.
+			// Inside the same transaction as the insert that made it, which is what is left for
+			// "all or none" to cover: a service refusal the pre-pass above could not have seen —
+			// an access rule, a project rule, `SubTicketService`'s own verdict on the
+			// parenthood — arriving on the fifth part rolls back the four before it.
 			subTickets.setParent(actor, child.ticket.id, parent.ticket.id)
 			child
 		}
@@ -166,6 +185,22 @@ class SplitTicketTool(
 			)
 		}
 	}
+
+	/**
+	 * One part, after the arguments have been read and the names resolved.
+	 *
+	 * A type rather than nine locals carried down the loop, and it exists so that reading
+	 * the arguments and writing the rows are two passes with a value between them. There is
+	 * nothing derived on it: every field is something the caller said, in the type the
+	 * service takes.
+	 */
+	private data class Part(
+		val title: String,
+		val description: String?,
+		val status: TicketStatus,
+		val estimate: Int?,
+		val assigneeIds: List<UUID>,
+	)
 
 	private companion object {
 		val STATUSES = TicketStatus.entries.map { it.wire }

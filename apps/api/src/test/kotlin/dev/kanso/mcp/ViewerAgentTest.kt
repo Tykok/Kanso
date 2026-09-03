@@ -136,13 +136,14 @@ class ViewerAgentTest : PostgresTest() {
 		val viewer = user(InstanceRole.VIEWER)
 		val team = teamWith(viewer)
 		val existing = ticketIn(team)
+		val other = ticketIn(team)
 		val writing = tools.filter { it.writes }
 		assertTrue(writing.isNotEmpty(), "no writing tools were found; the sweep below would assert nothing")
 
 		val agent = asAgent(viewer)
 		for (writer in writing) {
 			val refused = assertFailsWith<AccessDeniedException>("`${writer.name}` let a reader's agent write") {
-				writer.call(agent, argumentsFor(writer.name, team, existing))
+				writer.call(agent, argumentsFor(writer.name, team, existing, other))
 			}
 			assertEquals(
 				TicketAccess.READS_NOT_WRITES,
@@ -165,14 +166,15 @@ class ViewerAgentTest : PostgresTest() {
 		val viewer = user(InstanceRole.VIEWER)
 		val team = teamWith(viewer)
 		val existing = ticketIn(team)
+		val other = ticketIn(team)
 		val writer = tool("kanso_create_ticket")
 
 		val toPerson = assertFailsWith<AccessDeniedException> {
-			writer.call(asPerson(viewer), argumentsFor(writer.name, team, existing))
+			writer.call(asPerson(viewer), argumentsFor(writer.name, team, existing, other))
 		}
 		SecurityContextHolder.clearContext()
 		val toAgent = assertFailsWith<AccessDeniedException> {
-			writer.call(asAgent(viewer), argumentsFor(writer.name, team, existing))
+			writer.call(asAgent(viewer), argumentsFor(writer.name, team, existing, other))
 		}
 
 		assertEquals(toPerson::class, toAgent::class, "a refusal of a different type is a second rule")
@@ -224,11 +226,17 @@ class ViewerAgentTest : PostgresTest() {
 	 * `NotFoundException` from any of these would be the test lying to itself: it would look
 	 * like a refusal and would say nothing at all about who may write.
 	 */
-	private fun argumentsFor(name: String, team: Team, existing: String): Map<String, Any?> = when (name) {
-		"kanso_create_ticket" -> mapOf("team" to team.key, "title" to "Filed by an agent")
-		"kanso_update_ticket" -> mapOf("ticket" to existing, "status" to "done")
-		else -> error("`$name` writes but this test does not know how to call it; teach it here")
-	}
+	private fun argumentsFor(name: String, team: Team, existing: String, other: String): Map<String, Any?> =
+		when (name) {
+			"kanso_create_ticket" -> mapOf("team" to team.key, "title" to "Filed by an agent")
+			"kanso_update_ticket" -> mapOf("ticket" to existing, "status" to "done")
+			// Two different tickets, not one twice: `TicketLinkService` refuses a self-link, and
+			// a refusal that came from *that* would look exactly like the one this test is
+			// asserting while saying nothing about the seat.
+			"kanso_link_tickets" -> mapOf("from" to existing, "to" to other, "type" to "relates")
+			"kanso_split_ticket" -> mapOf("ticket" to existing, "parts" to listOf(mapOf("title" to "A part")))
+			else -> error("`$name` writes but this test does not know how to call it; teach it here")
+		}
 
 	private companion object {
 		const val CLIENT = "claude-code"
