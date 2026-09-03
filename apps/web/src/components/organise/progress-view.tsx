@@ -45,7 +45,10 @@ export function ProgressView() {
           page — every section below has a branch for its own absence. So the only empty
           state here is the one where the request itself failed. */}
       {progress.error !== null && !progress.isPending && (
-        <div className="empty flex-col gap-1">
+        // `flex` beside `flex-col` — see the note in `progress-others.tsx`: `.empty` sets no
+        // `display`, so this block had been rendering its two lines run together since
+        // KAN-40.
+        <div className="empty flex flex-col items-center gap-1">
           <span className="text-13 text-foreground">Your progress is not available</span>
           <span className="text-12 text-faint">
             {team === undefined

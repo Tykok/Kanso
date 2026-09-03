@@ -33,7 +33,12 @@ import { useOrganiseTeam } from "./team";
 /** What a refusal looks like: the rule, in words, rather than an empty chart. */
 function Refused({ what }: { what: string }) {
   return (
-    <div className="empty flex-col gap-1">
+    // `flex` spelled out beside `flex-col`: the `.empty` utility sets padding, centring and
+    // colour but no `display`, so `flex-col gap-1` on its own is inert and the two lines run
+    // together. Nine call sites in this app carry that same latent mistake; the cure is one
+    // line in `globals.css` and nine screens' worth of blast radius, so it is named here and
+    // left to somebody who can look at all nine.
+    <div className="empty flex flex-col items-center gap-1">
       <span className="text-13 text-foreground">{what} are not yours to read</span>
       <span className="max-w-[420px] text-center text-12 text-faint">
         Figures about somebody else are readable by an owner or admin of the instance, and by
