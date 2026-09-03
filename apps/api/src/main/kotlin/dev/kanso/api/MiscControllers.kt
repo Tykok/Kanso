@@ -7,6 +7,7 @@ import dev.kanso.config.KansoProperties
 import dev.kanso.settings.PreferencesService
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.NotFoundException
 import dev.kanso.sync.notion.NotionPeople
@@ -104,6 +105,7 @@ class AuthController(
 	private val registrations: DynamicClientRegistrationRepository,
 	private val localAuth: LocalAuthService,
 	private val preferences: PreferencesService,
+	private val tickets: TicketRepository,
 	private val build: BuildProperties,
 ) {
 
@@ -139,6 +141,11 @@ class AuthController(
 			user = UserResponse.of(user),
 			teamIds = teams.teamIdsFor(user.id),
 			preferences = PreferencesResponse.of(preferences.get(user.id)),
+			// One indexed probe that stops at the first matching row, on an answer the
+			// client already fetches once per session — which is the whole of KAN-65's
+			// fix: the sidebar's checklist now derives from this instead of asking for
+			// two hundred tickets it did not draw.
+			workMovedAlong = tickets.anyMovedAlong(),
 			// BuildProperties.getVersion() is @Nullable: only absent if buildInfo()
 			// never ran, which MeVersionTest catches at the bean level.
 			version = build.version ?: "unknown",

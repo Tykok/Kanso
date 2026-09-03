@@ -254,6 +254,24 @@ class TicketRepository(
 
 	// --- bulk reads ----------------------------------------------------------
 
+	/**
+	 * Whether anything in this instance has been moved past where the composer leaves it.
+	 *
+	 * Screen 08's fourth question — "est-ce que quelque chose a avancé ?" — and the whole
+	 * of what the sidebar's checklist used to buy a 200-row ticket list to answer.
+	 *
+	 * `limit(1).empty()` rather than a count, the shape [UserRepository.hasOwner] already
+	 * uses: the answer is a boolean, so the first matching row is the entire answer and
+	 * Postgres stops reading there.
+	 *
+	 * Archived rows count, deliberately. The question is whether work has *ever* moved,
+	 * and archiving the ticket somebody dragged into `in_progress` does not un-drag it —
+	 * a step that unticked itself when a team was tidied up would be the checklist
+	 * breaking the promise `first-session.ts` makes for all four of them.
+	 */
+	fun anyMovedAlong(): Boolean =
+		!Tickets.select(Tickets.id).where { Tickets.status inList MOVED_ALONG_STATUSES }.limit(1).empty()
+
 	/** Archived tickets count: they still need a decision when their team goes away. */
 	fun countByTeams(teamIds: Collection<UUID>, includeArchived: Boolean = true): Int {
 		if (teamIds.isEmpty()) return 0
@@ -487,5 +505,23 @@ class TicketRepository(
 
 	fun recordNotionEdit(id: UUID, lastEdited: OffsetDateTime?) {
 		Tickets.update({ Tickets.id eq id }) { it[notionLastEditedTime] = lastEdited }
+	}
+
+	private companion object {
+		/**
+		 * Neither "we might" nor "we will" — the two categories
+		 * `PublicRoadmapService.NOT_STARTED_STATUSES` calls a first step, read the other
+		 * way round.
+		 *
+		 * Filtered off [TicketStatus.category] rather than spelled as four names, for the
+		 * reason that property exists: a seventh status is then classified once, where the
+		 * mapping is the definition, instead of being silently absent from this list.
+		 *
+		 * `canceled` is in here, which reads odd and is right: somebody decided about that
+		 * ticket, and deciding not to do it is the step this asks about having happened.
+		 */
+		val MOVED_ALONG_STATUSES = TicketStatus.entries
+			.filter { it.category != StatusCategory.BACKLOG && it.category != StatusCategory.UNSTARTED }
+			.map { it.wire }
 	}
 }

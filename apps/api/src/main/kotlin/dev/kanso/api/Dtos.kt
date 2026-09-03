@@ -534,5 +534,17 @@ data class MeResponse(
 	 * rather than two — the second one would be the one deciding the theme.
 	 */
 	val preferences: PreferencesResponse,
+	/**
+	 * Whether any ticket in the instance has been moved past where the composer leaves
+	 * it. Screen 08's "Move it along", answered here for the same reason [preferences]
+	 * is: the sidebar draws its checklist on the first paint, and the alternative was a
+	 * 200-row ticket list fetched beside every grouped one (KAN-65).
+	 *
+	 * About the instance and not about this reader, like [version] and unlike everything
+	 * above it. That is the honest scope of the question — the step is "has anything
+	 * moved", not "did *you* move it" — and it is why this is derived per request rather
+	 * than stored next to `onboardedAt`.
+	 */
+	val workMovedAlong: Boolean,
 	val version: String,
 )
