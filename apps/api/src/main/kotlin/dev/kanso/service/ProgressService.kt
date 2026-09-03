@@ -79,6 +79,14 @@ data class Progress(
 	 */
 	val delivered: List<DeliveredCycle>,
 	val load: OpenLoad,
+	/**
+	 * KAN-23, and the field KAN-40 left a hole for rather than filling with a stub.
+	 *
+	 * On this shape rather than behind a route of its own: the subject, the team and the
+	 * closed cycles are already resolved here, and a second endpoint would be a second copy
+	 * of `ProgressAccess`'s three branches guarding the same figures about the same person.
+	 */
+	val insights: Insights,
 )
 
 /**
@@ -102,6 +110,16 @@ data class TeamProgress(
 	/** Oldest first, like [Progress.delivered]. */
 	val delivered: List<DeliveredCycle>,
 	val load: OpenLoad,
+	/**
+	 * The trend the ticket asks for **per team**, and the one figure on this shape that is
+	 * about tickets rather than about points.
+	 *
+	 * It names no person, so it does not reopen the ranking this type refuses: a median over
+	 * a team's delivered tickets has no row to sort. That is worth stating because cycle time
+	 * is the metric most often turned into one, and the reason it cannot be here is the same
+	 * reason nothing else can — there is no per-person field to put it on.
+	 */
+	val insights: Insights,
 )
 
 /**
@@ -130,6 +148,7 @@ data class TeamProgress(
 class ProgressService(
 	private val effective: EffectiveVelocityService,
 	private val velocity: VelocityService,
+	private val cycleTime: CycleTimeService,
 	private val tickets: TicketRepository,
 	private val projects: ProjectRepository,
 	private val teams: TeamRepository,
@@ -156,6 +175,9 @@ class ProgressService(
 				measuredOver = if (inForce.source == VelocitySource.MEASURED) inForce.measuredCycles else 0,
 			),
 			load = load(subject.id, teamId, inForce.perWorkingDay),
+			// The very cycles the bars are drawn from, handed over rather than re-read, so
+			// the median and the bar above it are measured over one set of tickets.
+			insights = cycleTime.forCycles(history.cycles.map { it.cycle }, teamId, subject.id),
 		)
 	}
 
@@ -180,6 +202,9 @@ class ProgressService(
 			// No assignee, so the plate is the team's whole open board — the scope
 			// `WorkloadService` gathers, sub-teams included.
 			load = load(assigneeId = null, teamId = team.id, perWorkingDay = inForce.perWorkingDay),
+			// No assignee here either, so the median is over everything the team delivered —
+			// including the tickets nobody was assigned, which a person's page cannot count.
+			insights = cycleTime.forCycles(history.cycles.map { it.cycle }, team.id, assigneeId = null),
 		)
 	}
 

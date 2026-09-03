@@ -290,8 +290,14 @@ class VelocityService(
 	 *
 	 * One function so that "delivered during this cycle" is one rule. The per-person read
 	 * and the team read differ in what they do with the list, never in what is on it.
+	 *
+	 * **Public for `CycleTimeService`, which is a third reader of the same rule.** Cycle
+	 * time is measured over the tickets a closed cycle delivered, and the two numbers on
+	 * that screen disagreeing about which tickets those were is the one failure neither
+	 * could be debugged from — a median over a set the bar above it did not count. So it
+	 * reads this rather than a fourth copy of the two conditions documented above.
 	 */
-	private fun finishedIn(cycle: Cycle): List<Ticket> =
+	fun finishedIn(cycle: Cycle): List<Ticket> =
 		membership.ticketsIn(cycle.id).filter { it.reachedDoneDuring(cycle) }
 
 	private fun Ticket.reachedDoneDuring(cycle: Cycle): Boolean {

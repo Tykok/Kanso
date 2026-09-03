@@ -16,9 +16,12 @@ import { useOrganiseTeam } from "./team";
  * rather than a preference. The drawings are `progress-charts.tsx` and the sections are
  * `progress-body.tsx`, shared with the version of this page aimed at somebody else.
  *
- * Median cycle time is deliberately absent. It waits on the insights ticket that reads
- * `activity` for time-in-status, and a plausible-looking stub is worse than a gap: nobody
- * ever goes back and checks a number that is already on the screen.
+ * Median cycle time was deliberately absent, waiting on the insights ticket that reads
+ * `activity` for time-in-status rather than on a plausible-looking stub — nobody ever goes
+ * back and checks a number that is already on the screen. KAN-23 filled it, and filled it
+ * the way the gap was left: the median arrives on the same `GET /api/me/progress` as
+ * everything else here, measured over the very cycles the bars above are drawn from, so the
+ * two cannot come to disagree about which tickets they are describing.
  *
  * **It draws no chrome of its own, and used to.** It arrived on `main` as a page rendering
  * `OrganiseShell`, with a `Team / My progress` crumb and the reader's own name at the right

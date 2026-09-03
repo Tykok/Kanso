@@ -4,9 +4,12 @@ import Link from "next/link";
 import { GroupLabel } from "@/components/ui/group-label";
 import { usePageShell } from "@/components/shell/topbar-slot";
 import type { TeamProgress } from "@/lib/api";
+import { teamCycleTimeSentence, wipSentence } from "@/lib/insights";
 import { teamLoadSentence } from "@/lib/progress";
 import { usePersonProgress, useTeamMembers, useTeamProgress } from "@/lib/queries";
 import { formatRate } from "@/lib/velocity";
+import { about } from "@/lib/voice";
+import { CycleTimeTrend, InsightsFigures } from "./insights-charts";
 import { ProgressBody } from "./progress-body";
 import { Delivered, Projects, StatusBar } from "./progress-charts";
 import { useOrganiseTeam } from "./team";
@@ -140,6 +143,26 @@ function TeamBody({ progress }: { progress: TeamProgress }) {
             <Projects load={load} />
           </>
         )}
+      </section>
+
+      {/* KAN-23's trend, "par équipe" as the ticket asks — and it reopens no ranking.
+          A median over the team's delivered tickets has no row to sort, because this
+          response still carries no per-person field to put one on. */}
+      <section className="flex flex-col gap-4 border-t border-border pt-5" data-testid="insights-section">
+        <GroupLabel className="px-0 pt-0">Cycle time and work in flight</GroupLabel>
+        <InsightsFigures insights={progress.insights} />
+        <p className="m-0 max-w-[620px] text-13" data-testid="team-cycle-time-sentence">
+          {teamCycleTimeSentence(progress.insights.cycleTime, team.name)}
+        </p>
+        {/* `about(teamName)` here, where `teamLoadSentence` needed a sentence of its own.
+            The difference is the verb: "nothing open is assigned to Mobile" would be false,
+            because a team's plate counts the tickets nobody is assigned, while "Mobile is
+            holding nothing in flight" is true of exactly those same tickets. So this one
+            swaps pronouns and does not fork. */}
+        <p className="m-0 max-w-[620px] text-13" data-testid="team-wip-sentence">
+          {wipSentence(progress.insights.wip, about(team.name))}
+        </p>
+        <CycleTimeTrend trend={progress.insights.trend} />
       </section>
 
       <People teamId={team.id} />

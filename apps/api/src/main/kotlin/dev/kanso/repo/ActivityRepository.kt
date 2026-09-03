@@ -26,10 +26,10 @@ data class ActivityRecord(
 class ActivityRepository(private val jdbc: JdbcClient) {
 
 	/**
-	 * The one raw statement in this file, and only because of the column type: `payload`
-	 * is `jsonb`, and the driver sends a Kotlin string as `varchar`, which Postgres
-	 * refuses for a jsonb column. `outbound_jobs` casts the same way, for the same reason.
-	 * It runs on the connection Spring already holds, inside the caller's transaction.
+	 * Raw, and only because of the column type: `payload` is `jsonb`, and the driver sends
+	 * a Kotlin string as `varchar`, which Postgres refuses for a jsonb column.
+	 * `outbound_jobs` casts the same way, for the same reason. It runs on the connection
+	 * Spring already holds, inside the caller's transaction.
 	 *
 	 * [createdAt] is passed in rather than left to the column default: `now()` is the
 	 * *transaction* timestamp, so every row one transaction writes would carry the same
@@ -78,6 +78,62 @@ class ActivityRepository(private val jdbc: JdbcClient) {
 			.orderBy(Activity.createdAt to SortOrder.DESC)
 			.limit(limit)
 			.map { it.toRecord() }
+
+	/**
+	 * When each of these tickets **first** reached any of [toStatuses], if it ever did.
+	 *
+	 * The one datum KAN-23 needs, and the reason that ticket said "a query, not a new
+	 * datum": `activity` has timestamped every `status_changed` since V8, so when work
+	 * started on a ticket is already on disk and nothing has to be collected or stored.
+	 *
+	 * `MIN` rather than the newest, and the difference is the whole rule: a ticket parked
+	 * back in `todo` and picked up again keeps the instant somebody *first* started it. The
+	 * clock starts once and never restarts, so a ticket bounced four times reports the whole
+	 * saga rather than the twenty minutes of its final touch. Cycle time and the age of work
+	 * in flight both read this, so neither can flatter the other.
+	 *
+	 * [toStatuses] is the caller's, spelled in wire values, because which statuses mean
+	 * "started" is a property of the vocabulary and not of this query — `StatusCategory`
+	 * owns it, so a seventh started status is read here without this file being edited.
+	 * Filtered in Postgres rather than by decoding every payload in Kotlin: the answer is
+	 * one row per ticket, and shipping the whole history to throw most of it away is how a
+	 * page over six closed cycles becomes a page that reads a table.
+	 *
+	 * A second raw statement, and for a different reason than [insert]'s: `payload` is
+	 * `jsonb` and `->>` is how you look inside one. Exposed has no operator for it that
+	 * would read better than the SQL.
+	 */
+	fun firstEnteredAt(
+		ticketIds: Collection<UUID>,
+		toStatuses: Collection<String>,
+	): Map<UUID, OffsetDateTime> {
+		// An empty `IN ()` is a syntax error in Postgres, and both lists are empty in
+		// ordinary cases: a person with nothing in flight, a team whose closed cycles
+		// delivered nothing.
+		if (ticketIds.isEmpty() || toStatuses.isEmpty()) return emptyMap()
+
+		return jdbc.sql(
+			"""
+			SELECT entity_id, MIN(created_at) AS started_at
+			FROM activity
+			WHERE entity_type = :entityType
+			  AND kind = :kind
+			  AND entity_id IN (:ticketIds)
+			  AND payload ->> 'to' IN (:toStatuses)
+			GROUP BY entity_id
+			""".trimIndent()
+		)
+			.param("entityType", ActivityEntity.TICKET.wire)
+			.param("kind", ActivityKind.STATUS_CHANGED.wire)
+			.param("ticketIds", ticketIds)
+			.param("toStatuses", toStatuses)
+			.query { rs, _ ->
+				rs.getObject("entity_id", UUID::class.java) to
+					rs.getObject("started_at", OffsetDateTime::class.java)
+			}
+			.list()
+			.toMap()
+	}
 
 	private fun ResultRow.toRecord() = ActivityRecord(
 		id = this[Activity.id],

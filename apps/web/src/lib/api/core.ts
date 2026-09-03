@@ -568,6 +568,73 @@ export type Progress = {
   delivered: DeliveredCycle[];
   load: OpenLoad;
   readers: ProgressReaders;
+  insights: Insights;
+};
+
+// --- cycle time and work in flight -------------------------------------------
+
+/**
+ * A median in **hours**, and how much of the sample it stands on.
+ *
+ * Hours, and the unit is the one thing a reader of this type has to hold on to: the pace on
+ * the same screen is points per *working* day and this is elapsed wall-clock, weekends
+ * included. The two are not divisible into one another and nothing on the screens multiplies
+ * them. `lib/insights.ts` is the only place hours become words.
+ *
+ * `medianHours` is **absent, not `null`**, when nothing could be measured — the server omits
+ * nulls, so a type claiming `| null` here would hand a component `undefined` and it would
+ * print it. Every branch that draws this compares against `undefined`.
+ *
+ * `unmeasured` travels with the median the way `unestimated` travels with a points total: it
+ * counts delivered tickets whose start was never recorded — dragged from `todo` straight to
+ * `done`, or created finished — and a sample that dropped them silently would read as the
+ * whole of the work.
+ */
+export type CycleTime = {
+  medianHours?: number;
+  /** Tickets the median actually stands on. */
+  measured: number;
+  unmeasured: number;
+};
+
+/** One point of the trend. Labelled by `number`, like the delivered bars beside it. */
+export type CycleTimePoint = {
+  cycleId: string;
+  number: number;
+  cycleTime: CycleTime;
+};
+
+/**
+ * What is in flight now, and since when.
+ *
+ * `load` is the started slice of the same plate `OpenLoad` cuts — gathered on the server so
+ * that "in flight" is `StatusCategory.STARTED` there rather than two status names added up
+ * here, which would stop following the vocabulary the day a seventh status means it.
+ *
+ * Both ages are absent together when nothing in flight has a recorded start. They are kept
+ * side by side because they mislead separately: a median alone hides the one ticket that is
+ * stuck, and a maximum alone makes a healthy board with one straggler look like a fire.
+ */
+export type Wip = {
+  load: LoadSlice;
+  medianAgeHours?: number;
+  oldestAgeHours?: number;
+  unmeasured: number;
+};
+
+/**
+ * KAN-23: cycle time, work in flight, and the trend across closed cycles.
+ *
+ * On `Progress` and on `TeamProgress` rather than behind a route of its own, so the figures
+ * arrive with the bars they are measured over and under the permission rule that already
+ * governs them.
+ */
+export type Insights = {
+  /** Pooled over every ticket the closed cycles delivered, not the mean of `trend`. */
+  cycleTime: CycleTime;
+  /** Oldest first — the order the chart draws. */
+  trend: CycleTimePoint[];
+  wip: Wip;
 };
 
 /** A team named and nothing else — the heading of a page, or a clause in a sentence. */
@@ -620,6 +687,12 @@ export type TeamProgress = {
   /** Oldest first — the order the chart draws. */
   delivered: DeliveredCycle[];
   load: OpenLoad;
+  /**
+   * The trend KAN-23 asks for per team, and it reopens no ranking: a median over a team's
+   * delivered tickets has no row to sort, because this response still has no per-person
+   * field to put one on.
+   */
+  insights: Insights;
 };
 
 /**
