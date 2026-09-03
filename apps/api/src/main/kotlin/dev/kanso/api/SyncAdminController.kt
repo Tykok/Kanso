@@ -5,6 +5,7 @@ import dev.kanso.config.KansoProperties
 import dev.kanso.outbox.Destination
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
+import dev.kanso.repo.RequestBaseRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.sync.bootstrap.BootstrapNotPossible
 import dev.kanso.sync.bootstrap.NotionBootstrap
@@ -97,6 +98,7 @@ class SyncAdminController(
 	private val client: NotionClient,
 	private val jobs: OutboundJobRepository,
 	private val meta: NotionMetaRepository,
+	private val requestBases: RequestBaseRepository,
 	private val bootstrap: NotionBootstrap,
 	private val tx: TransactionTemplate,
 	private val currentUser: CurrentUser,
@@ -155,16 +157,26 @@ class SyncAdminController(
 			failed = jobs.findFailed(Destination.NOTION).map {
 				FailedJob(it.id, it.entityType.wire, it.entityId.toString(), it.attempts, it.lastError)
 			},
-			cursors = databases.mapNotNull { db ->
-				meta.cursor(db.dataSourceId)?.let {
-					CursorStatus(
-						it.dataSourceId,
-						it.lastEditTime?.toString(),
-						it.lastRunAt?.toString(),
-						it.lastError,
-					)
-				}
-			},
+			// The requests bases' cursors too, and *only* their cursors — `V37` keeps them out
+			// of `databases` above because every row of that list is somewhere the mirror
+			// publishes, which a requests base is not, and because `bootstrapped` counts it.
+			// A cursor is the other thing entirely: `notion_sync_cursors` is keyed on a data
+			// source and knows nothing about which relationship Kanso has with it, so the
+			// poller records `last_error` there for a requests base exactly as it does for a
+			// mirrored one. Left out of this list, "why is the Demandes base not filling"
+			// would be answerable only from the logs — and this route exists precisely so
+			// that it is not.
+			cursors = (databases.map { it.dataSourceId } + requestBases.findAll().map { it.dataSourceId })
+				.mapNotNull { dataSourceId ->
+					meta.cursor(dataSourceId)?.let {
+						CursorStatus(
+							it.dataSourceId,
+							it.lastEditTime?.toString(),
+							it.lastRunAt?.toString(),
+							it.lastError,
+						)
+					}
+				},
 		)
 	}
 
