@@ -82,6 +82,7 @@ fun ResultRow.toTicket() = Ticket(
 	due = instant(this[Tickets.dueAt], this[Tickets.dueHasTime]),
 	completedAt = this[Tickets.completedAt],
 	projectId = this[Tickets.projectId],
+	parentId = this[Tickets.parentId],
 	archived = this[Tickets.archived],
 	mirror = MirrorInfo(
 		notionPageId = this[Tickets.notionPageId],

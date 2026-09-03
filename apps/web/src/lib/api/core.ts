@@ -246,6 +246,51 @@ export type TimelineView = {
 };
 
 /** What a dependency write returns: the tickets its cascade moved. */
+/**
+ * The closed vocabulary of `ticket_links.type`, which the server mirrors as
+ * `TicketLinkType` and constrains as `ticket_links_type_chk`. Only `blocks` is a
+ * schedule — the timeline and the critical path are computed from those alone.
+ */
+export const TICKET_LINK_TYPES = ["blocks", "relates", "duplicates"] as const;
+export type TicketLinkType = (typeof TICKET_LINK_TYPES)[number];
+
+/**
+ * One edge, from the point of view of the ticket that was asked about. `ticket` is the
+ * one at the *other* end.
+ *
+ * `outgoing` is what turns one row into two different sentences — "blocks" against
+ * "blocked by" — and `symmetric` says when it means nothing worth printing, so the
+ * client never has to keep its own list of which types have a direction.
+ */
+export type TicketLink = {
+  ticket: Ticket;
+  type: TicketLinkType;
+  outgoing: boolean;
+  symmetric: boolean;
+};
+
+/**
+ * A parent's progress, derived server-side from its children's statuses.
+ *
+ * [total] already excludes cancelled children — they are in neither half of the fraction,
+ * so "5 of 5" can mean "finished". The two point fields are null together whenever any
+ * counted child is unestimated, because an unestimated child weighs zero in a sum and the
+ * parent would otherwise read as complete while part of it had never been sized.
+ */
+export type SubTicketProgress = {
+  total: number;
+  done: number;
+  /**
+   * Optional as well as nullable, and that is the wire being described rather than
+   * hedged: the server omits a null field instead of serialising it, so an unestimated
+   * parent arrives with both of these absent. Anything reading them has to treat
+   * `undefined` and `null` alike — spelling that out here is what makes a `=== null`
+   * check look wrong at the call site.
+   */
+  donePoints?: number | null;
+  totalPoints?: number | null;
+};
+
 export type CascadeResult = { movedTicketIds: string[] };
 
 /** What happens to what a team or a project holds when the container goes away. */
@@ -1092,6 +1137,42 @@ export const api = {
     request<void>(`/api/tickets/${successorId}/dependencies/${predecessorId}`, {
       method: "DELETE",
     }),
+
+  /**
+   * Every edge touching one ticket, of all three kinds. The per-ticket endpoint the
+   * ticket page used to lack — its "Depends on" chips were scraped out of the timeline
+   * response, which meant a ticket outside the chart's current scope drew none.
+   */
+  ticketLinks: (ticketId: string) => request<TicketLink[]>(`/api/tickets/${ticketId}/links`),
+
+  /** The sub-tickets of one ticket. At most one level: a child never has children. */
+  ticketChildren: (ticketId: string) => request<Ticket[]>(`/api/tickets/${ticketId}/children`),
+
+  /**
+   * How much of a parent is finished, derived on read from its children — never a stored
+   * column, so it cannot disagree with them.
+   *
+   * `null` for a ticket with no children, which is most of them: "0 of 0 done" is a
+   * number about nothing, so the client draws nothing rather than an empty bar.
+   */
+  ticketProgress: (ticketId: string) =>
+    request<SubTicketProgress | null>(`/api/tickets/${ticketId}/progress`),
+
+  setTicketParent: (ticketId: string, parentId: string | null) =>
+    request<void>(`/api/tickets/${ticketId}/parent`, {
+      method: "PUT",
+      body: JSON.stringify({ parentId }),
+    }),
+
+  /** `{id}` is the `from` end — for `duplicates`, the ticket being retired. */
+  linkTicket: (fromId: string, otherId: string, type: TicketLinkType) =>
+    request<CascadeResult>(`/api/tickets/${fromId}/links`, {
+      method: "POST",
+      body: JSON.stringify({ otherId, type }),
+    }),
+
+  unlinkTicket: (fromId: string, otherId: string, type: TicketLinkType) =>
+    request<void>(`/api/tickets/${fromId}/links/${type}/${otherId}`, { method: "DELETE" }),
 
   users: () => request<User[]>("/api/users"),
   syncStatus: () => request<SyncStatus>("/api/admin/sync"),

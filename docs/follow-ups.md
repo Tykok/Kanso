@@ -1112,3 +1112,62 @@ and is worth doing on its own rather than from here.
 **`/docs/[id]` draws no Favourites section, because it draws no sidebar.** That route has
 its own tree rail. Pre-existing, and it means a pinned document is visible from every
 screen except the document's own.
+
+# Ticket graph: typed links and sub-tickets
+
+Carried out of `KAN-12` and `KAN-11`. Both were judged not to block the merge.
+
+## Worth a decision
+
+**A `relates` edge is symmetric and stored once, so every read of it looks in both
+columns.** `ticket_links_relates_canonical_chk` insists on the smaller uuid first and
+`TicketLinkRepository` is the only place that knows it. The cost lands on anything that
+later wants to query relates edges in SQL by hand: matching one column finds the row
+from one end of the pair and not the other, depending on how two random uuids sorted.
+The trap inside the trap is that "smaller" means *Postgres's* order — sixteen unsigned
+bytes — and `UUID.compareTo` in Java reads two signed longs instead. They disagree on
+about half of all pairs. `canonical` compares the hex strings for exactly that reason,
+and the first version of it, which used `<` on the uuids, was rejected by its own CHECK.
+
+**Nesting is capped at one level in Kotlin, not in the schema.** `tickets.parent_id`
+would hold an arbitrary tree; `SubTicketService.parentRefusal` declines to build one, for
+the three reasons in `V34`'s header. Someone who decides the product wants real trees has
+to reckon with all three — in particular that "3 of 5 done" has to choose between
+counting direct children and counting leaves, and that nothing in this UI can draw a
+third level of indent. Widening it is a migration-free change to one function, which is
+the point of the rule living there.
+
+**The main list's fold reorders children under their parent.** `grouping.ts` says
+grouping never reorders inside a group or the view's `sortBy` silently stops working.
+Sorting is now applied *per level* instead: parents keep their order among parents,
+siblings among siblings. Nothing overtakes an unrelated row, but a reader who sorts by
+`updated` and sees a stale child above a fresher unrelated ticket is seeing this rule.
+
+**A duplicates link is inert; a triage ruling of `duplicate` draws one.** The asymmetry
+is deliberate and argued in `V33`'s header — a ruling is an event that cancels the ticket,
+a link is current state that must not destroy work. What is left undecided is the reverse
+direction: erasing the link a ruling drew leaves `triage_decisions` still saying the
+ticket was retired as a duplicate of something. That is arguably correct — the ruling
+happened — but nothing tells the reader so.
+
+## Not a defect, but load-bearing to know
+
+**`DependencyRepository` is the only thing in Kanso that returns a `schedule.Edge`, and
+all six of its reads say `type = 'blocks'`.** That is the whole guard for the risk `KAN-12`
+named. Adding a seventh read to that class without the filter does not throw: a `relates`
+edge joins two components that have nothing to do with each other and every date the
+critical path derives from the merged one comes out wrong by a few days, silently. A new
+read of the navigable graph belongs in `TicketLinkRepository`, which returns no `Edge` at
+all. `TicketLinkTest` holds the boundary from the outside; without the filters 12 of its
+13 cases fail, and one of them fails as `IllegalStateException: the dependency graph has a
+cycle, which the insert guard should have refused`.
+
+**A parent's progress is not on the list's rows, only on its page.** The list holds a
+200-row page of an uncapped bucket, so a parent's children are frequently not in it and a
+fraction derived from the visible rows would be confidently wrong. The list draws only
+what it can prove: a chevron, and the children it actually holds.
+
+**Bucket counts are untouched by folding, on purpose.** A count answers "how many tickets
+match in this bucket" and always has — it is uncapped against a 200-row page, so it has
+never equalled the rows drawn beneath it. `folding.test.ts` asserts a fold does not
+recompute it, because recomputing is KAN-59's disagreement arriving from the other side.

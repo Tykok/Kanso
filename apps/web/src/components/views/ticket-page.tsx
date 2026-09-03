@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import {
   EFFORT_POINTS,
@@ -11,8 +10,6 @@ import {
   dayValue,
   fromDayValue,
   isTicketId,
-  ticketAddress,
-  ticketHref,
   type EffortPoints,
   type Ticket,
   type TicketPriority,
@@ -26,7 +23,6 @@ import {
   useProjects,
   useTeams,
   useTicketByKey,
-  useTimeline,
   useUsers,
 } from "@/lib/queries";
 import { useActionContext } from "@/lib/use-action-ctx";
@@ -37,6 +33,8 @@ import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
 import { TicketDurationNote } from "../ticket-duration";
 import { TicketLabels } from "../ticket-labels";
+import { SubTicketsPanel } from "./sub-tickets-panel";
+import { TicketLinksPanel } from "./ticket-links-panel";
 import { Avatar } from "./avatar";
 
 /**
@@ -145,22 +143,6 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
   // the project is, because `⤡` collapses into the project's scope when there is one.
   const project = projects.data?.find((candidate) => candidate.id === ticket.projectId);
   const assignees = (users.data ?? []).filter((person) => ticket.assigneeIds.includes(person.id));
-
-  /**
-   * What this ticket waits on. Read off the timeline response, which is where the
-   * dependency edges live — there is no per-ticket dependency endpoint, and the chart's
-   * query is scoped, so a ticket outside the current scope resolves to no chips rather
-   * than to wrong ones. Drawn only when it has something to draw, exactly as the panel
-   * does with a field it cannot fill.
-   */
-  const timeline = useTimeline(true);
-  const dependsOn = useMemo(() => {
-    const edges = timeline.data?.dependencies ?? [];
-    const rows = timeline.data?.tickets ?? [];
-    return edges
-      .filter((edge) => edge.successorId === ticket.id)
-      .flatMap((edge) => rows.find((row) => row.id === edge.predecessorId) ?? []);
-  }, [timeline.data, ticket.id]);
 
   const set = (body: Parameters<typeof patch.mutate>[0]) => patch.mutate(body);
 
@@ -335,20 +317,8 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
             <TicketDurationNote ticketId={ticket.id} />
           </div>
 
-          {dependsOn.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2.5 text-12 text-faint">
-              <span>Depends on</span>
-              {dependsOn.map((predecessor) => (
-                <Link
-                  key={predecessor.id}
-                  href={ticketHref(ticketAddress(predecessor))}
-                  className="inline-flex h-6 items-center rounded-sm bg-accent-soft px-2.5 font-mono text-11 text-accent-ink"
-                >
-                  {predecessor.identifier ?? predecessor.title}
-                </Link>
-              ))}
-            </div>
-          )}
+          <SubTicketsPanel ticketId={ticket.id} />
+          <TicketLinksPanel ticketId={ticket.id} />
 
           <div className="my-1 h-px bg-border" />
 

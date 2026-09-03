@@ -6,6 +6,7 @@ import { dayValue, type Ticket } from "@/lib/api";
 import type { ActionContext } from "@/lib/actions";
 import { useRowMetrics } from "@/lib/row-metrics";
 import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
+import { foldGroups } from "./organise/folding";
 import type { Group } from "./organise/grouping";
 import { Row, rowActionsTriggerClass } from "./ui/row";
 import { GROUP_LABEL_ESTIMATE, GroupLabel } from "./ui/group-label";
@@ -232,7 +233,27 @@ export function TicketList({
    * keep the cursor visible, with the header between them belonging to neither. One
    * sequence keeps "where the cursor is" the single integer it was before any of this.
    */
-  const flat = useMemo(() => flatten(groups, (ticket) => ticket.id), [groups]);
+  /**
+   * Which parents are folded shut. Local and unpersisted: a fold is a glance, not a
+   * setting, and a list that reopened yesterday's folds would hide rows somebody had
+   * forgotten they closed.
+   */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleFold = (id: string) =>
+    setCollapsed((open) => {
+      const next = new Set(open);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  // Children ordered under their parents, folded ones dropped, bucket counts untouched —
+  // see `organise/folding.ts` for what a count means once rows can be hidden.
+  const folded = useMemo(() => foldGroups(groups, collapsed), [groups, collapsed]);
+
+  const flat = useMemo(
+    () => flatten(folded.groups, (ticket) => ticket.id),
+    [folded.groups],
+  );
 
   const virtualizer = useVirtualizer({
     // Nothing until `--row-h` has been read. A count with a zero row height would ask
@@ -337,12 +358,41 @@ export function TicketList({
             }
             const ticket = entry.item;
             const rowCtx: ActionContext = { ...ctx, selected: ticket };
+            const children = folded.foldable.get(ticket.id);
+            const nested = folded.nested.has(ticket.id);
             return (
               <div
                 key={item.key}
                 className="absolute left-0 top-0 w-full"
                 style={{ height: metrics.height, transform: `translateY(${item.start}px)` }}
               >
+                {/*
+                  * One level of indent and no more. `docs/follow-ups.md` records that the
+                  * sidebar's two-level cap renders levels 2, 3 and 4 at the same indent,
+                  * leaving the rows indistinguishable; the server caps the nest at one
+                  * level precisely so this list never has a third to draw.
+                  */}
+                {children !== undefined && (
+                  <button
+                    type="button"
+                    aria-expanded={!collapsed.has(ticket.id)}
+                    aria-label={
+                      collapsed.has(ticket.id)
+                        ? `Show ${children} sub-tickets`
+                        : `Hide ${children} sub-tickets`
+                    }
+                    title={`${children} sub-ticket${children === 1 ? "" : "s"} in this group`}
+                    className="absolute left-0 top-0 z-10 flex h-full w-3 items-center justify-center text-9 text-faint hover:text-foreground"
+                    onClick={(event) => {
+                      // The row underneath selects on click, and folding is not selecting.
+                      event.stopPropagation();
+                      toggleFold(ticket.id);
+                    }}
+                  >
+                    {collapsed.has(ticket.id) ? "▸" : "▾"}
+                  </button>
+                )}
+                <div className={nested ? "pl-4" : undefined}>
                 <TicketRow
                   ticket={ticket}
                   selected={ticket.id === selectedId}
@@ -353,6 +403,7 @@ export function TicketList({
                   onRename={(title) => onRename(ticket.id, title)}
                   onCancelEdit={onCancelEdit}
                 />
+                </div>
               </div>
             );
           })}

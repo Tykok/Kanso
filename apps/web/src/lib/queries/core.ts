@@ -20,6 +20,7 @@ import {
   type Team,
   type Ticket,
   type TicketGroups,
+  type TicketLinkType,
   type TicketPriority,
   type TicketStatus,
   type ViewFilters,
@@ -79,6 +80,20 @@ export const keys = {
       includeArchived,
       asked,
     ] as const,
+  /**
+   * Per ticket, and deliberately not under [keys.tickets]: this is an answer *about* one
+   * ticket rather than a list of rows, so `listShape` in `lib/realtime-events.ts` must
+   * not find it and try to patch it like one.
+   */
+  ticketLinks: (id: string) => ["ticket-links", id] as const,
+  /** Per parent, for the same reason [ticketLinks] is: an answer about one ticket. */
+  ticketChildren: (id: string) => ["ticket-children", id] as const,
+  /**
+   * Derived from the children, so it is its own entry rather than a field on the ticket:
+   * a child's status changing has to be able to invalidate the parent's fraction without
+   * touching the parent's row.
+   */
+  ticketProgress: (id: string) => ["ticket-progress", id] as const,
   contents: (kind: "team" | "project", id: string) => ["contents", kind, id] as const,
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   /** Per team, because a velocity measured against another team's fortnights is a different number. */
@@ -624,6 +639,63 @@ export function usePatchTicket() {
       queryClient.invalidateQueries({ queryKey: ["myStats"] });
     },
   });
+}
+
+/**
+ * A parent's sub-tickets and how much of it is done.
+ *
+ * Two queries rather than one, because they answer to different questions: the progress
+ * is a fraction the panel prints, and the children are rows it lists. A ticket with no
+ * children answers `null` to the first and `[]` to the second, and the panel draws
+ * nothing — which is most tickets.
+ */
+export function useSubTickets(ticketId: string) {
+  const children = useQuery({
+    queryKey: keys.ticketChildren(ticketId),
+    queryFn: () => api.ticketChildren(ticketId),
+  });
+  const progress = useQuery({
+    queryKey: keys.ticketProgress(ticketId),
+    queryFn: () => api.ticketProgress(ticketId),
+  });
+  return { children, progress };
+}
+
+/** Every edge touching one ticket, of all three kinds, for the panel on its page. */
+export function useTicketLinks(ticketId: string) {
+  return useQuery({
+    queryKey: keys.ticketLinks(ticketId),
+    queryFn: () => api.ticketLinks(ticketId),
+  });
+}
+
+/**
+ * Drawing or erasing a `relates` or `duplicates` edge.
+ *
+ * Not optimistic, for a smaller reason than the dependency hooks below: the row the
+ * panel draws is the *far* ticket's title and identifier, which the client would have to
+ * already hold to guess at, and the server drops any far end the reader may not open.
+ *
+ * `blocks` goes through [useLinkDependency] instead. The endpoint would take it, but the
+ * invalidations are not the same — a dependency moves dates and changes `strip.blocked`,
+ * and these two kinds change nothing but this panel.
+ */
+export function useTicketLinkEdit(ticketId: string) {
+  const queryClient = useQueryClient();
+  const settle = () => {
+    queryClient.invalidateQueries({ queryKey: keys.ticketLinks(ticketId) });
+  };
+  const link = useMutation({
+    mutationFn: ({ otherId, type }: { otherId: string; type: TicketLinkType }) =>
+      api.linkTicket(ticketId, otherId, type),
+    onSettled: settle,
+  });
+  const unlink = useMutation({
+    mutationFn: ({ otherId, type }: { otherId: string; type: TicketLinkType }) =>
+      api.unlinkTicket(ticketId, otherId, type),
+    onSettled: settle,
+  });
+  return { link, unlink };
 }
 
 /**

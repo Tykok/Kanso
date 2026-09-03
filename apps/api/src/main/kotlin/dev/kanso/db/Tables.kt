@@ -242,6 +242,13 @@ object Tickets : Table("tickets") {
 	val dueHasTime = bool("due_has_time")
 	val completedAt = timestampWithTimeZone("completed_at").nullable()
 	val projectId = javaUUID("project_id").nullable()
+
+	/**
+	 * The ticket this one is a part of, one level deep and no deeper — `TicketService`
+	 * refuses to build a tree, for the reasons `V34`'s header gives. `ON DELETE SET NULL`,
+	 * so deleting a parent promotes its children instead of destroying their work.
+	 */
+	val parentId = javaUUID("parent_id").nullable()
 	val notionPageId = text("notion_page_id").nullable()
 	val archived = bool("archived")
 	val syncState = text("sync_state")
@@ -259,15 +266,25 @@ object TicketAssignees : Table("ticket_assignees") {
 }
 
 /**
- * Finish-to-start dependencies. No lag column and no type column: the edge either
- * exists or it does not, and the acyclicity of the graph is guarded on insert
- * rather than by a constraint the database cannot express.
+ * Every edge of the ticket graph, of whatever kind — `V33` generalised V7's
+ * dependency table rather than adding a second one beside it.
+ *
+ * `from`/`to` name a direction without claiming what it means; [type] says. Only
+ * `blocks` is a schedule, and the acyclicity that the scheduler relies on is guarded
+ * on insert rather than by a constraint the database cannot express. `relates` is
+ * symmetric and stored once, with the smaller uuid first — a reader of one ticket's
+ * relates edges has to look in both columns, which is why nothing reads this table
+ * directly except the two repositories that know that rule.
+ *
+ * Named after the table, like every object here. Not to be confused with
+ * `sync.importer.TicketLinks`, which is the Notion import's "draw the arrows" pass.
  */
-object TicketDependencies : Table("ticket_dependencies") {
-	val predecessorId = javaUUID("predecessor_id")
-	val successorId = javaUUID("successor_id")
+object TicketLinks : Table("ticket_links") {
+	val fromTicketId = javaUUID("from_ticket_id")
+	val toTicketId = javaUUID("to_ticket_id")
+	val type = text("type")
 	val createdAt = timestampWithTimeZone("created_at")
-	override val primaryKey = PrimaryKey(predecessorId, successorId)
+	override val primaryKey = PrimaryKey(fromTicketId, toTicketId, type)
 }
 
 object NotionDocs : Table("notion_docs") {

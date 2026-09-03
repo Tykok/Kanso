@@ -82,6 +82,32 @@ enum class TicketPriority(override val wire: String) : Wire {
 	}
 }
 
+/**
+ * What an edge of the ticket graph means. Mirrors `ticket_links_type_chk`.
+ *
+ * [BLOCKS] is the only one the scheduler may ever see. A `relates` or `duplicates` edge
+ * in the critical path would not fail loudly — it would move dates, quietly and wrongly
+ * — so the type is not a filter the scheduler applies but a distinction drawn at the
+ * repository boundary: `DependencyRepository` reads `blocks` and nothing else, and no
+ * other kind of row has a route to a `schedule.Edge`.
+ */
+enum class TicketLinkType(override val wire: String) : Wire {
+	BLOCKS("blocks"), RELATES("relates"), DUPLICATES("duplicates");
+
+	/**
+	 * Whether the edge means the same thing read from either end. Only [RELATES] does,
+	 * and it is stored once with the smaller uuid first, so every read of it has to look
+	 * in both columns.
+	 */
+	val symmetric: Boolean get() = this == RELATES
+
+	val label: String get() = wire.replaceFirstChar(Char::uppercase)
+
+	companion object {
+		fun from(raw: String): TicketLinkType = parse(entries.toTypedArray(), raw)
+	}
+}
+
 enum class ProjectStatus(override val wire: String) : Wire {
 	PLANNED("planned"), IN_PROGRESS("in_progress"), PAUSED("paused"), COMPLETED("completed"), CANCELED("canceled");
 
@@ -487,6 +513,8 @@ data class Ticket(
 	val due: KansoInstant?,
 	val completedAt: OffsetDateTime?,
 	val projectId: UUID?,
+	/** The ticket this one is a part of, or null for a top-level one. At most one level. */
+	val parentId: UUID?,
 	val archived: Boolean,
 	val mirror: MirrorInfo,
 	val createdAt: OffsetDateTime,
