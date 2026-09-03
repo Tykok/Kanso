@@ -344,10 +344,22 @@ class TicketService(
 	 * Naming a [projectId] that belongs to a team is the other way in. The team follows the
 	 * project, because a ticket's project belongs to its team and the alternative is a row
 	 * that breaks that invariant the instant it is written.
+	 *
+	 * [actor] is null for one caller, [dev.kanso.sync.inbound.RequestSiphon]: a page written
+	 * in a Notion requests base was written by somebody with no Kanso account, so there is
+	 * no member to check and none to credit. Nullable in the same shape and for the same
+	 * class of reason as [purge] — where the consent was given earlier, by somebody else,
+	 * and the write happens with nobody left to ask. Here the earlier consent is an admin
+	 * registering the base against a named team, which is why the team below is not
+	 * *checked* against an actor but is still not arbitrary: `V37` holds the argument.
+	 *
+	 * A null actor may only file *into a team*. Passing null with no team would write a
+	 * draft owned by nobody — instance-admin-visible, in no queue, comparable to nothing —
+	 * which is exactly the dead letter box `V37` refuses, so it is refused here too.
 	 */
 	@Transactional
 	fun create(
-		actor: User,
+		actor: User?,
 		teamId: UUID?,
 		title: String,
 		description: String?,
@@ -372,7 +384,15 @@ class TicketService(
 		//
 		// Asked of the adopted team too: attaching through a project must not be a door into
 		// a team the actor may not edit, which would be the whole rule defeated in one field.
-		effectiveTeamId?.let { access.requireTeam(actor, it) }
+		//
+		// Skipped for a null actor, like `purge`, and the refusal below is what keeps that
+		// from being a hole: with no actor there is no seat to check and no membership to
+		// walk, so the only safe null case is the one whose destination was decided by an
+		// admin at registration time rather than by the caller.
+		if (actor == null && effectiveTeamId == null) {
+			throw BadRequestException("A ticket created by no one must name the team whose queue it joins")
+		}
+		actor?.let { who -> effectiveTeamId?.let { access.requireTeam(who, it) } }
 		val team = effectiveTeamId?.let {
 			teams.findById(it) ?: throw BadRequestException("No team $it")
 		}
@@ -409,8 +429,10 @@ class TicketService(
 			teamId = effectiveTeamId,
 			// Recorded whatever happens, because the write that attaches a team later is not
 			// the write that would know who to ask. It stops deciding anything the moment a
-			// team is named; see `TicketAccess`.
-			createdBy = actor.id,
+			// team is named; see `TicketAccess` — which is what makes a null here harmless
+			// on a siphoned request: it always has a team, so this column never decides its
+			// access, and `V20` already says a null author resolves to admins only.
+			createdBy = actor?.id,
 			title = title,
 			description = description,
 			status = status,
@@ -432,8 +454,15 @@ class TicketService(
 		}
 		// No payload: a creation has no before, and the title a feed wants to print is on
 		// the row it is already reading. What the log adds is who, and when.
-		activity.record(ActivityEntity.TICKET, ticket.id, actor.id, ActivityKind.CREATED)
-		recordAssigneeChanges(actor, ticket.id, before = emptyList(), after = assigneeIds)
+		//
+		// A null actor still writes the row: `V8` made `actor_id` nullable and `V36` argues
+		// at length that an event whose author is not a Kanso member is an ordinary event
+		// with nobody to name, not a different kind. The feed reads "created" with no
+		// person, which is the truth about a request somebody typed in Notion.
+		activity.record(ActivityEntity.TICKET, ticket.id, actor?.id, ActivityKind.CREATED)
+		// A caller with no actor cannot assign anyone — the siphon passes none — so this is
+		// the same no-op it already was for an empty list, said in the type system.
+		actor?.let { recordAssigneeChanges(it, ticket.id, before = emptyList(), after = assigneeIds) }
 		events.publish(KansoEvent.ticket(ChangeKind.CREATED, ticket.id, effectiveTeamId, projectId))
 		return TicketDetail(ticket, team?.key, assigneeIds, docIds)
 	}

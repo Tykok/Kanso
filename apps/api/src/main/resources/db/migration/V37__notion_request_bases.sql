@@ -1,0 +1,142 @@
+-- Today the rule is "Kanso wins": whoever edits in Notion sees their change reverted.
+-- Correct — `architecture.md` says Postgres is the source of truth and means it — but
+-- hostile to the one person the mirror was supposed to help, because the only thing Notion
+-- is *good* at in this arrangement is the thing it is forbidden to do: let somebody who
+-- does not have Kanso open write something down.
+--
+-- So this inverts the framing on exactly one base. A Notion database of requests — a
+-- salesperson's customer ask, a support escalation, a designer's "can we please fix this"
+-- — that Kanso never writes to and only siphons. Every page in it becomes a ticket in the
+-- triage queue, and the constraint that was embarrassing becomes the sentence that explains
+-- the product: **Notion is read-only for the work, and write-only for the requests.**
+--
+-- The queue is not built here because it already exists (`TriageRepository.queue`), and
+-- neither is duplicate detection, which is `similarity()` on the title over `pg_trgm` from
+-- `V10`. Nor is the record of which page became which ticket: `notion_import_origin` from
+-- `V15` is that table already, and its header is this migration's argument written a month
+-- early — see the two sections below. What is left needing a table is one fact nothing
+-- stores yet: *which* base is the requests base, and whose queue it feeds.
+--
+-- ---------------------------------------------------------------------------
+-- Why this is not a fifth row in `notion_databases`.
+--
+-- That table looks like the obvious home — it is literally "which Notion database each
+-- kind lives in", it is keyed by a `kind` whose CHECK could take a fifth word, and
+-- `NotionPoller` already walks it. Three reasons it is the wrong home, and the third is
+-- fatal on its own.
+--
+-- **Every row in it is a push target.** `NotionOutboundHandler.plan` resolves a kind to a
+-- data source id and hands it to `client.createPage`. A requests base sitting in that table
+-- is one loop, one new `OutboundEntityType`, one well-meaning refactor away from being
+-- written to — and being written to is the single thing this feature promises never
+-- happens. Kept in a table no push planner reads, the promise is structural rather than
+-- remembered.
+--
+-- **The triage team belongs to a requests base and to nothing else.** A `team_id` on
+-- `notion_databases` would be NULL on all four mirror rows and meaningful on one, which is
+-- the shape of a column the next reader cannot infer the rule for.
+--
+-- **`bootstrapped` is computed as `meta.findAll().size >= 4`** — in `SetupController` and
+-- twice in `SyncAdminController`. A fifth row makes that arithmetic true on an instance
+-- where the four mirrored databases do *not* all exist, so registering a requests base
+-- would make the wizard announce a working mirror that was never created. Not a stretch of
+-- a semantic boundary: a live bug, in three screens, introduced by a row.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE notion_request_bases (
+  data_source_id TEXT PRIMARY KEY,
+  database_id    TEXT NOT NULL,
+  team_id        UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  registered_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER notion_request_bases_set_updated_at BEFORE UPDATE ON notion_request_bases
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- `data_source_id` is the key rather than a surrogate, following `notion_sync_cursors`: the
+-- poll cursor is keyed on it, the Notion query targets it, and a second row for the same
+-- data source would be two teams siphoning one base — which is not a configuration anybody
+-- meant, and would race to adopt each page.
+--
+-- `database_id` is stored beside it for the reason `V2` gives on `notion_databases`: the
+-- 2025 API nests data sources under databases, `NotionDiscovery` excludes a base by
+-- *either* id, and re-deriving one from the other costs a round trip to Notion.
+--
+-- **`team_id` is NOT NULL, and it is the whole reason this table has a second column.**
+-- `V20` made a ticket able to live without a team, and this feature depends on that
+-- decision — but not in the way the roadmap ticket assumed. A team-less ticket is a
+-- *private draft*: `V20` gives access to `created_by` and instance admins and nobody else,
+-- `TriageRepository.queue` filters `team_id IN (...)` so a draft is never in the queue, and
+-- `TriageService.similar` returns nothing for a ticket with no team because there is no
+-- board to look for a duplicate on. A siphoned page has no `created_by` either — nobody in
+-- Kanso wrote it — so a team-less request would resolve to "admins only", appear in no
+-- queue, and be compared against nothing. It would be a dead letter box with a trigram
+-- index on it.
+--
+-- So a requests base names the team whose queue it feeds, and the ticket gets that team and
+-- a number from its counter like one created by pressing `c`. What `V20` actually
+-- contributes is the other half of its own argument — a nullable `created_by`, and the
+-- sentence that once a ticket has a team, `created_by` stops deciding anything. That is
+-- exactly a page written by someone with no Kanso account: an author column with nothing to
+-- put in it, on a row whose access is decided by its team anyway.
+--
+-- ON DELETE CASCADE, not RESTRICT: deleting the team that triages the requests *is*
+-- unregistering the siphon, and a configuration row that refuses to let a team be deleted
+-- would be a footgun pointed at the wrong person. `notion_sync_cursors` keeps its row, and
+-- deliberately — see below.
+
+-- ---------------------------------------------------------------------------
+-- What this migration does NOT add, and why each absence is the design.
+--
+-- **No cursor table.** `notion_sync_cursors` from `V2` is keyed on `data_source_id` alone
+-- and has no foreign key to `notion_databases`, so it already serves any data source
+-- anybody polls. A requests base gets incremental polling, the overlap re-scan and the
+-- `last_error` the sync badge reads, for free. Its row surviving an unregistration is the
+-- right outcome: re-registering the same base must not re-walk it from the beginning of
+-- time, and `notion_import_origin` would refuse every page a second time anyway.
+--
+-- **No ledger of which page became which ticket.** `notion_import_origin` is that ledger,
+-- and `V15`'s header is already this feature's safety argument, twice over:
+--
+--   "Not `tickets.notion_page_id`: those hold the page the *mirror* created inside
+--   `Kanso · Tickets`, which Kanso overwrites on every push. Putting somebody's own page
+--   there would point that push at the workspace they just imported and rewrite it."
+--
+-- Read that with a requests base in mind and it is the one-way guarantee stated in full. A
+-- siphoned ticket keeps `tickets.notion_page_id` NULL until the mirror creates its own page
+-- in `Kanso · Tickets`, so no push ever addresses the requests base — not because the code
+-- avoids it, but because the id it would need is not written down anywhere a push can read.
+--
+--   "The primary key is the rule: one Notion page becomes at most one Kanso row, enforced
+--   by Postgres rather than by remembering to check."
+--
+-- That is exactly-once for a poller that re-reads the same page every thirty seconds. The
+-- siphon checks the ledger first so the ordinary path is a skip rather than a caught
+-- exception, but the primary key is what makes the guarantee true under a concurrent poll,
+-- and `ImportOriginRepository.record` is a plain insert precisely so a second write fails
+-- loudly instead of overwriting.
+--
+-- It also answers the harder question. A page edited in Notion *after* it was siphoned is
+-- already in the ledger, so the siphon stops at the first check — which means editing the
+-- page cannot resurrect a ticket somebody triaged and closed. The mirror's echo and
+-- "Kanso wins" guards are not what protects that; they compare timestamps, and a request
+-- base has no push to echo. Adoption being one-shot is what protects it.
+--
+-- **No `entity_type` widening.** The ledger's CHECK already allows `'ticket'`, which is
+-- what a request becomes. `OriginKind` in Kotlin is the same four words and needs no fifth.
+--
+-- **No new activity kind.** A siphoned request is `created`, like every other ticket, with
+-- no actor — `activity.actor_id` has been nullable since `V8` and `V36` spends a paragraph
+-- on why an event whose author is not a Kanso member is still an ordinary event. "A request
+-- arrived" is not a different fact from "a ticket was created"; it is the same fact with
+-- nobody to name, and splitting it would make the feed answer "when did this appear" out of
+-- two vocabularies.
+--
+-- **No status or priority read off the page.** Not a schema decision, but it belongs with
+-- the argument: the requests base's own columns are ignored for anything Kanso has a closed
+-- vocabulary for. A request arrives untriaged by definition, and letting a requester set
+-- `Priority: Urgent` in Notion would hand the queue's ordering to whoever is loudest. The
+-- columns are not lost — they are preserved as prose in the description, through the same
+-- "Imported from Notion" section `V15`'s import writes.
+-- ---------------------------------------------------------------------------

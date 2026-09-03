@@ -16,6 +16,8 @@ import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
+import dev.kanso.repo.RequestBase
+import dev.kanso.repo.RequestBaseRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.service.NotificationKind
@@ -46,12 +48,22 @@ import java.time.ZoneOffset
  * and people stay Kanso-authoritative on purpose: Notion replaces relation arrays
  * wholesale, so accepting them would turn a concurrent edit into silent data loss,
  * and `people` cannot represent a Kanso user who has no Notion account.
+ *
+ * **One base is polled under the opposite rule.** A requests base (`V37`) is not a mirror:
+ * Kanso never wrote it, never pushes to it, and adopts each of its pages exactly once, as a
+ * ticket in a team's triage queue. Everything above about echoes, conflicts and "Kanso
+ * wins" is about reconciling two copies of one row and none of it applies — there is no
+ * second copy, there is a request. The walk itself is identical, which is why it is here
+ * rather than in a second poller: same ascending order, same cursor, same overlap window,
+ * same `last_error` the sync badge reads. [RequestSiphon] holds the part that differs.
  */
 @Component
 class NotionPoller(
 	private val props: KansoProperties,
 	private val client: NotionClient,
 	private val meta: NotionMetaRepository,
+	private val requestBases: RequestBaseRepository,
+	private val siphon: RequestSiphon,
 	private val teams: TeamRepository,
 	private val projects: ProjectRepository,
 	private val tickets: TicketRepository,
@@ -68,15 +80,14 @@ class NotionPoller(
 	fun poll() {
 		if (!props.sync.inbound.enabled || !client.enabled) return
 
-		val sources = tx.execute { meta.findAll() }.orEmpty()
-			.filter { it.kind in POLLED_KINDS }
+		val sources = tx.execute { sources() }.orEmpty()
 		if (sources.isEmpty()) return
 
 		runBlocking {
 			val botId = runCatching { client.botUserId() }.getOrNull()
 			for (source in sources) {
 				try {
-					pollSource(source.kind, source.dataSourceId, botId)
+					pollSource(source, botId)
 				} catch (e: Exception) {
 					log.warn("Inbound poll of {} failed: {}", source.kind, e.message)
 					tx.executeWithoutResult { meta.saveCursor(source.dataSourceId, null, e.message) }
@@ -85,7 +96,24 @@ class NotionPoller(
 		}
 	}
 
-	private suspend fun pollSource(kind: String, dataSourceId: String, botUserId: String?) {
+	/**
+	 * The mirrored databases, then the requests bases — two tables because they are two
+	 * different relationships with Notion, and `V37` argues that keeping them apart is what
+	 * makes "nothing pushes to a requests base" structural.
+	 *
+	 * Mirrors first so that a slow or broken requests base cannot delay the reconciliation
+	 * the rest of the product depends on. Each source's failure is already caught and
+	 * recorded per source, so neither can stop the other.
+	 */
+	private fun sources(): List<Polled> =
+		meta.findAll().filter { it.kind in POLLED_KINDS }.map { Polled(it.kind, it.dataSourceId, null) } +
+			requestBases.findAll().map { Polled(REQUESTS, it.dataSourceId, it) }
+
+	/** One thing to walk: a mirrored kind, or a requests base carrying the team it feeds. */
+	private data class Polled(val kind: String, val dataSourceId: String, val requests: RequestBase?)
+
+	private suspend fun pollSource(source: Polled, botUserId: String?) {
+		val dataSourceId = source.dataSourceId
 		val cursor = tx.execute { meta.cursor(dataSourceId) }
 		// Re-scan a short window each time: Notion's clock is not ours, and a page
 		// edited in the same second as the last one we saw would otherwise be missed.
@@ -108,21 +136,33 @@ class NotionPoller(
 				notionPage.lastEditedTime?.let { edited ->
 					if (highWatermark == null || edited.isAfter(highWatermark)) highWatermark = edited
 				}
-				tx.executeWithoutResult { apply(kind, notionPage, botUserId) }
+				tx.executeWithoutResult { apply(source, notionPage, botUserId) }
 			}
 			startCursor = page.nextCursor
 		} while (page.hasMore && startCursor != null)
 
 		tx.executeWithoutResult { meta.saveCursor(dataSourceId, highWatermark, null) }
-		if (seen > 0) log.info("Inbound poll of {}: examined {} page(s)", kind, seen)
+		if (seen > 0) log.info("Inbound poll of {}: examined {} page(s)", source.kind, seen)
 	}
 
-	private fun apply(kind: String, page: NotionPage, botUserId: String?) {
+	private fun apply(source: Polled, page: NotionPage, botUserId: String?) {
 		// Guard 1: our own push coming back. Necessary but not sufficient — a human
 		// can edit in the same second we do, which the timestamp guard catches.
+		//
+		// Inert on a requests base, since Kanso never edits one, and kept there anyway: the
+		// one way it can fire is a base registered by mistake against a database the mirror
+		// itself writes, and skipping those pages is better than adopting the instance's own
+		// tickets back into it. `RequestBaseService` refuses that registration outright, so
+		// this is the second of two.
 		if (botUserId != null && page.lastEditedById == botUserId) return
 
-		when (kind) {
+		val requests = source.requests
+		if (requests != null) {
+			siphon.adopt(requests, page)
+			return
+		}
+
+		when (source.kind) {
 			"tickets" -> applyTicket(page)
 			"projects" -> applyProject(page)
 			"teams" -> applyTeam(page)
@@ -351,9 +391,14 @@ class NotionPoller(
 		theirs?.takeIf { it != mine }?.let { Triple(field, mine, it) }
 
 	/**
-	 * A page Kanso never created. v1 does not adopt it: a ticket needs a team and a
-	 * number that Notion has no way to supply, and inventing them would produce
+	 * A page Kanso never created, in a database Kanso *did*. Not adopted: a ticket needs a
+	 * team and a number that Notion has no way to supply, and inventing them would produce
 	 * rows nobody asked for. Logged so it is visible rather than silently dropped.
+	 *
+	 * A requests base is where the opposite answer is given, and the difference is not the
+	 * page — it is that somebody registered that base against a team, which is the missing
+	 * fact being supplied by a person rather than guessed here. A page typed into
+	 * `Kanso · Tickets` still has nobody who chose where it belongs, so it still gets this.
 	 */
 	private fun orphan(kind: String, page: NotionPage) {
 		log.debug("Ignoring {} page {} — created in Notion, not adopted by Kanso v1", kind, page.id)
@@ -398,5 +443,12 @@ class NotionPoller(
 
 	private companion object {
 		val POLLED_KINDS = setOf("teams", "projects", "tickets")
+
+		/**
+		 * Not a fifth member of [POLLED_KINDS]: that set names rows of `notion_databases`,
+		 * and `V37` spends its header on why a requests base is not one of those. This is a
+		 * label for the log and the failure path, nothing reads it back.
+		 */
+		const val REQUESTS = "requests"
 	}
 }
