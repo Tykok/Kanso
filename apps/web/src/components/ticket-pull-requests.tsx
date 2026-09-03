@@ -115,8 +115,11 @@ function PullRequestRow({ pr }: { pr: PullRequest }) {
       </a>
       {/* Not a closing link, so it displays and does nothing. Marked, because a person
           looking at a merged pull request on a ticket that did not move needs the reason
-          on screen rather than in a tooltip they have no cause to open. */}
-      {!pr.closes && <span className="text-11 text-faint">mention</span>}
+          on screen rather than in a tooltip they have no cause to open.
+          Parenthesised, which is not decoration: unbracketed it sits one gap from the
+          pill and the two read as a single phrase — "mention Draft", "mention Approved".
+          Seen in a browser, and the only thing that shows it is looking at it. */}
+      {!pr.closes && <span className="shrink-0 text-11 text-faint">(mention)</span>}
       <PrStatePill label={pill.label} tone={pill.tone} />
       {pr.authorLogin != null && (
         <span className="shrink-0 text-11 text-faint">@{pr.authorLogin}</span>
