@@ -167,14 +167,25 @@ CREATE TABLE webhook_subscriptions (
   -- by a subscriber who checks; it does nothing for one who does not, and TLS does not
   -- depend on the subscriber getting their verification right.
   --
-  -- The one exception is a loopback address, because that is how this gets developed and
-  -- tested against a real receiver, and a loopback URL has no path to be on. `%` in a
-  -- `LIKE` is a wildcard, so `http://localhost%` also admits `http://localhost.evil.com` —
-  -- hence the explicit `/` or `:` after the host, which nothing can extend past.
+  -- The exceptions are the addresses with **no network path off the machine**, which is the
+  -- rule rather than "localhost is special": loopback, and `host.docker.internal`. That
+  -- second one is not a concession to convenience — the shipped `docker-compose.yml` runs
+  -- the API in a container, so loopback *from the container* is the container, and a
+  -- receiver a developer stands up on their own laptop is unreachable at any of the first
+  -- three. The compose file already declares `extra_hosts: host.docker.internal:host-gateway`
+  -- and `NOTION_BASE_URL` already points at that name for the same reason in `import.spec.ts`,
+  -- so this is the established way in this repository for the container to reach a locally
+  -- stood-up test server. Traffic to it does not leave the host, which is the property the
+  -- https rule is protecting.
+  --
+  -- `%` in a `LIKE` is a wildcard, so `http://localhost%` would also admit
+  -- `http://localhost.evil.com` — hence the explicit `/` or `:` after each host, which
+  -- nothing can extend past.
   CONSTRAINT webhook_subscriptions_url_chk CHECK (
     url LIKE 'https://%'
     OR url LIKE 'http://localhost:%' OR url LIKE 'http://localhost/'
     OR url LIKE 'http://127.0.0.1:%' OR url LIKE 'http://127.0.0.1/'
+    OR url LIKE 'http://host.docker.internal:%' OR url LIKE 'http://host.docker.internal/'
   ),
 
   -- Two conditions, for the reason `api_tokens_scopes_chk` gives at length: containment

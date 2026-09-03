@@ -286,6 +286,16 @@ class WebhookOutboundHandlerTest : PostgresTest() {
 		val reason = subscriptions.findById(subscription.id)?.disabledReason
 		assertNotNull(reason, "the subscription must be switched off, or a dead endpoint costs every entity eight tries")
 		assertTrue(reason.contains("400"), "and the reason must name what came back; it said '$reason'")
+
+		// Found by looking at the running app rather than by this test: the row was recording a
+		// null status for a 400, and `V31` reserves null for "nothing answered". A refusal is
+		// an endpoint that is very much there, and reporting it as null sends a configurator
+		// hunting a network problem that does not exist.
+		assertEquals(
+			400,
+			deliveryFor(subscription.id, entityId).responseStatus,
+			"a 4xx answered, so the journal must say what it answered",
+		)
 	}
 
 	@Test

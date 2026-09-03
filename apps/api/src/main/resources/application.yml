@@ -102,6 +102,27 @@ kanso:
     # move to a shared counter would have to happen.
     per-minute: ${KANSO_API_TOKEN_RATE_LIMIT:120}
 
+  webhooks:
+    # The key `webhook_subscriptions.secret_cipher` is encrypted under: 32 bytes, base64.
+    # **Empty means outbound webhooks are off** — creating a subscription is refused rather
+    # than served by storing a signing secret in plaintext. `WebhookSecret` argues why
+    # refusing is the only honest option and what encryption here does and does not buy.
+    #
+    # No default value, unlike every other key in this file, and that is the decision: a
+    # default compiled into the repository is not a key, it is a published one, and the
+    # column's whole purpose is that a database dump is not a set of signing keys.
+    # Generate one with `openssl rand -base64 32`.
+    signing-key: ${KANSO_WEBHOOK_SIGNING_KEY:}
+    # Deliveries one subscription may receive per minute, counted in this process's heap —
+    # so the same per-replica caveat as `api-tokens.per-minute`, and deliberately the same
+    # number: a webhook and the API callback it provokes are two halves of one
+    # integration's traffic. `WebhookRateLimit` records both.
+    per-minute: ${KANSO_WEBHOOK_RATE_LIMIT:120}
+    # Much shorter than Notion's twenty seconds. A receiver's whole job is to accept a body
+    # and return; one slower than this is going to be retried anyway, and the number bounds
+    # how long one drain pass can be held by a black-holing endpoint.
+    request-timeout: 5s
+
   notion:
     # Empty token => the no-op client. Sync jobs are still queued and completed,
     # so the queue is exercised without any network call.
@@ -121,6 +142,13 @@ kanso:
       enabled: true
       poll-interval-ms: 500
       batch-size: 10
+      # Per-destination overrides of `batch-size`, keyed on `Destination.wire`. Webhooks
+      # get more than Notion's ten because a webhook job fans out to every matching
+      # subscription and because the ceiling that actually binds is `webhooks.per-minute`,
+      # which defers rather than fails. `KansoProperties.Outbound.batchSizes` carries the
+      # arithmetic, including the worst-case pass length and why it is survivable.
+      batch-sizes:
+        webhook: 20
       max-attempts: 8
       # Notion allows roughly 3 requests/second averaged; stay under it.
       requests-per-second: 2.5

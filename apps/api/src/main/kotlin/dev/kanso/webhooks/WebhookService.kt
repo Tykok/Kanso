@@ -196,12 +196,18 @@ class WebhookService(
 
 	/**
 	 * The same rule `V31`'s `webhook_subscriptions_url_chk` holds, so the answer is a
-	 * sentence. Loopback over plain http is admitted for local development and nothing else
-	 * is; the CHECK is the backstop, this is the mechanism.
+	 * sentence rather than a constraint violation. The CHECK is the backstop; this is the
+	 * mechanism, and the two lists have to stay the same list.
+	 *
+	 * Plain http is admitted only to addresses with no network path off the machine —
+	 * loopback, and the container's own host gateway. `V31` carries why the second is not a
+	 * loophole: the API ships inside a container, so loopback from there is not the
+	 * developer's laptop, and `docker-compose.yml` already declares that alias for exactly
+	 * this purpose.
 	 */
 	private fun isDeliverable(url: String): Boolean =
 		url.startsWith("https://") ||
-			LOOPBACK_PREFIXES.any { url.startsWith("http://$it:") || url == "http://$it/" }
+			PATHLESS_HOSTS.any { url.startsWith("http://$it:") || url == "http://$it/" }
 
 	private fun requireConfigurator() {
 		if (!currentUser.require().instanceRole.canConfigureInstance) {
@@ -212,6 +218,7 @@ class WebhookService(
 	private companion object {
 		const val DESCRIPTION_MAX = 80
 		const val DELIVERIES_MAX = 200
-		val LOOPBACK_PREFIXES = listOf("localhost", "127.0.0.1")
+		/** Hosts plain http may reach, because a request to them never leaves the machine. */
+		val PATHLESS_HOSTS = listOf("localhost", "127.0.0.1", "host.docker.internal")
 	}
 }

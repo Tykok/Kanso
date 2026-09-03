@@ -107,10 +107,24 @@ data class WebhookEvent(
 		 *   * **A new job.** The payload is this marker, and `WebhookOutboundHandler.plan`
 		 *     reads it as "deliver the replay rows attached to me and nothing else".
 		 *
-		 * Without the distinction, replaying one delivery to one subscriber would enqueue
-		 * the old event as though it had just happened and send it to *every* subscriber —
-		 * a button labelled "send this again" that quietly notifies four other systems
-		 * about an hour-old change.
+		 * The failure it exists to prevent is a button labelled "send this again" that
+		 * quietly notifies four other systems about an hour-old change.
+		 *
+		 * **It is not, today, the only thing preventing that, and saying so is the point of
+		 * this paragraph.** This string does not deserialise into a [WebhookEvent], so the
+		 * `parse(body) ?: return targets` on the line after the marker check would drop the
+		 * fan-out anyway — removing the check leaves every test green, which was measured
+		 * rather than assumed. What the check buys is therefore not correctness but two
+		 * things worth having:
+		 *
+		 *   * The intent is stated where it happens, instead of resting on the coincidence
+		 *     that this payload happens to be unparseable. That coincidence is exactly the
+		 *     kind that stops holding — give [WebhookEvent] defaults for its fields, as
+		 *     somebody adding an optional one might, and `{"replayOnly":true}` starts
+		 *     parsing into an event with a null id that then fans out.
+		 *   * No spurious warning. The parse path logs "a payload this build cannot read",
+		 *     which on every single replay would be a log line pointing at data corruption
+		 *     that is not happening.
 		 *
 		 * A sentinel string rather than a column on `outbound_jobs`, because the
 		 * alternative is widening the table two destinations share to carry a fact only one

@@ -272,7 +272,11 @@ class WebhookOutboundHandler(
 
 			// A refusal of the request itself. It will be refused identically next time.
 			response.status in 400..499 -> {
-				stop(target, "The endpoint refused the delivery with HTTP ${response.status}: ${response.body}")
+				stop(
+					target,
+					"The endpoint refused the delivery with HTTP ${response.status}: ${response.body}",
+					response.status,
+				)
 				null
 			}
 
@@ -286,10 +290,18 @@ class WebhookOutboundHandler(
 		}
 	}
 
-	/** A failure this subscription cannot be retried out of: written down, and switched off. */
-	private fun stop(target: Target, reason: String) {
+	/**
+	 * A failure this subscription cannot be retried out of: written down, and switched off.
+	 *
+	 * [responseStatus] is passed through rather than hard-coded null, and the distinction is
+	 * `V31`'s: a null there means *nothing answered*. A 4xx is an endpoint that is very much
+	 * there and refusing, so recording it as null would tell a configurator to go looking for
+	 * a network problem that does not exist. Null is right for the other caller — a secret
+	 * this instance's key cannot open, where no request was ever made.
+	 */
+	private fun stop(target: Target, reason: String, responseStatus: Int? = null) {
 		record(target) {
-			deliveries.markFailed(target.deliveryId, null, reason)
+			deliveries.markFailed(target.deliveryId, responseStatus, reason)
 			subscriptions.disable(target.subscription.id, reason)
 		}
 		log.warn("Disabled webhook subscription {}: {}", target.subscription.id, reason)
