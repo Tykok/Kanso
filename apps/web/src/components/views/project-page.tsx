@@ -60,8 +60,16 @@ export function ProjectPageView({ projectId }: { projectId: string }) {
    * through and say so by doing nothing.
    */
   const noop = useCallback(() => {}, []);
+  /*
+   * The empty fallback is memoised, for the same reason `ticket-page.tsx` memoises its
+   * single row: `??` builds a new array on every render the query has not answered yet,
+   * `useActionContext` keys its memo on it, and `usePageShell` publishes on the context
+   * that comes out — which re-renders the shell, which re-renders this page. The window
+   * is only the cold load, which is exactly when a reader is watching.
+   */
+  const rows = useMemo(() => tickets.data ?? [], [tickets.data]);
   const ctx = useActionContext({
-    tickets: tickets.data ?? [],
+    tickets: rows,
     selected: undefined,
     move: noop,
     startRename: noop,

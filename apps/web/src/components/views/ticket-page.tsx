@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import {
   EFFORT_POINTS,
@@ -73,8 +73,18 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
    * No cursor: this screen draws one record, so `j` and `k` have nothing to step through.
    */
   const noop = useCallback(() => {}, []);
+  /*
+   * Memoised because a literal here is a render loop, not a wasted allocation.
+   *
+   * `useActionContext` keys its own memo on this array, `usePageShell` depends on the
+   * context that comes out, and publishing re-renders the shell — which re-renders this
+   * page, which would build a new array. As a passive effect that spun after every paint
+   * and cost only work; as a layout effect it is a stack of nested updates, and React
+   * ends it with error #185 and the page's error boundary.
+   */
+  const only = useMemo(() => (ticket ? [ticket] : []), [ticket]);
   const ctx = useActionContext({
-    tickets: ticket ? [ticket] : [],
+    tickets: only,
     selected: ticket,
     move: noop,
     startRename: noop,
