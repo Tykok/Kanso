@@ -3,6 +3,7 @@ package dev.kanso.repo
 import dev.kanso.PostgresTest
 import dev.kanso.outbox.Destination
 import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundJob
 import dev.kanso.outbox.OutboundOperation
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -21,35 +22,95 @@ class OutboundJobQueueTest : PostgresTest() {
 	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var jdbc: JdbcClient
 
+	/**
+	 * An entity id with nothing queued for it.
+	 *
+	 * The delete is not housekeeping. `enqueue` coalesces `ON CONFLICT DO UPDATE`, so a
+	 * pending row already sitting on this id would be *edited* rather than added: a job
+	 * queued wrongly would be indistinguishable from the one that was meant to be there,
+	 * and every count below would still read one. A random UUID means this deletes nothing
+	 * in practice — it is here so that "these rows and no others" holds by construction
+	 * rather than by luck.
+	 */
+	private fun freshEntity(): UUID {
+		val id = UUID.randomUUID()
+		jdbc.sql("DELETE FROM outbound_jobs WHERE entity_id = :id").param("id", id).update()
+		return id
+	}
+
+	/** What is queued for one entity — read, never claimed; see [claimedFor]. */
+	private fun queuedFor(entityId: UUID): List<OutboundOperation> = jdbc.sql(
+		"""
+		SELECT operation FROM outbound_jobs
+		 WHERE destination = :destination AND entity_id = :id AND status = 'pending'
+		""".trimIndent()
+	)
+		.param("destination", Destination.NOTION.wire)
+		.param("id", entityId)
+		.query { rs, _ -> OutboundOperation.from(rs.getString("operation")) }
+		.list()
+
+	/**
+	 * Claims for real, and hands back only what was claimed for [entityId].
+	 *
+	 * `claimBatch` answers "what is pending for this destination", under a batch limit,
+	 * across the whole table. Every assertion in this file means "what happened to the row
+	 * I queued", and the two questions have the same answer only while nothing else has a
+	 * job queued — a neighbouring test, an unclosed transaction, a committed row.
+	 * `outbound_jobs` is shared with every class in the run, so the day the answers
+	 * diverge these tests go false without the code under test having moved. Filtering the
+	 * batch is what makes them say what they mean; [freshEntity] is the other half.
+	 *
+	 * Reader-side hardening, and deliberately not a diagnosis: the 33-minute suite behind
+	 * KAN-60 is still unexplained, and nothing here explains it. What this buys is only
+	 * that these assertions stop depending on what the rest of the run left behind.
+	 *
+	 * The limit is no longer part of what any test says — a claim of 1 used to mean "the
+	 * row I queued" and a claim of 10 "all of them", each true only of an empty table — so
+	 * all it has left to do is not truncate this row away behind somebody else's backlog.
+	 * Not unbounded either: a claim takes `FOR UPDATE SKIP LOCKED` on every row it returns,
+	 * and locking the table to ask about one row would be the same mistake from the other
+	 * side.
+	 */
+	private fun claimedFor(entityId: UUID, worker: String = "test-worker"): List<OutboundJob> =
+		jobs.claimBatch(Destination.NOTION, 200, worker).filter { it.entityId == entityId }
+
 	@Test
 	fun `repeated edits to one row collapse into a single queued job`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		repeat(5) { jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT) }
 
-		val claimed = jobs.claimBatch(Destination.NOTION, 10, "test-worker")
-		assertEquals(1, claimed.size, "a push writes the whole row, so five queued pushes are one")
+		assertEquals(1, queuedFor(id).size, "a push writes the whole row, so five queued pushes are one")
 	}
 
 	@Test
 	fun `the latest operation wins when a job coalesces`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.ARCHIVE)
 
-		val claimed = jobs.claimBatch(Destination.NOTION, 10, "test-worker").single()
-		assertEquals(OutboundOperation.ARCHIVE, claimed.operation, "archiving after editing must not be undone")
+		assertEquals(
+			listOf(OutboundOperation.ARCHIVE),
+			queuedFor(id),
+			"archiving after editing must not be undone",
+		)
 	}
 
 	@Test
 	fun `claiming frees the slot so an edit during a push is not lost`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		jobs.claimBatch(Destination.NOTION, 10, "test-worker")
+		val inFlight = claimedFor(id).single()
 
 		// Someone edits the ticket while the push is in flight.
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 
-		assertEquals(1, jobs.claimBatch(Destination.NOTION, 10, "test-worker").size, "the later edit must still be queued")
+		// Both halves, because either one alone passes on a claim that never flipped the row:
+		// the edit would then have coalesced onto the row still sitting in 'pending', and a
+		// queue holding one pending job reads the same from the outside whether the slot was
+		// freed or never taken.
+		assertEquals("running", statusOf(inFlight.id), "the first push is still in the air")
+		assertEquals(listOf(OutboundOperation.UPSERT), queuedFor(id), "and the later edit must still be queued")
 	}
 
 	/**
@@ -86,16 +147,9 @@ class OutboundJobQueueTest : PostgresTest() {
 
 	@Test
 	fun `dependency order puts teams before projects before tickets`() {
-		val ticket = UUID.randomUUID()
-		val project = UUID.randomUUID()
-		val team = UUID.randomUUID()
-		val mine = listOf(ticket, project, team)
-
-		// `enqueue` coalesces onto an existing pending row, so a leftover job for one of
-		// these ids would be edited rather than added and the miss would be silent. Fresh
-		// UUIDs mean this deletes nothing in practice; it is here so that "these three
-		// rows and no others" holds by construction rather than by luck.
-		jdbc.sql("DELETE FROM outbound_jobs WHERE entity_id IN (:ids)").param("ids", mine).update()
+		val ticket = freshEntity()
+		val project = freshEntity()
+		val team = freshEntity()
 
 		// Queued in the reverse of the expected order, so passing cannot be insertion
 		// order wearing a priority's clothes: `id` is the last tiebreaker, and on it alone
@@ -106,33 +160,33 @@ class OutboundJobQueueTest : PostgresTest() {
 
 		assertEquals(
 			listOf(OutboundEntityType.TEAM, OutboundEntityType.PROJECT, OutboundEntityType.TICKET),
-			queuedOrder(mine),
+			queuedOrder(listOf(ticket, project, team)),
 			"a relation target has to reach Notion before whatever points at it",
 		)
 	}
 
 	@Test
 	fun `a claim increments attempts, and a retry counts against the budget`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 
-		val first = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val first = claimedFor(id).single()
 		assertEquals(1, first.attempts)
 
 		jobs.scheduleRetry(first, "boom", Duration.ZERO)
-		val second = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val second = claimedFor(id).single()
 		assertEquals(2, second.attempts, "a genuine failure should move towards giving up")
 	}
 
 	@Test
 	fun `deferring does not spend an attempt`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 
-		val first = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val first = claimedFor(id).single()
 		jobs.defer(first, "dependency not ready", Duration.ZERO)
 
-		val second = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val second = claimedFor(id).single()
 		assertEquals(
 			1,
 			second.attempts,
@@ -142,47 +196,61 @@ class OutboundJobQueueTest : PostgresTest() {
 
 	@Test
 	fun `a retry is dropped when a newer job already carries the row's state`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val running = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val running = claimedFor(id).single()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT) // edited mid-push
 
 		jobs.scheduleRetry(running, "boom", Duration.ZERO)
 
-		val remaining = jobs.claimBatch(Destination.NOTION, 10, "test-worker")
-		assertEquals(
-			1,
-			remaining.size,
+		// The row it dropped, rather than how many rows were left behind in the table.
+		assertNull(
+			statusOf(running.id),
 			"the stale retry is redundant: the newer job already pushes the current state",
 		)
+		assertEquals(listOf(OutboundOperation.UPSERT), queuedFor(id), "and the newer job is what stays queued")
 	}
 
 	@Test
 	fun `a failed job is reportable and can be requeued`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val claimed = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val claimed = claimedFor(id).single()
 		jobs.markFailed(claimed.id, "Notion said no")
 
 		val failed = jobs.findFailed(Destination.NOTION).singleOrNull { it.id == claimed.id }
 		assertNotNull(failed, "a failure has to be visible without reading logs")
 		assertEquals("Notion said no", failed.lastError)
 
-		assertEquals(1, jobs.retryAllFailed(Destination.NOTION))
-		assertTrue(jobs.claimBatch(Destination.NOTION, 10, "test-worker").any { it.id == claimed.id })
+		jobs.retryAllFailed(Destination.NOTION)
+
+		// The row, not the count the call returns: that count is every failure the
+		// destination had, which is a number about the run rather than about this job.
+		assertEquals("pending", statusOf(claimed.id), "the admin screen's retry has to move it")
+		assertTrue(
+			claimedFor(id).any { it.id == claimed.id },
+			"and requeued means claimable again, not merely relabelled",
+		)
 	}
 
 	@Test
 	fun `a job abandoned by a dead worker returns to the queue`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		jobs.claimBatch(Destination.NOTION, 1, "dead-worker")
+		val abandoned = claimedFor(id, worker = "dead-worker").single()
 
-		assertTrue(jobs.claimBatch(Destination.NOTION, 10, "other").isEmpty(), "a running job is not up for grabs yet")
+		assertTrue(claimedFor(id, worker = "other").isEmpty(), "a running job is not up for grabs yet")
 
-		// Zero timeout: anything currently running counts as abandoned.
-		assertEquals(1, jobs.reclaimStuck(Duration.ZERO))
-		assertEquals(1, jobs.claimBatch(Destination.NOTION, 10, "other").size)
+		// Aged past a real timeout rather than swept with `Duration.ZERO`. Zero declares
+		// every 'running' row in the table abandoned, so it makes the sweep a write onto
+		// everybody else's jobs and its return value a count of them. Backdating this one
+		// row keeps both halves local, and the count stays unasserted for the reason
+		// spelled out below `reclaimStuck`.
+		backdate(abandoned.id, lockHeld = Duration.ofMinutes(10), unheardFrom = Duration.ofMinutes(10))
+		jobs.reclaimStuck(Duration.ofMinutes(5))
+
+		assertEquals("pending", statusOf(abandoned.id), "a dead worker's work still has to come back")
+		assertEquals(1, claimedFor(id, worker = "other").size)
 	}
 
 	// --- a slow worker is not a dead one --------------------------------------
@@ -214,9 +282,9 @@ class OutboundJobQueueTest : PostgresTest() {
 
 	@Test
 	fun `a push whose worker is still beating keeps its lock however long it runs`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val running = jobs.claimBatch(Destination.NOTION, 1, "slow-worker").single()
+		val running = claimedFor(id, worker = "slow-worker").single()
 
 		// An hour into the push, twelve times over the timeout the sweep is about to apply.
 		backdate(running.id, lockHeld = Duration.ofHours(1), unheardFrom = Duration.ofHours(1))
@@ -237,9 +305,9 @@ class OutboundJobQueueTest : PostgresTest() {
 
 	@Test
 	fun `a job whose heartbeat stopped is reclaimed however recently it was claimed`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val abandoned = jobs.claimBatch(Destination.NOTION, 1, "dead-worker").single()
+		val abandoned = claimedFor(id, worker = "dead-worker").single()
 
 		// The mirror image: the lock was taken moments ago, and nothing has been heard
 		// since. This is the half that proves the sweep reads the heartbeat rather than
@@ -253,7 +321,7 @@ class OutboundJobQueueTest : PostgresTest() {
 
 	@Test
 	fun `a delete carries the page id because the row will be gone`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(
 			Destination.NOTION,
 			OutboundEntityType.TICKET,
@@ -262,15 +330,24 @@ class OutboundJobQueueTest : PostgresTest() {
 			payload = """{"notionPageId":"abc-123"}""",
 		)
 
-		val claimed = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val claimed = claimedFor(id).single()
 		assertEquals(OutboundOperation.DELETE, claimed.operation)
 		assertTrue(claimed.payload?.contains("abc-123") == true, "payload was ${claimed.payload}")
 	}
 
 	@Test
-	fun `an empty queue claims nothing`() {
-		assertEquals(emptyList(), jobs.claimBatch(Destination.NOTION, 10, "test-worker"))
-		assertNull(jobs.countsByStatus(Destination.NOTION)["nonsense"])
+	fun `a claimed job is not handed out a second time`() {
+		val id = freshEntity()
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
+
+		assertEquals(1, claimedFor(id).size)
+		// This used to assert that a batch came back *empty*, which is a sentence about the
+		// shared table and not about this row: vacuous on a run where somebody else has
+		// work queued, and it was never the rule worth pinning anyway. The rule is that
+		// claiming flips the row out of 'pending', which is what stops two workers pushing
+		// the same state at once.
+		assertTrue(claimedFor(id).isEmpty(), "a second claim would send the same push twice")
+		assertNull(jobs.countsByStatus(Destination.NOTION)["nonsense"], "no row is in a status with no name")
 	}
 
 	// --- the second destination -----------------------------------------------
@@ -302,17 +379,23 @@ class OutboundJobQueueTest : PostgresTest() {
 		).param("id", entityId).param("status", status).query { rs, _ -> rs.getLong("id") }.single()
 	}
 
-	private fun statusOf(jobId: Long): String = jdbc.sql(
+	/** Null when the row is gone, which is a verdict of its own — see `scheduleRetry`. */
+	private fun statusOf(jobId: Long): String? = jdbc.sql(
 		"SELECT status FROM outbound_jobs WHERE id = :id"
-	).param("id", jobId).query { rs, _ -> rs.getString("status") }.single()
+	).param("id", jobId).query { rs, _ -> rs.getString("status") }.optional().orElse(null)
+
+	/** Failed rows for one destination, counted off the table rather than through the code. */
+	private fun failedRows(destination: String): Long = jdbc.sql(
+		"SELECT count(*) FROM outbound_jobs WHERE destination = :destination AND status = 'failed'"
+	).param("destination", destination).query(Long::class.java).single()
 
 	@Test
 	fun `two destinations each keep their own pending job for the same row`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 		val elsewhere = enqueueElsewhere(id)
 
-		val claimed = jobs.claimBatch(Destination.NOTION, 10, "test-worker")
+		val claimed = claimedFor(id)
 		assertEquals(1, claimed.size, "one destination's claim is not the other's")
 		assertEquals(Destination.NOTION, claimed.single().destination)
 		assertEquals(
@@ -324,42 +407,53 @@ class OutboundJobQueueTest : PostgresTest() {
 
 	@Test
 	fun `a retry survives another destination holding the same row`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val running = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val running = claimedFor(id).single()
 		enqueueElsewhere(id)
 
 		jobs.scheduleRetry(running, "boom", Duration.ZERO)
 
 		assertTrue(
-			jobs.claimBatch(Destination.NOTION, 10, "test-worker").any { it.id == running.id },
+			claimedFor(id).any { it.id == running.id },
 			"the other destination's job carries none of this one's state and supersedes nothing",
 		)
 	}
 
 	@Test
 	fun `a dead worker's job survives another destination holding the same row`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val abandoned = jobs.claimBatch(Destination.NOTION, 1, "dead-worker").single()
+		val abandoned = claimedFor(id, worker = "dead-worker").single()
 		enqueueElsewhere(id)
 
-		assertEquals(1, jobs.reclaimStuck(Duration.ZERO))
+		backdate(abandoned.id, lockHeld = Duration.ofMinutes(10), unheardFrom = Duration.ofMinutes(10))
+		jobs.reclaimStuck(Duration.ofMinutes(5))
+
 		assertEquals("pending", statusOf(abandoned.id), "the sweep must not read it as superseded")
 	}
 
 	@Test
 	fun `retrying failures is one destination's own business`() {
-		val id = UUID.randomUUID()
+		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		val mine = jobs.claimBatch(Destination.NOTION, 1, "test-worker").single()
+		val mine = claimedFor(id).single()
 		jobs.markFailed(mine.id, "Notion said no")
-		val theirs = enqueueElsewhere(UUID.randomUUID(), status = "failed")
+		val theirs = enqueueElsewhere(freshEntity(), status = "failed")
 
-		assertEquals(1, jobs.retryAllFailed(Destination.NOTION))
+		jobs.retryAllFailed(Destination.NOTION)
+
+		assertEquals("pending", statusOf(mine.id), "the mirror's own failure is what the button retries")
 		assertEquals("failed", statusOf(theirs), "a button on the mirror's screen retries the mirror")
 		assertTrue(jobs.findFailed(Destination.NOTION).none { it.id == theirs })
-		assertNull(jobs.countsByStatus(Destination.NOTION)["failed"], "and does not count somebody else's")
+		// Against the table's own count for this destination rather than against zero: what
+		// is being pinned is that `countsByStatus` filters, and "there are no failed Notion
+		// jobs anywhere" is a claim about the run that nothing here is entitled to make.
+		assertEquals(
+			failedRows(Destination.NOTION.wire),
+			jobs.countsByStatus(Destination.NOTION)["failed"] ?: 0L,
+			"and does not count somebody else's: 'elsewhere' has a failed row this must not see",
+		)
 	}
 
 	/**

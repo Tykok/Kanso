@@ -94,8 +94,38 @@ class OutboundWorkerTest : PostgresTest() {
 		"SELECT status FROM outbound_jobs WHERE entity_id = :id"
 	).param("id", entityId).query { rs, _ -> rs.getString("status") }.optional().orElse(null)
 
-	private fun queue(id: UUID) =
+	private fun attemptsOf(entityId: UUID): Int = jdbc.sql(
+		"SELECT attempts FROM outbound_jobs WHERE entity_id = :id"
+	).param("id", entityId).query(Int::class.java).single()
+
+	/**
+	 * Queues a ticket push for [id], having first cleared whatever else was queued for it.
+	 *
+	 * The delete is not housekeeping. `enqueue` coalesces `ON CONFLICT DO UPDATE`, so a
+	 * pending row already sitting on this id would be *edited* rather than added, and the
+	 * drain below would push somebody else's operation while looking exactly like it had
+	 * pushed this one. A random UUID means this deletes nothing in practice — it makes
+	 * "one row, the one this test queued" true by construction rather than by luck.
+	 */
+	private fun queue(id: UUID) {
+		jdbc.sql("DELETE FROM outbound_jobs WHERE entity_id = :id").param("id", id).update()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
+	}
+
+	/**
+	 * The job this test queued, as the handler saw it.
+	 *
+	 * A drain claims a whole batch, so `handled`, `recorded` and `givenUp` hold whatever
+	 * else was pending for Notion at that instant too. Their sizes are therefore facts
+	 * about the shared queue rather than about this push: red on a neighbour's leftover
+	 * row, green on a bug that only shows up beside one. `single { }` also fails loudly
+	 * rather than quietly when this row was *not* pushed at all, which is most of what
+	 * these tests are about.
+	 *
+	 * Reader-side hardening, and deliberately not a diagnosis: the 33-minute suite behind
+	 * KAN-60 is still unexplained, and nothing here explains it.
+	 */
+	private fun FakeHandler.pushed(entityId: UUID): OutboundJob = handled.single { it.entityId == entityId }
 
 	/**
 	 * Makes the in-flight push look [age] old, lock and heartbeat alike.
@@ -170,8 +200,11 @@ class OutboundWorkerTest : PostgresTest() {
 
 		worker(handler).drain(handler)
 
-		assertEquals(1, handler.handled.size)
-		assertEquals(handler.handled.single().id, handler.recorded.single())
+		assertEquals(
+			1,
+			handler.recorded.count { it == handler.pushed(id).id },
+			"the handler's record and the row's status commit together, or a push is sent twice",
+		)
 		assertEquals("done", statusOf(id))
 	}
 
@@ -184,7 +217,7 @@ class OutboundWorkerTest : PostgresTest() {
 		worker(handler).drain(handler)
 
 		assertEquals("pending", statusOf(id), "a retryable failure goes back in the queue")
-		assertTrue(handler.givenUp.isEmpty(), "one bad attempt out of eight is not giving up")
+		assertTrue(handler.pushed(id).id !in handler.givenUp, "one bad attempt out of eight is not giving up")
 	}
 
 	@Test
@@ -198,8 +231,11 @@ class OutboundWorkerTest : PostgresTest() {
 
 		worker(handler).drain(handler)
 
-		// The claim spent one; the deferral gave it back. Claiming again spends the same one.
-		assertEquals(1, jobs.claimBatch(Destination.NOTION, 1, "test").single().attempts)
+		// The drain's claim spent one; the deferral gave it back, so the row is waiting on
+		// the budget it started with. Read off the row rather than out of a second claim:
+		// a claim answers "what is pending for Notion" under a batch limit, and what is
+		// being asserted here is one row's attempt counter.
+		assertEquals(0, attemptsOf(id), "waiting on a dependency is not a spent attempt")
 	}
 
 	@Test
@@ -214,7 +250,10 @@ class OutboundWorkerTest : PostgresTest() {
 		worker(handler).drain(handler)
 
 		assertEquals("failed", statusOf(id))
-		assertEquals(1, handler.givenUp.size, "the handler gets its last rites before the row is written")
+		assertTrue(
+			handler.pushed(id).id in handler.givenUp,
+			"the handler gets its last rites before the row is written",
+		)
 	}
 
 	@Test
@@ -227,7 +266,7 @@ class OutboundWorkerTest : PostgresTest() {
 		worker(handler, maxAttempts = 1).drain(handler)
 
 		assertEquals("failed", statusOf(id))
-		assertEquals(1, handler.givenUp.size)
+		assertTrue(handler.pushed(id).id in handler.givenUp, "one attempt was the whole budget")
 	}
 
 	/**
