@@ -170,14 +170,30 @@ class TicketAccess(
 	 * that — an instance owner or admin still reads everything, and a person always reads
 	 * themselves.
 	 *
-	 * The read-only seat is not consulted, unlike in [editableTeams]. That seat is a rule
-	 * about writing and this is a read; the combination it would turn away — a viewer titled
-	 * administrator of a team — cannot be created today anyway.
+	 * **A seat that does not write leads nothing, and the reason is not [editableTeams]'.**
+	 * There, the seat is consulted because the question is whether somebody may write. Here
+	 * the question is a read, and a viewer reads everything a member of the same teams reads
+	 * — so on that argument alone the seat would be none of this method's business. It is
+	 * consulted because of what the *title* is: the product refuses to issue it to a
+	 * read-only seat in both directions — `TeamService.addMember` will not grant the title
+	 * to such a seat, and `AccountService.setInstanceRole` will not move somebody onto such
+	 * a seat while a team still titles them — so a row bearing that pair arrived from
+	 * outside the product's own rules, by a hand-written `INSERT` or a migration nobody
+	 * reviewed. `team_members.role` is a `TEXT` with a vocabulary check, and a `CHECK` there
+	 * has no way to reach `users.instance_role`, so the database cannot hold the pair shut.
+	 *
+	 * Honouring it would mean granting a read of somebody's productivity figures on the
+	 * strength of a state the product says cannot exist. Refusing costs one line and refuses
+	 * nothing reachable: the pair is unconstructible through every route the API offers, and
+	 * `ViewerTeamAdminTest` is what keeps that true.
 	 */
 	@Transactional(readOnly = true)
 	fun teamsLedBy(actor: User, teamIds: Set<UUID>): Set<UUID> {
 		if (teamIds.isEmpty()) return emptySet()
 		if (actor.instanceRole.canConfigureInstance) return teamIds
+		// Asked here rather than at the door, because it is an argument about the title the
+		// next line reads and not about the seat in general.
+		if (!actor.instanceRole.mayWrite) return emptySet()
 		// Before the ancestor walks: somebody titled administrator of nothing leads nothing,
 		// whatever the shape of the tree above these teams.
 		val titled = teams.adminTeamIdsFor(actor.id).toSet()

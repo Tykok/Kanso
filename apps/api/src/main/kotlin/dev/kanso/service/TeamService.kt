@@ -460,11 +460,20 @@ class TeamService(
 		get(teamId)
 		val member = users.findById(userId) ?: throw BadRequestException("No user $userId")
 		// The two axes can express "a read-only seat that administers a team", and the
-		// combination should not exist. `MemberRole.ADMIN` gates nothing today, which is
-		// exactly why the refusal belongs here now rather than later: a title that promises
-		// administration to somebody who cannot write is a lie the product would be free to
-		// tell right up until the day the title starts meaning something, and then it would
-		// be a permissions bug with a year of rows behind it.
+		// combination should not exist. This refusal was written while `MemberRole.ADMIN`
+		// gated nothing, on the argument that a title promising administration to somebody
+		// who cannot write is a lie the product would be free to tell right up until the day
+		// the title started meaning something — and that then it would be a permissions bug
+		// with a year of rows behind it.
+		//
+		// **That day has come, so this is no longer a precaution.** `TicketAccess.teamsLedBy`
+		// reads the title as the right to read another person's productivity figures, so a
+		// row this method let through would be a disclosure and not merely a lie. It is one
+		// of three places that keep the pair shut: here at the moment the title is granted,
+		// `AccountService.setInstanceRole` at the moment the seat is taken away, and
+		// `teamsLedBy` itself, which refuses to honour such a row however it got written —
+		// the database cannot hold the pair shut, since a `CHECK` on `team_members` has no
+		// way to reach `users.instance_role`. `ViewerTeamAdminTest` drives all three.
 		if (role == MemberRole.ADMIN && !member.instanceRole.mayWrite) {
 			throw BadRequestException(
 				"${member.displayName} holds a read-only seat and cannot administer a team; add them as a member"
