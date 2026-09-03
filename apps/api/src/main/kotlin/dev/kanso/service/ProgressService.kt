@@ -1,6 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.Project
+import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
@@ -81,6 +82,29 @@ data class Progress(
 )
 
 /**
+ * The same screen aimed at a team, and **aggregates only, by construction**.
+ *
+ * There is no list of people on this shape. That is the ticket's rule and it is enforced
+ * here rather than in the controller, because a field on a response is a field somebody
+ * draws: ranking people by points delivered is the one chart in this feature that changes
+ * what people do with their tickets rather than describing what they did, and a response
+ * carrying the rows would be one `sort` away from it whatever the screen currently draws.
+ * [TeamPace] makes the same refusal one level down.
+ *
+ * [load] is the team's whole open plate cut by status and by project — the same [OpenLoad]
+ * the personal page draws, gathered without an assignee filter. Cut *by person* it already
+ * exists, on the workload screen, open to every reader; it is not repeated here, so nothing
+ * on this response pairs a person with a number.
+ */
+data class TeamProgress(
+	val team: Team,
+	val pace: TeamPace,
+	/** Oldest first, like [Progress.delivered]. */
+	val delivered: List<DeliveredCycle>,
+	val load: OpenLoad,
+)
+
+/**
  * One person's progress: what they delivered, at what pace, and what they are still holding.
  *
  * **Nothing here knows who is asking.** [forPerson] takes the subject as an argument and
@@ -124,8 +148,38 @@ class ProgressService(
 		return Progress(
 			person = subject,
 			velocity = inForce,
-			delivered = delivered(history, inForce),
-			load = load(subject, teamId, inForce.perWorkingDay),
+			// A declared velocity was measured over nothing, so no bar is one the number
+			// stands on. Said here rather than inside `bars`, which knows about cycles and
+			// deliberately nothing about the arbitration above them.
+			delivered = bars(
+				history.cycles,
+				measuredOver = if (inForce.source == VelocitySource.MEASURED) inForce.measuredCycles else 0,
+			),
+			load = load(subject.id, teamId, inForce.perWorkingDay),
+		)
+	}
+
+	/**
+	 * The same screen for a whole team.
+	 *
+	 * Two reads of the closed cycles again, and the same arbitration between them as
+	 * [forPerson]: the pace is the mean over [VelocityService.DEFAULT_CYCLES] and the chart
+	 * is drawn over [CHART_CYCLES], so the extra bars are marked rather than hidden. There
+	 * is no declared velocity to weigh a team's measurement against, so `measuredOver` is
+	 * simply how many cycles the mean found — including the case where that mean is zero,
+	 * which for a team is a measurement worth drawing dark rather than an absence.
+	 */
+	@Transactional(readOnly = true)
+	fun forTeam(team: Team): TeamProgress {
+		val inForce = velocity.paceForTeam(team.id)
+		val history = velocity.paceForTeam(team.id, over = CHART_CYCLES)
+		return TeamProgress(
+			team = team,
+			pace = inForce,
+			delivered = bars(history.cycles, measuredOver = inForce.cycles.size),
+			// No assignee, so the plate is the team's whole open board — the scope
+			// `WorkloadService` gathers, sub-teams included.
+			load = load(assigneeId = null, teamId = team.id, perWorkingDay = inForce.perWorkingDay),
 		)
 	}
 
@@ -133,29 +187,33 @@ class ProgressService(
 	 * The bars, in time order, each knowing whether the headline number stands on it.
 	 *
 	 * The index is the test because both lists come off the same `cycles.closed(teamId)` in
-	 * the same order: the newest [EffectiveVelocity.measuredCycles] of them are exactly the
-	 * ones the mean was taken over. Matching on cycle id instead would be a set lookup that
-	 * says the same thing while hiding that it depends on the order.
+	 * the same order: the newest [measuredOver] of them are exactly the ones the mean was
+	 * taken over. Matching on cycle id instead would be a set lookup that says the same
+	 * thing while hiding that it depends on the order.
+	 *
+	 * Nothing in here knows whose cycles these are, which is why the team view draws its
+	 * chart through it rather than through a copy — the two differ in what was measured, not
+	 * in how a measurement becomes a chart.
 	 */
-	private fun delivered(history: PersonVelocity, inForce: EffectiveVelocity): List<DeliveredCycle> =
-		history.cycles
-			.mapIndexed { newestFirst, measured ->
+	private fun bars(newestFirst: List<VelocityCycle>, measuredOver: Int): List<DeliveredCycle> =
+		newestFirst
+			.mapIndexed { at, measured ->
 				DeliveredCycle(
 					cycle = measured.cycle,
 					points = measured.points,
 					workingDays = measured.workingDays,
 					unestimated = measured.unestimated,
-					countedTowardsVelocity =
-						inForce.source == VelocitySource.MEASURED && newestFirst < inForce.measuredCycles,
+					countedTowardsVelocity = at < measuredOver,
 				)
 			}
 			.reversed()
 
-	private fun load(subject: User, teamId: UUID, perWorkingDay: Double?): OpenLoad {
+	/** [assigneeId] null is no filter at all: the team's plate rather than one person's. */
+	private fun load(assigneeId: UUID?, teamId: UUID, perWorkingDay: Double?): OpenLoad {
 		val open = tickets.search(
 			teamIds = teams.descendantIds(teamId),
 			statuses = WorkloadService.OPEN_STATUSES,
-			assigneeId = subject.id,
+			assigneeId = assigneeId,
 			// The same cap and the same argument: a person holding more open tickets than
 			// this has a bigger problem than an off-by-some chart, and an uncapped scan is
 			// how one page takes the instance down.

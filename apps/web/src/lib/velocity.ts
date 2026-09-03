@@ -1,4 +1,5 @@
 import type { EffectiveVelocity } from "./api";
+import { YOURS, type Voice } from "./voice";
 
 /**
  * What the screen says about where a number came from.
@@ -39,7 +40,16 @@ function cycleCount(n: number): string {
   return `${n} closed ${n === 1 ? "cycle" : "cycles"}`;
 }
 
-export function velocityCaption(velocity: EffectiveVelocity): VelocityCaption {
+export function velocityCaption(
+  velocity: EffectiveVelocity,
+  /**
+   * Whose pace this is. Screen 41 aims this caption at a colleague, and every sentence
+   * below was written in the second person — "measured from *your* last 2 closed cycles"
+   * under a heading naming somebody else is the failure this parameter exists to prevent.
+   * It was found on screen rather than by a test, which is what looking at the app is for.
+   */
+  voice: Voice = YOURS,
+): VelocityCaption {
   const { perWorkingDay, source, declared, measured, measuredCycles, cyclesUntilMeasured } = velocity;
 
   if (source === "none" || perWorkingDay === undefined) {
@@ -51,8 +61,15 @@ export function velocityCaption(velocity: EffectiveVelocity): VelocityCaption {
         // worse than one that names the screen. Reworded rather than forked: the argument
         // for one sentence is that two screens showing this number must explain it the same
         // way, and a per-screen variant is exactly the drift that argument is against.
-        "No velocity yet, so Kanso is not estimating any dates for you. Declare one in your" +
-        " preferences, or close a cycle with finished, sized work in it.",
+        // The one branch that is not a swap of pronouns. "Declare one in your preferences"
+        // is an instruction, and on a colleague's page there is nothing for the reader to
+        // do — pointing them at their own preferences would be advice about the wrong
+        // person. So the second person keeps the instruction and the third states the fact.
+        voice.own
+          ? "No velocity yet, so Kanso is not estimating any dates for you. Declare one in" +
+            " your preferences, or close a cycle with finished, sized work in it."
+          : `No velocity yet, so Kanso is not estimating any dates for ${voice.object}. It` +
+            " takes a declared velocity, or a closed cycle with finished, sized work in it.",
       reference: null,
     };
   }
@@ -64,7 +81,7 @@ export function velocityCaption(velocity: EffectiveVelocity): VelocityCaption {
     const more = cyclesUntilMeasured;
     return {
       inForce:
-        `Kanso is planning with the ${rateWords(perWorkingDay)} you declared —` +
+        `Kanso is planning with the ${rateWords(perWorkingDay)} ${voice.object} declared —` +
         ` ${more} more closed ${more === 1 ? "cycle" : "cycles"} and it will use the measured one.`,
       // Shown while it is still losing: watching the two converge, or not, is the point.
       reference:
@@ -79,14 +96,14 @@ export function velocityCaption(velocity: EffectiveVelocity): VelocityCaption {
       measuredCycles === 1
         ? // Nothing was declared, so one cycle is all there is. Saying it is thin is more
           // honest than showing the number bare, and more useful than showing nothing.
-          `Kanso is planning with ${rateWords(perWorkingDay)}, measured from your last closed` +
-          " cycle. One cycle is thin — it will settle as more close."
-        : `Kanso is planning with ${rateWords(perWorkingDay)}, measured from your last` +
-          ` ${cycleCount(measuredCycles)}.`,
+          `Kanso is planning with ${rateWords(perWorkingDay)}, measured from ${voice.possessive}` +
+          " last closed cycle. One cycle is thin — it will settle as more close."
+        : `Kanso is planning with ${rateWords(perWorkingDay)}, measured from ${voice.possessive}` +
+          ` last ${cycleCount(measuredCycles)}.`,
     reference:
       declared === undefined
         ? null
-        : `You declared ${formatRate(declared)}. Kanso keeps that as you wrote it — a lasting gap` +
-          " is worth knowing about, not correcting.",
+        : `${voice.declared} ${formatRate(declared)}. Kanso keeps that as ${voice.wrote} — a` +
+          " lasting gap is worth knowing about, not correcting.",
   };
 }

@@ -250,6 +250,20 @@ describe("breadcrumbOf", () => {
     ]);
   });
 
+  // Screen 41. Both name the team, because both are measured against its calendar, and
+  // both prefer the subject's own name over the `Progress` placeholder once it has loaded.
+  it("names the team and the subject on the figures aimed at somebody else", () => {
+    expect(breadcrumbOf("/people/u1/progress", { team: "Core", leaf: "Ana Ruiz" })).toEqual([
+      "Core",
+      "Ana Ruiz",
+    ]);
+    expect(breadcrumbOf("/people/u1/progress", { team: "Core" })).toEqual(["Core", "Progress"]);
+    expect(breadcrumbOf("/teams/t1/progress", { team: "Core", leaf: "Progress" })).toEqual([
+      "Core",
+      "Progress",
+    ]);
+  });
+
   it("draws no crumb for a route it has never heard of", () => {
     // The shell wraps a fixed set of routes; anything else gets silence rather than a
     // heading invented out of a URL fragment.

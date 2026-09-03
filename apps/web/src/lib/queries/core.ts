@@ -85,6 +85,16 @@ export const keys = {
   velocity: (teamId: string) => ["velocity", teamId] as const,
   /** Per team for the same reason `velocity` is: it is measured against that calendar. */
   progress: (teamId: string) => ["progress", teamId] as const,
+  /**
+   * Somebody else's page, and a team's, under `progress` on purpose.
+   *
+   * The declared-velocity mutation below invalidates the *family* on its first segment, and
+   * an admin looking at a colleague's page is looking at a number that colleague's declared
+   * velocity feeds. Keyed outside it, that entry would be the one place on this screen a
+   * write never reached.
+   */
+  personProgress: (teamId: string, userId: string) => ["progress", teamId, userId] as const,
+  teamProgress: (teamId: string) => ["progress", "team", teamId] as const,
   ticketDuration: (id: string) => ["ticketDuration", id] as const,
   /** No archived flag: the timeline endpoint never returns archived work. */
   timeline: (scope: Scope) =>
@@ -268,6 +278,35 @@ export const useProgress = (teamId?: string) =>
   useQuery({
     queryKey: keys.progress(teamId ?? ""),
     queryFn: () => api.progress(teamId!),
+    enabled: Boolean(teamId),
+  });
+
+/**
+ * The same page about somebody else. A 403 is an answer, not a bug.
+ *
+ * No `retry` override is needed — the client-wide default does not retry a 4xx — but the
+ * error *is* load-bearing here in a way it is not for `useProgress`: it is how the screen
+ * knows to print "you may read your own figures in this team" instead of an empty chart.
+ */
+export const usePersonProgress = (teamId?: string, userId?: string) =>
+  useQuery({
+    queryKey: keys.personProgress(teamId ?? "", userId ?? ""),
+    queryFn: () => api.personProgress(userId!, teamId!),
+    enabled: Boolean(teamId && userId),
+  });
+
+/**
+ * A team's aggregates — and this screen's answer to "may I read anybody here".
+ *
+ * The server's rule for this route is the rule for reading another person with the
+ * "yourself, always" branch taken out, so its verdict is exactly the one the page needs
+ * before it offers to point itself at a colleague. That is why no capability flag was added
+ * to `/api/me`: the probe is a request the granted case needed to make anyway.
+ */
+export const useTeamProgress = (teamId?: string) =>
+  useQuery({
+    queryKey: keys.teamProgress(teamId ?? ""),
+    queryFn: () => api.teamProgress(teamId!),
     enabled: Boolean(teamId),
   });
 

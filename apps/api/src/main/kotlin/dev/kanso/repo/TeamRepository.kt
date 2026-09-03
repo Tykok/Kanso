@@ -178,9 +178,11 @@ class TeamRepository(private val jdbc: JdbcClient) {
 	/**
 	 * The teams this person is titled `admin` of.
 	 *
-	 * A narrow read with one caller: `AccountService` refuses to put somebody on a
-	 * read-only seat while a team still calls them its administrator, and it names the
-	 * teams rather than saying no and leaving the caller to go looking.
+	 * Two callers, asking it for opposite reasons. `AccountService` refuses to put somebody
+	 * on a read-only seat while a team still calls them its administrator, and it names the
+	 * teams rather than saying no and leaving the caller to go looking. `TicketAccess`
+	 * asks it as the seed of the one thing the title grants: reading another person's
+	 * figures in a team, and in the teams under it.
 	 */
 	fun adminTeamIdsFor(userId: UUID): List<UUID> =
 		TeamMembers.select(TeamMembers.teamId)

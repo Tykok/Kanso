@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DeliveredCycle, EffectiveVelocity, OpenLoad } from "./api";
-import { loadSentence, MIN_FOR_A_TREND, trend } from "./progress";
+import { loadSentence, MIN_FOR_A_TREND, readersSentence, teamLoadSentence, trend } from "./progress";
+import { about } from "./voice";
 
 /**
  * The two design traps screen 40 is built around, asserted rather than eyeballed.
@@ -163,5 +164,100 @@ describe("loadSentence", () => {
         expect(sentence.toLowerCase()).not.toContain(word);
       }
     }
+  });
+});
+
+describe("loadSentence, aimed at somebody else", () => {
+  const ana = about("Ana Ruiz");
+
+  it("names the subject and agrees the verb, rather than addressing the reader", () => {
+    const sentence = loadSentence(plate(2, 13, 0, 6.5), measured(2), ana);
+    expect(sentence).toContain("Ana Ruiz is carrying 13 points");
+    expect(sentence).not.toContain("You are");
+  });
+
+  it("says nothing in the second person in any branch", () => {
+    const branches = [
+      loadSentence(plate(2, 13, 0, 6.5), measured(2), ana),
+      loadSentence(plate(3, 8), noPace, ana),
+      loadSentence(plate(0, 0, 0, 0), measured(2), ana),
+      loadSentence(plate(5, 8, 2, 4), measured(2), ana),
+    ];
+    for (const sentence of branches) expect(sentence).not.toMatch(/\b(you|your|You|Your)\b/);
+  });
+
+  // The plate's blind spot has to follow the voice too, or one clause of a sentence
+  // addresses the reader while the rest is about a colleague.
+  it("possesses the unsized tickets to the subject", () => {
+    expect(loadSentence(plate(5, 8, 2, 4), measured(2), ana)).toContain("2 of their 5 carry no estimate");
+  });
+});
+
+describe("teamLoadSentence", () => {
+  const pace = { perWorkingDay: 4, measuredCycles: 3 };
+
+  it("weighs the team's plate against the pace it has been delivering", () => {
+    const sentence = teamLoadSentence(plate(12, 40, 0, 10), pace, "Mobile");
+    expect(sentence).toContain("Mobile is carrying 40 points across 12 tickets");
+    expect(sentence).toContain("10 working days");
+  });
+
+  /**
+   * The one branch that could not be a `Voice`.
+   *
+   * "Nothing open is assigned to Mobile" would be false: a team's plate counts the tickets
+   * nobody is assigned at all, which is the whole difference between this read and a
+   * person's.
+   */
+  it("does not claim a team's empty plate is unassigned", () => {
+    const sentence = teamLoadSentence(plate(0, 0, 0, 0), pace, "Mobile");
+    expect(sentence).toBe("Mobile has nothing open.");
+    expect(sentence).not.toContain("assigned");
+  });
+
+  it("refuses to guess the days when the team has no measured pace", () => {
+    const sentence = teamLoadSentence(plate(3, 8), { measuredCycles: 0 }, "Mobile");
+    expect(sentence).toContain("8 points");
+    expect(sentence).toContain("no pace");
+    expect(sentence).not.toContain("working days");
+  });
+});
+
+/**
+ * The ticket's second guard-rail: the page says who else can read it.
+ *
+ * Asserted rather than eyeballed because the failure is silent — a page that says nothing
+ * about its readers looks exactly like a page whose readers nobody computed.
+ */
+describe("readersSentence", () => {
+  const admin = { id: "u1", displayName: "Instance owner" };
+  const product = { id: "t1", name: "Product", key: "PRD" };
+
+  it("names the instance admins and the teams whose administrators can read it", () => {
+    const sentence = readersSentence({ instanceAdmins: [admin], teams: [product] }, null);
+    expect(sentence).toBe("Readable by you, and by Instance owner and the administrators of Product.");
+  });
+
+  it("says so plainly when nobody else can read it, rather than going blank", () => {
+    expect(readersSentence({ instanceAdmins: [], teams: [] }, null)).toBe(
+      "Nobody else can read this page.",
+    );
+    expect(readersSentence({ instanceAdmins: [], teams: [] }, "Ana Ruiz")).toBe(
+      "Nobody but Ana Ruiz can read this page.",
+    );
+  });
+
+  it("names the subject rather than the reader on somebody else's page", () => {
+    const sentence = readersSentence({ instanceAdmins: [admin], teams: [product] }, "Ana Ruiz");
+    expect(sentence).toContain("Readable by Ana Ruiz");
+    expect(sentence).not.toContain("by you");
+  });
+
+  it("joins three readers without an Oxford comma, as the rest of the app does", () => {
+    const sentence = readersSentence(
+      { instanceAdmins: [admin, { id: "u2", displayName: "Bo Chen" }], teams: [product] },
+      null,
+    );
+    expect(sentence).toContain("Instance owner, Bo Chen and the administrators of Product");
   });
 });
