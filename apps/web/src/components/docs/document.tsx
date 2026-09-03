@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useDocBlockWrites } from "@/lib/queries";
 import { useDocsUi } from "@/store/docs";
 import { useUi } from "@/store/ui";
+import { TopbarSlot } from "../shell/topbar-slot";
 import { FavouriteStar } from "../favourites";
 import { Kbd } from "../ui/kbd";
 import { BlockBody, queriedStatuses } from "./blocks";
@@ -94,12 +95,19 @@ export function DocumentView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center gap-2.5 bg-card px-5 py-3 text-12 text-faint">
-        <Link href="/docs" className="hover:text-foreground">
-          Documents
-        </Link>
-        <span aria-hidden>/</span>
-        <span className="text-muted-foreground">{page.title}</span>
+      {/*
+        * The three controls this page has of its own, in the one bar the shell draws.
+        *
+        * This was a `<header>` here, and it drew `Documents / {title}` beside them — the
+        * fourth of the four page headers the shell replaced, and the one the pass missed
+        * because it is a component rather than a route. The result was two bars stacked on
+        * every document, both saying the same two words, and `Documents` reachable as two
+        * different links: `18-documents.spec.ts` found it as a strict-mode violation and a
+        * reader found it as a wasted 44px. The trail is `breadcrumbOf`'s now — `/docs/[id]`
+        * publishes the title as its leaf — and the header claimed a parent for `Documents`
+        * that `lib/nav.ts` deliberately does not give it.
+        */}
+      <TopbarSlot>
         {/* The only way to pin a document: this route hands its keys to the caret, where
             `s` is a letter somebody is typing, and it mounts no command palette. */}
         <FavouriteStar target={{ kind: "doc", id: page.id }} label={page.title} />
@@ -120,7 +128,7 @@ export function DocumentView({
             Open in Notion ↗
           </a>
         )}
-      </header>
+      </TopbarSlot>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 overflow-y-auto pt-8 lg:grid-cols-[1fr_200px] lg:pr-10">
         <div className="flex min-w-0 justify-center">

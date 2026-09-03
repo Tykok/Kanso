@@ -129,6 +129,21 @@ export default function ListPage() {
   const link = useLinkDependency();
   const unlink = useUnlinkDependency();
 
+  /**
+   * The two writes the picker performs, taken as bare functions.
+   *
+   * `useMutation` hands back a fresh result object on every render, so the mutations
+   * themselves cannot be dependencies of the [commands] memo below: the list would be a
+   * new array on every render, `usePageShell` publishes on a change of identity, and
+   * publishing is a `setState` in the shell — which renders this page again, which builds
+   * another array. That is a loop with no exit, and pressing `d` on the timeline reached
+   * it: React error #185, the error boundary, "This page couldn’t load". `mutate` is the
+   * one part of a mutation result that keeps its identity across renders, which is why it
+   * is what the memo is allowed to close over.
+   */
+  const linkMutate = link.mutate;
+  const unlinkMutate = unlink.mutate;
+
   /** The strip under the top bar, which the shell draws and every route now shares. */
   const reportError = useReportError();
 
@@ -347,7 +362,7 @@ export default function ListPage() {
           id: `timeline.link.${candidate.id}`,
           label: `Wait for ${candidate.identifier}: ${candidate.title}`,
           run: () => {
-            link.mutate(
+            linkMutate(
               { successorId: asking.ticketId, predecessorId: candidate.id },
               {
                 // A cycle is a 409 naming the chain. It belongs on the screen the
@@ -369,7 +384,7 @@ export default function ListPage() {
         id: `timeline.unlink.${predecessor.id}`,
         label: `Stop waiting for ${predecessor.identifier}: ${predecessor.title}`,
         run: () => {
-          unlink.mutate(
+          unlinkMutate(
             { successorId, predecessorId: predecessor.id },
             {
               // Nothing here is optimistic — freeing slack pulls nothing earlier — so a
@@ -398,7 +413,7 @@ export default function ListPage() {
     }
 
     return undefined;
-  }, [ctx, asking, visible, link, unlink, reportError, close]);
+  }, [ctx, asking, visible, linkMutate, unlinkMutate, reportError, close]);
 
   usePageShell({ ctx, commands });
 
