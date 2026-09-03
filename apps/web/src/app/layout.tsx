@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { CSSProperties, ReactNode } from "react";
 import { Public_Sans } from "next/font/google";
 import { PREFERENCE_BOOTSTRAP_SCRIPT } from "@/lib/theme";
@@ -14,6 +14,29 @@ export const metadata: Metadata = {
   title: "Kanso",
   description:
     "Kanso runs a project end to end — projects, tickets, cycles, a roadmap, a timeline, workload — and everyone else reads the same data in Notion.",
+};
+
+/**
+ * The colour the OS paints its own chrome with when Kanso is installed — the title bar of
+ * a standalone window, the status bar on a phone (KAN-24).
+ *
+ * A pair rather than one value, and that is the point of putting it here instead of in
+ * `manifest.ts`: a manifest holds a single `theme_color`, so an installed dark instance
+ * would wear a white title bar above a near-black app. These are `--background` from
+ * `styles/tokens.css` converted to sRGB — `oklch(0.988 0.002 262)` and
+ * `oklch(0.185 0.008 262)` — so the chrome is the same ground as the page under it.
+ *
+ * Keyed on `prefers-color-scheme` and so on the *system* setting, which is the only signal
+ * the browser has before any script runs. Somebody who has chosen light inside Kanso on a
+ * dark system gets a dark title bar over a light app; the alternative is a `<meta>` the
+ * preference bootstrap rewrites, which would flash the wrong colour on every load to fix
+ * a mismatch only that reader can see.
+ */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafbfc" },
+    { media: "(prefers-color-scheme: dark)", color: "#111316" },
+  ],
 };
 
 /**

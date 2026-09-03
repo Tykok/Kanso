@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
+import { RegisterServiceWorker } from "@/components/pwa/register-sw";
 
 /**
  * The signed-in application, and the one place its frame is drawn.
@@ -19,5 +20,15 @@ import { AppShell } from "@/components/shell/app-shell";
  * store, and the scope mirror reads the address bar.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <>
+      {/*
+        * The service worker, registered here and not in `app/layout.tsx`: it caches the
+        * signed-in shell, and the three anonymous routes that root layout also wraps have
+        * no session to cache one for. See `components/pwa/register-sw.tsx`.
+        */}
+      <RegisterServiceWorker />
+      <AppShell>{children}</AppShell>
+    </>
+  );
 }
