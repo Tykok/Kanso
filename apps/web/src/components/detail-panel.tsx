@@ -23,6 +23,7 @@ import { Backdrop } from "./overlays";
 import { TicketDurationNote } from "./ticket-duration";
 import { TicketFields } from "./ticket-fields";
 import { TicketLabels } from "./ticket-labels";
+import { TicketPullRequests } from "./ticket-pull-requests";
 import { Kbd } from "./ui/kbd";
 import { PriorityMark } from "./ui/priority-mark";
 import { StatusDot } from "./ui/status-dot";
@@ -201,6 +202,12 @@ export function DetailPanel({
               belongs: after the fields every ticket has, before the ones about time. Draws
               nothing at all when the team has defined none — see `TicketFields`. */}
           <TicketFields ticket={ticket} />
+
+          {/* Last of the sections, because it is the only one that is about something
+              outside Kanso — a reader scanning the panel should reach the status, the
+              people and the team's own fields before the repository. Draws nothing at all
+              for a draft, which has neither a branch to name nor a link. */}
+          <TicketPullRequests ticket={ticket} />
 
           <MetaRow label="Due date">
             <input

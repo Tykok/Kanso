@@ -150,9 +150,66 @@ export type Ticket = {
    * panel that edits one ticket.
    */
   customFields: Record<string, CustomFieldValue>;
+  /**
+   * `V36`'s linked pull requests, newest first within a repository — `[]` for every ticket
+   * on an instance with no GitHub App, which is most of them.
+   *
+   * **Required, not optional**, for exactly the reason `customFields` is: the server always
+   * sends the key, and a field that appears later is a field that breaks a script already
+   * reading this shape. An array also gives "none" one spelling instead of two.
+   */
+  pullRequests: PullRequest[];
+  /**
+   * The branch to create for this ticket, `feat/kan-142-overlap-warning`, derived by the
+   * server from the identifier and the title.
+   *
+   * Optional and not `| null`, like `identifier` above and for the same reason: a draft has
+   * no identifier to name a branch after, the server omits nulls, and what arrives is
+   * `undefined`. Read it with `== null`.
+   */
+  branchName?: string;
   mirror: Mirror;
   createdAt: string;
   updatedAt: string;
+};
+
+/** GitHub's three, closed on the server by `github_pull_requests_state_chk`. */
+export const PR_STATES = ["open", "merged", "closed"] as const;
+export type PrState = (typeof PR_STATES)[number];
+
+/**
+ * Two words where GitHub's review vocabulary has five: the server maps `commented`,
+ * `dismissed` and `pending` to *absent*, because none of them blocks or unblocks a pull
+ * request and the pill is the only thing that reads this.
+ */
+export const PR_REVIEW_STATES = ["approved", "changes_requested"] as const;
+export type PrReviewState = (typeof PR_REVIEW_STATES)[number];
+
+/**
+ * One pull request on a ticket.
+ *
+ * Flat, unlike `TicketLink`, which nests a whole `Ticket` because the other end of a link
+ * *is* one. Everything a row draws is here, so no row needs a request of its own.
+ *
+ * There is no `pill` field on purpose. The label is computed from `state`, `draft` and
+ * `reviewState` by `prPill`, because a label on the wire would be a derived value stored in
+ * a response — and one that could never be translated.
+ */
+export type PullRequest = {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: PrState;
+  draft: boolean;
+  /** Absent until somebody reviews, which the pill reads as "In review". */
+  reviewState?: PrReviewState;
+  authorLogin?: string;
+  headRef: string;
+  /** Whether this pull request may move the ticket, as opposed to merely naming it. */
+  closes: boolean;
+  /** True when a member drew this link by hand, so re-parsing will not remove it. */
+  linkedByMember: boolean;
 };
 
 export type Team = {
