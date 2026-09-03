@@ -9,8 +9,10 @@ import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.outbox.OutboundEntityType
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
+import dev.kanso.webhooks.WebhookSubscriptionRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -39,6 +41,7 @@ class TicketFieldValueTest : PostgresTest() {
 	@Autowired lateinit var teamRepo: TeamRepository
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var subscriptions: WebhookSubscriptionRepository
 	@Autowired lateinit var jdbc: JdbcClient
 
 	private fun user(role: InstanceRole) = users.createLocalUser(
@@ -274,34 +277,88 @@ class TicketFieldValueTest : PostgresTest() {
 	}
 
 	/**
-	 * The webhook and realtime half, which `KAN-17` made one question rather than two.
+	 * The webhook half, which `KAN-17` made the same question as the realtime one.
 	 *
 	 * A field value is part of what `TicketResponse` says, so a ticket whose severity moved is
-	 * a ticket that changed — and since `EventPublisher.publish` is where the webhook fan-out
-	 * lives, saying it there is what reaches a subscriber. Asserted on the queued job rather
-	 * than on a mock: the fan-out writes into the outbox inside the caller's transaction, on
-	 * purpose, so it is visible to this test without waiting for a commit.
+	 * a ticket that changed — and `EventPublisher.publish` is where the fan-out lives, so
+	 * saying it there is what reaches a subscriber. There is no second delivery path: this
+	 * asserts on the row `WebhookFanout` queues, which is written *inside* the caller's
+	 * transaction on purpose, so a rolled-back test can still see it.
 	 *
-	 * A subscription is not created here, so nothing is expected to queue — what this pins is
-	 * the *call*, by asserting the event reached the funnel at all. The cheapest honest way to
-	 * see that is the row count staying consistent with there being no subscriber, plus the
-	 * no-op case below, which is the half that would break if somebody published
-	 * unconditionally.
+	 * The subscription is inserted through the repository rather than `WebhookService.create`,
+	 * which is a configurator's method wanting a security context this suite does not set. What
+	 * is under test is the fan-out, not who may subscribe — `WebhookServiceTest` owns that.
+	 */
+	@Test
+	fun `a field value reaches the webhook fan-out, once per request`() {
+		val team = team()
+		val ticket = ticketIn(team.id)
+		val note = fields.define(admin, team.id, "Note", "text", false, emptyList())
+		val size = fields.define(admin, team.id, "Size", "number", false, emptyList())
+		subscriptions.insert(
+			url = "https://example.invalid/kanso",
+			description = "field fan-out",
+			secretCipher = "not-a-real-cipher",
+			secretPrefix = "whsec_",
+			entities = setOf(OutboundEntityType.TICKET),
+			teamId = null,
+			createdBy = admin.id,
+		)
+
+		val before = webhookJobs(ticket.id)
+		// Two fields in one request, which must be one delivery and not two: a form saving
+		// four inputs is one decision, and four events would be four pushes of the same row.
+		values.setValues(
+			admin,
+			ticket.id,
+			mapOf(note.id.toString() to "a thought", size.id.toString() to 3),
+		)
+
+		assertEquals(
+			before + 1,
+			webhookJobs(ticket.id),
+			"a field write must announce itself exactly once — silence makes custom fields the" +
+				" one part of a ticket an integration can only find by polling",
+		)
+	}
+
+	/**
+	 * The other half of the same rule, and the one that breaks if somebody publishes
+	 * unconditionally: a re-submitted form that moved nothing is not a change, so it reaches
+	 * neither the feed nor the bus.
 	 */
 	@Test
 	fun `a value that did not move publishes nothing and logs nothing`() {
 		val team = team()
 		val ticket = ticketIn(team.id)
 		val severity = fields.define(admin, team.id, "Severity", "text", false, emptyList())
+		subscriptions.insert(
+			url = "https://example.invalid/kanso",
+			description = "field fan-out",
+			secretCipher = "not-a-real-cipher",
+			secretPrefix = "whsec_",
+			entities = setOf(OutboundEntityType.TICKET),
+			teamId = null,
+			createdBy = admin.id,
+		)
 		values.setValues(admin, ticket.id, mapOf(severity.id.toString() to "high"))
 
 		val logged = fieldSetRows(ticket.id)
-		// Re-sending the identical value is what a form that saves every input does on every
-		// save. It must be silent in the feed and on the bus alike.
+		val queued = webhookJobs(ticket.id)
 		values.setValues(admin, ticket.id, mapOf(severity.id.toString() to "high"))
 
-		assertEquals(logged, fieldSetRows(ticket.id), "an unchanged value announced itself")
+		assertEquals(logged, fieldSetRows(ticket.id), "an unchanged value was logged as a change")
+		assertEquals(queued, webhookJobs(ticket.id), "an unchanged value was pushed to subscribers")
 	}
+
+	/**
+	 * Pending webhook jobs for this ticket. Counted in SQL rather than through a repository
+	 * for the reason the activity count beside it is: the claim is about what reached the
+	 * table, and a reader that filters is a reader that can agree with a bug.
+	 */
+	private fun webhookJobs(ticketId: UUID): Int = jdbc.sql(
+		"SELECT count(*) FROM outbound_jobs WHERE destination = 'webhook' AND entity_id = ?",
+	).param(ticketId).query(Int::class.java).single()
 
 	private fun fieldSetRows(ticketId: UUID): Int = jdbc.sql(
 		"SELECT count(*) FROM activity WHERE entity_type = 'ticket' AND entity_id = ? AND kind = 'field_set'",
