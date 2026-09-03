@@ -83,6 +83,15 @@ object InstanceSettings : Table("instance_settings") {
 	val notionWorkspaceId = text("notion_workspace_id").nullable()
 	val notionWorkspaceName = text("notion_workspace_name").nullable()
 	val notionBotId = text("notion_bot_id").nullable()
+
+	// The one of `V36`'s six GitHub columns anything reads today. The other five — app id,
+	// slug, client id, client secret, private key — are the App Manifest flow's, and the
+	// flow that writes them is part three of the design; a column mapped here that no code
+	// reads is a column the next reader has to check for callers before touching. This one
+	// is read because the webhook's HMAC is the only guard on an unauthenticated endpoint
+	// that writes rows, so it has to work before any of the rest of the door exists.
+	val githubWebhookSecretEnc = binary("github_webhook_secret_enc").nullable()
+
 	val createdAt = timestampWithTimeZone("created_at")
 	val updatedAt = timestampWithTimeZone("updated_at")
 	override val primaryKey = PrimaryKey(id)

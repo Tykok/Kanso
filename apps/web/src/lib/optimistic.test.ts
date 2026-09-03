@@ -61,6 +61,9 @@ const ticket = (id: string, overrides: Partial<Ticket> = {}): Ticket => ({
   assigneeIds: [],
   docIds: [],
   customFields: {},
+  // Required on `Ticket` for the reason `customFields` beside it is: the server always
+  // sends the key, so a factory that omits it is not a ticket the API can produce.
+  pullRequests: [],
   archived: false,
   mirror: { state: "disabled" },
   createdAt: "2026-01-01T00:00:00Z",

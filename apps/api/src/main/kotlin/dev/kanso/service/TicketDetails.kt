@@ -1,6 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.Ticket
+import dev.kanso.github.GithubRepository
 import dev.kanso.repo.CustomFieldRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
@@ -21,6 +22,7 @@ class TicketDetails(
 	private val tickets: TicketRepository,
 	private val teams: TeamRepository,
 	private val fields: CustomFieldRepository,
+	private val github: GithubRepository,
 ) {
 
 	/**
@@ -34,7 +36,13 @@ class TicketDetails(
 	 * value is *written* or printed with a label, and both of those hold the definitions
 	 * already.
 	 *
-	 * So a page of 200 tickets is four statements plus the one that found them, whether the
+	 * `V36` made pull requests the fifth, on the same terms and for the same reason it is
+	 * batched here rather than fetched where it is drawn: a board column asking "does this
+	 * ticket have an open pull request" per card is 200 requests for a fact one statement
+	 * answers. `GithubRepository.forTickets` returns nothing at all for an instance with no
+	 * GitHub App, which is the common case and costs one query that matches no rows.
+	 *
+	 * So a page of 200 tickets is five statements plus the one that found them, whether the
 	 * team has defined no fields or thirty.
 	 */
 	@Transactional(readOnly = true)
@@ -45,6 +53,7 @@ class TicketDetails(
 		val assignees = tickets.assigneeIdsFor(ids)
 		val docsByTicket = tickets.docIdsFor(ids)
 		val fieldValues = fields.valuesFor(ids)
+		val pullRequests = github.forTickets(ids)
 		return found.map {
 			TicketDetail(
 				ticket = it,
@@ -53,6 +62,7 @@ class TicketDetails(
 				assigneeIds = assignees[it.id].orEmpty(),
 				docIds = docsByTicket[it.id].orEmpty(),
 				customFields = fieldValues[it.id].orEmpty(),
+				pullRequests = pullRequests[it.id].orEmpty(),
 			)
 		}
 	}

@@ -11,6 +11,7 @@ data class KansoProperties(
 	val apiTokens: ApiTokens = ApiTokens(),
 	val webhooks: Webhooks = Webhooks(),
 	val notion: Notion = Notion(),
+	val github: Github = Github(),
 	val sync: Sync = Sync(),
 	val realtime: Realtime = Realtime(),
 ) {
@@ -133,6 +134,38 @@ data class KansoProperties(
 
 	data class Provider(val clientId: String = "", val clientSecret: String = "") {
 		val configured: Boolean get() = clientId.isNotBlank() && clientSecret.isNotBlank()
+	}
+
+	/**
+	 * The GitHub **App** — which is not [Auth.github], and the distinction is the whole
+	 * reason this is its own group.
+	 *
+	 * `kanso.auth.github` is an OAuth client used to *sign people in*: it answers "who is
+	 * this person". This is an App installed on repositories, and it answers "what happened
+	 * to this pull request". Two credentials, two consent screens, two purposes; folding
+	 * them together would mean an instance could not have one without the other, and a
+	 * rotated sign-in secret would silently break the webhook.
+	 *
+	 * One value today because one value is what the inbound half reads. The App Manifest
+	 * flow's other five — app id, slug, client id, client secret, private key — are part
+	 * three of the design, and `V36` has their columns waiting; they arrive here when
+	 * something reads them, as a group, for the reason `c3d1a95` gives about halves of a
+	 * credential coming from different places.
+	 */
+	data class Github(
+		/**
+		 * Pins the webhook's HMAC key, ahead of the `instance_settings` column.
+		 *
+		 * Environment-first so that a `docker compose` can ship an instance whose webhook
+		 * works before anybody opens a settings screen — the same reason
+		 * `notionAppManagedByEnvironment` exists. It is also the only way the inbound path is
+		 * usable at all until the manifest flow lands, since nothing else writes that column
+		 * yet.
+		 */
+		val webhookSecret: String = "",
+	) {
+		/** Whether the webhook can verify anything. A blank secret is not a secret. */
+		val webhookSecretConfigured: Boolean get() = webhookSecret.isNotBlank()
 	}
 
 	data class Notion(

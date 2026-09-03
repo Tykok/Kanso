@@ -28,12 +28,20 @@ class ResolvedSettings(
 	val notionClientSecret: String?,
 	val notionAppManagedByEnvironment: Boolean,
 	val notionWorkspaceName: String?,
+	/**
+	 * The GitHub App's webhook HMAC key. Null when nothing has configured one, which is
+	 * what `GithubWebhookController` turns into a refusal — an endpoint that cannot verify
+	 * a signature must not accept an unverified one.
+	 */
+	val githubWebhookSecret: String?,
+	val githubManagedByEnvironment: Boolean,
 ) {
 	/** A stray log line must not print a token. */
 	override fun toString(): String =
 		"ResolvedSettings(notion=${!notionToken.isNullOrBlank()}, " +
 			"notionApp=${!notionClientSecret.isNullOrBlank()}, " +
-			"google=${!googleClientSecret.isNullOrBlank()})"
+			"google=${!googleClientSecret.isNullOrBlank()}, " +
+			"github=${!githubWebhookSecret.isNullOrBlank()})"
 }
 
 data class NotionSettingsState(
@@ -228,6 +236,7 @@ class InstanceSettingsService(
 		val notionFromEnv = props.notion.token.isNotBlank()
 		val notionAppFromEnv = props.notion.app.configured
 		val googleFromEnv = props.auth.google.configured
+		val githubFromEnv = props.github.webhookSecretConfigured
 
 		return ResolvedSettings(
 			setupCompletedAt = stored.setupCompletedAt,
@@ -254,6 +263,16 @@ class InstanceSettingsService(
 			},
 			notionAppManagedByEnvironment = notionAppFromEnv,
 			notionWorkspaceName = stored.notionWorkspaceName,
+			// One value, so there is no group to keep together yet — the rule above applies
+			// to the other five the day the manifest flow reads them. Environment first for
+			// the same reason as the rest: an instance shipped already wired must not need a
+			// settings screen to receive its first event.
+			githubWebhookSecret = if (githubFromEnv) {
+				props.github.webhookSecret
+			} else {
+				secrets.decrypt(stored.githubWebhookSecretEnc)
+			},
+			githubManagedByEnvironment = githubFromEnv,
 		)
 	}
 }

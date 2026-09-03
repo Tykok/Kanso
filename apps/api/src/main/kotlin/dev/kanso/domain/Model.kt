@@ -266,7 +266,30 @@ enum class ActivityKind(override val wire: String) : Wire {
 	 * The name travels with the row for the reason [LABELLED] does: a definition can be
 	 * renamed or deleted, and a feed holding only the id would then have nothing to print.
 	 */
-	FIELD_SET("field_set");
+	FIELD_SET("field_set"),
+
+	/**
+	 * A pull request attached to a ticket, or detached from it — `V36`'s word.
+	 *
+	 * The one kind in this enum that automation writes more often than a person does, which
+	 * is exactly why it exists. A link drawn by `PrLinkParser` reading a branch name has no
+	 * author to ask, so if it happened silently there would be nothing anywhere that answers
+	 * "why is this pull request on my ticket". `actor_id` is null for those and set for the
+	 * ones a member drew, which is the same distinction `ticket_pull_requests.linked_by`
+	 * carries on the row — the feed and the table agree because they are told by the same
+	 * caller.
+	 *
+	 * The payload carries the repository, the number and the URL, never the pull request's
+	 * title: an activity row outlives what it describes, following [COMMENTED], and a
+	 * retitled pull request must not silently retitle its own history.
+	 *
+	 * **The transition is not this kind.** A merge moving a ticket to Done is a
+	 * [STATUS_CHANGED] like every other status change, with `payload.via_pr` naming the pull
+	 * request. Giving automation its own transition kind would split the one question a
+	 * history is kept for — when did this become Done, and why — across two vocabularies
+	 * that every reader of the feed would then have to know.
+	 */
+	PULL_REQUEST_LINKED("pull_request_linked");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
