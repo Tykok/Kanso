@@ -27,7 +27,25 @@ enum class Destination(val wire: String) {
 	 * subscribers share one job's attempts and `webhook_deliveries` is what keeps a retry
 	 * from re-POSTing to the ones that already answered. `V31` carries the trade.
 	 */
-	WEBHOOK("webhook");
+	WEBHOOK("webhook"),
+
+	/**
+	 * The bounded block Kanso maintains in a pull request's body. See `V36`.
+	 *
+	 * **There is no handler for this value yet**, and that is deliberate rather than
+	 * unfinished. The value is here because `V36` widened `outbound_jobs_destination_chk` to
+	 * accept it, and this enum is the other half of that vocabulary — a word the database
+	 * takes and Kotlin cannot name is exactly the asymmetry every closed list in this schema
+	 * exists to prevent. Nothing enqueues it: `GithubOutboundHandler` and the writes it
+	 * performs are part five of the design, and until it exists [OutboundWorker] registers no
+	 * clock for this destination, because it iterates handlers rather than destinations.
+	 *
+	 * What lands on it when it arrives is a `ticket` `upsert` — the block writes a ticket's
+	 * whole current state, so the collapse rule on `(destination, entity_type, entity_id)`
+	 * turns a ticket dragged across three columns into one queued rewrite. That is why `V36`
+	 * widened neither `outbound_jobs_entity_chk` nor `outbound_jobs_operation_chk`.
+	 */
+	GITHUB("github");
 
 	companion object {
 		fun from(raw: String): Destination = entries.firstOrNull { it.wire == raw }
