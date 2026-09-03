@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   chordOf,
@@ -168,7 +168,10 @@ export function useShellKeys({ ctx, page }: { ctx: ActionContext; page: PageShel
    * reason; a keystroke is rare enough to afford a `Set`.
    */
   const latest = useRef({ ctx, overlay, dialog, view, pathname, keys, index, leave });
-  useEffect(() => {
+  // A layout effect, for the other half of the same reason: `usePageShell` publishes
+  // before the paint so the shell *renders* in time, and this writes before the paint so
+  // the handler *reads* in time. Either one left passive puts the window back.
+  useLayoutEffect(() => {
     latest.current = { ctx, overlay, dialog, view, pathname, keys, index, leave };
   });
 
