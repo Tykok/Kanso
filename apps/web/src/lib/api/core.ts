@@ -687,6 +687,12 @@ export type TeamProgress = {
   /** Oldest first — the order the chart draws. */
   delivered: DeliveredCycle[];
   load: OpenLoad;
+  /**
+   * The trend KAN-23 asks for per team, and it reopens no ranking: a median over a team's
+   * delivered tickets has no row to sort, because this response still has no per-person
+   * field to put one on.
+   */
+  insights: Insights;
 };
 
 /**

@@ -2,9 +2,11 @@
 
 import { GroupLabel } from "@/components/ui/group-label";
 import type { Progress } from "@/lib/api";
+import { cycleTimeSentence, wipSentence } from "@/lib/insights";
 import { loadSentence, readersSentence } from "@/lib/progress";
 import { about, YOURS, type Voice } from "@/lib/voice";
 import { formatRate, velocityCaption } from "@/lib/velocity";
+import { CycleTimeTrend, InsightsFigures } from "./insights-charts";
 import { Delivered, Projects, StatusBar } from "./progress-charts";
 
 /**
@@ -31,6 +33,7 @@ export function ProgressBody({ progress, own }: { progress: Progress; own: boole
       <Pace progress={progress} heading={own ? "Your pace" : `${name}'s pace`} voice={voice} />
       <Delivered delivered={progress.delivered} paceLabel={own ? "your pace" : "their pace"} />
       <Load progress={progress} voice={voice} />
+      <Flow progress={progress} voice={voice} />
       <Readers progress={progress} own={own} />
     </div>
   );
@@ -94,6 +97,38 @@ function Load({ progress, voice }: { progress: Progress; voice: Voice }) {
           <Projects load={load} />
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * KAN-23, and the section KAN-40 left a hole for rather than filling with a stub.
+ *
+ * **Below the plate, not above it.** The order on this page is the ticket's own — pace, then
+ * what was delivered, then what is being carried — and cycle time is a fifth question that
+ * only means something once the reader knows the first four. It is also the figure most
+ * easily read as a grade, so it does not get the top of the page.
+ *
+ * One section for both halves, because they are one question asked twice: cycle time is how
+ * long finished work took, WIP age is how long unfinished work has been taking. Splitting
+ * them would put the same unit under two headings and invite the reader to compare the two
+ * numbers against the pace above, which is in a different unit entirely — see the head of
+ * `lib/insights.ts`.
+ */
+function Flow({ progress, voice }: { progress: Progress; voice: Voice }) {
+  const { insights } = progress;
+
+  return (
+    <section className="flex flex-col gap-4 border-t border-border pt-5">
+      <GroupLabel className="px-0 pt-0">Cycle time and work in flight</GroupLabel>
+      <InsightsFigures insights={insights} />
+      <p className="m-0 max-w-[620px] text-13" data-testid="cycle-time-sentence">
+        {cycleTimeSentence(insights.cycleTime, voice)}
+      </p>
+      <p className="m-0 max-w-[620px] text-13" data-testid="wip-sentence">
+        {wipSentence(insights.wip, voice)}
+      </p>
+      <CycleTimeTrend trend={insights.trend} />
     </section>
   );
 }
