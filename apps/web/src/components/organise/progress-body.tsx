@@ -2,7 +2,8 @@
 
 import { GroupLabel } from "@/components/ui/group-label";
 import type { Progress } from "@/lib/api";
-import { about, loadSentence, readersSentence, YOURS } from "@/lib/progress";
+import { loadSentence, readersSentence } from "@/lib/progress";
+import { about, YOURS, type Voice } from "@/lib/voice";
 import { formatRate, velocityCaption } from "@/lib/velocity";
 import { Delivered, Projects, StatusBar } from "./progress-charts";
 
@@ -23,12 +24,13 @@ import { Delivered, Projects, StatusBar } from "./progress-charts";
  */
 export function ProgressBody({ progress, own }: { progress: Progress; own: boolean }) {
   const name = progress.person.displayName;
+  const voice = own ? YOURS : about(name);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
-      <Pace progress={progress} heading={own ? "Your pace" : `${name}'s pace`} />
+      <Pace progress={progress} heading={own ? "Your pace" : `${name}'s pace`} voice={voice} />
       <Delivered delivered={progress.delivered} paceLabel={own ? "your pace" : "their pace"} />
-      <Load progress={progress} own={own} />
+      <Load progress={progress} voice={voice} />
       <Readers progress={progress} own={own} />
     </div>
   );
@@ -42,8 +44,16 @@ export function ProgressBody({ progress, own }: { progress: Progress; own: boole
  * arbitration runs once on the server and is put into words once here, so the two screens
  * that show this number cannot explain it differently.
  */
-function Pace({ progress, heading }: { progress: Progress; heading: string }) {
-  const caption = velocityCaption(progress.velocity);
+function Pace({
+  progress,
+  heading,
+  voice,
+}: {
+  progress: Progress;
+  heading: string;
+  voice: Voice;
+}) {
+  const caption = velocityCaption(progress.velocity, voice);
   const rate = progress.velocity.perWorkingDay;
 
   return (
@@ -69,14 +79,14 @@ function Pace({ progress, heading }: { progress: Progress; heading: string }) {
 }
 
 /** What is on the plate now, in days, then cut by status and by project. */
-function Load({ progress, own }: { progress: Progress; own: boolean }) {
+function Load({ progress, voice }: { progress: Progress; voice: Voice }) {
   const { load } = progress;
 
   return (
     <section className="flex flex-col gap-3 border-t border-border pt-5">
       <GroupLabel className="px-0 pt-0">Carrying now</GroupLabel>
       <p className="m-0 max-w-[620px] text-13" data-testid="load-sentence">
-        {loadSentence(load, progress.velocity, own ? YOURS : about(progress.person.displayName))}
+        {loadSentence(load, progress.velocity, voice)}
       </p>
       {load.load.tickets > 0 && (
         <>

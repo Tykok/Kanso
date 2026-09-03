@@ -1,6 +1,7 @@
 import type { EffectiveVelocity, OpenLoad, ProgressReaders, TeamPace } from "./api";
 import type { DeliveredCycle } from "./api";
 import { formatRate } from "./velocity";
+import { YOURS, type Voice } from "./voice";
 
 /**
  * The two refusals screen 40 is built around, as functions rather than as JSX.
@@ -32,35 +33,6 @@ import { formatRate } from "./velocity";
  * pronouns and nothing else, which is the only version of this where a comparator cannot be
  * added to one copy and not the other.
  */
-
-/**
- * Whose page this is, as the four words that change.
- *
- * Pronouns and an agreement, not a rewrite. Two sets of sentences — one for yourself and
- * one for a colleague — would be two places for somebody to add "below the team average"
- * to, and only one of them would be reviewed.
- *
- * A name and never a pronoun for the third person: "they are carrying 14 days of work" in
- * a page whose heading is a name reads as a sentence about the reader for the first second
- * of every visit, and the first second is when a productivity number lands.
- */
-export type Voice = {
-  /** `You` / `Ana Ruiz` — the head of a sentence. */
-  subject: string;
-  /** `are` / `is`, agreeing with `subject`. */
-  are: string;
-  /** `you` / `Ana Ruiz` — the subject as an object. */
-  object: string;
-  /** `your` / `their`. */
-  possessive: string;
-};
-
-/** The default, because the page a person opens on themselves is the common case. */
-export const YOURS: Voice = { subject: "You", are: "are", object: "you", possessive: "your" };
-
-export function about(name: string): Voice {
-  return { subject: name, are: "is", object: name, possessive: "their" };
-}
 
 /**
  * Closed cycles needed before the delivered-points chart is drawn at all.
