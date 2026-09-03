@@ -171,8 +171,17 @@ export function TriageView() {
             </h2>
           </div>
 
+          {/* `whitespace-pre-line`, following `publik/contributor.tsx`: a description is one
+              text column and HTML collapses its newlines, which nothing on this screen
+              noticed while every ticket in the queue had been typed into the composer as a
+              paragraph. A siphoned Notion request is not that — it carries the preserved
+              "Imported from Notion" section, one property per line — and collapsed it reads
+              as `Client: Acme Urgence: Bloquant Deal size: 42000` in a single run-on
+              sentence, which is the one part of a request the person triaging most needs to
+              scan. The ticket page never showed this because it renders the description in a
+              `<textarea>`, which keeps its own newlines. */}
           {current.description && (
-            <p className="m-0 max-w-[640px] leading-[1.65] text-muted-foreground">
+            <p className="m-0 max-w-[640px] whitespace-pre-line leading-[1.65] text-muted-foreground">
               {current.description}
             </p>
           )}

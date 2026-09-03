@@ -475,6 +475,22 @@ object NotionSyncCursors : Table("notion_sync_cursors") {
 }
 
 /**
+ * The bases Kanso siphons requests out of and never writes to — `V37`.
+ *
+ * Deliberately not a fifth kind in [NotionDatabases]: every row of that table is a push
+ * target `NotionOutboundHandler.plan` can resolve, and the whole promise here is that no
+ * push ever addresses this base. `V37`'s header has the other two reasons.
+ */
+object NotionRequestBases : Table("notion_request_bases") {
+	val dataSourceId = text("data_source_id")
+	val databaseId = text("database_id")
+	val teamId = javaUUID("team_id")
+	val registeredAt = timestampWithTimeZone("registered_at")
+	val updatedAt = timestampWithTimeZone("updated_at")
+	override val primaryKey = PrimaryKey(dataSourceId)
+}
+
+/**
  * A team's rhythm. [startsOn] and [endsOn] are `DATE`, not instants: a cycle is a run of
  * whole days everyone in the team agrees on, and giving it a timezone would make "six
  * days left" depend on who is asking.

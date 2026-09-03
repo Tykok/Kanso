@@ -13,6 +13,7 @@ import dev.kanso.realtime.EventPublisher
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
+import dev.kanso.repo.RequestBaseRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
@@ -53,6 +54,8 @@ class NotionInboundTeamTest : PostgresTest() {
 	@Autowired lateinit var projectRows: ProjectRepository
 	@Autowired lateinit var ticketRows: TicketRepository
 	@Autowired lateinit var meta: NotionMetaRepository
+	@Autowired lateinit var requestBases: RequestBaseRepository
+	@Autowired lateinit var siphon: RequestSiphon
 	@Autowired lateinit var jobs: OutboundJobRepository
 	@Autowired lateinit var schedule: ScheduleService
 	@Autowired lateinit var notifications: NotificationService
@@ -166,6 +169,8 @@ class NotionInboundTeamTest : PostgresTest() {
 				)
 			),
 			meta = meta,
+			requestBases = requestBases,
+			siphon = siphon,
 			teams = teamRows,
 			projects = projectRows,
 			tickets = ticketRows,
