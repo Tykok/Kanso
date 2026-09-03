@@ -153,6 +153,13 @@ const CRUMBS: Record<string, { team?: boolean; project?: boolean; index?: boolea
   settings: {},
   t: { team: true, project: true, record: "Ticket" },
   p: { team: true, record: "Project" },
+  // Screen 41's two destinations. `team: true` because both are figures measured against
+  // one team's calendar and the crumb has to say which — a pace read against the wrong
+  // fortnight is the mistake `useOrganiseTeam` exists to prevent, and a heading that did
+  // not name the team would hide it. `record` is the fallback the page overwrites with the
+  // subject's own name once its query lands.
+  people: { team: true, record: "Progress" },
+  teams: { team: true, record: "Progress" },
 };
 
 /**
