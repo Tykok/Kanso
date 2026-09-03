@@ -10,13 +10,30 @@
 export type ChecklistFacts = {
   /** How many teams exist. The wizard makes one, so this is normally already true. */
   teams: number;
+  /**
+   * How many tickets have ever been filed, summed from the teams' identifier allocators
+   * rather than counted from a list.
+   *
+   * A high-water mark, and that is the point: the step is "Create a ticket", and deleting
+   * the ticket afterwards does not un-create it. Counting rows instead — which is what
+   * this used to be handed — made the step untick on a delete and, because the list it
+   * counted was scoped and filtered, on a keystroke in the filter box.
+   */
   tickets: number;
   /**
-   * Whether any ticket has been moved past where the composer leaves it.
+   * Whether any ticket **in the instance** has been moved past where the composer leaves
+   * it.
    *
-   * An approximation, and the honest one available: nothing records "somebody pressed
-   * 3". A ticket created straight into `in_progress` satisfies it too, which is fine —
-   * that person did move work along, which is what the step is about.
+   * Answered by the server now, as `Me.workMovedAlong`, which is what let the checklist
+   * stop fetching a ticket list to work it out (KAN-65). Instance-wide rather than scoped
+   * to whatever the sidebar is pointing at, which is the honest reading of the question:
+   * the step asks whether the reader has learnt the gesture, and a step that unticked
+   * itself when they clicked a different team was answering a question nobody asked.
+   *
+   * Still an approximation in one direction, and the honest one available: nothing
+   * records "somebody pressed 3". A ticket created straight into `in_progress` satisfies
+   * it too, which is fine — that person did move work along, which is what the step is
+   * about.
    */
   advanced: boolean;
   notionConfigured: boolean;

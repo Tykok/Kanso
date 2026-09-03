@@ -579,6 +579,15 @@ export type Me = {
   user: User;
   teamIds: string[];
   preferences: Preferences;
+  /**
+   * Whether any ticket in the instance has been moved past where the composer leaves it
+   * — screen 08's "Move it along", answered by the server so the sidebar's checklist
+   * needs no ticket list of its own. See `components/inbox/onboarding-checklist.tsx`.
+   *
+   * About the instance and not about this reader, like [version] and unlike the three
+   * fields above it.
+   */
+  workMovedAlong: boolean;
   /** The API's build version. Compared against WEB_VERSION: a skew is worth seeing. */
   version: string;
 };

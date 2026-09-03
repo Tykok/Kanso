@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useSetupState, useTeams, useTickets } from "@/lib/queries";
-import { categoryOf } from "@/lib/status";
+import { useMe, useSetupState, useTeams } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { checklist } from "./first-session";
 
@@ -20,28 +19,49 @@ import { checklist } from "./first-session";
  * Returns null when complete, so the sidebar does not have to know when to stop drawing
  * it, and null while the three queries are still in flight — a checklist that flashes
  * "0 of 4" at somebody with a full board is worse than one that arrives a beat late.
+ *
+ * **It asks the network for nothing of its own** (KAN-65). All three queries below are
+ * the shell's: `useTeams` draws the sidebar's tree, `useMe` and `useSetupState` gate the
+ * shell's two auth doors, so this component keys three cache entries that are already
+ * filled and adds no request to any screen. It used to call `useTickets()`, which depends
+ * on no view, so the flat door fired beside every `/grouped` and the list paid for two
+ * answers to one question.
+ *
+ * Pointing it at the grouped door was the wrong fix and the ticket says so: the board and
+ * the chart keep the flat one, so the duplicate would simply move to them. The right fix
+ * was to stop asking for rows — the question is "has anything moved along", and shipping
+ * two hundred tickets to answer it in the client was the actual mistake.
  */
 export function OnboardingChecklist() {
   const teams = useTeams();
-  const tickets = useTickets();
+  const me = useMe();
   const setup = useSetupState();
 
-  const state = useMemo(() => {
-    const rows = tickets.data ?? [];
-    return checklist({
-      teams: (teams.data ?? []).length,
-      tickets: rows.length,
-      // "Moved it along" against the status the composer leaves a ticket in. See
-      // `first-session.ts` for why this is the honest approximation available.
-      advanced: rows.some((ticket) => {
-        const category = categoryOf(ticket.status);
-        return category !== "backlog" && category !== "unstarted";
+  const state = useMemo(
+    () =>
+      checklist({
+        teams: (teams.data ?? []).length,
+        /**
+         * Summed off the teams already in hand, which is also what `emptyReason` reads on
+         * this very screen — one source for "has anything ever been filed" rather than
+         * two that can disagree.
+         *
+         * `ticketCount` is the team's identifier allocator and so a high-water mark: it
+         * climbs on a create and never comes back down. That is the *right* number here.
+         * A step called "Create a ticket" must not untick because the ticket was deleted,
+         * and `rows.length` did exactly that — worse, it was the length of a *scoped and
+         * filtered* list, so typing in the filter box unticked it too.
+         */
+        tickets: (teams.data ?? []).reduce((sum, team) => sum + team.ticketCount, 0),
+        // One boolean off `/api/me` — an indexed probe that stops at the first row that
+        // matches, in place of a 200-row list scanned in the browser.
+        advanced: me.data?.workMovedAlong ?? false,
+        notionConfigured: setup.data?.notion.configured ?? false,
       }),
-      notionConfigured: setup.data?.notion.configured ?? false,
-    });
-  }, [teams.data, tickets.data, setup.data]);
+    [teams.data, me.data, setup.data],
+  );
 
-  const loading = teams.isLoading || tickets.isLoading || setup.isLoading;
+  const loading = teams.isLoading || me.isLoading || setup.isLoading;
   if (loading || state.complete) return null;
 
   return (

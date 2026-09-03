@@ -89,6 +89,10 @@ class LocalAuthController(
 			user = UserResponse.of(user),
 			teamIds = emptyList(),
 			preferences = PreferencesResponse.of(preferences.get(user.id)),
+			// Not probed, and provably right rather than merely convenient: this endpoint
+			// wins the `users_single_owner` race on a brand-new instance, so there is no
+			// team to have filed a ticket in and nothing that could have moved.
+			workMovedAlong = false,
 			version = build.version ?: "unknown",
 		)
 	}
@@ -121,6 +125,19 @@ class LocalAuthController(
 			user = UserResponse.of(user),
 			teamIds = emptyList(),
 			preferences = PreferencesResponse.of(preferences.get(user.id)),
+			/*
+			 * The one field here that is an approximation rather than a fact, and it is
+			 * stated rather than hidden behind a default on the DTO.
+			 *
+			 * A joiner can land in an instance where plenty has moved, so `false` can be
+			 * wrong — for one cache entry. It is not probed because this method holds no
+			 * transaction of its own (the writes above open theirs inside the services),
+			 * and opening one around an auth path to tick a checklist row a beat earlier
+			 * is the wrong trade. `GET /api/me` corrects it within the client's 30s
+			 * staleTime, and a new account is sent through `/setup` first, where the
+			 * sidebar that would draw the row does not exist.
+			 */
+			workMovedAlong = false,
 			version = build.version ?: "unknown",
 		)
 	}
