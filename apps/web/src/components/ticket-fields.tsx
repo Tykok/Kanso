@@ -165,7 +165,14 @@ function Control({
   }
 }
 
+/** The panel's own `META_ROW`: an 11px caption at the left, its control at the right. */
 const ROW = "grid grid-cols-[88px_1fr] items-center gap-3";
 
+/**
+ * `justify-self-start` because a grid item stretches by default, and a stretched `<select>`
+ * puts its chevron against the far edge of the column — which reads as a full-width control
+ * somebody meant to style and did not. The native control sizes to its longest option, which
+ * is the width the value actually needs.
+ */
 const CONTROL =
-  "min-w-0 border-none bg-transparent p-0 text-13 text-foreground disabled:opacity-50";
+  "min-w-0 justify-self-start border-none bg-transparent p-0 text-13 text-foreground disabled:opacity-50";

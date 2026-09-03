@@ -124,8 +124,11 @@ test.describe("custom fields", () => {
       expect(shape.customFields[impact]).toBe(7);
     }).toPass({ timeout: 10_000 });
 
-    // And no refusal drawn, which is what a missing coercion would have produced.
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    // And no *field* refusal drawn, which is what a missing coercion would have produced —
+    // matched on the codec's own wording rather than on `role=alert` alone, because the
+    // ticket page already carries one: the duration note says "not sized yet" in an alert,
+    // and a bare count here would have been red on every ticket without an estimate.
+    await expect(page.getByRole("alert").filter({ hasText: /expects/ })).toHaveCount(0);
 
     await page.close();
     await api.dispose();
