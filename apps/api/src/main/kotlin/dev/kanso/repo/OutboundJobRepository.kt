@@ -99,7 +99,8 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		     FOR UPDATE SKIP LOCKED
 		)
 		UPDATE outbound_jobs j
-		   SET status = 'running', locked_at = now(), locked_by = :worker, attempts = j.attempts + 1
+		   SET status = 'running', locked_at = now(), locked_by = :worker, attempts = j.attempts + 1,
+		       heartbeat_at = clock_timestamp()
 		  FROM ready
 		 WHERE j.id = ready.id
 		RETURNING j.id, j.destination, j.entity_type, j.entity_id, j.operation, j.attempts, j.priority,
@@ -112,9 +113,43 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		.query(mapper)
 		.list()
 
+	/**
+	 * "The process holding these is still alive." Called on a clock while pushes are in
+	 * flight — see `OutboundWorker.beat`.
+	 *
+	 * This is the whole of the fix for a slow push being reclaimed under itself: it moves
+	 * the question the stuck-job sweep asks from "how long has this been running", which
+	 * a slow push and a dead worker answer identically, to "when was the holder last
+	 * seen", which only one of them can answer. `locked_at` is deliberately left alone,
+	 * so how long a push has actually been running stays readable — see `V29`.
+	 *
+	 * Keyed on the job id and never on `locked_by`, which is what keeps this compatible
+	 * with a worker id shared across concurrent drains: the ids come from the holder's
+	 * own in-memory register of what it is pushing right now, so no identity has to be
+	 * matched in SQL and the sweep's predicate stays `locked_by`-free.
+	 *
+	 * `status = 'running'` rather than the id alone. If the sweep has already reclaimed a
+	 * row — the worker really was gone, or a beat really was missed — the next beat must
+	 * not stamp liveness onto a job that is now pending and may already be claimed by
+	 * somebody else.
+	 */
+	fun heartbeat(jobIds: Collection<Long>): Int {
+		if (jobIds.isEmpty()) return 0
+		return jdbc.sql(
+			"""
+			UPDATE outbound_jobs SET heartbeat_at = clock_timestamp()
+			 WHERE status = 'running' AND id IN (:ids)
+			""".trimIndent()
+		).param("ids", jobIds).update()
+	}
+
 	fun markDone(id: Long) {
 		jdbc.sql(
-			"UPDATE outbound_jobs SET status = 'done', last_error = NULL, locked_at = NULL, locked_by = NULL WHERE id = :id"
+			"""
+			UPDATE outbound_jobs
+			   SET status = 'done', last_error = NULL, locked_at = NULL, locked_by = NULL, heartbeat_at = NULL
+			 WHERE id = :id
+			""".trimIndent()
 		).param("id", id).update()
 	}
 
@@ -135,7 +170,8 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 			       next_attempt_at = now() + make_interval(secs => :delaySeconds),
 			       last_error = :error,
 			       locked_at = NULL,
-			       locked_by = NULL
+			       locked_by = NULL,
+			       heartbeat_at = NULL
 			 WHERE id = :id
 			   AND NOT EXISTS (
 			       SELECT 1 FROM outbound_jobs other
@@ -175,7 +211,8 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 			       next_attempt_at = now() + make_interval(secs => :delaySeconds),
 			       last_error = :reason,
 			       locked_at = NULL,
-			       locked_by = NULL
+			       locked_by = NULL,
+			       heartbeat_at = NULL
 			 WHERE id = :id
 			   AND NOT EXISTS (
 			       SELECT 1 FROM outbound_jobs other
@@ -202,23 +239,47 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		jdbc.sql(
 			"""
 			UPDATE outbound_jobs
-			   SET status = 'failed', last_error = :error, locked_at = NULL, locked_by = NULL
+			   SET status = 'failed', last_error = :error,
+			       locked_at = NULL, locked_by = NULL, heartbeat_at = NULL
 			 WHERE id = :id
 			""".trimIndent()
 		).param("id", id).param("error", error.take(2000)).update()
 	}
 
 	/**
-	 * A worker that died mid-push leaves its job 'running' forever. Anything held
-	 * longer than [timeout] goes back to the queue — unless a newer pending job for
-	 * the same destination already supersedes it, in which case it is dropped.
+	 * A worker that died mid-push leaves its job 'running' forever. Anything whose holder
+	 * has not been heard from for [timeout] goes back to the queue — unless a newer
+	 * pending job for the same destination already supersedes it, in which case it is
+	 * dropped.
+	 *
+	 * **The age of the lock is not what is measured, and that is the point.** Reading
+	 * `locked_at` answers "how long has this push been running", and a push that is
+	 * merely slow answers it exactly like a process that died holding the row. The sweep
+	 * would then reclaim a job still in flight, a drain would claim it again, and the same
+	 * operation would go out twice — invisibly, while Notion is the only destination,
+	 * because a repeated `upsert` writes the same state. `COALESCE(heartbeat_at,
+	 * locked_at)` asks the question the sweep actually has: when was the holder last known
+	 * to be alive. See [heartbeat] and `V29`.
+	 *
+	 * [timeout] therefore stops meaning "longer than a push should ever take" and starts
+	 * meaning "more consecutive heartbeats missed than a live process would ever miss",
+	 * which is a fact about this deployment rather than a guess about somebody's remote.
+	 *
+	 * Still keyed on time and never on `locked_by`, which is what keeps a worker id shared
+	 * across concurrent drains harmless: nothing here compares identities, so two drains
+	 * presenting the same id cannot reclaim from each other. [heartbeat] keeps it that way
+	 * by addressing rows by id.
+	 *
+	 * `COALESCE` rather than the bare column, because a 'running' row with no heartbeat
+	 * never got as far as beating and has to stay reclaimable; NULL compares false against
+	 * everything, so the alternative is a job invisible to the sweep forever.
 	 *
 	 * Not scoped to a destination: a dead worker took everything it was holding with
 	 * it, whoever the work was for.
 	 *
 	 * `clock_timestamp()`, not `now()`: `now()` is the transaction's start time, so a
 	 * job locked inside the same transaction would never appear old enough. How long
-	 * a lock has actually been held is a wall-clock question.
+	 * ago something was last seen is a wall-clock question.
 	 */
 	fun reclaimStuck(timeout: Duration): Int {
 		// A zero timeout is a legitimate instruction — "reclaim anything locked before
@@ -228,7 +289,8 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 			"""
 			DELETE FROM outbound_jobs stale
 			 WHERE stale.status = 'running'
-			   AND stale.locked_at < clock_timestamp() - make_interval(secs => :seconds)
+			   AND COALESCE(stale.heartbeat_at, stale.locked_at)
+			         < clock_timestamp() - make_interval(secs => :seconds)
 			   AND EXISTS (
 			       SELECT 1 FROM outbound_jobs other
 			        WHERE other.destination = stale.destination
@@ -242,8 +304,9 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		return jdbc.sql(
 			"""
 			UPDATE outbound_jobs
-			   SET status = 'pending', locked_at = NULL, locked_by = NULL
-			 WHERE status = 'running' AND locked_at < clock_timestamp() - make_interval(secs => :seconds)
+			   SET status = 'pending', locked_at = NULL, locked_by = NULL, heartbeat_at = NULL
+			 WHERE status = 'running'
+			   AND COALESCE(heartbeat_at, locked_at) < clock_timestamp() - make_interval(secs => :seconds)
 			""".trimIndent()
 		).param("seconds", seconds.toDouble()).update()
 	}

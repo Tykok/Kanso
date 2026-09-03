@@ -12,6 +12,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.net.InetAddress
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -58,6 +59,35 @@ class OutboundWorker(
 		.getOrDefault("unknown") + "/" + UUID.randomUUID().toString().take(8)
 
 	/**
+	 * The jobs this process has in flight right now, and the only thing [beat] stamps.
+	 *
+	 * In memory rather than read back out of the table, because the question is about
+	 * *this* process and the table cannot answer it: a 'running' row says somebody claimed
+	 * it, not that whoever did is still there — which is the entire distinction the
+	 * heartbeat exists to draw. Reading `locked_by` would not help either. The id is
+	 * shared by every drain in this process and, worse, would be an identity comparison
+	 * back in the sweep's SQL, which is precisely what makes concurrent drains harmless
+	 * today.
+	 *
+	 * Concurrent because there is one drain per destination, each on its own scheduler
+	 * thread, and [beat] walks this from a third.
+	 */
+	private val inFlight: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+
+	/**
+	 * How often to prove this process is alive, derived rather than configured.
+	 *
+	 * A tenth of the timeout the sweep applies, so declaring a worker dead takes ten
+	 * consecutive missed beats. That ratio is the property worth holding — a second knob
+	 * could be set to a value larger than the timeout, which would make every in-flight
+	 * job reclaimable between beats and reintroduce exactly the replay this closes. The
+	 * floor keeps a deliberately tiny timeout (the tests use one) from asking for a beat
+	 * every few milliseconds.
+	 */
+	private val heartbeatInterval: Duration =
+		props.sync.outbound.stuckJobTimeout.dividedBy(10).coerceAtLeast(Duration.ofSeconds(1))
+
+	/**
 	 * One clock per destination, rather than one clock walking all of them.
 	 *
 	 * The batch size is already a per-destination budget, so a destination that is down
@@ -79,6 +109,10 @@ class OutboundWorker(
 		byDestination.values.forEach { handler ->
 			scheduler.scheduleWithFixedDelay({ drain(handler) }, interval)
 		}
+		// One beat for the whole process, not one per destination: [inFlight] is already
+		// every push this process is holding, and what is being reported is the process
+		// being alive rather than any one destination's progress.
+		scheduler.scheduleWithFixedDelay(::beat, heartbeatInterval)
 	}
 
 	fun drain(handler: OutboundJobHandler) {
@@ -91,6 +125,10 @@ class OutboundWorker(
 		// priority order that keeps teams ahead of tickets.
 		runBlocking {
 			batch.forEach { job ->
+				// Registered before the push and dropped in `finally`, so the window in
+				// which the sweep could read this job as abandoned is never open while
+				// the push is running — including when the push throws.
+				inFlight += job.id
 				try {
 					val completion = handler.handle(job)
 					tx.executeWithoutResult {
@@ -99,11 +137,43 @@ class OutboundWorker(
 					}
 				} catch (e: Exception) {
 					record(handler, job, e)
+				} finally {
+					inFlight -= job.id
 				}
 			}
 		}
 	}
 
+	/**
+	 * Tells the table this process is still here, for every push it is holding.
+	 *
+	 * This runs on its own clock because it cannot run on the drain's: a drain is blocked
+	 * inside `handler.handle` for the whole duration of the remote call, which is exactly
+	 * the interval that needs covering. `application.yml` sizes the scheduler pool for
+	 * this thread by name.
+	 *
+	 * Nothing may escape. `scheduleWithFixedDelay` cancels a task that throws, so one
+	 * failed beat would silently stop every future beat, and the next sweep would reclaim
+	 * every in-flight job in the process and replay all of them — the failure this whole
+	 * change exists to remove, arriving through the back door. A missed beat is survivable
+	 * (it takes ten); a cancelled clock is not.
+	 */
+	fun beat() {
+		val held = inFlight.toList()
+		if (held.isEmpty()) return
+		try {
+			tx.executeWithoutResult { jobs.heartbeat(held) }
+		} catch (e: Exception) {
+			log.warn("Could not refresh the heartbeat on {} in-flight job(s)", held.size, e)
+		}
+	}
+
+	/**
+	 * Returns what a *dead* worker was holding — and, since `V29`, nothing that a live one
+	 * is merely slow with. `stuckJobTimeout` is now read as a number of missed heartbeats
+	 * rather than as a longest-acceptable push; [OutboundJobRepository.reclaimStuck]
+	 * carries the argument.
+	 */
 	@Scheduled(fixedDelay = 60_000)
 	fun reclaimAbandoned() {
 		if (!props.sync.outbound.enabled) return

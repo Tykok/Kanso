@@ -54,8 +54,19 @@ class OutboundWorkerTest : PostgresTest() {
 		val recorded = mutableListOf<Long>()
 		val givenUp = mutableListOf<Long>()
 
+		/**
+		 * Runs once, from inside the first push, and is forgotten before it runs.
+		 *
+		 * It is how "something else happened while this push was in flight" becomes a
+		 * statement a test can make. Cleared first rather than after, because what the
+		 * caller below puts in here starts a drain, and a drain that re-entered this hook
+		 * would never come back out.
+		 */
+		var duringPush: (() -> Unit)? = null
+
 		override suspend fun handle(job: OutboundJob): Completion {
 			handled += job
+			duringPush?.also { duringPush = null }?.invoke()
 			failWith?.let { throw it }
 			return Completion { recorded += job.id }
 		}
@@ -85,6 +96,71 @@ class OutboundWorkerTest : PostgresTest() {
 
 	private fun queue(id: UUID) =
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
+
+	/**
+	 * Makes the in-flight push look [age] old, lock and heartbeat alike.
+	 *
+	 * Ageing the row rather than waiting: what is under test is a push that outlasts the
+	 * timeout, and the only alternative to moving the timestamps is a test that sleeps for
+	 * longer than `stuck-job-timeout`.
+	 */
+	private fun backdate(entityId: UUID, age: Duration) {
+		jdbc.sql(
+			"""
+			UPDATE outbound_jobs
+			   SET locked_at    = clock_timestamp() - make_interval(secs => :seconds),
+			       heartbeat_at = clock_timestamp() - make_interval(secs => :seconds)
+			 WHERE entity_id = :id AND status = 'running'
+			""".trimIndent()
+		).param("seconds", age.seconds.toDouble()).param("id", entityId).update()
+	}
+
+	/**
+	 * The replay KAN-61 is about, as an interleaving rather than a race.
+	 *
+	 * The sweep has its own clock, so in production it fires from another thread while a
+	 * drain sits blocked inside `handle`. Here it is called *from* inside `handle`, which
+	 * is that same interleaving with the timing taken out of it: one thread, one
+	 * transaction, and the same verdict every run.
+	 *
+	 * What is asserted is the double *send*, not the state of the row. A replayed push is
+	 * invisible from the queue's side — the second claim looks like any other claim, and
+	 * the row ends up 'done' either way — and it is invisible against a client that
+	 * no-ops, which is what has kept this bug quiet. `handled` counts the times the
+	 * operation actually left the building, and nothing else here would notice.
+	 */
+	@Test
+	fun `a push past the stuck-job timeout is not reclaimed and replayed under itself`() {
+		val id = UUID.randomUUID()
+		queue(id)
+
+		val handler = FakeHandler()
+		val worker = worker(handler)
+		handler.duringPush = {
+			// Forty minutes into a push, against a five-minute timeout. Any deadline worth
+			// configuring is one that a slow enough remote can outlast, which is why
+			// lengthening it was never the fix.
+			backdate(id, Duration.ofMinutes(40))
+			// The heartbeat's own clock would have done this; it runs by hand here for the
+			// same reason the sweep does.
+			worker.beat()
+			worker.reclaimAbandoned()
+			// And whatever the sweep put back, a peer drain claims on its next tick.
+			worker.drain(handler)
+		}
+
+		worker.drain(handler)
+
+		// Counted for this entity rather than over everything the drain touched: a drain
+		// claims a whole batch, so a total would be a statement about the shared queue and
+		// would go red on somebody else's leftover row instead of on a replay.
+		assertEquals(
+			1,
+			handler.handled.count { it.entityId == id },
+			"the same operation went out twice while the first send was still in the air",
+		)
+		assertEquals("done", statusOf(id))
+	}
 
 	@Test
 	fun `a handled job is marked done in the same transaction that records it`() {
@@ -186,7 +262,42 @@ class OutboundWorkerTest : PostgresTest() {
 			scheduler = scheduler,
 		).start()
 
-		assertEquals(listOf(Duration.ofMillis(250)), scheduler.delays)
+		assertEquals(
+			// One drain clock per handler, at the configured interval, plus the single
+			// heartbeat that covers every push this process holds — the drains cannot beat
+			// for themselves, because a blocked drain is exactly the interval to cover.
+			listOf(Duration.ofMillis(250), Duration.ofSeconds(30)),
+			scheduler.delays,
+		)
+	}
+
+	/**
+	 * The beat interval is derived from the timeout rather than configured beside it.
+	 *
+	 * A second knob could be set larger than the timeout, and then every in-flight job
+	 * would be reclaimable in the gap between two beats — the replay this all exists to
+	 * close, arriving through configuration instead of through code.
+	 */
+	@Test
+	fun `the heartbeat fits ten beats inside the window that declares a worker dead`() {
+		val scheduler = RecordingScheduler()
+
+		OutboundWorker(
+			props = KansoProperties(
+				sync = KansoProperties.Sync(
+					outbound = KansoProperties.Outbound(
+						pollIntervalMs = 250,
+						stuckJobTimeout = Duration.ofMinutes(20),
+					),
+				),
+			),
+			jobs = jobs,
+			handlers = listOf(FakeHandler()),
+			tx = tx,
+			scheduler = scheduler,
+		).start()
+
+		assertEquals(Duration.ofMinutes(2), scheduler.delays.last())
 	}
 
 	@Test
