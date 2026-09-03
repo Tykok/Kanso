@@ -93,6 +93,20 @@ export const dayValue = (instant: KansoInstant | null | undefined): string =>
 export const fromDayValue = (value: string): KansoInstant | null =>
   value ? { at: `${value}T00:00:00Z`, hasTime: false } : null;
 
+/**
+ * One custom field value, and the three JSON scalars are the whole vocabulary —
+ * `ticket_field_values_value_chk` refuses an object, an array and a JSON null at the
+ * database, so this union is not a simplification of what can arrive.
+ *
+ * There is no `null` in it: a field with no value has no key at all, because `V32` keeps no
+ * row for one. `undefined` from a map lookup is the only spelling of "not set".
+ *
+ * Declared here rather than in `api/fields.ts` with the rest of the slice, because [Ticket]
+ * carries it and that would make the two modules import each other. The slice imports it
+ * back from here.
+ */
+export type CustomFieldValue = string | number | boolean;
+
 export type Ticket = {
   id: string;
   /**
@@ -120,6 +134,22 @@ export type Ticket = {
   assigneeIds: string[];
   docIds: string[];
   archived: boolean;
+  /**
+   * `V32`'s custom field values, keyed by field id — `{}` for a ticket whose team has
+   * defined none, and for every draft.
+   *
+   * **Required, not optional**, and it is the one field on this row that is. The rest are
+   * optional because the server omits nulls; this is a map, so an empty one is sent as `{}`
+   * and the key is always there. That is deliberate rather than incidental: the whole reason
+   * this shipped before anybody asked for a custom field is that `TicketResponse` is now read
+   * by bearer-token scripts and by an MCP agent, and a key that appears later is a key that
+   * breaks them. Typing it as required is this client agreeing to the same contract.
+   *
+   * Unlike labels, these ride on the ticket row rather than living in a cache entry of their
+   * own — so a list already drawn carries them, and `useTicketFields` exists only for the
+   * panel that edits one ticket.
+   */
+  customFields: Record<string, CustomFieldValue>;
   mirror: Mirror;
   createdAt: string;
   updatedAt: string;

@@ -60,6 +60,7 @@ const ticket: Ticket = {
   priority: "medium",
   assigneeIds: [],
   docIds: [],
+  customFields: {},
   archived: false,
   mirror: { state: "synced" },
   createdAt: "2026-08-07T09:00:00Z",

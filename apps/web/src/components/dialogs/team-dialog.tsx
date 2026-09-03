@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type InstanceRole, type Team } from "@/lib/api";
 import { keys, useMe } from "@/lib/queries";
 import { canConfigure } from "@/lib/seat";
+import { CustomFieldsSection } from "./custom-fields-section";
 import { DialogFrame, Field } from "./field";
 import { MembersSection } from "./members-section";
 
@@ -223,6 +224,21 @@ function TeamForm({
         // No id to post a membership against yet, so the section itself would have
         // nothing to talk to — say why it is missing rather than leave a gap.
         <p className="text-11 text-faint">Members can be added once the team exists.</p>
+      )}
+
+      {team ? (
+        // Same doctrine as the roster above: reads are open — every screen that renders a
+        // ticket needs a field's name and type to render its value — and only the writes are
+        // scoped. `CustomFieldService.define` reaches `TicketAccess.requireTeam`, so a
+        // viewer is refused there whatever this draws.
+        <CustomFieldsSection
+          teamId={team.id}
+          canConfigure={canConfigureMembers(me.data?.user.instanceRole)}
+        />
+      ) : (
+        // A field is scoped to a team, so there is no team to scope one to yet — the same
+        // shape of absence the roster above explains, and worth saying for the same reason.
+        <p className="text-11 text-faint">Custom fields can be added once the team exists.</p>
       )}
     </DialogFrame>
   );

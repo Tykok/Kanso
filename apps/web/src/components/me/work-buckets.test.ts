@@ -73,6 +73,7 @@ const ticket = (id: string, extra: Partial<Ticket> = {}): Ticket => ({
   priority: "medium",
   assigneeIds: ["me"],
   docIds: [],
+  customFields: {},
   archived: false,
   mirror: { state: "disabled" },
   createdAt: "2026-08-01T00:00:00Z",
