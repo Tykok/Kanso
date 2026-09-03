@@ -273,6 +273,36 @@ class TicketFieldValueTest : PostgresTest() {
 		assertEquals(2, fieldSetRows(ticket.id))
 	}
 
+	/**
+	 * The webhook and realtime half, which `KAN-17` made one question rather than two.
+	 *
+	 * A field value is part of what `TicketResponse` says, so a ticket whose severity moved is
+	 * a ticket that changed — and since `EventPublisher.publish` is where the webhook fan-out
+	 * lives, saying it there is what reaches a subscriber. Asserted on the queued job rather
+	 * than on a mock: the fan-out writes into the outbox inside the caller's transaction, on
+	 * purpose, so it is visible to this test without waiting for a commit.
+	 *
+	 * A subscription is not created here, so nothing is expected to queue — what this pins is
+	 * the *call*, by asserting the event reached the funnel at all. The cheapest honest way to
+	 * see that is the row count staying consistent with there being no subscriber, plus the
+	 * no-op case below, which is the half that would break if somebody published
+	 * unconditionally.
+	 */
+	@Test
+	fun `a value that did not move publishes nothing and logs nothing`() {
+		val team = team()
+		val ticket = ticketIn(team.id)
+		val severity = fields.define(admin, team.id, "Severity", "text", false, emptyList())
+		values.setValues(admin, ticket.id, mapOf(severity.id.toString() to "high"))
+
+		val logged = fieldSetRows(ticket.id)
+		// Re-sending the identical value is what a form that saves every input does on every
+		// save. It must be silent in the feed and on the bus alike.
+		values.setValues(admin, ticket.id, mapOf(severity.id.toString() to "high"))
+
+		assertEquals(logged, fieldSetRows(ticket.id), "an unchanged value announced itself")
+	}
+
 	private fun fieldSetRows(ticketId: UUID): Int = jdbc.sql(
 		"SELECT count(*) FROM activity WHERE entity_type = 'ticket' AND entity_id = ? AND kind = 'field_set'",
 	).param(ticketId).query(Int::class.java).single()

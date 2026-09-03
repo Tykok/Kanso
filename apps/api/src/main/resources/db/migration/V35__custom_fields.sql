@@ -256,18 +256,32 @@ CREATE INDEX ticket_field_values_field_idx ON ticket_field_values (field_id);
 -- the field's id and name travel in the payload — the way `labelled` carries the label's
 -- name, so that a feed still reads correctly after the definition is renamed or deleted.
 --
--- **The list restated here is `V23`'s, not `V8`'s.** That matters and it is the whole reason
--- this block is not three lines: Postgres has no `ALTER CONSTRAINT` for a CHECK's
--- expression, so widening one means re-stating the vocabulary whole, and re-stating it from
--- the wrong ancestor silently *revokes* whatever a later migration added. `V8` wrote eleven
--- words; `V17`, `V21` and `V23` each widened the list, and `V23` is the newest statement of
--- it — `carried_over`, `estimated` and `health_posted` are its, and a list copied from `V8`
--- would drop all three while Kotlin carried on accepting them. `V23` records the same trap
--- from the other side: the two migrations before it were written on branches that could not
--- see each other, and the union is the merge's job.
+-- **The list restated here is `V30`'s, not `V8`'s and not `V23`'s.** That matters and it is
+-- the whole reason this block is not three lines: Postgres has no `ALTER CONSTRAINT` for a
+-- CHECK's expression, so widening one means re-stating the vocabulary whole, and re-stating
+-- it from the wrong ancestor silently *revokes* whatever a later migration added — Kotlin
+-- carries on accepting the word and the database starts refusing the row, which is a failure
+-- with no compile error and no obvious test.
 --
--- So: fourteen words from `V23`, plus `field_set`. From now on *this* migration is the
--- authority, and the next one to widen it should re-state this list rather than `V23`'s.
+-- The chain is worth writing down, because the number of amendments is exactly what makes
+-- this easy to get wrong. `V8` wrote eleven words. `V17` added `carried_over`, `V21` added
+-- `estimated`, `V23` added `health_posted` — and `V23` records the trap from the inside: its
+-- two predecessors were written on branches that could not see each other, so the union was
+-- the merge's job. Then `V30` added `token_revoked`, which is the one this migration was
+-- first written without: it was drafted against `V23` on a branch that predated `V30`, and
+-- the list below was fifteen words that quietly dropped `token_revoked` while
+-- `ActivityKind.TOKEN_REVOKED` went on writing it. Caught by grepping for the newest
+-- statement rather than the nearest remembered one, which is the only reliable way to find
+-- it.
+--
+-- So: fifteen words from `V30`, plus `field_set`. From now on *this* migration is the
+-- authority, and the next one to widen it must re-state this list — after checking that no
+-- migration numbered above it has done so first.
+--
+-- `activity_entity_type_chk` is deliberately untouched. `V30` widened it to five values for
+-- an account's own feed, and a custom field is a scalar of a ticket: these rows are written
+-- against `ActivityEntity.TICKET`, which `V8` already allowed. Re-stating a list this
+-- migration has no reason to change would be one more chance to drop a word from it.
 -- ---------------------------------------------------------------------------
 ALTER TABLE activity DROP CONSTRAINT activity_kind_chk;
 
@@ -275,4 +289,4 @@ ALTER TABLE activity ADD CONSTRAINT activity_kind_chk
   CHECK (kind IN ('created', 'status_changed', 'priority_changed', 'assigned',
                   'unassigned', 'renamed', 'scheduled', 'archived', 'commented',
                   'labelled', 'mirror_pushed', 'carried_over', 'estimated',
-                  'health_posted', 'field_set'));
+                  'health_posted', 'token_revoked', 'field_set'));

@@ -5,6 +5,9 @@ import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.CustomField
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.User
+import dev.kanso.realtime.ChangeKind
+import dev.kanso.realtime.EventPublisher
+import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.CustomFieldRepository
 import dev.kanso.repo.TicketRepository
 import org.springframework.stereotype.Service
@@ -31,6 +34,28 @@ class TicketFieldService(
 	private val tickets: TicketRepository,
 	private val access: TicketAccess,
 	private val activity: ActivityService,
+	/**
+	 * The one funnel, reused — never a second one.
+	 *
+	 * A field value is part of what `TicketResponse` says, so a ticket whose severity moved is
+	 * a ticket that changed, and everything downstream of [EventPublisher] needs to hear it:
+	 * a second browser holding the same list, and — since `KAN-17` — a webhook subscriber
+	 * mirroring tickets. Staying silent would make a custom field the one part of a ticket an
+	 * integration could only discover by polling, which is a strange thing to ship in the same
+	 * breath as putting it on the public shape.
+	 *
+	 * `EventPublisher.publish` is where the webhook fan-out already lives, precisely so that
+	 * "this entity changed" is said once. So this calls that, with the ticket event every
+	 * other ticket write publishes; it does not reach `WebhookFanout`, and there is no second
+	 * delivery path to keep in step.
+	 *
+	 * `LabelService` publishes nothing for an attach, and that is a real inconsistency rather
+	 * than a precedent this follows. The difference that decides it: a label lives in its own
+	 * cache entry and its own endpoint, so a client that wants one asks for one, while
+	 * `customFields` rides on the ticket row and goes stale with it. Fixing the label side is
+	 * not this ticket's business and is deliberately left alone.
+	 */
+	private val events: EventPublisher,
 	private val json: ObjectMapper,
 ) {
 
@@ -81,6 +106,7 @@ class TicketFieldService(
 		}
 
 		val before = fields.valuesOf(ticketId)
+		var moved = false
 		for ((field, value) in resolved) {
 			val had = before[field.id]
 			// Nothing written and nothing logged for a value that did not move. Without this a
@@ -92,6 +118,16 @@ class TicketFieldService(
 				fields.setValue(ticketId, field.id, FieldValueCodec.encode(json, value))
 			}
 			record(actor, ticket, field, had, value)
+			moved = true
+		}
+		// Once for the request, not once per field: a form saving four inputs is one decision,
+		// and four events would be four webhook deliveries and four refetches of the same row.
+		// Guarded on something having actually changed, for the same reason the log above is —
+		// a re-submitted form that moved nothing is not a change anybody should be told about.
+		if (moved) {
+			events.publish(
+				KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, ticket.teamId, ticket.projectId),
+			)
 		}
 		return fields.valuesOf(ticketId)
 	}
