@@ -16,8 +16,10 @@ import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.ActivityService
+import dev.kanso.service.CustomFieldService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketDetail
+import dev.kanso.service.TicketFieldService
 import dev.kanso.service.TicketService
 import dev.kanso.service.ViewSortBy
 import org.hamcrest.Matchers.containsString
@@ -73,6 +75,8 @@ class McpToolsTest : PostgresTest() {
 	@Autowired lateinit var teamRepo: TeamRepository
 	@Autowired lateinit var tickets: TicketService
 	@Autowired lateinit var activity: ActivityService
+	@Autowired lateinit var fields: CustomFieldService
+	@Autowired lateinit var values: TicketFieldService
 	@Autowired lateinit var jdbc: JdbcClient
 
 	@Autowired lateinit var tools: List<McpTool>
@@ -307,6 +311,118 @@ class McpToolsTest : PostgresTest() {
 		assertTrue(answer.contains(filed.identifier!!), "the identifier: $answer")
 		assertTrue(answer.contains("Timeline drags past its cycle"), "the title: $answer")
 		assertTrue(answer.contains("todo"), "and the status, in the vocabulary the wire uses: $answer")
+	}
+
+	/**
+	 * The shape `V32` exists to have added *before* an agent pinned the old one.
+	 *
+	 * Every field the team defined, by name, whether or not this ticket holds a value — and
+	 * the unset one is the reason it is worth the extra query. An agent that has seen
+	 * `Customer: not set` knows the field exists and what to call it in
+	 * `kanso_update_ticket`; printing only the filled ones would make a team's vocabulary
+	 * discoverable exclusively on the tickets that already use it.
+	 */
+	@Test
+	fun `get ticket names every custom field the team defined, set or not`() {
+		val alice = user()
+		val hers = teamOf(alice, "Hers")
+		val filed = fileTicket(hers, alice, "A customer hit the sync bug")
+		val severity = fields.define(asSessionOf(alice), hers.id, "Severity", "select", false, listOf("low", "high"))
+		fields.define(asSessionOf(alice), hers.id, "Customer", "text", false, emptyList())
+		values.setValues(asSessionOf(alice), filed.ticket.id, mapOf(severity.id.toString() to "high"))
+		SecurityContextHolder.clearContext()
+
+		val answer = textOf(
+			call("kanso_get_ticket", """{"ticket":"${filed.identifier}"}""", bearer(alice)),
+		)
+
+		assertTrue(answer.contains("custom fields:"), "the section: $answer")
+		assertTrue(answer.contains("Severity: high"), "the value it holds, by name: $answer")
+		assertTrue(
+			answer.contains("Customer: not set"),
+			"a field with no value must still be named, or an agent cannot learn it exists: $answer",
+		)
+		// Never the id. That is the whole reason this tool pays for a definitions read.
+		assertTrue(!answer.contains(severity.id.toString()), "a UUID leaked into an agent's page: $answer")
+	}
+
+	/**
+	 * A team that has defined none draws no section at all — not an empty heading, which
+	 * costs an agent tokens to read and rule out on every ticket in the instance.
+	 */
+	@Test
+	fun `get ticket says nothing about custom fields when the team has none`() {
+		val alice = user()
+		val hers = teamOf(alice, "Hers")
+		val filed = fileTicket(hers, alice, "Nothing custom here")
+
+		val answer = textOf(
+			call("kanso_get_ticket", """{"ticket":"${filed.identifier}"}""", bearer(alice)),
+		)
+
+		assertTrue(!answer.contains("custom fields"), "an empty section was drawn anyway: $answer")
+	}
+
+	/**
+	 * The write side, by the same names the read side prints — and case-insensitively,
+	 * because `severity` and `Severity` are the same field to everybody except a map lookup.
+	 */
+	@Test
+	fun `update ticket sets a custom field by name, and refuses one that is not there`() {
+		val alice = user()
+		val hers = teamOf(alice, "Hers")
+		val filed = fileTicket(hers, alice, "Timeline drags past its cycle")
+		val severity = fields.define(asSessionOf(alice), hers.id, "Severity", "select", false, listOf("low", "high"))
+		SecurityContextHolder.clearContext()
+
+		val answer = textOf(
+			call(
+				"kanso_update_ticket",
+				"""{"ticket":"${filed.identifier}","fields":{"severity":"high"}}""",
+				bearer(alice),
+			),
+		)
+		assertTrue(answer.startsWith("Updated"), "the write was reported: $answer")
+		assertEquals(
+			"high",
+			values.valuesOf(asSessionOf(alice), filed.ticket.id)[severity.id],
+			"the tool reported a write it did not make",
+		)
+		SecurityContextHolder.clearContext()
+
+		// A name nobody defined ends the exchange in one more call rather than sending the
+		// agent guessing — the discipline `McpErrors` describes.
+		val refused = call(
+			"kanso_update_ticket",
+			"""{"ticket":"${filed.identifier}","fields":{"Blast radius":"wide"}}""",
+			bearer(alice),
+		)
+		refused.andExpect { jsonPath("$.result.isError") { value(true) } }
+		assertTrue(textOf(refused).contains("Severity"), "the refusal lists what does exist: ${textOf(refused)}")
+	}
+
+	/**
+	 * The type reaches the agent's refusal too. An agent handed "400" learns nothing; one
+	 * told "expects a number" fixes its own call.
+	 */
+	@Test
+	fun `update ticket refuses a wrongly typed custom field with a sentence naming the type`() {
+		val alice = user()
+		val hers = teamOf(alice, "Hers")
+		val filed = fileTicket(hers, alice, "Sized wrong")
+		fields.define(asSessionOf(alice), hers.id, "Impact", "number", false, emptyList())
+		SecurityContextHolder.clearContext()
+
+		val refused = call(
+			"kanso_update_ticket",
+			"""{"ticket":"${filed.identifier}","fields":{"Impact":"three"}}""",
+			bearer(alice),
+		)
+
+		refused.andExpect { jsonPath("$.result.isError") { value(true) } }
+		val text = textOf(refused)
+		assertTrue(text.contains("Impact"), "the field: $text")
+		assertTrue(text.contains("number"), "and what it expected: $text")
 	}
 
 	@Test
