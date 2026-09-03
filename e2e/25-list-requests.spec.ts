@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, apiAs, openAs, seedInstance, seedTeam, seedTicket, unique, uniqueKey } from "./support";
+import {
+  ADMIN,
+  apiAs,
+  openAs,
+  seedInstance,
+  seedTeam,
+  seedTicket,
+  unique,
+  uniqueKey,
+  viewButton,
+} from "./support";
 
 /**
  * 25. The main screen asks for its tickets once per view.
@@ -76,7 +86,11 @@ test.describe("25. one question, one request", () => {
       flat: 0,
     });
 
-    await page.getByRole("button", { name: "Board" }).click();
+    // `viewButton`, not the page: this file was delivered green and read red in the suite,
+    // because `getByRole("button", { name: "Board" })` also matches the team `17-views`
+    // seeds as `Board-<suffix>` and the `⋯` beside it. Nothing about the request count was
+    // ever wrong — only which element the click landed on, once another file had run.
+    await viewButton(page, "Board").click();
     const board = await settle();
 
     /**
@@ -90,7 +104,7 @@ test.describe("25. one question, one request", () => {
       grouped: 0,
     });
 
-    await page.getByRole("button", { name: "Timeline" }).click();
+    await viewButton(page, "Timeline").click();
     const timeline = await settle();
 
     /**

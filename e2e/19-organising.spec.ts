@@ -239,7 +239,20 @@ test("scenario 19c — six rows selected, one strip action, and a chip removed w
   await api.dispose();
 });
 
-test("scenario 19d — workload is a count and an age, never an estimate", async ({ browser }) => {
+/**
+ * Scenario 19d, and the drawing's refusal as it stands today.
+ *
+ * It read "never an estimate", after the drawing's own "la charge se lit au nombre et à
+ * l'ancienneté", and that is no longer what the screen does: `workload-view.tsx` reversed
+ * it in its own docstring once tickets had an estimate to read, and put the points
+ * *beside* the count rather than in place of it — on the condition that every row showing
+ * a total in points also says how many of its tickets are not in that total. So the
+ * refusal being kept is the narrower one, and it is the one worth a test: a sum that
+ * leaves out the unsized half of a plate must never be printed as if it were the plate.
+ */
+test("scenario 19d — workload is a count and an age, and says what its points leave out", async ({
+  browser,
+}) => {
   const api = await apiAs(ADMIN);
   const team = await seedTeam(api, { name: unique("Loaded"), key: uniqueKey() });
   const mine = await seedTicket(api, { teamId: team.id, title: unique("Mine") });
@@ -259,17 +272,31 @@ test("scenario 19d — workload is a count and an age, never an estimate", async
   await expect(page.getByTestId("workload-row").last()).toContainText("Unassigned");
 
   /**
-   * The bar's accessible name is the count and the age, in words. If a points column ever
-   * arrives, this is where it would have to be described — and the drawing forbids it.
+   * The bar's accessible name: the count, then the sized part, then the age — and the
+   * unsized remainder said out loud between them. Neither ticket here has an estimate, so
+   * `0 points and 1 unestimated` is the whole point of the assertion: a screen reader is
+   * told the sum covers none of this plate, which is what stops `0 pts` reading as "no
+   * work".
    *
    * Scoped to the person's row: both rows here carry one open ticket zero days old, so the
    * name is ambiguous by construction rather than by accident, and asserting it unscoped
    * matched two elements.
    */
   await expect(
-    page.getByTestId("workload-row").first().getByRole("img", { name: /1 open, oldest 0 days/ }),
+    page
+      .getByTestId("workload-row")
+      .first()
+      .getByRole("img", { name: /1 open, 0 points and 1 unestimated, oldest 0 days/ }),
   ).toBeVisible();
-  await expect(page.getByText(/No estimate in points/)).toBeVisible();
+
+  // The same claim in the figures column, where `—` is the sized total of nothing and
+  // `+1 ?` is the ticket that total could not see. Never a `0`, which would read as "one
+  // ticket worth nothing".
+  await expect(page.getByTestId("workload-row").first()).toContainText("+1 ?");
+
+  // And the sentence above the chart, which is what makes the two numbers legible as two
+  // different claims rather than as a count and a contradiction of it.
+  await expect(page.getByText(/the rest is counted, not weighed/)).toBeVisible();
 
   await api.dispose();
 });

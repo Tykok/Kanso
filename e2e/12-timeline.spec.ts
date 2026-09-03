@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, apiAs, openAs, seedInstance, seedTeam, seedTicket, unique, uniqueKey } from "./support";
+import {
+  ADMIN,
+  apiAs,
+  openAs,
+  seedInstance,
+  seedTeam,
+  seedTicket,
+  unique,
+  uniqueKey,
+  viewButton,
+} from "./support";
 
 test.beforeAll(seedInstance);
 
@@ -69,7 +79,7 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
 
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: team.name, exact: true }).click();
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await viewButton(page, "Timeline").click();
 
   // Bars are named `${identifier}: ${title} — ${statusLabel}` and reached by role — no
   // class selector anywhere in this file, which is the debt `follow-ups.md` records

@@ -9,6 +9,7 @@ import {
   seedTicket,
   unique,
   uniqueKey,
+  viewButton,
 } from "./support";
 
 test.beforeAll(seedInstance);
@@ -27,7 +28,7 @@ test.beforeAll(seedInstance);
 async function openBoard(page: Page, team: string) {
   await page.getByRole("button", { name: team, exact: true }).first().click();
   await expect(page.getByRole("heading", { name: team, level: 1 })).toBeVisible();
-  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Board" }).click();
+  await viewButton(page, "Board").click();
   await expect(page.getByTestId("board")).toBeVisible();
 }
 
@@ -343,7 +344,7 @@ test("06 — the dependency picker still has the overlay to itself", async ({ br
 
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: teamName, exact: true }).first().click();
-  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Timeline" }).click();
+  await viewButton(page, "Timeline").click();
 
   // `d` routes the picker through this overlay. Two lists of tickets on one screen with
   // different consequences is the one thing the rewrite must not do, so the search is off

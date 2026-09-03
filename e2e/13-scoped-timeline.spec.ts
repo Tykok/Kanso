@@ -13,6 +13,7 @@ import {
   unique,
   uniqueKey,
   userIdOf,
+  viewButton,
 } from "./support";
 
 test.beforeAll(seedInstance);
@@ -92,7 +93,7 @@ test("scenario 13 — a team sees the other team's work, cannot move it, and is 
 
   const page = await openAs(browser, MEMBER);
   await page.getByRole("button", { name: mine.name, exact: true }).click();
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await viewButton(page, "Timeline").click();
 
   // A foreign bar, drawn because the shared project widened the scope, named after the
   // team that owns it rather than the one the viewer opened — identifiers already carry

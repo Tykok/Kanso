@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   ADMIN,
   apiAs,
+  navLink,
   openAs,
   seedInstance,
   seedProject,
@@ -228,7 +229,7 @@ test("scenario 23 — the breadcrumb names the route, and claims no parent it do
   // its own heading.
   await expect(crumbs).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Documents", exact: true }).click();
+  await navLink(page, "Documents").click();
   await expect(crumbs).toHaveText(["Documents"]);
   // And no link out of it. The trail says where you are; the column is how you go
   // somewhere else, and the `×` is how you leave.
@@ -298,7 +299,23 @@ test("scenario 23 — pinned, hover and hidden, and a way back from each", async
 
     // --- hover: the 12px edge, and the two ways out of the panel ---------------
 
-    await hotZone.hover();
+    /**
+     * A graze, from outside in — and the "outside" is the point of it.
+     *
+     * `hover()` moves the pointer, and a pointer already at the destination moves
+     * nowhere: no `mouseenter`, so no reveal. Twice below the previous step leaves it
+     * resting on the 12px edge — `Escape` retracts the panel without moving the mouse —
+     * so a bare second `hotZone.hover()` was asserting that the panel opens on nothing
+     * having happened, and read as a broken reveal. Leaving through the content first is
+     * also the gesture a reader performs, and it is the same coordinates the retraction
+     * below uses.
+     */
+    const graze = async () => {
+      await page.mouse.move(900, 500);
+      await hotZone.hover();
+    };
+
+    await graze();
     await expect(reveal).toHaveAttribute("data-open", "true");
 
     // Into the panel, which keeps it out: the hot zone is under it once it has slid in,
@@ -330,7 +347,7 @@ test("scenario 23 — pinned, hover and hidden, and a way back from each", async
     // `Escape` retracts it, and does *not* also leave the page: the peek is what is open,
     // so closing it is the whole of the gesture, which is `use-shell-keys`' own order one
     // layer further out.
-    await hotZone.hover();
+    await graze();
     await expect(reveal).toHaveAttribute("data-open", "true");
     await page.keyboard.press("Escape");
     await expect(reveal).toHaveAttribute("data-open", "false");
@@ -338,7 +355,7 @@ test("scenario 23 — pinned, hover and hidden, and a way back from each", async
 
     // The scroll of the page behind is untouched — no lock, no scrim — while the panel
     // keeps its own scroller, so a long team tree is reachable inside a peek.
-    await hotZone.hover();
+    await graze();
     await expect(reveal).toHaveAttribute("data-open", "true");
     await expect(reveal).toHaveCSS("overflow-y", "auto");
     expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
