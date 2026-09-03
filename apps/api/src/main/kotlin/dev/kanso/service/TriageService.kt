@@ -1,10 +1,12 @@
 package dev.kanso.service
 
+import dev.kanso.domain.TicketLinkType
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketLinkRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.TriageRepository
 import dev.kanso.repo.UserRepository
@@ -64,6 +66,7 @@ class TriageService(
 	private val cycles: CycleService,
 	private val ticketService: TicketService,
 	private val details: TicketDetails,
+	private val links: TicketLinkRepository,
 ) {
 
 	@Transactional(readOnly = true)
@@ -149,6 +152,20 @@ class TriageService(
 			TriageDecision.DUPLICATE, TriageDecision.CLOSED ->
 				ticketService.patch(actor, ticketId, TicketPatch(status = TicketStatus.CANCELED))
 		}
+
+		// The ruling also draws the link, so that "what does this duplicate?" has one
+		// answer whoever asked the question. `triage_decisions` stays the record of the
+		// *decision* — who ruled, when, and why this ticket is cancelled — and
+		// `ticket_links` is the current relation, which is what a ticket page navigates.
+		// Without this, a ticket cancelled at the gate would show no duplicate link at
+		// all while a hand-drawn one three weeks later would, and a reader would have to
+		// know which route retired it to know where to look.
+		//
+		// One way, deliberately: the ruling draws a link, a link does not rule. Drawing
+		// one by hand cancels nothing — see `V33`'s header — because an editing gesture
+		// must not destroy work, and undrawing it would then have to restore a status
+		// nothing recorded.
+		duplicateOf?.let { links.link(ticketId, it, TicketLinkType.DUPLICATES) }
 
 		val row = triage.insertDecision(ticketId, decision.wire, duplicateOf, actor.id)
 		val subject = details.of(listOfNotNull(tickets.findById(ticketId))).single()
