@@ -1,7 +1,9 @@
 package dev.kanso.realtime
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.webhooks.WebhookFanout
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.stereotype.Component
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
@@ -24,11 +26,31 @@ class EventPublisher(
 	private val dataSource: DataSource,
 	private val props: KansoProperties,
 	private val objectMapper: ObjectMapper,
+	/**
+	 * The webhook half of "this entity changed", queued from here for the reason
+	 * [WebhookFanout] argues: this method is already the one funnel every mutation passes
+	 * through exactly once, and the alternative was a second call beside forty
+	 * `outbox.enqueue` sites woven into archive cascades.
+	 *
+	 * `ObjectProvider` so this class keeps working in a context that has no webhook slice
+	 * wired — several tests build a trimmed context, and a hard dependency would make the
+	 * realtime bus unstartable without the queue.
+	 */
+	private val fanout: ObjectProvider<WebhookFanout>,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
 
 	fun publish(event: KansoEvent) {
+		// **Before the `afterCommit` registration, not inside it.** The two halves of
+		// announcing a change want opposite treatment: the notification below is deferred
+		// past the commit so no client can refetch ahead of it, while the webhook job must
+		// be written *in* the caller's transaction — that is the outbox's founding
+		// guarantee, that a queued push cannot be lost if the process dies right after the
+		// commit. Deferring this too would be the natural-looking mistake and would trade
+		// a durable delivery for a cosmetic ordering property it does not need.
+		fanout.ifAvailable { it.record(event) }
+
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
 				override fun afterCommit() = notify(event)

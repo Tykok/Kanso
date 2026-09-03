@@ -243,7 +243,11 @@ CREATE TABLE webhook_deliveries (
   -- for debugging a wedged queue while the job still exists; the delivery is the record
   -- afterwards and has to outlive it.
   --
-  -- Null on a replay, which has no job of its own to point at.
+  -- A replay carries one too, because a replay goes through the queue like everything else
+  -- — that is what buys it the retry, the backoff and the rate limit rather than a second
+  -- copy of all three. `OutboundJobRepository.enqueueQuiet` is how it gets one: it returns
+  -- the id of the pending job for the entity, creating one only if there is none, and
+  -- never rewriting what an already-queued job was going to say.
   job_id          BIGINT,
 
   -- Copied rather than joined, because the entity may be gone: this is a log, and "which
@@ -255,6 +259,14 @@ CREATE TABLE webhook_deliveries (
   -- The exact bytes that were signed, which is what makes both of this table's jobs
   -- possible: a replay re-sends them, and an audit can recompute the HMAC over them. Thin
   -- by construction — see the header — so this is identifiers and not ticket contents.
+  --
+  -- **The handler signs this column and never `outbound_jobs.payload`**, which is what
+  -- keeps a replay honest. A replay is the *old* event sent again; the job it rides may
+  -- meanwhile be carrying a newer one, since an enqueue for an entity already queued
+  -- coalesces onto it. Reading the body from the delivery row means each row sends what it
+  -- was created to send, and a replay that happens to share a job with a fresh change
+  -- results in two deliveries saying two different true things rather than one saying the
+  -- wrong one.
   payload         TEXT NOT NULL,
 
   status          TEXT NOT NULL,
