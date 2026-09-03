@@ -9,6 +9,7 @@ data class KansoProperties(
 	val auth: Auth = Auth(),
 	val oauth: OAuth = OAuth(),
 	val apiTokens: ApiTokens = ApiTokens(),
+	val webhooks: Webhooks = Webhooks(),
 	val notion: Notion = Notion(),
 	val sync: Sync = Sync(),
 	val realtime: Realtime = Realtime(),
@@ -78,6 +79,58 @@ data class KansoProperties(
 		val perMinute: Int = 120,
 	)
 
+	/**
+	 * Outbound webhooks — Kanso as a *caller* of somebody else's HTTP, which is a fourth
+	 * direction again from [Auth], [OAuth] and [ApiTokens].
+	 */
+	data class Webhooks(
+		/**
+		 * The key `webhook_subscriptions.secret_cipher` is encrypted under: 32 bytes,
+		 * base64. **Unset means the feature is off**, and creating a subscription is
+		 * refused rather than served by storing a signing secret in plaintext.
+		 *
+		 * Refusing is the only honest option. A default key compiled into the source is
+		 * not a key — it is in every copy of the repository — so `secret_cipher` would be
+		 * reversible by anybody who could read the column, and the column's entire
+		 * purpose is that a database dump is not a set of signing keys. A silent
+		 * downgrade to plaintext is worse still: the instance would work, and the
+		 * property nobody could see would be the one that was gone. `WebhookSecret`
+		 * carries the rest of the argument, including what encryption here does *not*
+		 * buy.
+		 */
+		val signingKey: String = "",
+
+		/**
+		 * Deliveries one subscription may receive in a minute.
+		 *
+		 * The number the ticket insists on: "sans rate limit par abonnement, un webhook en
+		 * boucle noie la base". Matched to [ApiTokens.perMinute] deliberately — a webhook
+		 * and the API callback it provokes are two halves of one integration's traffic, and
+		 * two different ceilings for them would be a number nobody could reason about.
+		 *
+		 * Two a second sustained. A person editing tickets never approaches it; a bulk edit
+		 * of five hundred rows is paced to about four minutes, which is the cost of the
+		 * protection and is paid in latency rather than in refusals — `WebhookRateLimit`
+		 * defers, so nothing is dropped. `WebhookRateLimit` also records the caveat this
+		 * shares with `ApiTokenRateLimit`: it is per instance.
+		 */
+		val perMinute: Int = 120,
+
+		/**
+		 * How long one POST may take before it counts as a failure.
+		 *
+		 * Short on purpose, and much shorter than [Notion.requestTimeout]'s twenty seconds.
+		 * Notion is a remote Kanso must wait for because there is no alternative; a webhook
+		 * receiver is somebody's own endpoint whose whole job is to accept a body and
+		 * return, and one that takes longer than this is going to be retried anyway. The
+		 * number also bounds a drain pass: a batch of [Outbound.batchSizeFor]'s twenty jobs
+		 * against a black-holing endpoint is a hundred seconds, not seven minutes.
+		 */
+		val requestTimeout: Duration = Duration.ofSeconds(5),
+	) {
+		val enabled: Boolean get() = signingKey.isNotBlank()
+	}
+
 	data class Provider(val clientId: String = "", val clientSecret: String = "") {
 		val configured: Boolean get() = clientId.isNotBlank() && clientSecret.isNotBlank()
 	}
@@ -122,11 +175,58 @@ data class KansoProperties(
 	data class Outbound(
 		val enabled: Boolean = true,
 		val pollIntervalMs: Long = 500,
+
+		/**
+		 * The default budget, and the one Notion drains on.
+		 *
+		 * Ten is sized against Notion's shared `RateLimiter` at ~2.5 req/s: a larger batch
+		 * would not push harder, it would only queue inside the limiter, holding jobs in
+		 * 'running' while they wait for a permit they could have waited for as 'pending'.
+		 */
 		val batchSize: Int = 10,
+
+		/**
+		 * Per-destination overrides, because a batch has always been a per-destination
+		 * budget and until now every destination had the same one.
+		 *
+		 * A map keyed on `Destination.wire` rather than a field per destination, so adding
+		 * a third consumer is a line of YAML and not a property nobody sets. Keyed on the
+		 * wire string rather than the enum because `Destination` lives in `outbox` and
+		 * configuration should not be the thing that drags the queue's vocabulary into
+		 * this file — [batchSizeFor] does the lookup and an unknown key simply never
+		 * matches.
+		 *
+		 * **Twenty for webhooks**, and it is not comparable to Notion's ten:
+		 *
+		 *   * A webhook job *fans out*. Twenty jobs across a typical one to three
+		 *     subscriptions is twenty to sixty requests in a pass, so the number is
+		 *     already multiplied before it reaches anybody's server.
+		 *   * The ceiling that actually binds is `Webhooks.perMinute`, not this. Past two
+		 *     deliveries a second per subscription the limiter refuses — and *defers*,
+		 *     refunding the attempt — so oversizing this costs deferrals rather than
+		 *     failures, and the only real cost of a big batch is jobs sitting in 'running'
+		 *     that could have sat in 'pending'.
+		 *   * The floor is drain throughput. Webhooks have no shared limiter, so unlike
+		 *     Notion a bigger batch genuinely does push harder, and Notion's ten would
+		 *     leave a bulk edit's backlog draining at twenty a second where the receivers
+		 *     could take more.
+		 *   * The worst case is bounded and survivable: twenty jobs against an endpoint
+		 *     that accepts connections and never answers is twenty times
+		 *     `Webhooks.requestTimeout`, a hundred seconds in one pass. That is only
+		 *     survivable because of two changes that landed just before this one —
+		 *     `KAN-61`'s heartbeat, so the pass is not mistaken for a dead worker and
+		 *     replayed, and `KAN-57`'s per-destination clock, so those hundred seconds
+		 *     are not also Notion's.
+		 */
+		val batchSizes: Map<String, Int> = mapOf("webhook" to 20),
+
 		val maxAttempts: Int = 8,
 		val requestsPerSecond: Double = 2.5,
 		val stuckJobTimeout: Duration = Duration.ofMinutes(5),
-	)
+	) {
+		/** The budget for one destination, falling back to the shared default. */
+		fun batchSizeFor(destinationWire: String): Int = batchSizes[destinationWire] ?: batchSize
+	}
 
 	data class Inbound(
 		val enabled: Boolean = true,

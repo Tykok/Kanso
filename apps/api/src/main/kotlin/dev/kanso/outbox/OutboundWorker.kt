@@ -117,7 +117,12 @@ class OutboundWorker(
 
 	fun drain(handler: OutboundJobHandler) {
 		val destination = handler.destination
-		val batch = tx.execute { jobs.claimBatch(destination, props.sync.outbound.batchSize, workerId) }.orEmpty()
+		// The batch has always been described as a per-destination budget and until KAN-17
+		// every destination was handed the same number. `batchSizeFor` is where a
+		// destination whose economics differ says so; `Outbound.batchSizes` carries why
+		// webhooks are not Notion's ten.
+		val budget = props.sync.outbound.batchSizeFor(destination.wire)
+		val batch = tx.execute { jobs.claimBatch(destination, budget, workerId) }.orEmpty()
 		if (batch.isEmpty()) return
 
 		// Sequential on purpose: the rate limiter is the bottleneck, so running these

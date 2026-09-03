@@ -16,7 +16,18 @@ import java.util.UUID
  * nothing drains and everything waits for.
  */
 enum class Destination(val wire: String) {
-	NOTION("notion");
+	NOTION("notion"),
+
+	/**
+	 * Outbound webhooks — one job per entity change, fanned out to every subscription
+	 * whose filter matches it. See `V31` and `WebhookOutboundHandler`.
+	 *
+	 * The fan-out is the one thing this axis cannot express: the queue's discriminator is
+	 * `(destination, entity_type, entity_id)` with no room for a subscription, so N
+	 * subscribers share one job's attempts and `webhook_deliveries` is what keeps a retry
+	 * from re-POSTing to the ones that already answered. `V31` carries the trade.
+	 */
+	WEBHOOK("webhook");
 
 	companion object {
 		fun from(raw: String): Destination = entries.firstOrNull { it.wire == raw }
