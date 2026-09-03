@@ -195,6 +195,26 @@ class CycleTimeTest : PostgresTest() {
 		assertEquals(1, insights.cycleTime.unmeasured, "and the screen is told how many")
 	}
 
+	@Test
+	fun `a start recorded after the completion is unmeasured, never a negative hour`() {
+		val ana = person("Ana")
+		val closed = cycle(20, MONDAY)
+		val sane = delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id))
+		moved(sane, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
+		// Unreachable through the product — `TicketService` stamps `completedAt` at the
+		// transition that sets it — and entirely reachable through an import, which is the
+		// only reason the guard exists. A negative span in a median is worse than a gap: it
+		// would pull the middle *below* every real ticket in the sample.
+		val imported = delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id))
+		moved(imported, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9))
+
+		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
+
+		assertEquals(24.0, insights.cycleTime.medianHours, "only the sane span is in the median")
+		assertEquals(1, insights.cycleTime.measured, "one span, not two")
+		assertEquals(1, insights.cycleTime.unmeasured, "and the impossible one is counted as unsayable")
+	}
+
 	// --- the median ------------------------------------------------------------
 
 	@Test
