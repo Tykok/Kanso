@@ -269,6 +269,21 @@ export type TicketLink = {
   symmetric: boolean;
 };
 
+/**
+ * A parent's progress, derived server-side from its children's statuses.
+ *
+ * [total] already excludes cancelled children — they are in neither half of the fraction,
+ * so "5 of 5" can mean "finished". The two point fields are null together whenever any
+ * counted child is unestimated, because an unestimated child weighs zero in a sum and the
+ * parent would otherwise read as complete while part of it had never been sized.
+ */
+export type SubTicketProgress = {
+  total: number;
+  done: number;
+  donePoints: number | null;
+  totalPoints: number | null;
+};
+
 export type CascadeResult = { movedTicketIds: string[] };
 
 /** What happens to what a team or a project holds when the container goes away. */
@@ -1122,6 +1137,25 @@ export const api = {
    * response, which meant a ticket outside the chart's current scope drew none.
    */
   ticketLinks: (ticketId: string) => request<TicketLink[]>(`/api/tickets/${ticketId}/links`),
+
+  /** The sub-tickets of one ticket. At most one level: a child never has children. */
+  ticketChildren: (ticketId: string) => request<Ticket[]>(`/api/tickets/${ticketId}/children`),
+
+  /**
+   * How much of a parent is finished, derived on read from its children — never a stored
+   * column, so it cannot disagree with them.
+   *
+   * `null` for a ticket with no children, which is most of them: "0 of 0 done" is a
+   * number about nothing, so the client draws nothing rather than an empty bar.
+   */
+  ticketProgress: (ticketId: string) =>
+    request<SubTicketProgress | null>(`/api/tickets/${ticketId}/progress`),
+
+  setTicketParent: (ticketId: string, parentId: string | null) =>
+    request<void>(`/api/tickets/${ticketId}/parent`, {
+      method: "PUT",
+      body: JSON.stringify({ parentId }),
+    }),
 
   /** `{id}` is the `from` end — for `duplicates`, the ticket being retired. */
   linkTicket: (fromId: string, otherId: string, type: TicketLinkType) =>

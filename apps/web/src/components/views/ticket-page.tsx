@@ -33,6 +33,7 @@ import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
 import { TicketDurationNote } from "../ticket-duration";
 import { TicketLabels } from "../ticket-labels";
+import { SubTicketsPanel } from "./sub-tickets-panel";
 import { TicketLinksPanel } from "./ticket-links-panel";
 import { Avatar } from "./avatar";
 
@@ -316,6 +317,7 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
             <TicketDurationNote ticketId={ticket.id} />
           </div>
 
+          <SubTicketsPanel ticketId={ticket.id} />
           <TicketLinksPanel ticketId={ticket.id} />
 
           <div className="my-1 h-px bg-border" />
