@@ -100,12 +100,17 @@ class OutboundJobQueueTest : PostgresTest() {
 	fun `claiming frees the slot so an edit during a push is not lost`() {
 		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		assertEquals(1, claimedFor(id).size, "the push this test is about has to actually be in flight")
+		val inFlight = claimedFor(id).single()
 
 		// Someone edits the ticket while the push is in flight.
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
 
-		assertEquals(listOf(OutboundOperation.UPSERT), queuedFor(id), "the later edit must still be queued")
+		// Both halves, because either one alone passes on a claim that never flipped the row:
+		// the edit would then have coalesced onto the row still sitting in 'pending', and a
+		// queue holding one pending job reads the same from the outside whether the slot was
+		// freed or never taken.
+		assertEquals("running", statusOf(inFlight.id), "the first push is still in the air")
+		assertEquals(listOf(OutboundOperation.UPSERT), queuedFor(id), "and the later edit must still be queued")
 	}
 
 	/**
