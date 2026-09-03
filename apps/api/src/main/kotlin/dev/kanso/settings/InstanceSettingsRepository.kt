@@ -26,6 +26,8 @@ class StoredInstanceSettings(
 	val notionWorkspaceId: String?,
 	val notionWorkspaceName: String?,
 	val notionBotId: String?,
+	/** `V36`. Still encrypted here, like every other secret on this row. */
+	val githubWebhookSecretEnc: ByteArray?,
 )
 
 @Repository
@@ -44,6 +46,7 @@ class InstanceSettingsRepository {
 			notionWorkspaceId = it[InstanceSettings.notionWorkspaceId],
 			notionWorkspaceName = it[InstanceSettings.notionWorkspaceName],
 			notionBotId = it[InstanceSettings.notionBotId],
+			githubWebhookSecretEnc = it[InstanceSettings.githubWebhookSecretEnc],
 		)
 	}
 
