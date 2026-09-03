@@ -21,6 +21,17 @@ automatable sign-in path.
 The web listens on <http://localhost:3000>, the API on <http://localhost:8080>. Both
 addresses are overridable with `KANSO_WEB_URL` and `KANSO_API_URL`.
 
+**They are two variables, and overriding one of them is worse than overriding neither.**
+The browser reads `KANSO_WEB_URL`; every `seed*` call and every `expect` made over HTTP
+reads `KANSO_API_URL`. Set only the first and the suite drives your stack while seeding —
+and *claiming* — somebody else's. It has already happened: a run pointed at a fresh web
+port left its teams, its tickets and a `users` row on the maintainer's own instance, and
+the failure it reported was about a team it could not create. Say both, every time:
+
+```bash
+KANSO_WEB_URL=http://localhost:3031 KANSO_API_URL=http://localhost:8121 pnpm test:e2e
+```
+
 If this checkout is a worktree sharing the machine with another Kanso checkout, also
 set a distinct `COMPOSE_PROJECT_NAME` (and, if the default ports are already taken,
 `POSTGRES_PORT` / `API_PORT` / `WEB_PORT`) so this stack gets its own containers and
@@ -211,12 +222,44 @@ KANSO_API_URL=http://localhost:8090 KANSO_WEB_URL=http://localhost:3010 pnpm tes
 `KANSO_WEB_ORIGIN` is not optional once `WEB_PORT` moves: without it CORS renders every
 visitor as a member, which turns scenario 3 into a permissions test that cannot fail.
 
+### Do not touch a fresh stack before the suite claims it
+
+Not one request. `DevAuthenticationFilter` authenticates *every* call and falls back to
+`dev@kanso.local` when no `X-Kanso-User` header is attached, so a single `curl` — a health
+check, a `GET /api/teams` to see whether the stack is up — creates that address as a
+member. From then on the instance is unclaimable and says so in the least useful way
+available:
+
+- `GET /api/setup/state` goes on answering `needsOwner: true`, because there is still no
+  owner. `seedInstance` therefore still tries.
+- `POST /api/setup/owner` answers **409**, because the e-mail it is offered already exists
+  as a member — and the screen prints "Could not claim the instance", which names neither
+  the e-mail nor the conflict.
+
+So the diagnosis costs an hour and the fix is one command: `docker compose -p <project>
+down -v` and up again, then let `seedInstance` be the first thing that speaks to it. Use
+`--wait` and read its answer rather than polling the API yourself; that is what it is for.
+
+On a stack nobody has touched, `dev@kanso.local` is not an admin — it is not anything.
+`owner@kanso.test` is the owner, and only because the suite claimed it.
+
 A long-lived stack is still supported and the suite is replayed against it — which is a
 constraint on how a scenario asserts, not only on how it seeds. Anything that counts rows
 matching a *name* eventually counts other runs' rows too: pages started from the same
 template are all called "Decision", and `getByRole("button", { name: "Close" })` matched
 four sidebar teams called `Closed-…` before it matched the button. Find your own row by
 its id or its href.
+
+The same rule has a second half, which is what makes a spec green for its author and red
+in the suite: **the rows another file seeded are on your screen too.** `17-views` names a
+team `Board-<suffix>`, so `getByRole("button", { name: "Board" })` resolved to three
+elements — the team row, its `⋯`, and only then the view button — in every run where that
+file went first, and to one element in `playwright test e2e/25-list-requests.spec.ts`.
+Two files were delivered green that way. Scope and name exactly: `viewButton` in
+`support.ts` for the List/Board/Timeline strip, `navLink` for a route row in the column,
+`exact: true` for anything that is a bare English word. Not `.first()` — that answers a
+strict-mode violation by picking whichever element the tree happens to yield first, and
+hides the next one.
 
 ## Nothing is anonymous in dev mode
 
