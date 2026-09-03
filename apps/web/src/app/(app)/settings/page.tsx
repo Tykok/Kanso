@@ -9,6 +9,7 @@ import { SettingsNote } from "@/components/settings/field";
 import { NotionPeopleSection } from "@/components/settings/notion-people-section";
 import { PeopleSection } from "@/components/settings/people-section";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
+import { TokensSection } from "@/components/settings/tokens-section";
 import { VelocitySection } from "@/components/settings/velocity-section";
 import { useMe, useSetupState } from "@/lib/queries";
 import { canConfigure as configures } from "@/lib/seat";
@@ -20,7 +21,8 @@ type SectionId =
   | "velocity"
   | "people"
   | "connections"
-  | "agents";
+  | "agents"
+  | "tokens";
 
 const SECTION_NAMES: Record<SectionId, string> = {
   appearance: "Appearance",
@@ -30,6 +32,7 @@ const SECTION_NAMES: Record<SectionId, string> = {
   people: "People",
   connections: "Connections",
   agents: "Agents",
+  tokens: "API tokens",
 };
 
 export default function SettingsPage() {
@@ -54,11 +57,23 @@ export default function SettingsPage() {
   // belongs to one person, it is stored in their own preferences, and there is no
   // instance-wide keyboard for an admin to administer. It sits next to "appearance"
   // because the two are one question asked twice — how this application behaves for me.
+  // "tokens" likewise, and most strictly of the four: `ApiTokenService` takes no user id
+  // on any method a person calls, so an admin has no way to read or revoke somebody
+  // else's credentials even if this array offered them the tab.
   const sections: SectionId[] = canConfigure
-    ? ["appearance", "shortcuts", "account", "velocity", "people", "connections", "agents"]
+    ? [
+        "appearance",
+        "shortcuts",
+        "account",
+        "velocity",
+        "people",
+        "connections",
+        "agents",
+        "tokens",
+      ]
     : // A member has nothing to manage about other people, but still sees the
       // connections read-only: the mirror affects their tickets.
-      ["appearance", "shortcuts", "account", "velocity", "connections", "agents"];
+      ["appearance", "shortcuts", "account", "velocity", "connections", "agents", "tokens"];
 
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 overflow-y-auto px-5 pb-16 pt-6">
@@ -93,6 +108,7 @@ export default function SettingsPage() {
           {section === "velocity" && <VelocitySection />}
           {section === "people" && canConfigure && <PeopleSection />}
           {section === "agents" && <AgentsSection />}
+          {section === "tokens" && <TokensSection />}
           {section === "connections" && (
             <div className="flex flex-col gap-6">
               {setup.data ? (

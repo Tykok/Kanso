@@ -140,7 +140,19 @@ enum class MemberRole(override val wire: String) : Wire {
  * together, and four tables would be four queries to merge in the client.
  */
 enum class ActivityEntity(override val wire: String) : Wire {
-	TICKET("ticket"), PROJECT("project"), TEAM("team"), DOC("doc");
+	TICKET("ticket"), PROJECT("project"), TEAM("team"), DOC("doc"),
+
+	/**
+	 * An account, and the one value here whose id names a *person* rather than a unit of
+	 * work.
+	 *
+	 * That difference is a permissions difference, not a taxonomic one.
+	 * `ActivityController.list` takes `entityId` as a free query parameter and gates only
+	 * [TICKET]; every other type was safe to leave open because its id named something any
+	 * member could already list. An account's feed is not that, so the controller carries a
+	 * rule of its own for this value — see it before adding a sixth.
+	 */
+	USER("user");
 
 	companion object {
 		fun from(raw: String): ActivityEntity = parse(entries.toTypedArray(), raw)
@@ -195,7 +207,25 @@ enum class ActivityKind(override val wire: String) : Wire {
 	 * later. Both directions and both ends of the range, including un-sizing — an
 	 * estimate withdrawn is as much a judgement as one made.
 	 */
-	ESTIMATED("estimated");
+	ESTIMATED("estimated"),
+
+	/**
+	 * An API token destroyed. Written by `ApiTokenService.revoke`, against the
+	 * [ActivityEntity.USER] whose token it was.
+	 *
+	 * The only kind so far that describes something which no longer exists, and the reason
+	 * it has to exist at all: `V27` revokes by deleting the row, so there is no `revoked_at`
+	 * anywhere to read the fact off afterwards. That delete is the right design — a filter
+	 * cannot forget a `WHERE` clause that is not there — and this is where the history it
+	 * gave up comes back.
+	 *
+	 * The payload is the token's `name` and `prefix`, which is what a person recognises, and
+	 * never its `hash`: a digest names nothing to anybody, and publishing one into a feed
+	 * would put the single column `api_tokens` exists to keep quiet somewhere much easier to
+	 * read. Not [ARCHIVED], which is the nearest existing word and the wrong one — the two
+	 * differ in whether anything can be got back.
+	 */
+	TOKEN_REVOKED("token_revoked");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
