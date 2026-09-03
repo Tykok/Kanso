@@ -50,6 +50,10 @@ import kotlin.test.assertTrue
  * [the mirror's badge and its retry button stay open to every member]. An exemption
  * nobody exercises rots into a claim; worse, the next reader tightening this controller
  * would take the sync badge off every member's status bar and find out from a screenshot.
+ * That pair is one test and its complement — [the mirror's identifiers are the
+ * configurator's alone] — because `KAN-53` answered the badge's disclosure by cutting the
+ * response in two rather than by closing the route, and a claim about who may ask is only
+ * half of that decision.
  */
 @Transactional
 class UnguardedWriteTest : MockMvcTest() {
@@ -248,6 +252,13 @@ class UnguardedWriteTest : MockMvcTest() {
 	 * The badge, because every shell in the web app reads it every ten seconds for every
 	 * member. The retry, because it is drawn on the inbox every member has, and requeuing
 	 * work that already failed creates nothing, destroys nothing and discloses nothing.
+	 *
+	 * `KAN-53` narrowed *what* the badge answers without narrowing *who* may ask, so the
+	 * open access asserted here is the same claim it always was and the second half is new:
+	 * the shape a member receives holds no Notion identifier. Both halves have to be
+	 * asserted together, because either one alone is satisfied by the bug the other
+	 * catches — a guard on this route passes "no ids reached a member", and the old
+	 * over-full response passes "a member may ask".
 	 */
 	@Test
 	fun `the mirror's badge and its retry button stay open to every member`() {
@@ -256,8 +267,46 @@ class UnguardedWriteTest : MockMvcTest() {
 		).andReturn().response
 		assertEquals(200, badge.status, "the status bar's sync badge is every member's: ${badge.contentAsString}")
 
+		// Asserted as absent fields rather than by matching id-shaped strings: the summary is
+		// a closed shape, and naming the keys is what makes a reader who adds one back read
+		// this test as being about them.
+		val summary = badge.contentAsString
+		for (leak in listOf("databases", "databaseId", "dataSourceId", "cursors", "lastError")) {
+			assertTrue(
+				leak !in summary,
+				"`$leak` is in the badge's answer: the ids name pages in a workspace Kanso does not " +
+					"own, and the errors quote Notion about them — both are `/sync/detail`'s. $summary",
+			)
+		}
+
 		val retry = fire(member, "POST", "/api/admin/sync/retry-failed")
 		assertEquals(200, retry.status, "Retry on a failure row is every member's too: ${retry.contentAsString}")
+	}
+
+	/**
+	 * The other side of that split, which is what keeps it from being a deletion: the ids
+	 * and the mirror's error strings still have a reader, and it is the person who connected
+	 * Notion.
+	 *
+	 * Fired as a GET rather than through [fire] because this is a read — the only guard in
+	 * this file that is, and it is here rather than with the read-leak tests because it is
+	 * the same sweep's decision as the badge above it and reads with it or not at all.
+	 */
+	@Test
+	fun `the mirror's identifiers are the configurator's alone`() {
+		val refused = mvc.perform(
+			MockMvcRequestBuilders.get("/api/admin/sync/detail").header(DevAuthenticationFilter.HEADER, member.email),
+		).andReturn().response
+		assertEquals(403, refused.status, "a member has no use for the database ids: ${refused.contentAsString}")
+
+		val allowed = mvc.perform(
+			MockMvcRequestBuilders.get("/api/admin/sync/detail").header(DevAuthenticationFilter.HEADER, admin.email),
+		).andReturn().response
+		assertEquals(200, allowed.status, "and an admin diagnosing the mirror does: ${allowed.contentAsString}")
+		assertTrue(
+			"databases" in allowed.contentAsString,
+			"the detailed shape is what an admin gets, or the guard bought nothing: ${allowed.contentAsString}",
+		)
 	}
 
 	private companion object {

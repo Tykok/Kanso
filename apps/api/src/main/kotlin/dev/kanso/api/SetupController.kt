@@ -145,6 +145,13 @@ class SetupController(
 	 *
 	 * With no token at all the no-op client answers, rather than this method growing a
 	 * second sentence saying what that client already says.
+	 *
+	 * Owner or admin, while `NotionImportController`'s four Notion reads answer any member —
+	 * the two are not the same question. This one picks where Kanso will create its four
+	 * databases, which is a setting, and it will read the workspace using a token off the
+	 * request before anything has been decided at all. Previewing the base you are importing
+	 * asks about work already inside the mirror's scope. The argument for the open four is
+	 * written there, on each of them.
 	 */
 	@GetMapping("/notion/pages")
 	fun notionPages(

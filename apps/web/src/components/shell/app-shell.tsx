@@ -170,7 +170,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     : sync.data.mirrorEnabled
       ? `Notion: ${sync.data.bootstrapped ? "connected" : "not bootstrapped"}${
           sync.data.jobs.pending ? ` · ${sync.data.jobs.pending} queued` : ""
-        }${sync.data.failed.length ? ` · ${sync.data.failed.length} failed` : ""}`
+        }${sync.data.jobs.failed ? ` · ${sync.data.jobs.failed} failed` : ""}`
       : "Notion mirror off";
 
   return (

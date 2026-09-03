@@ -117,6 +117,41 @@ data class ImportRequest(
 	val people: Map<String, UUID?> = emptyMap(),
 )
 
+/**
+ * Screen 24, from "what is in this workspace" to "write it".
+ *
+ * **Four of these five take no actor, and that is the dispensation `NotionPeople.link`
+ * already carries, said out loud here.** [sources], [schema], [preview] and [peopleSeen]
+ * answer any signed-in member. Not because nobody thought about it: an import is a job a
+ * member is expected to be able to carry out, and `link` is written to permit exactly that
+ * — its guard fires on the *change* a people table would make, so a non-configurator can
+ * walk the whole wizard, re-send the matches the instance already holds, and import. Ending
+ * that walk at step 2 with a 403 would make `link`'s dispensation unreachable and leave a
+ * flow the codebase is deliberately built for with no way to start.
+ *
+ * What was wrong before this comment was not the permission, it was the silence. Four
+ * open routes with nothing saying why are correct only until somebody reads them — and then
+ * they get "tightened" by a reader who sees an unguarded Notion read, or cited as precedent
+ * for opening something that has no such argument. Both are edits made on the basis of
+ * nothing, which is why each of the four repeats the claim beside itself rather than
+ * trusting a reader to arrive here first.
+ *
+ * These four disclose the workspace Kanso is connected to, and that is the price named
+ * rather than missed: base names, column names, options, and the Notion people a plan would
+ * meet. It is the workspace this instance has already chosen to mirror every ticket into,
+ * and no token crosses this wire.
+ *
+ * [confirm] is the fifth and it takes the actor, because it is the one that writes: it
+ * access-checks every team the plan lands in and hands its people table to `link`, guard
+ * and all.
+ *
+ * **The gap with `GET /api/setup/notion/pages`, which stays configurator-only, is real and
+ * not an inconsistency**: that route lists the pages of the workspace so somebody can choose
+ * where Kanso will *create its four databases* — an act of instance configuration, taking a
+ * token off the request to answer about pages nobody has decided to mirror yet. Previewing
+ * the base you are importing is a question about work already inside the mirror's scope.
+ * Same workspace, two different questions, and only one of them is a setting.
+ */
 @RestController
 @RequestMapping("/api/notion/import")
 class NotionImportController(
@@ -128,15 +163,30 @@ class NotionImportController(
 	 * Not `@Transactional`: this one walks the workspace over the network, and a
 	 * transaction held open for the length of that is a connection out of the pool for
 	 * however long Notion takes. The service opens its own where it touches Postgres.
+	 *
+	 * Takes no actor, on the class's argument: step 1 of a wizard a member is meant to
+	 * finish. It names the workspace's bases and their row counts and nothing about anyone.
 	 */
 	@GetMapping("/sources")
 	fun sources(): ImportSources = imports.sources()
 
-	/** Not `@Transactional`, for the same reason as [sources]: this walks the network too. */
+	/**
+	 * Not `@Transactional`, for the same reason as [sources]: this walks the network too.
+	 *
+	 * Takes no actor, on the class's argument. Step 3 reads one base's columns and their
+	 * options — the vocabulary the reader is about to map, which they cannot map unseen.
+	 */
 	@GetMapping("/schema")
 	fun schema(@RequestParam sourceId: String, @RequestParam target: String): ImportSchemaResponse =
 		ImportSchemaResponse.of(imports.schema(sourceId, ImportTarget.from(target)))
 
+	/**
+	 * Takes no actor, on the class's argument, and of the four it is the one where saying so
+	 * matters most: it reads the pages themselves. It also writes nothing — the whole point
+	 * of step 5 is that the reader sees what *would* happen — so refusing it while allowing
+	 * [confirm] would leave a member able to run an import but not to check it first, which
+	 * is the wrong half to keep.
+	 */
 	@PostMapping("/preview")
 	fun preview(@RequestBody request: ImportPreviewRequest): ImportPreview =
 		imports.preview(request.plan.map(::entry))
@@ -146,6 +196,11 @@ class NotionImportController(
 	 * and there is nowhere else on a `GET` to put it. Answers [NotionPerson] rather than
 	 * the raw workspace member list `NotionPeople.view` reads — this is only who the plan's
 	 * *mapped* columns would meet, before the reader is asked to match any of them.
+	 *
+	 * Takes no actor, on the class's argument, and the narrower answer is part of why: a
+	 * member running an import is shown the people their own plan met, not the workspace's
+	 * directory, which is `NotionPeople.view`'s and reached from the configurator's screen.
+	 * Matching any of them is `link`'s, and `link` still asks who is calling.
 	 */
 	@PostMapping("/people-seen")
 	fun peopleSeen(@RequestBody request: ImportPreviewRequest): List<NotionPerson> =

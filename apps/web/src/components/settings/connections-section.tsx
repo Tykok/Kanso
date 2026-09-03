@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
 import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
-import { keys, useRetryFailedPushes, useSyncStatus } from "@/lib/queries";
+import { keys, useRetryFailedPushes, useSyncDetail, useSyncStatus } from "@/lib/queries";
 import { NotionConnect } from "@/components/setup/notion-connect";
 import { NotionPageField } from "@/components/setup/notion-page-field";
 import { SettingsInline, SettingsNote } from "./field";
@@ -141,7 +141,17 @@ export function ConnectionsSection({
   // produced them, not on a screen of their own.
   const sync = useSyncStatus();
   const retryPushes = useRetryFailedPushes();
-  const failed = sync.data?.failed ?? [];
+
+  /**
+   * Two reads because `KAN-53` gave the mirror two answers: how many writes it refused is
+   * every member's, and which pages and why is the configurator's. So the section is drawn
+   * from the count — a member arriving here from the inbox's `See the queue` still finds
+   * the queue, rather than a screen that silently has nothing on it — and the rows fill in
+   * only for the reader entitled to Notion's own sentences about pages in the workspace.
+   */
+  const detail = useSyncDetail(canConfigure);
+  const failedCount = sync.data?.jobs.failed ?? 0;
+  const failed = detail.data?.failed ?? [];
 
   return (
     <section className="flex flex-col gap-6">
@@ -251,15 +261,23 @@ export function ConnectionsSection({
        * Drawn only when something has failed: an empty queue is not news, and a
        * permanent "0 failed" row is one more line to read past on every visit.
        */}
-      {failed.length > 0 && (
+      {failedCount > 0 && (
         <div
           data-testid="mirror-queue"
           className="flex flex-col gap-2.5 rounded-lg bg-card p-4"
         >
           <div className="flex items-center gap-2.5">
             <span className="flex-1 text-13 font-medium">The mirror refused these writes</span>
-            <span className="text-11 text-urgent">{failed.length}</span>
+            <span className="text-11 text-urgent">{failedCount}</span>
           </div>
+
+          {/* Said rather than left blank: a heading over nothing reads as a screen that
+              failed to load, and the reason it is empty is a rule, not an error. */}
+          {!canConfigure && (
+            <SettingsNote>
+              Which pages, and what Notion said about them, is the configurator&apos;s to read.
+            </SettingsNote>
+          )}
 
           <div className="flex flex-col gap-0.5 text-12">
             {failed.map((job) => (
