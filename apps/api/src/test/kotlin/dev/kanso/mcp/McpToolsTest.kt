@@ -39,8 +39,6 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.post
-import org.springframework.test.web.servlet.setup.MockMvcBuilders
-import org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -84,11 +82,7 @@ class McpToolsTest : PostgresTest() {
 	private val grants by lazy { TestGrants(clients, authorizations, consents) }
 
 	private val mvc: MockMvc by lazy {
-		MockMvcBuilders.standaloneSetup(McpController(build, currentUser, tools))
-			.addFilters<StandaloneMockMvcBuilder>(
-				McpBearerFilter(authorizations, clients, users, transactionManager, authMode = "oidc"),
-			)
-			.build()
+		mcpMvc(build, currentUser, tools, authorizations, clients, users, transactionManager)
 	}
 
 	@AfterEach
@@ -144,24 +138,8 @@ class McpToolsTest : PostgresTest() {
 		if (authorization != null) header("Authorization", authorization)
 	}
 
-	private fun callBody(tool: String, arguments: String): String =
-		"""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"$tool","arguments":$arguments}}"""
-
 	private fun call(tool: String, arguments: String, authorization: String) =
 		rpc(callBody(tool, arguments), authorization)
-
-	/** The text an agent reads back, whether the tool succeeded or refused. */
-	private fun textOf(result: ResultActionsDsl): String {
-		val json = result.andReturn().response.contentAsString
-		val marker = "\"text\":\""
-		val start = json.indexOf(marker) + marker.length
-		val end = json.indexOf("\"", start).let { first ->
-			var i = first
-			while (i > 0 && json[i - 1] == '\\') i = json.indexOf("\"", i + 1)
-			i
-		}
-		return json.substring(start, end).replace("\\n", "\n").replace("\\\"", "\"")
-	}
 
 	private fun titlesIn(team: Team): List<String> = tickets.list(
 		teamId = team.id,
@@ -198,24 +176,35 @@ class McpToolsTest : PostgresTest() {
 	fun `tools list answers the real surface, and every entry is callable as declared`() {
 		rpc("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", bearer(user())).andExpect {
 			status { isOk() }
-			jsonPath("$.result.tools.length()") { value(4) }
+			jsonPath("$.result.tools.length()") { value(7) }
 			// By index, because the order is sorted and stable — a client that caches the
-			// list keyed on its content must not see it change between restarts.
+			// list keyed on its content must not see it change between restarts. KAN-20 added
+			// three, and they sort into the middle of the four rather than onto the end, which
+			// is exactly why the assertion is by index and not by membership.
 			jsonPath("$.result.tools[0].name") { value("kanso_create_ticket") }
 			jsonPath("$.result.tools[1].name") { value("kanso_get_ticket") }
-			jsonPath("$.result.tools[2].name") { value("kanso_list_tickets") }
-			jsonPath("$.result.tools[3].name") { value("kanso_update_ticket") }
+			jsonPath("$.result.tools[2].name") { value("kanso_link_tickets") }
+			jsonPath("$.result.tools[3].name") { value("kanso_list_tickets") }
+			jsonPath("$.result.tools[4].name") { value("kanso_split_ticket") }
+			jsonPath("$.result.tools[5].name") { value("kanso_team_workload") }
+			jsonPath("$.result.tools[6].name") { value("kanso_update_ticket") }
 			// Every tool carries prose and an object schema. A tool with neither is one the
 			// agent has to guess at, and guessing is what the four-tools-not-forty argument in
 			// the spec exists to prevent.
 			jsonPath("$.result.tools[0].description") { exists() }
 			jsonPath("$.result.tools[0].inputSchema.type") { value("object") }
-			jsonPath("$.result.tools[3].inputSchema.type") { value("object") }
-			// The two that write are declared as writing on the schema too, by requiring the
+			jsonPath("$.result.tools[6].inputSchema.type") { value("object") }
+			// The ones that write are declared as writing on the schema too, by requiring the
 			// arguments they cannot invent — a `required` list nobody could satisfy would be
 			// a tool an agent calls once and abandons.
 			jsonPath("$.result.tools[0].inputSchema.required[0]") { value("team") }
-			jsonPath("$.result.tools[3].inputSchema.required[0]") { value("ticket") }
+			jsonPath("$.result.tools[6].inputSchema.required[0]") { value("ticket") }
+			// And the one argument in the set that is a list of objects carries its element
+			// shape, not a bare `array`: a client that validates locally has to be able to
+			// refuse a part with no title before it sends the call.
+			jsonPath("$.result.tools[4].inputSchema.properties.parts.items.type") { value("object") }
+			jsonPath("$.result.tools[4].inputSchema.properties.parts.items.required[0]") { value("title") }
+			jsonPath("$.result.tools[4].inputSchema.properties.parts.items.additionalProperties") { value(false) }
 		}
 	}
 

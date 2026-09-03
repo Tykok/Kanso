@@ -94,3 +94,14 @@ internal fun booleanField(description: String): Map<String, Any?> =
 
 internal fun objectField(description: String): Map<String, Any?> =
 	mapOf("type" to "object", "description" to description)
+
+/**
+ * An array of objects, whose element shape is an [objectSchema] like any other.
+ *
+ * Written this way rather than inlining a second `"type" to "object"` map so a repeated
+ * element is described by exactly the helper a top-level argument is described by — and so
+ * `additionalProperties: false` reaches the element too, which is where a misspelling
+ * inside a list would otherwise be dropped in silence.
+ */
+internal fun objectsField(description: String, items: Map<String, Any?>): Map<String, Any?> =
+	mapOf("type" to "array", "items" to items, "description" to description)

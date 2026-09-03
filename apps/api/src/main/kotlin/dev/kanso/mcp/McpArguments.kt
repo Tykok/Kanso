@@ -81,4 +81,25 @@ class McpArguments(private val tool: String, private val raw: Map<String, Any?>)
 		is Map<*, *> -> value.entries.associate { (key, entry) -> key.toString() to entry } as Map<String, Any?>
 		else -> throw BadRequestException("`$name` takes an object, and `$value` is not one")
 	}
+
+	/**
+	 * A list of nested objects, each handed back as a reader of its own.
+	 *
+	 * A reader rather than a raw map, because the gate this class *is* has to reach inside
+	 * the list too: `parts: [{ "titel": "…" }]` is a typo that would otherwise create a
+	 * ticket with no title and report success. Each element therefore refuses its own
+	 * unknown keys, and names itself `tool.parts[2]` when it does — an index, because
+	 * "`parts` does not take: titel" leaves the caller re-reading nine of them to find
+	 * which.
+	 */
+	fun objects(name: String): List<McpArguments> = when (val value = raw[name]) {
+		null -> emptyList()
+		is List<*> -> value.mapIndexed { at, element ->
+			val entry = element as? Map<*, *>
+				?: throw BadRequestException("`$name` takes a list of objects, and `$element` is not one")
+			McpArguments("$tool.$name[$at]", entry.entries.associate { (key, held) -> key.toString() to held })
+		}
+
+		else -> throw BadRequestException("`$name` takes a list, and `$value` is not one")
+	}
 }
