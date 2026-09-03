@@ -16,7 +16,10 @@ import { useSubTickets } from "@/lib/queries";
  */
 export function progressLabel(progress: SubTicketProgress): string {
   const counted = `${progress.done} of ${progress.total} done`;
-  if (progress.donePoints === null || progress.totalPoints === null) return counted;
+  // `== null`, not `=== null`, and the difference was a visible bug: the server omits a
+  // null field rather than serialising it, so an unestimated parent arrives with these
+  // two *absent* and a strict check let it through to print "undefined of undefined pts".
+  if (progress.donePoints == null || progress.totalPoints == null) return counted;
   return `${counted} · ${progress.donePoints} of ${progress.totalPoints} pts`;
 }
 

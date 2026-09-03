@@ -280,8 +280,15 @@ export type TicketLink = {
 export type SubTicketProgress = {
   total: number;
   done: number;
-  donePoints: number | null;
-  totalPoints: number | null;
+  /**
+   * Optional as well as nullable, and that is the wire being described rather than
+   * hedged: the server omits a null field instead of serialising it, so an unestimated
+   * parent arrives with both of these absent. Anything reading them has to treat
+   * `undefined` and `null` alike — spelling that out here is what makes a `=== null`
+   * check look wrong at the call site.
+   */
+  donePoints?: number | null;
+  totalPoints?: number | null;
 };
 
 export type CascadeResult = { movedTicketIds: string[] };
