@@ -8,6 +8,13 @@ kanso:
       enabled: false
     inbound:
       enabled: false
+  # A fixed key, so the webhook slice is *on* in tests: without one, creating a
+  # subscription is refused rather than storing a signing secret in plaintext, and every
+  # test of the delivery path would be testing the refusal. Thirty-two bytes, and the
+  # value is deliberately boring — it encrypts nothing but a per-test random secret in a
+  # container that is thrown away.
+  webhooks:
+    signing-key: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
   # Same reason, one screen along: a sweep firing mid-test would empty a countdown a
   # test is asserting about. `TrashServiceTest` calls `TrashService.empty` itself.
   trash:
