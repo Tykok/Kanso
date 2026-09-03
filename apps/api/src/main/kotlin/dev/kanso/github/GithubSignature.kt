@@ -47,6 +47,12 @@ object GithubSignature {
 	 * somebody once ran the right command rather than that the code is correct.
 	 */
 	fun sign(body: ByteArray, secret: String): String {
+		// The JCE refuses an empty key with `IllegalArgumentException: Empty key`, which is
+		// correct and unreadable. Signing with no secret is a programming error rather than a
+		// configuration one — [verify] is what answers "this instance has no secret", and it
+		// answers `false` without coming here — so this says so in words instead.
+		require(secret.isNotBlank()) { "Cannot sign a GitHub payload with no webhook secret" }
+
 		val mac = Mac.getInstance("HmacSHA256").apply {
 			init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
 		}
