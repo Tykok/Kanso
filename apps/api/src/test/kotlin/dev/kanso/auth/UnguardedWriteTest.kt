@@ -338,6 +338,18 @@ class UnguardedWriteTest : MockMvcTest() {
 		 * it". A `CurrentUser` field here would be an unused dependency whose only effect is
 		 * to satisfy this sweep, which is the wrong direction to move a guard in.
 		 *
+		 * `WebhookController` is the same shape as those two with the property moved: not
+		 * isolation — a subscription is instance-wide, so there is no "somebody else's" to be
+		 * pointed at — but the *role check*. Every method on `WebhookService` opens with
+		 * `requireConfigurator()`, which reads the actor off the security context, and none of
+		 * the six takes a principal parameter, so there is no argument a caller could pass that
+		 * would redirect or skip it. The behavioural half is not left to this sweep either:
+		 * `WebhookServiceTest` fires all six as a `MEMBER` and as a `VIEWER` and demands an
+		 * `AccessDeniedException` from each, which is the claim this structural check can only
+		 * gesture at. A `CurrentUser` field on the controller would be an unused dependency
+		 * whose only effect is to satisfy this sweep, and this file already says that is the
+		 * wrong direction to move a guard in.
+		 *
 		 * `BasicErrorController` is Spring's, serves `/error`, and is reached by a forward
 		 * rather than by a client.
 		 */
@@ -346,6 +358,7 @@ class UnguardedWriteTest : MockMvcTest() {
 			"ClientRegistrationController",
 			"GrantsController",
 			"ApiTokenController",
+			"WebhookController",
 			"BasicErrorController",
 		)
 	}

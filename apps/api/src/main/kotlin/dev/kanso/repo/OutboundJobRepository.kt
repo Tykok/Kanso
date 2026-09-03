@@ -81,6 +81,51 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 	}
 
 	/**
+	 * "Make sure there is a pending job for this entity, and tell me which one" — without
+	 * changing what an already-queued job was going to say.
+	 *
+	 * Added for the webhook replay, which is the first caller that needs a job's *id*
+	 * rather than only its existence: it writes a `webhook_deliveries` row pointing at the
+	 * job that will carry it, so the handler can find the delivery it was asked to repeat.
+	 *
+	 * The difference from [enqueue] is the whole reason this is a second method rather than
+	 * a flag on that one. [enqueue] means "this entity changed, here is its current state",
+	 * so coalescing *overwrites* — `payload`, `operation` and `attempts` all take the newer
+	 * value, because the newer state is the one worth pushing. A replay means "send this old
+	 * event again", which is not a statement about the entity's current state at all, so
+	 * overwriting a queued job's payload with it would make a genuine pending change go out
+	 * describing something that had already been superseded. Here the conflict branch only
+	 * pulls `next_attempt_at` forward — it wakes the queue and touches nothing else.
+	 *
+	 * `RETURNING id` fires on the update branch too, so the id comes back whether the row
+	 * was inserted or found. Without the no-op `DO UPDATE` there would be no returned row
+	 * on a conflict at all, which is the trap `DO NOTHING` sets.
+	 */
+	fun enqueueQuiet(
+		destination: Destination,
+		entityType: OutboundEntityType,
+		entityId: UUID,
+		operation: OutboundOperation,
+		payload: String? = null,
+	): Long = jdbc.sql(
+		"""
+		INSERT INTO outbound_jobs (destination, entity_type, entity_id, operation, status, priority, next_attempt_at, payload)
+		VALUES (:destination, :type, :id, :op, 'pending', :priority, now(), CAST(:payload AS jsonb))
+		ON CONFLICT (destination, entity_type, entity_id) WHERE status = 'pending'
+		DO UPDATE SET next_attempt_at = LEAST(outbound_jobs.next_attempt_at, EXCLUDED.next_attempt_at)
+		RETURNING id
+		""".trimIndent()
+	)
+		.param("destination", destination.wire)
+		.param("type", entityType.wire)
+		.param("id", entityId)
+		.param("op", operation.wire)
+		.param("priority", entityType.priority)
+		.param("payload", payload)
+		.query(Long::class.java)
+		.single()
+
+	/**
 	 * `SKIP LOCKED` is what makes several workers (or several API instances) safe
 	 * to run at once: each claims a disjoint set instead of blocking on the same
 	 * head row. Flipping to 'running' also frees the pending slot, so an edit made

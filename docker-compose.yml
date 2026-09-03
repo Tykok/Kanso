@@ -56,6 +56,18 @@ services:
       # is the number appearing twice; that is the trade `NOTION_API_VERSION` already
       # makes two lines below.
       KANSO_API_TOKEN_RATE_LIMIT: ${KANSO_API_TOKEN_RATE_LIMIT:-120}
+      # 32 base64 bytes, encrypting `webhook_subscriptions.secret_cipher`. Empty means
+      # outbound webhooks are off and creating one is refused — `WebhookSecret` argues why
+      # that is better than a default nobody chose. `openssl rand -base64 32`.
+      #
+      # Left empty here rather than given a value, unlike KANSO_API_TOKEN_RATE_LIMIT two
+      # fields up: that one had to be spelled out because an empty string fails to bind to
+      # an `Int`, and this one binds to a `String` where empty is a meaningful setting —
+      # the off switch.
+      KANSO_WEBHOOK_SIGNING_KEY: ${KANSO_WEBHOOK_SIGNING_KEY:-}
+      # Deliveries one subscription may receive per minute. Per replica, for
+      # KANSO_API_TOKEN_RATE_LIMIT's reason, and spelled out for the same binding reason.
+      KANSO_WEBHOOK_RATE_LIMIT: ${KANSO_WEBHOOK_RATE_LIMIT:-120}
       NOTION_TOKEN: ${NOTION_TOKEN:-}
       NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
       NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
