@@ -513,6 +513,8 @@ data class Ticket(
 	val due: KansoInstant?,
 	val completedAt: OffsetDateTime?,
 	val projectId: UUID?,
+	/** The ticket this one is a part of, or null for a top-level one. At most one level. */
+	val parentId: UUID?,
 	val archived: Boolean,
 	val mirror: MirrorInfo,
 	val createdAt: OffsetDateTime,

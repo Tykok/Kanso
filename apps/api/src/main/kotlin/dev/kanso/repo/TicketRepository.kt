@@ -488,6 +488,32 @@ class TicketRepository(
 		}
 	}
 
+	// --- sub-tickets ---------------------------------------------------------
+
+	fun setParent(id: UUID, parentId: UUID?): Boolean =
+		Tickets.update({ Tickets.id eq id }) { it[Tickets.parentId] = parentId } > 0
+
+	/**
+	 * The children of each of [parentIds], keyed by parent.
+	 *
+	 * One query for a whole screen rather than one per parent: the list draws every
+	 * parent in the page at once, and the alternative is a query per row on the most-used
+	 * screen in the product.
+	 */
+	fun childrenOf(parentIds: Collection<UUID>): Map<UUID, List<Ticket>> {
+		if (parentIds.isEmpty()) return emptyMap()
+		return Tickets.selectAll()
+			.where { Tickets.parentId inList parentIds }
+			.groupBy({ it[Tickets.parentId]!! }, { it.toTicket() })
+	}
+
+	/**
+	 * Whether [id] has any children at all — asked by the depth rule, which needs the
+	 * answer and not the rows.
+	 */
+	fun hasChildren(id: UUID): Boolean =
+		Tickets.selectAll().where { Tickets.parentId eq id }.limit(1).any()
+
 	// --- mirror bookkeeping --------------------------------------------------
 
 	fun markSynced(id: UUID, notionPageId: String, notionLastEdited: OffsetDateTime?) {

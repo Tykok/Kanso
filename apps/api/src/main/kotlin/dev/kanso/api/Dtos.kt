@@ -318,6 +318,12 @@ data class TicketResponse(
 	val start: InstantDto?,
 	val due: InstantDto?,
 	val projectId: UUID?,
+	/**
+	 * The ticket this one is a part of, null for a top-level one. On the row rather than
+	 * behind `GET /{id}/children`, because the main list folds children under their parent
+	 * and would otherwise need a second query per page to know which rows those are.
+	 */
+	val parentId: UUID?,
 	val assigneeIds: List<UUID>,
 	val docIds: List<UUID>,
 	val archived: Boolean,
@@ -341,6 +347,7 @@ data class TicketResponse(
 				start = InstantDto.of(t.start),
 				due = InstantDto.of(t.due),
 				projectId = t.projectId,
+				parentId = t.parentId,
 				assigneeIds = detail.assigneeIds,
 				docIds = detail.docIds,
 				archived = t.archived,

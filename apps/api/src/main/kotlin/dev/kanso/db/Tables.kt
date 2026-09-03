@@ -242,6 +242,13 @@ object Tickets : Table("tickets") {
 	val dueHasTime = bool("due_has_time")
 	val completedAt = timestampWithTimeZone("completed_at").nullable()
 	val projectId = javaUUID("project_id").nullable()
+
+	/**
+	 * The ticket this one is a part of, one level deep and no deeper — `TicketService`
+	 * refuses to build a tree, for the reasons `V34`'s header gives. `ON DELETE SET NULL`,
+	 * so deleting a parent promotes its children instead of destroying their work.
+	 */
+	val parentId = javaUUID("parent_id").nullable()
 	val notionPageId = text("notion_page_id").nullable()
 	val archived = bool("archived")
 	val syncState = text("sync_state")
