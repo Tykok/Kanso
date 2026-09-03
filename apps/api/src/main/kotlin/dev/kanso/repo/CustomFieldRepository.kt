@@ -67,7 +67,7 @@ class CustomFieldRepository(private val json: ObjectMapper) {
 		return findById(id)
 	}
 
-	/** The values go with it — `V32` carries the argument for the cascade. */
+	/** The values go with it — `V35` carries the argument for the cascade. */
 	fun delete(id: UUID): Boolean = CustomFields.deleteWhere { CustomFields.id eq id } > 0
 
 	// --- values --------------------------------------------------------------
@@ -107,7 +107,7 @@ class CustomFieldRepository(private val json: ObjectMapper) {
 	 * This is the function that decides whether custom fields cost a list anything. It is
 	 * shaped for `TicketDetails.of`, which already loads assignees and docs exactly this way
 	 * — one query per relation for the page, never one per row — so three fields defined on
-	 * two hundred tickets is *one* more query than the list cost before `V32`, not two
+	 * two hundred tickets is *one* more query than the list cost before `V35`, not two
 	 * hundred and not six hundred.
 	 *
 	 * No join with `custom_fields`, which is what keeps it to one. A jsonb scalar is
@@ -139,7 +139,7 @@ class CustomFieldRepository(private val json: ObjectMapper) {
 		}
 	}
 
-	/** Clearing is a delete, because `V32` keeps no JSON null to mean the same thing. */
+	/** Clearing is a delete, because `V35` keeps no JSON null to mean the same thing. */
 	fun clearValue(ticketId: UUID, fieldId: UUID): Boolean =
 		TicketFieldValues.deleteWhere {
 			(TicketFieldValues.ticketId eq ticketId) and (TicketFieldValues.fieldId eq fieldId)

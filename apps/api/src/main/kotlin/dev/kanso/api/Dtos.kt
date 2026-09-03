@@ -328,7 +328,7 @@ data class TicketResponse(
 	val docIds: List<UUID>,
 	val archived: Boolean,
 	/**
-	 * `V32`'s values, keyed by custom field id — `{}` for a ticket whose team has defined no
+	 * `V35`'s values, keyed by custom field id — `{}` for a ticket whose team has defined no
 	 * fields, and for every draft.
 	 *
 	 * **Always present, never omitted.** That is the entire reason this shipped ahead of

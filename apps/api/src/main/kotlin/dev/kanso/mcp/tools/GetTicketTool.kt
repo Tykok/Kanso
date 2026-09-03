@@ -32,7 +32,7 @@ class GetTicketTool(
 	 * The team's field definitions, so this tool can print `Severity: high` rather than a
 	 * UUID and a scalar.
 	 *
-	 * This is the read that pays for `V32`'s decision to key `customFields` by id on the
+	 * This is the read that pays for `V35`'s decision to key `customFields` by id on the
 	 * wire. A list keyed by name would have saved this lookup and cost every reader a rename;
 	 * here the cost is one query, on the tool that is explicitly the expensive one.
 	 */

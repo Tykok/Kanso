@@ -15,7 +15,7 @@ import { mayWrite } from "@/lib/seat";
  * accessible, already announces itself, and already works on a phone.
  *
  * **The definitions come from the team, the values from the ticket.** Two reads rather than
- * one embedded shape, and it is why `V32` keys `customFields` by field id on the wire: a
+ * one embedded shape, and it is why `V35` keys `customFields` by field id on the wire: a
  * name is what a screen calls a thing, and keying by it would cost every reader a rename.
  * This component is the one place that joins the two, which is exactly what a screen is for.
  *
@@ -81,7 +81,7 @@ export function TicketFields({
 
 /**
  * The control for one type. Exhaustive over `CustomFieldType` — a fifth type added to the
- * union without a branch here is a TypeScript error, which is the point: `V32` refuses to
+ * union without a branch here is a TypeScript error, which is the point: `V35` refuses to
  * add a type nothing renders, and this is that refusal expressed where it can be checked.
  */
 function Control({

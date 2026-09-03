@@ -98,7 +98,7 @@ export const fromDayValue = (value: string): KansoInstant | null =>
  * `ticket_field_values_value_chk` refuses an object, an array and a JSON null at the
  * database, so this union is not a simplification of what can arrive.
  *
- * There is no `null` in it: a field with no value has no key at all, because `V32` keeps no
+ * There is no `null` in it: a field with no value has no key at all, because `V35` keeps no
  * row for one. `undefined` from a map lookup is the only spelling of "not set".
  *
  * Declared here rather than in `api/fields.ts` with the rest of the slice, because [Ticket]
@@ -135,7 +135,7 @@ export type Ticket = {
   docIds: string[];
   archived: boolean;
   /**
-   * `V32`'s custom field values, keyed by field id — `{}` for a ticket whose team has
+   * `V35`'s custom field values, keyed by field id — `{}` for a ticket whose team has
    * defined none, and for every draft.
    *
    * **Required, not optional**, and it is the one field on this row that is. The rest are

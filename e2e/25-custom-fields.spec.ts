@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { ADMIN, apiAs, openAs, seedInstance, seedTeam, seedTicket, unique, uniqueKey } from "./support";
 
 /**
- * `V32` on screen: a team defines a field, a ticket carries a value, and the ticket draws a
+ * `V35` on screen: a team defines a field, a ticket carries a value, and the ticket draws a
  * control per type.
  *
  * The definitions are made over HTTP rather than by driving the team dialog, for the reason

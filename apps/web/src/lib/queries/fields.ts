@@ -46,7 +46,7 @@ export const useRedefineField = (teamId: string) => {
  * Deleting a definition cascades to its values, so every ticket in the cache is now wrong
  * about what it holds — not just the ones this screen can see. Hence the broad
  * invalidation: a narrower one would leave a stale value rendering under a field that no
- * longer exists, which is precisely the orphan `V32` refused to keep on disk.
+ * longer exists, which is precisely the orphan `V35` refused to keep on disk.
  */
 export const useDeleteField = (teamId: string) => {
   const client = useQueryClient();

@@ -13,7 +13,7 @@ import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
 /**
- * What a ticket's fields are worth — the value half of `V32`.
+ * What a ticket's fields are worth — the value half of `V35`.
  *
  * **The guard is [TicketAccess.require], the same one `LabelService.attach` uses.** Valuing a
  * field is editing a ticket: it is the ticket's row that changes, the ticket's team that

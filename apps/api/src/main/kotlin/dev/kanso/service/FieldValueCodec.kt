@@ -8,7 +8,7 @@ import java.math.BigDecimal
 /**
  * The half of a typed custom field that a `CHECK` cannot be.
  *
- * `V32` narrows `ticket_field_values.value` to three scalar shapes and stops there, because
+ * `V35` narrows `ticket_field_values.value` to three scalar shapes and stops there, because
  * the comparison that matters — is this value the type its *definition* names — reads
  * `custom_fields.type`, which is another table. So this is where a jsonb column stops being
  * a bag: every write passes through [validate], and nothing else may write that column.
@@ -29,13 +29,13 @@ object FieldValueCodec {
 	 * Returns null for "clear this field", which is a value in the request and the absence of
 	 * a row in the table. Two spellings reach it — an explicit JSON `null` and, for
 	 * [CustomFieldType.TEXT], a blank string — and collapsing them here is deliberate: a
-	 * stored `""` would be a second way to say "nothing", and `V32` refuses a JSON null in
+	 * stored `""` would be a second way to say "nothing", and `V35` refuses a JSON null in
 	 * the column precisely so that "no value" has one spelling. A text box somebody emptied
 	 * and a text box somebody never filled are the same fact.
 	 *
 	 * [CustomField.required] is enforced here and only here, which is what makes it mean "a
 	 * value may not be taken away" rather than "a ticket without one is invalid" — the
-	 * distinction `V32` argues at length, and the reason ticking the box does not break every
+	 * distinction `V35` argues at length, and the reason ticking the box does not break every
 	 * script that files tickets.
 	 */
 	fun validate(field: CustomField, raw: Any?): Any? {

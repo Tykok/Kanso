@@ -254,7 +254,7 @@ enum class ActivityKind(override val wire: String) : Wire {
 	TOKEN_REVOKED("token_revoked"),
 
 	/**
-	 * A custom field given a value, changed, or cleared — `V32`'s word.
+	 * A custom field given a value, changed, or cleared — `V35`'s word.
 	 *
 	 * One kind for all four field types and for all three of those gestures, which is the one
 	 * place this vocabulary deliberately generalises. It is not the generic `updated` this

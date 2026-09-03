@@ -314,7 +314,7 @@ class McpToolsTest : PostgresTest() {
 	}
 
 	/**
-	 * The shape `V32` exists to have added *before* an agent pinned the old one.
+	 * The shape `V35` exists to have added *before* an agent pinned the old one.
 	 *
 	 * Every field the team defined, by name, whether or not this ticket holds a value — and
 	 * the unset one is the reason it is worth the extra query. An agent that has seen

@@ -48,7 +48,7 @@ data class TicketDetail(
 	val assigneeIds: List<UUID>,
 	val docIds: List<UUID>,
 	/**
-	 * `V32`'s values, by field id — empty for a ticket whose team has defined none, and for
+	 * `V35`'s values, by field id — empty for a ticket whose team has defined none, and for
 	 * every draft, which has no team to have defined any.
 	 *
 	 * Keyed by id rather than by name for the reason every other relation here is a list of
@@ -130,7 +130,7 @@ class TicketService(
 	 *
 	 * `TicketDetails` was extracted precisely because four organising services needed the
 	 * same three queries, and its own comment names this class's `decorate` as the copy it
-	 * was extracted from — a copy that was then left in place. `V32` is the fifth relation
+	 * was extracted from — a copy that was then left in place. `V35` is the fifth relation
 	 * that comment predicted, so the duplicate is collapsed here rather than doubled: one
 	 * place loads a ticket's relations, and a sixth one cannot be added to half the app.
 	 */
@@ -267,7 +267,7 @@ class TicketService(
 		requireLive(ticket)
 		// Through `decorate` like every other read, rather than assembling a detail by hand:
 		// the hand-built one was two queries that happened to match the loader's and, once
-		// `V32` added a fourth relation, would have been the one read in the app answering
+		// `V35` added a fourth relation, would have been the one read in the app answering
 		// `customFields` as empty — and it is the read `kanso_get_ticket` goes through.
 		return decorate(listOf(ticket)).single()
 	}

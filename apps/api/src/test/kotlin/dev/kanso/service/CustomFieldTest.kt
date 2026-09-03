@@ -21,7 +21,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * Defining a team's fields — the shape half of `V32`.
+ * Defining a team's fields — the shape half of `V35`.
  *
  * The values are [TicketFieldValueTest]'s and the seat is [dev.kanso.auth.CustomFieldSeatTest]'s;
  * this file is about what a definition may be, and about the two gestures that would have

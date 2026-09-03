@@ -26,7 +26,7 @@ class TicketDetails(
 	/**
 	 * One extra query per relation for the whole page, instead of two per row.
 	 *
-	 * `V32` made this the fourth relation and cost the list exactly one more statement — not
+	 * `V35` made this the fourth relation and cost the list exactly one more statement — not
 	 * one per ticket and not one per ticket per field, which is the shape a custom-field
 	 * feature arrives in when the values are fetched from wherever they are rendered.
 	 * `CustomFieldRepository.valuesFor` is keyed by ticket id and joins nothing, because a

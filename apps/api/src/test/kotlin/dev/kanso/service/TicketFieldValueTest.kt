@@ -23,7 +23,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * What a ticket's fields are worth — the value half of `V32`.
+ * What a ticket's fields are worth — the value half of `V35`.
  *
  * `FieldValueCodecTest` already pins the type rules without a database. This file is about
  * the three things that need one: the team boundary, the partial write, and the fact that a
@@ -251,7 +251,7 @@ class TicketFieldValueTest : PostgresTest() {
 
 	/**
 	 * Two claims in one test, and the first is about the schema: `field_set` reaches the
-	 * `activity` table, which is only true if `V32` restated `activity_kind_chk` correctly. A
+	 * `activity` table, which is only true if `V35` restated `activity_kind_chk` correctly. A
 	 * list copied from `V8` instead of `V23` would still pass every other test in this suite
 	 * and fail right here.
 	 */

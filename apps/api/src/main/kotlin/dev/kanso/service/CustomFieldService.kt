@@ -151,7 +151,7 @@ class CustomFieldService(
 		return requireNotNull(fields.update(fieldId, trimmed, required, wanted))
 	}
 
-	/** The values go with it — `V32` carries the argument for the cascade, and [list] the count. */
+	/** The values go with it — `V35` carries the argument for the cascade, and [list] the count. */
 	@Transactional
 	fun remove(actor: User, fieldId: UUID) {
 		require(actor, fieldId)
@@ -195,7 +195,7 @@ class CustomFieldService(
 	 * The choices, cleaned and checked against the type — both directions, like
 	 * `custom_fields_options_chk`.
 	 *
-	 * Blanks are dropped and repeats collapse, which is the half `V32` leaves to Kotlin
+	 * Blanks are dropped and repeats collapse, which is the half `V35` leaves to Kotlin
 	 * because a CHECK cannot walk an array. Two identical choices in a dropdown is not an
 	 * error worth a refusal, it is a paste accident with an obvious reading.
 	 */

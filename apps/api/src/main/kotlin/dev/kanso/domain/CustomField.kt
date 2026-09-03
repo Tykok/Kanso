@@ -3,7 +3,7 @@ package dev.kanso.domain
 import java.util.UUID
 
 /**
- * What a custom field holds — the vocabulary `V32`'s `custom_fields_type_chk` closes, from
+ * What a custom field holds — the vocabulary `V35`'s `custom_fields_type_chk` closes, from
  * Kotlin's side.
  *
  * Four values, and the migration carries the argument for why it is four and what `date`,
@@ -36,7 +36,7 @@ enum class CustomFieldType(override val wire: String) : Wire {
  * A field, defined once for a team.
  *
  * [options] is empty for every type but [CustomFieldType.SELECT], and non-empty for that
- * one — the invariant `V32` states as a CHECK and [dev.kanso.service.CustomFieldService]
+ * one — the invariant `V35` states as a CHECK and [dev.kanso.service.CustomFieldService]
  * refuses before it gets there.
  */
 data class CustomField(

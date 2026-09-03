@@ -95,7 +95,7 @@ class FieldValueCodecTest {
 
 	/**
 	 * Both spellings of "nothing" collapse to the same answer, which is what keeps the table
-	 * from holding two of them — the argument `V32` makes for refusing a JSON null outright.
+	 * from holding two of them — the argument `V35` makes for refusing a JSON null outright.
 	 */
 	@Test
 	fun `null clears any field, and a blank string clears a text one`() {
@@ -117,7 +117,7 @@ class FieldValueCodecTest {
 	}
 
 	/**
-	 * `required` bites here and nowhere else. That is the whole of the decision `V32` argues:
+	 * `required` bites here and nowhere else. That is the whole of the decision `V35` argues:
 	 * a value may not be taken away, and a *ticket* is never refused for lacking one — which
 	 * is why there is no test in this suite for a create refused by a required field.
 	 */

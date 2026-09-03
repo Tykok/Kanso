@@ -4,7 +4,7 @@ import { request, type CustomFieldValue } from "./core";
  * What a custom field may hold — `CustomFieldType` in `domain/CustomField.kt`, closed there
  * by an enum and in the database by `custom_fields_type_chk`.
  *
- * Four values, and the migration that created them (`V32`) carries the argument for why
+ * Four values, and the migration that created them (`V35`) carries the argument for why
  * `date`, `multi_select` and `user` are not among them. A fifth arriving here without a
  * renderer below would draw a field nobody can fill, so the two lists are the same length on
  * purpose: `CONTROLS` in `ticket-fields.tsx` is exhaustive over this union and TypeScript
@@ -20,7 +20,7 @@ export type CustomField = {
   type: CustomFieldType;
   /**
    * A value that exists may not be taken away. Deliberately *not* "a ticket must have one" —
-   * `V32` records why enforcing it on creation would break every existing integration the
+   * `V35` records why enforcing it on creation would break every existing integration the
    * day somebody ticked the box.
    */
   required: boolean;

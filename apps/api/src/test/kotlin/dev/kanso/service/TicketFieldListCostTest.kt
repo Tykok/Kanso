@@ -45,7 +45,7 @@ import kotlin.test.assertTrue
  * fields valued on every one costs **5** statements: the rows, the team keys, the assignees,
  * the docs, and the values. The grouped list the main screen reads costs **6** — the extra
  * one is the `GROUP BY` that makes `Todo · 29` a fact about the team rather than about a
- * fetch. So `V32` cost the hottest read in the application exactly one statement, and the
+ * fetch. So `V35` cost the hottest read in the application exactly one statement, and the
  * same one whether the team has defined no fields or thirty.
  */
 @Transactional

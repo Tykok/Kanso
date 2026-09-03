@@ -7,7 +7,7 @@ import org.jetbrains.exposed.v1.core.java.javaUUID
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 /**
- * Exposed's view of `V32`. Its own file rather than two more objects in `Tables.kt`, which
+ * Exposed's view of `V35`. Its own file rather than two more objects in `Tables.kt`, which
  * is 567 lines and is the length past which the maintainer stops re-reading a file.
  *
  * Both jsonb columns here are declared through [JsonbColumnType] rather than as `text()`,
@@ -47,7 +47,7 @@ object TicketFieldValues : Table("ticket_field_values") {
 
 	/**
 	 * One jsonb scalar — a string, a number or a boolean, and never a JSON null: no value is
-	 * the absence of a row, which is what `V32` argues for at length. `FieldValueCodec` is
+	 * the absence of a row, which is what `V35` argues for at length. `FieldValueCodec` is
 	 * the only thing that writes this column and the only thing that reads it back.
 	 */
 	val value = jsonb("value")
