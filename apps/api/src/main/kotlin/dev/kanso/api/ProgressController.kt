@@ -149,6 +149,8 @@ data class ProgressResponse(
 	 * necessary, and the personal page is the only place the subject will ever look for it.
 	 */
 	val readers: ProgressReadersResponse,
+	/** Cycle time, work in flight, and the trend — KAN-23, on the response KAN-40 shipped. */
+	val insights: InsightsResponse,
 ) {
 	companion object {
 		fun of(progress: Progress, readers: ProgressReaders) = ProgressResponse(
@@ -159,6 +161,7 @@ data class ProgressResponse(
 			delivered = progress.delivered.map(DeliveredCycleResponse::of),
 			load = OpenLoadResponse.of(progress.load),
 			readers = ProgressReadersResponse.of(readers),
+			insights = InsightsResponse.of(progress.insights),
 		)
 	}
 }
@@ -194,6 +197,8 @@ data class TeamProgressResponse(
 	/** Oldest first — the order the chart draws. */
 	val delivered: List<DeliveredCycleResponse>,
 	val load: OpenLoadResponse,
+	/** The trend the ticket asks for per team. It names nobody, so it sorts nothing. */
+	val insights: InsightsResponse,
 ) {
 	companion object {
 		fun of(progress: TeamProgress) = TeamProgressResponse(
@@ -201,6 +206,7 @@ data class TeamProgressResponse(
 			pace = TeamPaceResponse.of(progress.pace),
 			delivered = progress.delivered.map(DeliveredCycleResponse::of),
 			load = OpenLoadResponse.of(progress.load),
+			insights = InsightsResponse.of(progress.insights),
 		)
 	}
 }
