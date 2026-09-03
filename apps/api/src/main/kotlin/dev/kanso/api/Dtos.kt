@@ -14,6 +14,7 @@ import dev.kanso.domain.TeamMember
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.github.TicketPullRequest
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ProjectDetail
 import dev.kanso.service.TicketDetail
@@ -348,6 +349,24 @@ data class TicketResponse(
 	 * table keeps no row for one.
 	 */
 	val customFields: Map<String, Any>,
+	/**
+	 * `V36`'s pull requests. **Always present**, empty for an instance with no GitHub App —
+	 * the same promise `customFields` makes and for the same reason: a shape a script pins
+	 * must not change the day the feature is switched on.
+	 *
+	 * A list and not a nullable field, deliberately. The shared Jackson mapper omits nulls,
+	 * so a nullable field is *absent* from the JSON rather than `null`, and a hand-written TS
+	 * type saying `| null` would then be wrong in a way no compiler catches — which has
+	 * already produced one "Invalid Date" on a screen in this repository. An always-present
+	 * array has one spelling for "none".
+	 */
+	val pullRequests: List<PullRequestDto>,
+	/**
+	 * The branch to create for this ticket, derived on read from the identifier and the
+	 * title. Null for a draft, which has no identifier — and null is *absent* here, so the
+	 * TS mirror spells it `branchName?: string`.
+	 */
+	val branchName: String?,
 	val mirror: MirrorDto,
 	val createdAt: OffsetDateTime,
 	val updatedAt: OffsetDateTime,
@@ -374,9 +393,67 @@ data class TicketResponse(
 				archived = t.archived,
 				// UUID keys as text, because a JSON object has no other kind.
 				customFields = detail.customFields.entries.associate { (id, value) -> id.toString() to value },
+				pullRequests = detail.pullRequests.map(PullRequestDto::of),
+				branchName = detail.branchName,
 				mirror = MirrorDto(t.mirror.notionPageId, t.mirror.syncState.wire, t.mirror.notionSyncedAt),
 				createdAt = t.createdAt,
 				updatedAt = t.updatedAt,
+			)
+		}
+	}
+}
+
+/**
+ * One pull request on a ticket.
+ *
+ * Flat and small on purpose — the opposite of [TicketLinkResponse], which nests a whole
+ * `TicketResponse` because the other end of a link *is* a ticket. What a person reads off a
+ * row here is the repository, the number, the title and a pill, so that is what crosses the
+ * wire, and nothing here needs a second request to be useful.
+ *
+ * **The pill is not a field.** `state`, `draft` and `reviewState` go out as they are stored
+ * and the label is computed by the client, because it is a presentation rule over three
+ * columns — a `pill: "Changes requested"` on the wire would be a derived value stored in a
+ * response, which is the thing this codebase does not do, and it would need translating
+ * before it could ever be translated.
+ */
+data class PullRequestDto(
+	val repo: String,
+	val number: Int,
+	val title: String,
+	val url: String,
+	val state: String,
+	val draft: Boolean,
+	/** Absent when nobody has reviewed yet, which the pill reads as "In review". */
+	val reviewState: String?,
+	val authorLogin: String?,
+	val headRef: String,
+	/** Whether this pull request may move the ticket, as opposed to merely naming it. */
+	val closes: Boolean,
+	/**
+	 * True when a member drew this link by hand.
+	 *
+	 * On the wire because the screen has to be able to say so: a detected link and a
+	 * deliberate one are removed by different things, and a person who does not know which
+	 * kind they are looking at cannot predict what an edit to the branch name will do.
+	 */
+	val linkedByMember: Boolean,
+) {
+	companion object {
+		fun of(link: TicketPullRequest): PullRequestDto {
+			val pr = link.pullRequest
+			return PullRequestDto(
+				repo = pr.repoFullName,
+				number = pr.number,
+				title = pr.title,
+				url = pr.url,
+				state = pr.state.wire,
+				draft = pr.draft,
+				reviewState = pr.reviewState?.wire,
+				authorLogin = pr.authorLogin,
+				headRef = pr.headRef,
+				closes = link.closes,
+				linkedByMember = link.linkedByMember,
 			)
 		}
 	}

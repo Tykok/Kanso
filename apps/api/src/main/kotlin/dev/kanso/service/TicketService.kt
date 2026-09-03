@@ -10,6 +10,7 @@ import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.github.TicketPullRequest
 import dev.kanso.outbox.Destination
 import dev.kanso.outbox.OutboundEntityType
 import dev.kanso.outbox.OutboundOperation
@@ -61,8 +62,53 @@ data class TicketDetail(
 	 * wrong one.
 	 */
 	val customFields: Map<UUID, Any> = emptyMap(),
+	/**
+	 * `V36`'s pull requests, newest first within a repository. Empty for every ticket on an
+	 * instance that has never connected a GitHub App, which is most of them.
+	 *
+	 * Defaulted for the same two reasons `customFields` is: the twenty-odd places that build
+	 * a detail did not have to grow an argument, and a caller that forgets it gets an empty
+	 * list rather than a wrong one.
+	 *
+	 * On the row rather than behind a `GET /api/tickets/:id/pull-requests`, which is the
+	 * opposite of what `V33`'s links did — and the difference is what each one is *for*. A
+	 * link's payload is a whole other ticket, so serving links inline would nest a
+	 * `TicketResponse` in every row of a list. A pull request is a small flat record, and the
+	 * question "does this ticket have an open pull request" is one a board column wants to
+	 * answer without a request per card. Same reason `parentId` rides on the row.
+	 */
+	val pullRequests: List<TicketPullRequest> = emptyList(),
 ) {
 	val identifier: String? get() = teamKey?.let { "$it-${ticket.number}" }
+
+	/**
+	 * The branch to create, derived from the identifier and the title — **computed on read,
+	 * never stored**, like every other derived value in this schema.
+	 *
+	 * Not stored because it is a function of two columns that both change: a retitled ticket
+	 * would keep a stale suggestion, and a stored branch name would also start looking like a
+	 * promise about a branch that exists. This is a suggestion to copy, and nothing more.
+	 *
+	 * Null for a draft, which has no identifier to name a branch after.
+	 *
+	 * Kanso does not create the branch. That needs `contents: write`, which would tell an
+	 * organisation at install time that Kanso may write to every repository it selected —
+	 * forever, whether or not the feature that needed it is still used — in exchange for not
+	 * typing `git switch -c`. The design weighs that trade and refuses it, so what a ticket
+	 * offers is the name.
+	 */
+	val branchName: String? get() = identifier?.let { id ->
+		val slug = ticket.title.lowercase()
+			// Anything that is not a letter, a digit or a separator becomes a separator, then
+			// runs of separators collapse. Doing it in two passes rather than one clever
+			// pattern is what keeps `A/B testing: round 2` from becoming `a-b--testing--round-2`.
+			.replace(Regex("[^a-z0-9]+"), "-")
+			.trim('-')
+			// Bounded, because a branch name is pasted into a shell and a title has no limit.
+			// Cut on a separator so the tail is a whole word rather than half of one.
+			.take(48).trimEnd('-')
+		"feat/${id.lowercase()}" + if (slug.isEmpty()) "" else "-$slug"
+	}
 }
 
 /**
