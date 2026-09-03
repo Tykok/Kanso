@@ -36,6 +36,15 @@
 -- rather than as a chain of amendments. The re-add revalidates every existing row, which
 -- is what we want — the list is otherwise the only claim that no stray value ever got in.
 --
+-- **Re-stating the whole list means re-stating the whole *current* list, and the trap is
+-- that the precedent file is not it.** `V21` is the migration this one imitates, and
+-- copying its list is wrong: `V23` added `'health_posted'` afterwards. Doing exactly that
+-- silently dropped the word, and the failure did not look like a migration bug — ten
+-- `ProjectHealthTest` cases went red on a `DataIntegrityViolationException` from a
+-- `CHECK` nobody had touched in that feature. Nothing in this file's own subject area
+-- fails, which is what makes it worth writing down: the authority for the list is the
+-- newest migration that set it, `grep`ed for, not the one whose shape is being copied.
+--
 -- ---------------------------------------------------------------------------
 -- This file does not travel alone
 -- ---------------------------------------------------------------------------
@@ -66,4 +75,4 @@ ALTER TABLE activity ADD CONSTRAINT activity_kind_chk
   CHECK (kind IN ('created', 'status_changed', 'priority_changed', 'assigned',
                   'unassigned', 'renamed', 'scheduled', 'archived', 'commented',
                   'labelled', 'mirror_pushed', 'carried_over', 'estimated',
-                  'token_revoked'));
+                  'health_posted', 'token_revoked'));
