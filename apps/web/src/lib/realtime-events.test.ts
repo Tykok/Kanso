@@ -78,6 +78,7 @@ const ticket = (id: string, overrides: Partial<Ticket> = {}): Ticket => ({
   priority: "none",
   assigneeIds: [],
   docIds: [],
+  customFields: {},
   archived: false,
   mirror: { state: "disabled" },
   createdAt: "2026-01-01T00:00:00Z",

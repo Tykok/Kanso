@@ -32,6 +32,7 @@ import { Kbd } from "../ui/kbd";
 import { PriorityMark } from "../ui/priority-mark";
 import { StatusDot } from "../ui/status-dot";
 import { TicketDurationNote } from "../ticket-duration";
+import { TicketFields } from "../ticket-fields";
 import { TicketLabels } from "../ticket-labels";
 import { SubTicketsPanel } from "./sub-tickets-panel";
 import { TicketLinksPanel } from "./ticket-links-panel";
@@ -308,6 +309,13 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
                 the labels of one ticket are one question, not two implementations. */}
             <TicketLabels ticket={ticket} />
           </div>
+
+          {/* The same component the panel draws, for the reason the labels beside it give:
+              a ticket's custom fields are one question, not two implementations. On its own
+              line rather than in the chip row above — a chip is a value at a glance, and
+              these are labelled controls somebody edits. Draws nothing when the team has
+              defined no fields. */}
+          <TicketFields ticket={ticket} />
 
           {/* Not a chip: a chip is a value at a glance, and this is a range plus the
               sentence that stops the range being read as a date. Its own line, on the one

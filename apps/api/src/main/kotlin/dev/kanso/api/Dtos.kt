@@ -327,6 +327,27 @@ data class TicketResponse(
 	val assigneeIds: List<UUID>,
 	val docIds: List<UUID>,
 	val archived: Boolean,
+	/**
+	 * `V35`'s values, keyed by custom field id — `{}` for a ticket whose team has defined no
+	 * fields, and for every draft.
+	 *
+	 * **Always present, never omitted.** That is the entire reason this shipped ahead of
+	 * anybody asking for a custom field: `V27` opened a bearer-token door and `/api/mcp` put
+	 * an agent behind it, so this class stopped being ours and became a contract. A reader
+	 * that has always seen the key can learn to render it; one that meets it for the first
+	 * time after pinning the shape cannot.
+	 *
+	 * Ids and not names, like [assigneeIds] and [docIds] beside it and for the same reason
+	 * [TicketGroupsResponse] sends no labels: a name is what a *screen* calls a thing, and the
+	 * screen fetches `GET /api/teams/{id}/fields` once to draw its inputs anyway. Keying by
+	 * name would also cost every reader a rename.
+	 *
+	 * A value is one of three JSON scalars — a string, a number or a boolean — which is what
+	 * `ticket_field_values_value_chk` narrows the column to and what `FieldValueCodec` is the
+	 * rest of. It is never null: a field with no value has no key here at all, because the
+	 * table keeps no row for one.
+	 */
+	val customFields: Map<String, Any>,
 	val mirror: MirrorDto,
 	val createdAt: OffsetDateTime,
 	val updatedAt: OffsetDateTime,
@@ -351,6 +372,8 @@ data class TicketResponse(
 				assigneeIds = detail.assigneeIds,
 				docIds = detail.docIds,
 				archived = t.archived,
+				// UUID keys as text, because a JSON object has no other kind.
+				customFields = detail.customFields.entries.associate { (id, value) -> id.toString() to value },
 				mirror = MirrorDto(t.mirror.notionPageId, t.mirror.syncState.wire, t.mirror.notionSyncedAt),
 				createdAt = t.createdAt,
 				updatedAt = t.updatedAt,

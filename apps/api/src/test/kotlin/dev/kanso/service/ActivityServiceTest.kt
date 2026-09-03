@@ -208,6 +208,51 @@ class ActivityServiceTest : PostgresTest() {
 		)
 	}
 
+	/**
+	 * **Every** kind in the enum, against the CHECK — not one of them, and not the newest.
+	 *
+	 * This exists because the per-kind test below it does not scale into a guarantee, and the
+	 * failure it misses is silent by construction. `activity.kind` has been widened five times
+	 * now (`V17`, `V21`, `V23`, `V30`, `V35`), and Postgres has no `ALTER CONSTRAINT` for a
+	 * CHECK's expression, so each of those had to re-state the whole vocabulary. Re-state it
+	 * from the wrong ancestor and a word silently disappears from the database while Kotlin
+	 * carries on writing it — no compile error, and no failing test unless something asks the
+	 * question in this shape.
+	 *
+	 * It is not hypothetical. `V35` was drafted on a branch that predated `V30` and restated
+	 * `V23`'s fourteen words plus its own; `token_revoked` was gone, and every test in this
+	 * suite still passed. `V30`'s own header records the same mistake happening once before.
+	 *
+	 * A raw INSERT rather than `activity.record`, for the reason the refusal test above gives:
+	 * the enum is one side of the guard and this is the other, and going through Kotlin would
+	 * only prove Kotlin agrees with itself. `entity_type` is `ticket` throughout because the
+	 * two constraints are independent — this one is about the kind vocabulary alone.
+	 */
+	@Test
+	fun `every kind in the enum is a kind the CHECK accepts`() {
+		val refused = ActivityKind.entries.filter { kind ->
+			runCatching {
+				jdbc.sql(
+					"""
+					INSERT INTO activity (id, entity_type, entity_id, actor_id, kind, payload, created_at)
+					VALUES (:id, 'ticket', :entityId, NULL, :kind, CAST('{}' AS jsonb), now())
+					""".trimIndent()
+				)
+					.param("id", UUID.randomUUID())
+					.param("entityId", UUID.randomUUID())
+					.param("kind", kind.wire)
+					.update()
+			}.isFailure
+		}
+
+		assertEquals(
+			emptyList(),
+			refused.map { it.wire },
+			"these kinds exist in Kotlin and are refused by `activity_kind_chk`," +
+				" which means a migration re-stated the list from an ancestor that predated them",
+		)
+	}
+
 	@Test
 	fun `estimated is a kind the CHECK accepts, so the enum and the constraint agree`() {
 		val ticket = ticket()

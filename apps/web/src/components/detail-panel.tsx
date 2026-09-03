@@ -21,6 +21,7 @@ import { Menu, type MenuItem } from "./menu";
 import { TicketIdentifier } from "./pills";
 import { Backdrop } from "./overlays";
 import { TicketDurationNote } from "./ticket-duration";
+import { TicketFields } from "./ticket-fields";
 import { TicketLabels } from "./ticket-labels";
 import { Kbd } from "./ui/kbd";
 import { PriorityMark } from "./ui/priority-mark";
@@ -195,6 +196,11 @@ export function DetailPanel({
             <span className="text-11 text-faint">Labels</span>
             <TicketLabels ticket={ticket} />
           </div>
+
+          {/* Below the labels and above the dates, which is where a team's own vocabulary
+              belongs: after the fields every ticket has, before the ones about time. Draws
+              nothing at all when the team has defined none — see `TicketFields`. */}
+          <TicketFields ticket={ticket} />
 
           <MetaRow label="Due date">
             <input
