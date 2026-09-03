@@ -47,6 +47,20 @@ data class TicketDetail(
 	val teamKey: String?,
 	val assigneeIds: List<UUID>,
 	val docIds: List<UUID>,
+	/**
+	 * `V32`'s values, by field id — empty for a ticket whose team has defined none, and for
+	 * every draft, which has no team to have defined any.
+	 *
+	 * Keyed by id rather than by name for the reason every other relation here is a list of
+	 * ids: a name is what a *screen* calls a thing, the screen already fetches the team's
+	 * definitions to draw its inputs, and a map keyed by name would break on a rename. The
+	 * value is one of the three scalars `FieldValueCodec` produces.
+	 *
+	 * Defaulted, so that the twenty-odd places that build a detail did not all have to grow
+	 * an argument — and so that a caller which forgets it gets an empty map rather than a
+	 * wrong one.
+	 */
+	val customFields: Map<UUID, Any> = emptyMap(),
 ) {
 	val identifier: String? get() = teamKey?.let { "$it-${ticket.number}" }
 }
@@ -111,6 +125,16 @@ class TicketService(
 	 * the two have to stack their rows the same way.
 	 */
 	private val groups: TicketGroups,
+	/**
+	 * The relation loader this file used to have a private copy of.
+	 *
+	 * `TicketDetails` was extracted precisely because four organising services needed the
+	 * same three queries, and its own comment names this class's `decorate` as the copy it
+	 * was extracted from — a copy that was then left in place. `V32` is the fifth relation
+	 * that comment predicted, so the duplicate is collapsed here rather than doubled: one
+	 * place loads a ticket's relations, and a sixth one cannot be added to half the app.
+	 */
+	private val details: TicketDetails,
 ) {
 
 	/**
@@ -241,7 +265,11 @@ class TicketService(
 		val ticket = tickets.findByTeamAndNumber(team.id, number)
 			?: throw NotFoundException("No ticket $teamKey-$number")
 		requireLive(ticket)
-		return TicketDetail(ticket, team.key, tickets.assigneeIds(ticket.id), tickets.docIds(ticket.id))
+		// Through `decorate` like every other read, rather than assembling a detail by hand:
+		// the hand-built one was two queries that happened to match the loader's and, once
+		// `V32` added a fourth relation, would have been the one read in the app answering
+		// `customFields` as empty — and it is the read `kanso_get_ticket` goes through.
+		return decorate(listOf(ticket)).single()
 	}
 
 	/**
@@ -739,25 +767,15 @@ class TicketService(
 
 	// --- helpers -------------------------------------------------------------
 
-	/** One extra query per relation for the whole page, instead of two per row. */
-	private fun decorate(found: List<Ticket>): List<TicketDetail> {
-		if (found.isEmpty()) return emptyList()
-		val ids = found.map { it.id }
-		val keys = teams.findAllById(found.mapNotNull { it.teamId }.toSet()).associate { it.id to it.key }
-		val assignees = tickets.assigneeIdsFor(ids)
-		val docsByTicket = tickets.docIdsFor(ids)
-		return found.map {
-			TicketDetail(
-				ticket = it,
-				// Null when there is no team, which is what makes the identifier null too. The
-				// `?` fallback is for a team that vanished under us, which is a different
-				// accident and still worth printing something for.
-				teamKey = it.teamId?.let { teamId -> keys[teamId] ?: "?" },
-				assigneeIds = assignees[it.id].orEmpty(),
-				docIds = docsByTicket[it.id].orEmpty(),
-			)
-		}
-	}
+	/**
+	 * One extra query per relation for the whole page, instead of two per row — and now
+	 * [TicketDetails]'s copy of that rather than a second one beside it.
+	 *
+	 * Kept as a private one-liner instead of replacing the twenty call sites: the name reads
+	 * better at each of them than `details.of(...)` does, and the point of the change is that
+	 * there is one implementation, not one spelling.
+	 */
+	private fun decorate(found: List<Ticket>): List<TicketDetail> = details.of(found)
 
 	private fun validateDates(start: KansoInstant?, due: KansoInstant?) {
 		if (start != null && due != null && due.at.isBefore(start.at)) {

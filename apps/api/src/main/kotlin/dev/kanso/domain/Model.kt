@@ -251,7 +251,22 @@ enum class ActivityKind(override val wire: String) : Wire {
 	 * read. Not [ARCHIVED], which is the nearest existing word and the wrong one — the two
 	 * differ in whether anything can be got back.
 	 */
-	TOKEN_REVOKED("token_revoked");
+	TOKEN_REVOKED("token_revoked"),
+
+	/**
+	 * A custom field given a value, changed, or cleared — `V32`'s word.
+	 *
+	 * One kind for all four field types and for all three of those gestures, which is the one
+	 * place this vocabulary deliberately generalises. It is not the generic `updated` this
+	 * enum refuses: the *field* is the scalar, and its id and name travel in the payload, so
+	 * a feed still says "Severity → high" rather than "something changed". A kind per type
+	 * would be four words that a reader could not tell apart, and a kind per gesture would be
+	 * three, when "set to nothing" is already expressible as a `to` that is absent.
+	 *
+	 * The name travels with the row for the reason [LABELLED] does: a definition can be
+	 * renamed or deleted, and a feed holding only the id would then have nothing to print.
+	 */
+	FIELD_SET("field_set");
 
 	companion object {
 		fun from(raw: String): ActivityKind = parse(entries.toTypedArray(), raw)
