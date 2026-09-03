@@ -1,0 +1,175 @@
+package dev.kanso.mcp.tools
+
+import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.User
+import dev.kanso.mcp.McpArguments
+import dev.kanso.mcp.McpPeople
+import dev.kanso.mcp.McpTool
+import dev.kanso.mcp.integerField
+import dev.kanso.mcp.objectSchema
+import dev.kanso.mcp.objectsField
+import dev.kanso.mcp.stringField
+import dev.kanso.mcp.stringsField
+import dev.kanso.service.BadRequestException
+import dev.kanso.service.ConflictException
+import dev.kanso.service.SubTicketService
+import dev.kanso.service.TicketDetail
+import dev.kanso.service.TicketService
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+
+/**
+ * A large ticket becomes a parent and its parts become sub-tickets, in **one**
+ * transaction.
+ *
+ * That is the whole reason this is a tool and not two calls to the two that already exist.
+ * `kanso_create_ticket` files a ticket and `SubTicketService.setParent` hangs it under
+ * another; an agent doing a five-way split through them makes ten calls, and the failure
+ * that matters is not the tenth failing — it is the *ninth*. Four children parented, one
+ * loose, and the agent told the split failed. Nobody can tell from the backlog which four.
+ * Here the parts either all exist under the parent or none do, and the ticket that was
+ * going to be split is untouched.
+ *
+ * **The split itself is not decided here.** What the parts are, how the work divides, what
+ * each one is worth — that is judgement, it is the model's, and it arrives in `parts`
+ * already made. This file knows two things the model does not: which fields a child
+ * inherits, and that the whole thing is atomic.
+ *
+ * Inherited rather than asked for: the team, the project and the priority. A part of an
+ * urgent ticket is urgent until somebody says otherwise, and a part of a ticket in `KAN`
+ * is in `KAN` — an agent that had to restate them could restate them wrongly, and a child
+ * in another team is a child `SubTicketService` would still accept. Dates are inherited by
+ * nobody, for `CreateTicketTool`'s reason: `KansoInstant` carries a granularity that an
+ * agent handing over a date has not answered.
+ */
+@Service
+class SplitTicketTool(
+	private val tickets: TicketService,
+	private val subTickets: SubTicketService,
+	private val people: McpPeople,
+) : McpTool {
+
+	override val name = "kanso_split_ticket"
+	override val title = "Split a ticket into sub-tickets"
+	override val writes = true
+
+	override val description = """
+		Turn one existing ticket into a parent and file the parts you name underneath it, all
+		in one go. Address the ticket by identifier, like `KAN-142`. Returns the identifiers
+		the parts were given.
+
+		Every part is created in the parent's team and project and at the parent's priority,
+		so you do not restate them. Give each part a title, and optionally a description, an
+		estimate, a status and assignees.
+
+		Sub-tickets are one level deep, so a ticket that is already a part of something cannot
+		be split again — split its parent instead. Splitting a ticket that already has parts
+		adds to them rather than replacing them, so read it first if you do not know what it
+		already holds. Either every part is filed or none is; a refusal leaves the ticket
+		exactly as it was.
+
+		This tool does not decide how to split anything. Read the ticket with
+		`kanso_get_ticket`, work out the parts, and hand them over here.
+	""".trimIndent()
+
+	override val inputSchema = objectSchema(
+		"ticket" to stringField("The ticket to split, e.g. `KAN-142`."),
+		"parts" to objectsField(
+			"The parts, in the order they should be filed. One to $MAX_PARTS of them.",
+			objectSchema(
+				"title" to stringField("One line, what this part is."),
+				"description" to stringField("The body. Markdown, optional."),
+				"status" to stringField("Default `todo`.", STATUSES),
+				"estimate" to integerField("Points. Omit if this part is not sized."),
+				"assignees" to stringsField("Who is doing this part, by email or by user id."),
+				required = listOf("title"),
+			),
+		),
+		required = listOf("ticket", "parts"),
+	)
+
+	@Transactional
+	override fun call(actor: User, arguments: Map<String, Any?>): String {
+		val args = McpArguments(name, arguments)
+		args.refuseUnknown("ticket", "parts")
+
+		val parts = args.objects("parts")
+		// Before the read, so a call that would file nothing costs nothing and says why —
+		// `kanso_update_ticket`'s rule about reporting success for a no-op, which here would
+		// leave an agent believing a ticket had been broken up.
+		if (parts.isEmpty()) throw BadRequestException("`$name` needs at least one part in `parts`")
+		// A bound rather than a truncation, the spec's argument about an agent in a loop: a
+		// silently shortened split is a parent whose parts do not add up to it, and nobody
+		// reading the backlog afterwards can see that six of the nine went missing. Twenty is
+		// well past any real split and still small enough to read in one screen.
+		if (parts.size > MAX_PARTS) {
+			throw BadRequestException("`$name` takes at most $MAX_PARTS parts, and this call has ${parts.size}")
+		}
+
+		val parent = TicketLines.byIdentifier(args.requiredString("ticket"), tickets::getByIdentifier)
+		val address = parent.identifier ?: parent.ticket.id.toString()
+		refuseNesting(parent, address)
+		val teamId = parent.ticket.teamId ?: throw BadRequestException(
+			"$address belongs to no team, and a part has to be filed in one",
+		)
+
+		val filed = parts.map { part ->
+			part.refuseUnknown("title", "description", "status", "estimate", "assignees")
+			val child = tickets.create(
+				actor = actor,
+				teamId = teamId,
+				title = part.requiredString("title"),
+				description = part.string("description"),
+				status = TicketStatus.from(part.string("status") ?: TicketStatus.TODO.wire),
+				priority = parent.ticket.priority,
+				start = null,
+				due = null,
+				projectId = parent.ticket.projectId,
+				assigneeIds = people.resolve(part.strings("assignees").orEmpty()),
+				docIds = emptyList(),
+				estimate = part.integer("estimate"),
+			)
+			// Inside the same transaction as the insert that made it, which is what "all or
+			// none" means here. `SubTicketService.setParent` is the authority on whether the
+			// parenthood is allowed and it runs on every child, so a refusal on the fifth rolls
+			// back the four before it and the parent's own row was never touched.
+			subTickets.setParent(actor, child.ticket.id, parent.ticket.id)
+			child
+		}
+
+		return "Split $address into ${filed.size} sub-ticket(s):\n" +
+			filed.joinToString("\n") { "  ${it.identifier}  ${it.ticket.title}" }
+	}
+
+	/**
+	 * The one state a ticket cannot be split from, refused before anything is written.
+	 *
+	 * `SubTicketService.parentRefusal` is the authority on it and it runs on every child
+	 * inside the transaction below — so this is not the guard. It is the *sentence*: that
+	 * method answers with the UUID it was handed, and an agent that typed `KAN-142` cannot
+	 * match `9f3c…` to anything it has seen. Read here off the field it reads, so the
+	 * refusal names the identifier — the same rewrite `TicketLines.byIdentifier` performs on
+	 * the lookup's own message, and the same reason.
+	 *
+	 * **A ticket that already has parts is deliberately not refused.** One level deep is the
+	 * rule; "split only once" is not, and inventing it here would be this tool holding an
+	 * opinion Kanso does not — the exact thing KAN-20 says to expose a better tool instead
+	 * of. It would also dead-end the caller, since `kanso_create_ticket` cannot set a parent:
+	 * an agent wanting a fourth part would have no way to file one that is not an orphan.
+	 * `kanso_get_ticket` prints the parts that exist, which is what an agent needs in order
+	 * not to file them twice.
+	 */
+	private fun refuseNesting(parent: TicketDetail, address: String) {
+		if (parent.ticket.parentId != null) {
+			throw ConflictException(
+				"$address is itself a sub-ticket, and sub-tickets do not nest — split its parent instead",
+			)
+		}
+	}
+
+	private companion object {
+		val STATUSES = TicketStatus.entries.map { it.wire }
+
+		const val MAX_PARTS = 20
+	}
+}

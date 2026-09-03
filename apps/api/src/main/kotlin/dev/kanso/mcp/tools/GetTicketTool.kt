@@ -7,6 +7,8 @@ import dev.kanso.mcp.McpTool
 import dev.kanso.mcp.objectSchema
 import dev.kanso.mcp.stringField
 import dev.kanso.service.CustomFieldService
+import dev.kanso.service.SubTicketService
+import dev.kanso.service.TicketLinkService
 import dev.kanso.service.TicketService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -18,11 +20,16 @@ import org.springframework.transaction.annotation.Transactional
  * in as many as it takes. Two tools rather than a `verbose` flag on one, because the
  * choice is the agent's whole context budget and a flag makes it an afterthought.
  *
- * Deliberately smaller than the spec's `kanso_context`: no comments, no dependencies, no
- * linked documents, no activity. Those are four more services and four more shapes to
- * describe, and this ticket's read tools are about tickets. What is here is what the
- * writing tools need to be used correctly — the identifier, the status vocabulary in use,
- * and the assignees by the email the write tool takes back.
+ * Still smaller than the spec's `kanso_context`: no comments, no linked documents, no
+ * activity. The rule that decides what is in it has not changed — **what is here is what
+ * the writing tools need in order to be used correctly**, which is the identifier, the
+ * status vocabulary in use, and the assignees by the email the write tool takes back.
+ *
+ * Dependencies *were* on that excluded list, and KAN-20 moved them off it rather than
+ * relaxing the rule: `kanso_link_tickets` and `kanso_split_ticket` are writing tools whose
+ * argument is the graph, so an agent that cannot read the graph cannot use them correctly.
+ * It would propose an arrow that is already drawn, or split a ticket that is already in
+ * parts. Two more services on the expensive read, which is where a query belongs.
  */
 @Service
 class GetTicketTool(
@@ -37,6 +44,14 @@ class GetTicketTool(
 	 * here the cost is one query, on the tool that is explicitly the expensive one.
 	 */
 	private val fields: CustomFieldService,
+	/**
+	 * The graph, both directions. `of` filters the far end through `TicketAccess.mayRead`
+	 * and drops what this actor may not see, so an edge into somebody's private draft
+	 * cannot leak a title through here — the reason this goes through the service rather
+	 * than through `TicketLinkRepository.of`, which would answer with every row.
+	 */
+	private val links: TicketLinkService,
+	private val subTickets: SubTicketService,
 ) : McpTool {
 
 	override val name = "kanso_get_ticket"
@@ -50,6 +65,12 @@ class GetTicketTool(
 
 		It also lists every custom field the ticket's team has defined, by name, with its
 		value or `not set`. Those names are the ones `kanso_update_ticket` takes in `fields`.
+
+		And it lists what the ticket is attached to: the links it already has in both
+		directions — what it blocks, what blocks it, what it relates to or duplicates — and
+		the sub-tickets under it with how many are done. Read this before recording a link
+		with `kanso_link_tickets` or splitting with `kanso_split_ticket`, so you add what is
+		missing instead of what is already there.
 
 		Do not use it to survey a backlog: it answers about exactly one ticket, and
 		`kanso_list_tickets` answers about a hundred for the cost of five of these.
@@ -67,8 +88,13 @@ class GetTicketTool(
 
 		val detail = TicketLines.byIdentifier(args.requiredString("ticket"), tickets::getByIdentifier)
 		val ticket = detail.ticket
-		val emails = people.emailsOf(detail.assigneeIds)
 		val defined = ticket.teamId?.let { fields.list(it) }.orEmpty()
+		val edges = links.of(actor, ticket.id)
+		val children = subTickets.children(actor, ticket.id)
+		// One query for every email on the page, the ticket's own assignees and its
+		// children's together. Resolving the children separately would be a second round trip
+		// for a map this one already has to build.
+		val emails = people.emailsOf(detail.assigneeIds + children.flatMap { it.assigneeIds })
 
 		return buildString {
 			appendLine("${detail.identifier}  ${ticket.title}")
@@ -96,6 +122,12 @@ class GetTicketTool(
 					appendLine("  ${inUse.field.name}: ${value?.toString() ?: "not set"}")
 				}
 			}
+			// What the ticket is attached to, above the description for the same reason the
+			// fields are: these are facts a writing tool takes back, and a long description
+			// between them and the header would push them out of a reader that stops early.
+			TicketStructure.links(edges)?.let { appendLine(); appendLine(it) }
+			TicketStructure.children(children, subTickets.progress(listOf(ticket.id))[ticket.id], emails)
+				?.let { appendLine(); appendLine(it) }
 			appendLine()
 			// Last, and unbounded: everything a caller needs to act is above it, so a long
 			// description truncates the reading rather than the facts.
