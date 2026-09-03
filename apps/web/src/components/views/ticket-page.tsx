@@ -34,6 +34,7 @@ import { StatusDot } from "../ui/status-dot";
 import { TicketDurationNote } from "../ticket-duration";
 import { TicketFields } from "../ticket-fields";
 import { TicketLabels } from "../ticket-labels";
+import { TicketPullRequests } from "../ticket-pull-requests";
 import { SubTicketsPanel } from "./sub-tickets-panel";
 import { TicketLinksPanel } from "./ticket-links-panel";
 import { Avatar } from "./avatar";
@@ -324,6 +325,13 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
             <span className="shrink-0 pt-0.5 text-11 text-faint">Duration</span>
             <TicketDurationNote ticketId={ticket.id} />
           </div>
+
+          {/* The same component the panel draws, and it has to be drawn in both places for
+              the reason the labels and the fields above give: a ticket's pull requests are
+              one question, not two implementations. Missing it here was invisible to every
+              test — the panel and the page are two presentations of one ticket, and which
+              one a person sees is their `openTicket` preference. */}
+          <TicketPullRequests ticket={ticket} />
 
           <SubTicketsPanel ticketId={ticket.id} />
           <TicketLinksPanel ticketId={ticket.id} />
