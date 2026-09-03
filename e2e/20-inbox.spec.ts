@@ -49,10 +49,19 @@ test("scenario 20 — the inbox answers, and an unsent write outlives a reload",
     page.locator('[data-testid="nav-item"][data-current="true"]:not([data-favourite="true"])'),
   ).toHaveCount(0);
 
-  // The four tabs, each with its own count. `All` is selected on arrival.
+  /**
+   * The four tabs, each with its own count. `All` is selected on arrival.
+   *
+   * `aria-pressed`, not `aria-selected`, and the difference is a decision `inbox/tabs.tsx`
+   * argues in full: `role="tab"` owes an `aria-controls` pointing at a `tabpanel`, and the
+   * panel is the row list in `app/inbox/page.tsx`, which has no id to give. So the strip is
+   * four honest toggle buttons in a `group` rather than a `tablist` whose tabs control
+   * nothing — and this assertion had not followed. `aria-selected` on a `button` is
+   * ignored by assistive technology, so what it read before was true of nothing.
+   */
   const tabs = page.getByTestId("inbox-tab");
   await expect(tabs).toHaveCount(4);
-  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.first()).toHaveAttribute("aria-pressed", "true");
   await expect(tabs.nth(3)).toContainText("Failures");
 
   // Nothing waiting is a sentence, not a blank column.
@@ -60,7 +69,7 @@ test("scenario 20 — the inbox answers, and an unsent write outlives a reload",
 
   // Switching tabs is a client-side change of one query key, not a navigation.
   await tabs.nth(3).click();
-  await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.nth(3)).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/\/inbox$/);
   await tabs.first().click();
 

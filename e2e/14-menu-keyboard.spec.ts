@@ -128,26 +128,17 @@ test("scenario 14 — the row menu's keyboard survives the move to Radix", async
   // then hands focus back on unmount (field.tsx:105-111). None of the ticket row's
   // three actions open one; "Rename team", on the team's own row, does.
   //
-  // One piece of setup first, unrelated to menu.tsx but required to observe it
-  // cleanly: `TeamDialog` queries `keys.teams(true)` (team-dialog.tsx:241) — a
-  // *different* cache key than the sidebar's own `keys.teams(false)` — so on a fresh
-  // session it renders a "Loading…" `DialogFrame` before the real form arrives. That
-  // placeholder is itself a `DialogFrame`, and its unmount (once data arrives) races
-  // the real one's mount: the placeholder's cleanup refocuses the trigger, and the
-  // real dialog then captures *that already-doomed placeholder* as its own `opener`
-  // instead of the trigger, one render too early — so, unprimed, closing "Rename
-  // team" on a cold cache drops focus to <body>, chasing a bug in
-  // dialogs/team-dialog.tsx's loading branch, not in menu.tsx. Priming the same
-  // cache key first (`Show archived` fetches `includeArchived=true`, exactly
-  // `keys.teams(true)`) skips the placeholder, which is what lets this test isolate
-  // menu.tsx's own behaviour instead of that unrelated bug.
-  const showArchived = page.getByRole("button", { name: "Show archived" });
-  await Promise.all([
-    page.waitForResponse((response) => response.url().includes("/api/teams?includeArchived=true")),
-    showArchived.click(),
-  ]);
-  await showArchived.click(); // Back off — cosmetic only; the cache entry survives.
-
+  // This used to prime a cache entry first, by toggling `Show archived` and waiting for
+  // the `/api/teams?includeArchived=true` it fired: `TeamDialog` queries `keys.teams(true)`
+  // — a *different* key than the sidebar's `keys.teams(false)` — so on a cold cache it drew
+  // a "Loading…" `DialogFrame`, whose unmount raced the real dialog's mount and left the
+  // focus-return target pointing at the placeholder. `providers.tsx` now holds that exact
+  // key from the first render, for the realtime subscription's team tree, so the entry is
+  // warm before this test does anything and there is nothing left to prime — which also
+  // means the toggle no longer fetches, and the wait that was the priming's proof hung for
+  // the whole 45s timeout. Deleted rather than made to wait for nothing: if the placeholder
+  // race comes back it belongs in a test of `team-dialog.tsx`'s loading branch, named as
+  // such, and not in a scenario about the menu's keyboard.
   const teamTrigger = page.getByRole("button", { name: `Actions for ${team.name}`, exact: true });
   await teamTrigger.click();
   await page.getByRole("menuitem", { name: /Rename team/ }).click();
@@ -228,7 +219,13 @@ test("scenario 14 — a member's team menu shows, holding only the one action op
   await expect(trigger).toHaveCount(1);
   await trigger.click();
   await expect(page.getByRole("menu")).toBeVisible();
-  await expect(page.getByRole("menuitem")).toHaveText(["New project"]);
+  // Two entries now, not one: `favourite.toggle` is a write a member is entitled to — it
+  // changes their own column and nothing about the organisation — so it joined the row
+  // menu with the Favourites group. The keycap is part of the text on purpose;
+  // `menu.tsx` puts a real space between label and hint so the accessible name and
+  // `textContent` both read "Favourite s". The list is still asserted whole, which is
+  // what would catch a team-management action leaking in beside it.
+  await expect(page.getByRole("menuitem")).toHaveText(["Favourite s", "New project"]);
 
   await page.close();
 });

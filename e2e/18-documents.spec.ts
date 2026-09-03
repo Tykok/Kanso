@@ -3,6 +3,7 @@ import {
   ADMIN,
   MEMBER,
   apiAs,
+  navLink,
   openAs,
   seedInstance,
   seedTeam,
@@ -127,7 +128,12 @@ test("scenario 18 — a template starts a page, and a mentioned ticket stays liv
   expect(titles).toContain(raised);
 
   // --- back on screen 22, the page is in the tree and in the recent list -------
-  await page.getByRole("link", { name: "Documents", exact: true }).click();
+  //
+  // The column's row, said so: the document's own bar drew a second `Documents` link, and
+  // this line was where the two were found. The bar is gone — its controls are the shell's
+  // now and the trail is `breadcrumbOf`'s — and the locator says which of the two it
+  // wanted anyway, since the next thing to draw that word will not announce itself either.
+  await navLink(page, "Documents").click();
 
   /**
    * The row for *this* page, found by its href rather than by its title.

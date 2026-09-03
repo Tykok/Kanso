@@ -206,6 +206,35 @@ export function sidebarRow(page: Page, name: string): Locator {
   return page.getByTestId("nav-item").filter({ has: page.getByRole("button", { name, exact: true }) });
 }
 
+/**
+ * The Views group's link to a route — `Documents`, `Trash`, `Workload`.
+ *
+ * Scoped to a `nav-item` rather than asked of the page, because the word is not the
+ * column's alone: a document's own bar carried a second `Documents` link until it was
+ * folded into the shell's trail, and a page that names a route in its copy would put a
+ * third one on screen. `sidebarRow` cannot serve here — it filters on a `button`, which
+ * is `All tickets` and the scope rows, and every route row is a `Link`.
+ */
+export function navLink(page: Page, name: string): Locator {
+  return page
+    .getByTestId("nav-item")
+    .getByRole("link", { name, exact: true });
+}
+
+/**
+ * The List / Board / Timeline strip's button, by its own name.
+ *
+ * Scoped to the strip, and `exact`, both deliberately. `getByRole("button", { name:
+ * "Board" })` over the page matched three elements on a database this suite had already
+ * run against: a team `17-views` seeds is called `Board-<suffix>`, so a non-`exact` name
+ * matches the row *and* its `⋯`, and the view button is only the third. That made the
+ * failure depend on which files had run first — green for the file's author, red in the
+ * suite — which is why the fix is a scope and a name rather than a `.first()`.
+ */
+export function viewButton(page: Page, name: "List" | "Board" | "Timeline"): Locator {
+  return page.getByRole("group", { name: "View" }).getByRole("button", { name, exact: true });
+}
+
 /** Opens a row's `⋯` menu and returns the open menu. */
 export async function openRowMenu(page: Page, name: string): Promise<Locator> {
   await page.getByRole("button", { name: `Actions for ${name}`, exact: true }).click();

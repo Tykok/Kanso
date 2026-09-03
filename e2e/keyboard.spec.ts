@@ -9,6 +9,7 @@ import {
   ticketRow,
   unique,
   uniqueKey,
+  viewButton,
 } from "./support";
 
 test.beforeAll(seedInstance);
@@ -130,21 +131,16 @@ test("scenario 5 — the keyboard does exactly what it did, less j and k", async
   // at all before §6.4, and it deliberately shadows paste — over a list of rows, where
   // paste did nothing. The typing guard is what keeps paste working inside every field,
   // which the filter box above has already exercised.
+  //
+  // Through `viewButton`, which scopes to the strip: asked of the page, `Board` matched a
+  // team another file seeds under that name as well as the button, so this assertion was
+  // green alone and red in the suite.
   await page.keyboard.press("ControlOrMeta+v");
-  await expect(page.getByRole("button", { name: "Board" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(viewButton(page, "Board")).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("ControlOrMeta+v");
-  await expect(page.getByRole("button", { name: "Timeline" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(viewButton(page, "Timeline")).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("ControlOrMeta+v");
-  await expect(page.getByRole("button", { name: "List" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(viewButton(page, "List")).toHaveAttribute("aria-pressed", "true");
 
   // x archives: the row leaves the list, which does not show archived tickets.
   // Last, because it is the only key that takes away something to work with.

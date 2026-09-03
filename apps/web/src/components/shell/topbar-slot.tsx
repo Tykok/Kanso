@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -149,7 +150,22 @@ export function usePageShell({ ctx, commands, crumbs, onEscape }: PageShell): vo
   const { publish } = useChannel();
   const { team, project, leaf } = crumbs ?? {};
 
-  useEffect(() => {
+  /*
+   * Before the paint, not after it — which is a correctness requirement and not a
+   * flicker preference.
+   *
+   * `use-shell-keys.ts` dispatches every key in the application against the context this
+   * publishes. As a passive effect, the publish landed a task *later* than the render it
+   * described: press a key that moves the cursor and then one that writes, fast, and the
+   * second ran against the context from before the first — the status of the row the
+   * cursor had just left, written and answered 200 with nothing on screen to say so.
+   *
+   * A layout effect is flushed synchronously in the same commit, so the `setState` below
+   * re-renders the shell before the browser can deliver another keystroke. The cost is
+   * one synchronous render on a cursor move, which was already happening — one frame
+   * later, which is exactly the frame the bug lived in.
+   */
+  useLayoutEffect(() => {
     publish({ ctx, commands, crumbs: { team, project, leaf }, onEscape });
     // Withdrawn on the way out: the next route must not inherit a cursor, a picker or a
     // claim on `Escape` from the page the reader has just left.

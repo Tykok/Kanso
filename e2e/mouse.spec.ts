@@ -147,27 +147,50 @@ test("scenario 9 — the New menu creates into the scope you are standing in", a
   expect(created?.teamId).toBe(team.id);
   expect(created?.projectId).toBe(project.id);
 
-  // From "All tickets" there is no scope to inherit from: the composer opens
-  // blocked, points at the team selector, and files nothing.
+  /**
+   * From "All tickets" there is no scope to inherit from — and that is a choice now, not
+   * a refusal.
+   *
+   * This block used to assert the opposite: the composer stopped, put the focus on the
+   * team select and drew "Pick a team first.". `composer.tsx` reversed that in as many
+   * words — "No team is a choice, not a refusal" — on the grounds that the defect it was
+   * guarding against was never the *absence* of a team but `page.tsx` silently *inventing*
+   * one, and the absence is a state a row can hold. So the thought is filed as a draft and
+   * the team is a decision for later. Kept as an assertion rather than deleted, because
+   * the old bug is still worth a guard: the ticket must reach the drafts with **no** team,
+   * not the team that happens to sort first.
+   *
+   * The select being disabled while the write is in flight is what read as "not focused"
+   * — a `<select disabled>` cannot take focus — which is how this scenario said "the
+   * refusal is gone" for as long as nobody ran it.
+   */
   await page.getByRole("button", { name: "All tickets", exact: true }).click();
   await newTrigger.click();
   await newMenu.getByRole("menuitem", { name: /^New ticket\b/ }).click();
-  const blockedTitleInput = page.getByPlaceholder("New ticket…");
-  await expect(blockedTitleInput).toBeFocused();
+  const looseTitleInput = page.getByPlaceholder("New ticket…");
+  await expect(looseTitleInput).toBeFocused();
   const teamSelect = page.getByLabel("Ticket team");
   await expect(teamSelect).toHaveValue("");
-  const blockedTitle = unique("Should never be filed");
-  await blockedTitleInput.fill(blockedTitle);
-  await blockedTitleInput.press("Enter");
-  // Still open, not filed: the attempt landed on the selector, not on the API.
-  await expect(blockedTitleInput).toBeVisible();
-  await expect(teamSelect).toBeFocused();
-  await expect(page.getByText("Pick a team first.")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByPlaceholder("New ticket…")).toHaveCount(0);
+  // Said before the fact, not after: nobody should be surprised to find the ticket has no
+  // identifier afterwards.
+  await expect(page.getByText("Files with no team — you can attach one later.")).toBeVisible();
 
-  const everything = (await (await verify.get(`/api/tickets?limit=500`)).json()) as { title: string }[];
-  expect(everything.some((t) => t.title === blockedTitle)).toBe(false);
+  const looseTitle = unique("Filed with no team");
+  await looseTitleInput.fill(looseTitle);
+  await looseTitleInput.press("Enter");
+  // Filed, so the composer closes on its own — and the row is on the list behind it.
+  await expect(page.getByPlaceholder("New ticket…")).toHaveCount(0);
+  await expect(ticketRow(page, looseTitle)).toBeVisible();
+
+  // `/api/tickets/drafts`, not the scoped list: a ticket with no team has no team's list
+  // to appear in, which is the whole reason that door exists.
+  const drafts = (await (await verify.get("/api/tickets/drafts")).json()) as {
+    title: string;
+    teamId?: string;
+  }[];
+  const draft = drafts.find((row) => row.title === looseTitle);
+  expect(draft, "the teamless ticket reached no drafts list").toBeTruthy();
+  expect(draft?.teamId, "a team was invented for a ticket nobody gave one").toBeFalsy();
   await verify.dispose();
 
   // A member never sees the Team entry, at any scope — the shape of the

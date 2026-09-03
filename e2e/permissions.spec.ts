@@ -45,8 +45,16 @@ test("scenario 3 — a member's team menu holds only project creation, an admin'
   // The admin: the Teams + …
   await expect(admin.getByRole("button", { name: "New team", exact: true })).toBeVisible();
   // … and every team-management action on the row's ⋯, in full.
+  //
+  // `Favourite s` heads both lists and is not a team action: it writes one row in one
+  // person's sidebar, which is why it is ungated on role like `project.create`. The
+  // keycap is part of the text deliberately — `menu.tsx` separates label from hint with a
+  // real space so the accessible name reads "Favourite s" — and both lists are still
+  // asserted whole, which is the property that catches a management action leaking into
+  // the member's menu.
   const adminMenu = await openRowMenu(admin, team.name);
   await expect(adminMenu.getByRole("menuitem")).toHaveText([
+    "Favourite s",
     "New project",
     "New team",
     "Rename team",
@@ -60,7 +68,7 @@ test("scenario 3 — a member's team menu holds only project creation, an admin'
   await expect(member.getByRole("button", { name: "New team", exact: true })).toHaveCount(0);
   // The row's ⋯ DOES show — but holds exactly the one entry a member is entitled to.
   const memberMenu = await openRowMenu(member, team.name);
-  await expect(memberMenu.getByRole("menuitem")).toHaveText(["New project"]);
+  await expect(memberMenu.getByRole("menuitem")).toHaveText(["Favourite s", "New project"]);
   await member.keyboard.press("Escape");
 
   // The daily work stays open to both: the Projects + and a project's own ⋯.
