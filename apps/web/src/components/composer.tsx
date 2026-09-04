@@ -131,9 +131,10 @@ function ComposerForm({
   // trust. Read once, in the initialisers: the form mounts with the data already in
   // hand, and re-seeding later would overwrite what somebody has changed.
   //
-  // `seed.blocked` is the same condition as `!seed.teamId` and is not read here: the
-  // form asks before it complains, so the error under the footer belongs to a submit
-  // attempt, not to opening the composer.
+  // `seed.blocked` is the same condition as `!seed.teamId` and is not read here at all.
+  // It answers whether to *offer* a composer, which is the board's question once per
+  // column (`board/view.tsx`) and never this form's: opened deliberately with no team to
+  // file into, the answer is a draft, and the footer says so instead of objecting.
   const [seed] = useState(() => creationSeed(scope, teams, projects).ticket);
 
   const [title, setTitle] = useState("");
@@ -144,7 +145,6 @@ function ComposerForm({
   // Deliberately not seeded, and deliberately a string rather than an `EffortPoints`:
   // the empty string is the select's own "no choice", and every ticket starts there.
   const [estimate, setEstimate] = useState("");
-  const [blocked, setBlocked] = useState(false);
 
   /**
    * A ticket always belongs to a team; a project does not. The list offered is

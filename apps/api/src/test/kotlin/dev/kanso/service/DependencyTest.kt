@@ -120,8 +120,12 @@ class DependencyTest : PostgresTest() {
 		schedule.link(admin, a, b)
 
 		val failure = assertFailsWith<ConflictException> { schedule.link(admin, b, a) }
-		assertTrue(failure.message!!.contains(a.toString()), failure.message!!)
-		assertTrue(failure.message!!.contains(b.toString()), failure.message!!)
+		// By identifier, and this used to assert the opposite — it pinned the two raw ids,
+		// which is how the defect survived long enough to reach a toast. What `link` owes
+		// its caller is the chain; how the chain is spelled is `LoopRefusalTest`.
+		assertTrue(failure.message!!.contains(team.key), failure.message!!)
+		assertFalse(failure.message!!.contains(a.toString()), failure.message!!)
+		assertFalse(failure.message!!.contains(b.toString()), failure.message!!)
 	}
 
 	@Test

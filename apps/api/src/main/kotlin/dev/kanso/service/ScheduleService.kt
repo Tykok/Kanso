@@ -11,6 +11,7 @@ import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.OutboundJobRepository
+import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.schedule.Cascade
 import dev.kanso.schedule.Node
@@ -31,6 +32,7 @@ import java.util.UUID
 @Service
 class ScheduleService(
 	private val tickets: TicketRepository,
+	private val teams: TeamRepository,
 	private val dependencies: DependencyRepository,
 	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
@@ -120,7 +122,37 @@ class ScheduleService(
 	fun linkRefusal(predecessorId: UUID, successorId: UUID): String? {
 		if (predecessorId == successorId) return "A ticket cannot depend on itself"
 		return dependencies.pathBetween(successorId, predecessorId)
-			?.let { chain -> "That dependency would close a loop: ${chain.joinToString(" -> ")}" }
+			?.let { chain -> "That dependency would close a loop: ${addresses(chain).joinToString(" -> ")}" }
+	}
+
+	/**
+	 * The chain said the way people say it — `KAN-4 -> KAN-9` — from the ids the graph
+	 * stores. Order preserved: the arrows are the sentence.
+	 *
+	 * Named *here* rather than by [DependencyRepository.pathBetween] returning identifiers,
+	 * and the reason is where the cost lands. [linkRefusal] asks for the path on every link
+	 * attempt and the answer is null on all the ones that work — the importer alone asks it
+	 * four hundred times to build no sentence at all. A walk that carried names would join
+	 * `tickets` and `teams` once per node it *visits*, which is the whole reachable subgraph
+	 * and not the one path that comes back, to decorate rows nobody reads. So the walk stays
+	 * in ids, and the two statements below are paid only by a refusal, which is rare and is
+	 * already the slow path by the time anyone is reading its sentence.
+	 *
+	 * A draft has no identifier to print, so its id *is* its address — the same fallback
+	 * [dev.kanso.mcp.tools.TicketStructure] prints on the far end of an edge, and the same
+	 * one `/t/{uuid}` addresses it by. A chain naming a draft therefore still shows one
+	 * UUID; inventing a placeholder for it would be worse, because a placeholder gets
+	 * pasted into a comment and rots.
+	 */
+	private fun addresses(chain: List<UUID>): List<String> {
+		val found = tickets.findAllById(chain).associateBy { it.id }
+		val keys = teams.findAllById(found.values.mapNotNull { it.teamId }.toSet())
+			.associate { it.id to it.key }
+		return chain.map { id ->
+			val ticket = found[id]
+			val key = ticket?.teamId?.let { keys[it] }
+			if (key != null && ticket.number != null) "$key-${ticket.number}" else id.toString()
+		}
 	}
 
 	/**

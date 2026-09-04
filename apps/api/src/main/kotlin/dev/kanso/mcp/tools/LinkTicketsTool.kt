@@ -37,16 +37,6 @@ import org.springframework.transaction.annotation.Transactional
  * description as a sentence rather than as "predecessor/successor", because an agent
  * reading `blocks` and being handed `predecessor` has to translate, and half the time it
  * will translate backwards.
- *
- * **Known wart, deliberately not patched here.** `ScheduleService.linkRefusal` builds its
- * chain out of `DependencyRepository.pathBetween`, which answers in ticket *ids*, so the
- * loop refusal reads `… : 509a2367-… -> bddbebdc-…` rather than `PLN-1 -> PLN-2`. That is
- * poor for an agent and it is poor for the person who gets the same sentence in a toast —
- * the web has always shown it. Rewriting the ids to identifiers *in this file* would mean
- * regex surgery on another service's message, which breaks the day that message is
- * reworded; the fix belongs where the chain is built, and it is a change to the
- * scheduler's own contract with a second caller. Left for KAN-11's territory rather than
- * smuggled in here.
  */
 @Service
 class LinkTicketsTool(
