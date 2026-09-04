@@ -146,11 +146,13 @@ data class KansoProperties(
 	 * them together would mean an instance could not have one without the other, and a
 	 * rotated sign-in secret would silently break the webhook.
 	 *
-	 * One value today because one value is what the inbound half reads. The App Manifest
-	 * flow's other five — app id, slug, client id, client secret, private key — are part
-	 * three of the design, and `V36` has their columns waiting; they arrive here when
-	 * something reads them, as a group, for the reason `c3d1a95` gives about halves of a
-	 * credential coming from different places.
+	 * Three values now, of `V36`'s six: the webhook secret the inbound half verifies with,
+	 * and the OAuth **pair** that asks a member for consent. The pair arrived together
+	 * because that is what the rule `c3d1a95` established actually forbids — half of one
+	 * credential from the environment and half from the database, which fails at the first
+	 * signature a long way from the mistake. A client id and a private key are not halves
+	 * of anything, so the remaining three (app id, slug, private key) wait for the code
+	 * that signs an installation JWT.
 	 */
 	data class Github(
 		/**
@@ -163,9 +165,29 @@ data class KansoProperties(
 		 * yet.
 		 */
 		val webhookSecret: String = "",
+		/**
+		 * The App's own OAuth client — `KANSO_GITHUB_CLIENT_ID` and
+		 * `KANSO_GITHUB_CLIENT_SECRET`, which are **not** `GITHUB_CLIENT_ID` and
+		 * `GITHUB_CLIENT_SECRET`. Those two are `kanso.auth.github`'s, they sign people in,
+		 * and an instance can legitimately have both pairs set to different values.
+		 *
+		 * The near-identical names are the trap, so they are named here rather than
+		 * discovered: pinning the sign-in client and expecting a member's GitHub link to
+		 * work presents as "GitHub says the client id is wrong" with two client ids in the
+		 * process, one of which is correct for a different purpose.
+		 */
+		val clientId: String = "",
+		val clientSecret: String = "",
 	) {
 		/** Whether the webhook can verify anything. A blank secret is not a secret. */
 		val webhookSecretConfigured: Boolean get() = webhookSecret.isNotBlank()
+
+		/**
+		 * Whether the environment pins the pair. **Both or neither** — half an OAuth client
+		 * cannot ask anybody for consent, and an id from here married to a secret from the
+		 * database is the configuration nobody intended.
+		 */
+		val appConfigured: Boolean get() = clientId.isNotBlank() && clientSecret.isNotBlank()
 	}
 
 	data class Notion(

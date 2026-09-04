@@ -35,13 +35,23 @@ class ResolvedSettings(
 	 */
 	val githubWebhookSecret: String?,
 	val githubManagedByEnvironment: Boolean,
+	/**
+	 * The App's OAuth client, which is what a **member's** consent screen is built from —
+	 * the user-to-server flow that fills `github_accounts`. Null until somebody configures
+	 * an App, which is the state every instance starts in and the reason the feed's
+	 * fallback is a documented behaviour rather than a failure.
+	 */
+	val githubClientId: String?,
+	val githubClientSecret: String?,
+	val githubAppManagedByEnvironment: Boolean,
 ) {
 	/** A stray log line must not print a token. */
 	override fun toString(): String =
 		"ResolvedSettings(notion=${!notionToken.isNullOrBlank()}, " +
 			"notionApp=${!notionClientSecret.isNullOrBlank()}, " +
 			"google=${!googleClientSecret.isNullOrBlank()}, " +
-			"github=${!githubWebhookSecret.isNullOrBlank()})"
+			"github=${!githubWebhookSecret.isNullOrBlank()}, " +
+			"githubApp=${!githubClientSecret.isNullOrBlank()})"
 }
 
 data class NotionSettingsState(
@@ -237,6 +247,7 @@ class InstanceSettingsService(
 		val notionAppFromEnv = props.notion.app.configured
 		val googleFromEnv = props.auth.google.configured
 		val githubFromEnv = props.github.webhookSecretConfigured
+		val githubAppFromEnv = props.github.appConfigured
 
 		return ResolvedSettings(
 			setupCompletedAt = stored.setupCompletedAt,
@@ -263,16 +274,62 @@ class InstanceSettingsService(
 			},
 			notionAppManagedByEnvironment = notionAppFromEnv,
 			notionWorkspaceName = stored.notionWorkspaceName,
-			// One value, so there is no group to keep together yet — the rule above applies
-			// to the other five the day the manifest flow reads them. Environment first for
-			// the same reason as the rest: an instance shipped already wired must not need a
-			// settings screen to receive its first event.
+			// Environment first, like the rest: an instance shipped already wired must not
+			// need a settings screen to receive its first event.
+			//
+			// The webhook secret falls back on its own, and the OAuth pair falls back as a
+			// pair, because they are two credentials rather than halves of one. That is the
+			// rule `c3d1a95` established, read for what it forbids: an HMAC key has no half
+			// to be married to the wrong one, while a client id and a client secret do.
 			githubWebhookSecret = if (githubFromEnv) {
 				props.github.webhookSecret
 			} else {
 				secrets.decrypt(stored.githubWebhookSecretEnc)
 			},
 			githubManagedByEnvironment = githubFromEnv,
+			githubClientId = if (githubAppFromEnv) props.github.clientId else stored.githubClientId,
+			githubClientSecret = if (githubAppFromEnv) {
+				props.github.clientSecret
+			} else {
+				secrets.decrypt(stored.githubClientSecretEnc)
+			},
+			githubAppManagedByEnvironment = githubAppFromEnv,
 		)
+	}
+
+	/**
+	 * The credentials a member's consent screen and its code exchange are built from.
+	 *
+	 * The same shape as [notionApp] and for the same reason: a caller that wants to ask for
+	 * consent wants both halves or neither, and returning a pair makes "half configured" a
+	 * state this method answers rather than one every caller has to check for. A blank is
+	 * treated as absent — an empty string in a client id is what an unset environment
+	 * variable looks like, not a client.
+	 */
+	@Transactional(readOnly = true)
+	fun githubApp(): Pair<String, String>? {
+		val resolved = resolved()
+		val id = resolved.githubClientId?.takeIf { it.isNotBlank() } ?: return null
+		val secret = resolved.githubClientSecret?.takeIf { it.isNotBlank() } ?: return null
+		return id to secret
+	}
+
+	/**
+	 * Saves the App's OAuth client.
+	 *
+	 * Refuses when the environment pins it, the rule [saveNotionApp] already states: a
+	 * screen that appears to accept a value the next `load()` will ignore is worse than one
+	 * that says it cannot.
+	 */
+	fun saveGithubApp(clientId: String, clientSecret: String?) {
+		if (props.github.appConfigured) {
+			throw BadRequestException(
+				"KANSO_GITHUB_CLIENT_ID and KANSO_GITHUB_CLIENT_SECRET are set in the environment and take " +
+					"precedence; unset them to manage the App here."
+			)
+		}
+		val submittedSecret = clientSecret?.trim()?.takeIf { it.isNotBlank() }
+		repo.updateGithubApp(clientId.trim().takeIf { it.isNotBlank() }, submittedSecret?.let(secrets::encrypt))
+		invalidate()
 	}
 }
