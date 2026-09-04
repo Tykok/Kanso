@@ -42,7 +42,27 @@ export default defineConfig({
   grepInvert: askedForShots ? undefined : /@shots/,
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  reporter: [["list"], ["html", { open: "never" }]],
+  /**
+   * Where the artefacts land, and why it is overridable.
+   *
+   * Two runs in one checkout share `test-results/` and `playwright-report/`, and the
+   * second one to start wipes the first one's traces from under it. What comes out is not
+   * a timeout: it is `ENOENT` on a trace resource, reported against whichever spec was
+   * unlucky — a real spec name, with a real-looking failure, over something that spec did
+   * not do. That cost a whole measurement here, and the run it accused was green.
+   *
+   * So the pair moves with the stack, the way `POSTGRES_PORT` / `API_PORT` / `WEB_PORT`
+   * already do: one variable, set beside the others, and two sessions can measure at the
+   * same time. Unset, the paths are exactly what they were.
+   */
+  outputDir: process.env.KANSO_E2E_OUTPUT_DIR ?? "test-results",
+  reporter: [
+    ["list"],
+    [
+      "html",
+      { open: "never", outputFolder: process.env.KANSO_E2E_REPORT_DIR ?? "playwright-report" },
+    ],
+  ],
   use: {
     baseURL: process.env.KANSO_WEB_URL ?? "http://localhost:3000",
     trace: "retain-on-failure",

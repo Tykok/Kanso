@@ -244,6 +244,40 @@ afterwards rather than its exit code. The next section says why.
 On a stack nobody has touched, `dev@kanso.local` is not an admin — it is not anything.
 `owner@kanso.test` is the owner, and only because the suite claimed it.
 
+### Two runs in one checkout accuse each other
+
+`test-results/` and `playwright-report/` are paths, not per-run directories, so two
+playwright runs started in the same checkout write into the same place — and the second one
+to start clears the first one's traces from under it. What the first run then reports is
+not a timeout and not a flake:
+
+```
+Error: ENOENT: no such file or directory, open
+  '.../test-results/.playwright-artifacts-0/traces/resources/9b8cd65d….json'
+```
+
+filed against whichever spec was holding that trace. A real spec name, a real-looking
+failure, over something that spec did not do — which is worse than a red suite, because the
+next reader debugs the innocent. It has already cost one whole measurement here; the run it
+accused was green.
+
+Two variables move the pair, the way the port triplet already moves the stack:
+
+```bash
+KANSO_E2E_OUTPUT_DIR=test-results-b KANSO_E2E_REPORT_DIR=playwright-report-b \
+KANSO_WEB_URL=http://localhost:3031 KANSO_API_URL=http://localhost:8121 \
+pnpm exec playwright test
+```
+
+Set them beside the ports whenever a second session might be measuring — which, in a
+repository where four agents each own a stack, is most of the time. Unset, the paths are
+what they always were.
+
+One thing they do not fix: a `docker compose --build` reads the working tree it is run in,
+so a stack built while somebody else's half-finished edits sit in that tree is a stack
+testing their work as well as yours. Build from a `git worktree` at a known commit when the
+tree is not yours alone.
+
 ### A zero exit from `--wait` does not prove the stack is up
 
 `docker compose up -d --build --wait` has returned `EXIT=0` on a stack whose web container
