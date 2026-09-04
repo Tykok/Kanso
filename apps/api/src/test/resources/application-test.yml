@@ -15,6 +15,19 @@ kanso:
   # container that is thrown away.
   webhooks:
     signing-key: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+  # The GitHub App's HMAC key, pinned for the same reason the signing key above is: the
+  # inbound half verifies every delivery against it, and without one `GithubWebhookTest`
+  # would be testing the refusal rather than the fan-out. Environment-first is also the
+  # only configuration path this secret has today — nothing writes
+  # `instance_settings.github_webhook_secret_enc` until the manifest flow of plan three
+  # lands, which `KansoProperties.Github.webhookSecret` already says in words.
+  #
+  # Deliberately not a plausible secret: it is compared, never spent, and the tests sign
+  # their fixtures with this same value read back off `KansoProperties` so the two cannot
+  # drift.
+  github:
+    webhook-secret: a-test-webhook-secret-and-nothing-more
+
   # Same reason, one screen along: a sweep firing mid-test would empty a countdown a
   # test is asserting about. `TrashServiceTest` calls `TrashService.empty` itself.
   trash:

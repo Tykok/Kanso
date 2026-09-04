@@ -350,6 +350,21 @@ class UnguardedWriteTest : MockMvcTest() {
 		 * whose only effect is to satisfy this sweep, and this file already says that is the
 		 * wrong direction to move a guard in.
 		 *
+		 * `GithubWebhookController` is `PublicController`'s argument with a different
+		 * caller: GitHub, which has no session by construction — `SecurityConfig` opens the
+		 * one route it serves, inline and named exactly. There is no actor to name because
+		 * the acting identity is not in the request at all; whose merge this was is resolved
+		 * *from the payload* against `github_accounts`, one layer in, and comes back null for
+		 * every author who never linked their account, which is most of them. So a
+		 * `CurrentUser` here would not merely be unused, it would be unanswerable.
+		 *
+		 * It is also the one entry in this list whose guard is neither a session nor a role,
+		 * and that is worth reading twice rather than filing away: it is an HMAC of the raw
+		 * body, refused with a bodyless 401 before anything is parsed. The behavioural half
+		 * is not left to this sweep — `GithubWebhookTest` fires it unsigned and mis-signed
+		 * and asserts both the refusal and that no row moved, which is the claim this
+		 * structural check can only gesture at.
+		 *
 		 * `BasicErrorController` is Spring's, serves `/error`, and is reached by a forward
 		 * rather than by a client.
 		 */
@@ -359,6 +374,7 @@ class UnguardedWriteTest : MockMvcTest() {
 			"GrantsController",
 			"ApiTokenController",
 			"WebhookController",
+			"GithubWebhookController",
 			"BasicErrorController",
 		)
 	}
