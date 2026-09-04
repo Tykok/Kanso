@@ -128,6 +128,20 @@ export const inboxApi = {
 export type NotionImportSource = {
   id: string;
   name: string;
+  /**
+   * The *database's* id, where `id` is the data source's. Both are on the wire already —
+   * `DiscoveredSource` has carried them since discovery was written — and this side had only
+   * ever named one, because screen 24 queries data sources and needs no other.
+   *
+   * Non-optional, because `DiscoveredSource.databaseId` is a non-null `String` and a Notion
+   * data source always has a parent database. Typing it `string | null` for safety would be
+   * the worse lie: Jackson writes an absent field as absent rather than as `null`, so the
+   * `null` branch could never be taken and the `undefined` one would go unwritten.
+   *
+   * `request-bases.tsx` is what needed it: registering a requests base sends both, and the
+   * mirror check on the server compares against both.
+   */
+  databaseId: string;
   pages: number;
   pagesExact: boolean;
 };
