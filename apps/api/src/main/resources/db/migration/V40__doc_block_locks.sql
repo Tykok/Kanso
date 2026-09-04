@@ -110,6 +110,17 @@
 -- `DEFAULT now() + interval` here would have to be re-stated in Kotlin for the renewal to
 -- agree with the insert.
 --
+-- One departure worth naming, because it goes against every other statement in this
+-- database: `DocBlockLockRepository` writes and reads these two columns through
+-- **`clock_timestamp()`**, not `now()`. `V9`'s header is where that distinction was first
+-- written down here — `now()` is the *transaction's* timestamp, not the statement's — and
+-- it went the other way for `doc_pages` because two touches in one transaction should not
+-- be distinguishable. An expiry is the opposite kind of fact. Under `now()` a lock taken
+-- inside a long transaction would count its window from whenever that transaction began,
+-- and a lock read in the transaction that took it could never be observed to lapse at all.
+-- The `taken_at` default below is `now()` only because nothing ever inserts this row
+-- without supplying the column.
+--
 -- ---------------------------------------------------------------------------
 -- Taking a lock is not editing the page, and `V38` is why that sentence is here.
 --

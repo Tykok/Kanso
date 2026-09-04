@@ -15,9 +15,18 @@ import java.util.UUID
  *
  * A lock this repository decided with `OffsetDateTime.now()` in Kotlin would be a lock
  * whose expiry two API instances, and the browser that drew the countdown, all disagree
- * about — by whatever their clocks are apart. The row is written from `now() + interval`
- * and read back with `expires_at > now()`, so the only clock in the feature is the one
- * that is also the arbiter.
+ * about — by whatever their clocks are apart. The row is written from
+ * `clock_timestamp() + interval` and read back with `expires_at > clock_timestamp()`, so
+ * the only clock in the feature is the one that is also the arbiter.
+ *
+ * **`clock_timestamp()` and not `now()`**, which is the one place this file departs from
+ * the rest of the schema, and `V9`'s header is what names the reason: `now()` is the
+ * *transaction's* timestamp, not the statement's. Every trigger in this database wants
+ * that — a row written once per transaction should carry one stamp — but an expiry is a
+ * statement-level fact. Under `now()` a lock taken inside a long transaction would count
+ * its thirty seconds from whenever that transaction *began*, and a lock read in the same
+ * transaction that took it could never be seen to lapse. The second half of that is why
+ * `DocBlockLockTest` can watch a claim expire at all.
  *
  * The second reason is [take], which is the whole atomicity of `KAN-25`: an
  * `INSERT … ON CONFLICT (block_id) DO UPDATE … WHERE`, which the Exposed DSL does not
@@ -46,11 +55,15 @@ class DocBlockLockRepository(private val jdbc: JdbcClient) {
 	fun take(blockId: UUID, userId: UUID, ttl: Duration): DocBlockLock? = jdbc.sql(
 		"""
 		INSERT INTO doc_block_locks (block_id, user_id, expires_at, taken_at)
-		VALUES (:blockId, :userId, now() + make_interval(secs => :ttlSeconds), now())
+		VALUES (
+		    :blockId, :userId,
+		    clock_timestamp() + make_interval(secs => :ttlSeconds),
+		    clock_timestamp()
+		)
 		ON CONFLICT (block_id) DO UPDATE
 		   SET user_id    = :userId,
-		       expires_at = now() + make_interval(secs => :ttlSeconds)
-		 WHERE doc_block_locks.expires_at <= now()
+		       expires_at = clock_timestamp() + make_interval(secs => :ttlSeconds)
+		 WHERE doc_block_locks.expires_at <= clock_timestamp()
 		    OR doc_block_locks.user_id = :userId
 		RETURNING block_id, user_id, expires_at, taken_at
 		""".trimIndent()
@@ -73,7 +86,7 @@ class DocBlockLockRepository(private val jdbc: JdbcClient) {
 		"""
 		SELECT block_id, user_id, expires_at, taken_at
 		  FROM doc_block_locks
-		 WHERE block_id = :blockId AND expires_at > now()
+		 WHERE block_id = :blockId AND expires_at > clock_timestamp()
 		""".trimIndent()
 	)
 		.param("blockId", blockId)
@@ -96,7 +109,7 @@ class DocBlockLockRepository(private val jdbc: JdbcClient) {
 		  FROM doc_block_locks l
 		  JOIN doc_blocks b ON b.id = l.block_id
 		  JOIN users       u ON u.id = l.user_id
-		 WHERE b.page_id = :pageId AND l.expires_at > now()
+		 WHERE b.page_id = :pageId AND l.expires_at > clock_timestamp()
 		""".trimIndent()
 	)
 		.param("pageId", pageId)
