@@ -153,6 +153,29 @@ const healthOf = (payload: Record<string, unknown>, key: "from" | "to"): string 
 const points = (payload: Record<string, unknown>, key: "from" | "to"): number | undefined =>
   typeof payload[key] === "number" ? (payload[key] as number) : undefined;
 
+/**
+ * The pull request a GitHub-driven row came from — `#418`, or absent.
+ *
+ * `payload.via_pr` is what `V36` reserves for it, and this is the only reader. Normalised
+ * to carry exactly one `#`, because the two plausible writers disagree: a handler that
+ * stores GitHub's `number` writes `418` and one that stores the reference writes `#418`,
+ * and a feed that says "via ##418" or "via 418" for the same event depending on which
+ * landed is a feed nobody trusts. A number is accepted as well as a string for the same
+ * reason — JSON has one number type and `payload` is `jsonb`.
+ *
+ * The suffix is what makes the actorless line honest rather than mysterious: *Moved
+ * KAN-142 to Done* invites "by whom?", and *Moved KAN-142 to Done via #418* answers it
+ * without claiming a person.
+ */
+const viaPr = (payload: Record<string, unknown>): string | undefined => {
+  const value = payload.via_pr;
+  if (typeof value === "number") return `#${value}`;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+};
+
 const statusOf = (payload: Record<string, unknown>, key: "from" | "to"): string | undefined => {
   const value = payload[key];
   return typeof value === "string" && value in STATUS_LABELS
@@ -184,9 +207,31 @@ export function activitySentence(row: ActivityRow): string {
         return what ? `created ${what}` : "created a ticket";
       case "status_changed": {
         const to = statusOf(row.payload, "to");
-        if (what && to) return `moved ${what} to ${to}`;
-        if (to) return `moved a ticket to ${to}`;
-        return "changed a status";
+        // `KAN-74`. The pull request is a suffix on the existing three sentences rather
+        // than a fourth branch, because it is *why* the status changed and not *what*
+        // changed — and because it has to read correctly with and without an actor. The
+        // two lines it produces are the pair this whole feature is about:
+        //
+        //   nobody linked  →  "Moved KAN-142 to Done via #418"
+        //   consented      →  "Elie moved KAN-142 to Done via #418"
+        //
+        // Appended after the whole phrase and not after `to`, so a row with no readable
+        // `to` still says where it came from: "Changed a status via #418" is thin, but it
+        // is not wrong, and dropping the suffix there would lose the only fact that row has.
+        const pr = viaPr(row.payload);
+        const suffix = pr ? ` via ${pr}` : "";
+        if (what && to) return `moved ${what} to ${to}${suffix}`;
+        if (to) return `moved a ticket to ${to}${suffix}`;
+        return `changed a status${suffix}`;
+      }
+      case "pull_request_linked": {
+        // `V36` reserves this kind for the link itself, distinct from the transition it may
+        // cause: `actor_id` is null for a link the parser drew off a branch name and set
+        // for one a member drew by hand, so this sentence has to work both ways too.
+        const pr = viaPr(row.payload);
+        const it = what ?? "a ticket";
+        if (pr) return `linked ${pr} to ${it}`;
+        return `linked a pull request to ${it}`;
       }
       case "priority_changed":
         return what ? `reprioritised ${what}` : "changed a priority";

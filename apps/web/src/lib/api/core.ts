@@ -205,6 +205,20 @@ export type PullRequest = {
   /** Absent until somebody reviews, which the pill reads as "In review". */
   reviewState?: PrReviewState;
   authorLogin?: string;
+  /**
+   * The Kanso member behind `authorLogin`, when that member has linked their GitHub
+   * account in their own settings.
+   *
+   * **Optional and never `| null`.** The server's mapper omits nulls, so an author nobody
+   * has linked arrives as an *absent key* — a `User | null` here would be a lie no
+   * compiler catches, which is the trap that produced a "Last used Invalid Date" on a
+   * screen in this repository. Read it with `== null`.
+   *
+   * `authorLogin` stays beside it and is what the row shows on its own: an unlinked
+   * author reads `@tykok`, exactly as before this field existed. That is the documented
+   * fallback, not a degradation.
+   */
+  author?: User;
   headRef: string;
   /** Whether this pull request may move the ticket, as opposed to merely naming it. */
   closes: boolean;

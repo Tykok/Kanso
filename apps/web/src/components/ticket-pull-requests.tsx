@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { PullRequest, Ticket } from "@/lib/api";
 import {
+  prAuthorLabel,
+  prAuthorTitle,
   prLinkExplanation,
   prPill,
   prRef,
@@ -99,6 +101,10 @@ function BranchToCopy({ branch }: { branch: string }) {
  */
 function PullRequestRow({ pr }: { pr: PullRequest }) {
   const pill = prPill(pr);
+  // `KAN-74`: the member's name once they have consented, the GitHub handle until then.
+  // Both come from `pr-copy.ts` rather than being spelled here, because "which of three
+  // things does this row say about a person" is a rule and this file draws rules.
+  const author = prAuthorLabel(pr);
 
   return (
     <div className="flex min-w-0 items-center gap-2" title={prLinkExplanation(pr)}>
@@ -121,8 +127,17 @@ function PullRequestRow({ pr }: { pr: PullRequest }) {
           Seen in a browser, and the only thing that shows it is looking at it. */}
       {!pr.closes && <span className="shrink-0 text-11 text-faint">(mention)</span>}
       <PrStatePill label={pill.label} tone={pill.tone} />
-      {pr.authorLogin != null && (
-        <span className="shrink-0 text-11 text-faint">@{pr.authorLogin}</span>
+      {/* `shrink-0` and `whitespace-nowrap` together, not either alone: a display name has
+          spaces in it where a handle does not, so the element that could only ever be one
+          word can now wrap onto a second line and push the pill off the row. Seen in a
+          browser, and the only thing that shows it is a member whose name is two words. */}
+      {author != null && (
+        <span
+          className="shrink-0 whitespace-nowrap text-11 text-faint"
+          title={prAuthorTitle(pr)}
+        >
+          {author}
+        </span>
       )}
     </div>
   );
