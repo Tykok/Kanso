@@ -343,9 +343,19 @@ class GithubWebhookTest : MockMvcTest() {
 		val moved = movedTo(TicketStatus.DONE).single()
 		assertNull(moved.actorId, "nobody consented, so there is nobody to name — the documented fallback")
 		assertEquals(
-			"tykok/kanso#418",
+			"#418",
 			objectMapper.readTree(moved.payload).path("via_pr").asText(null),
 			"and the row says why it moved, which is what `via_pr` is for: ${moved.payload}",
+		)
+
+		// The value is the one `project-copy.ts`'s `viaPr` was written and tested against, so
+		// the sentence reads *Moved … to Done via #418* and not *via #tykok/kanso#418*. This
+		// producer and that consumer were built by different tickets and only meet here.
+		assertEquals(
+			"#418",
+			objectMapper.readTree(activityOf(ActivityKind.PULL_REQUEST_LINKED).single().payload)
+				.path("via_pr").asText(null),
+			"and the link's own row names the pull request the same way",
 		)
 	}
 

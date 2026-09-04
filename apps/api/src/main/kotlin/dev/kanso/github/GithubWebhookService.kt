@@ -185,9 +185,13 @@ class GithubWebhookService(
 				ticketId,
 				author,
 				ActivityKind.PULL_REQUEST_LINKED,
+				// `via_pr` under that name because it is the key the feed reads — the same
+				// reader, `viaPr`, serves this kind and `status_changed`, so a second
+				// spelling here would make one of the two sentences say "a pull request"
+				// where the other names it.
 				mapOf(
+					"via_pr" to "#${event.number}",
 					"repo" to event.repoFullName,
-					"number" to event.number,
 					"url" to event.url,
 					"closes" to closes,
 				),
@@ -239,7 +243,15 @@ class GithubWebhookService(
 		// the field the row stores and the one a reader would expect to be asked.
 		val member = accounts.memberFor(event.senderId, event.senderLogin)
 			?: accounts.memberFor(event.authorId, event.authorLogin)
-		val via = "${event.repoFullName}#${event.number}"
+		// **`#418`, and not `tykok/kanso#418`.** The repository-qualified form is more precise
+		// and it is the wrong value, because the consumer is already written and already
+		// tested: `project-copy.ts`'s `viaPr` prepends a `#` to anything that does not start
+		// with one, so the qualified form prints *via #tykok/kanso#418* — two hashes and a
+		// path, which is the "feed somebody has to explain" that KAN-74's own test exists to
+		// prevent. Nothing is lost: `github_pull_requests.repo_full_name` holds the
+		// repository, and the feed's job is a short sentence. `V36` documents this exact
+		// string — *KAN-142 moved to Done via #418*.
+		val via = "#${event.number}"
 
 		for (ticketId in github.ticketsClosedBy(pullRequestId)) {
 			val ticket = tickets.findById(ticketId) ?: continue
