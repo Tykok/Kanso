@@ -37,6 +37,7 @@ import { TicketLabels } from "../ticket-labels";
 import { TicketPullRequests } from "../ticket-pull-requests";
 import { SubTicketsPanel } from "./sub-tickets-panel";
 import { TicketLinksPanel } from "./ticket-links-panel";
+import { TimePanel } from "./time-panel";
 import { Avatar } from "./avatar";
 
 /**
@@ -345,6 +346,10 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
 
           <SubTicketsPanel ticketId={ticket.id} />
           <TicketLinksPanel ticketId={ticket.id} />
+
+          {/* KAN-26. Unlike the two panels above it this one draws even when empty: a ticket
+              with nothing logged is the one that most needs a way to start a clock. */}
+          <TimePanel ticketId={ticket.id} />
 
           <div className="my-1 h-px bg-border" />
 
