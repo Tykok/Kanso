@@ -29,6 +29,24 @@ export type DocBlockKind = (typeof DOC_BLOCK_KINDS)[number];
  */
 export type DocBlockContent = Record<string, unknown>;
 
+/**
+ * Who is holding a block, and when it lets go — `KAN-25`.
+ *
+ * `freesAt` is an instant, not a number of seconds: a tab that was backgrounded for a
+ * minute has to draw a countdown that is still right, and a duration computed on the
+ * server goes stale in flight.
+ */
+export type DocBlockLock = {
+  userId: string;
+  displayName: string;
+  freesAt: string;
+  /** When the claim began. A renewal moves `freesAt` and leaves this alone. */
+  takenAt: string;
+};
+
+/** Somebody with the page open. No timestamp: there is no row and nothing to compare. */
+export type DocViewer = { userId: string; displayName: string };
+
 export type DocBlock = {
   id: string;
   pageId: string;
@@ -37,6 +55,18 @@ export type DocBlock = {
   content: DocBlockContent;
   /** From `doc_block_tickets`. A ticket link block carries exactly one. */
   ticketIds: string[];
+  /**
+   * The live lock, or **absent**.
+   *
+   * `?:` and not `| null`, and the difference has shipped a bug here before: Jackson omits
+   * nulls, so an unlocked block has no `lockedBy` key at all. A type saying `| null` would
+   * type-check against a value that never arrives and put `Invalid Date` on screen — which
+   * is exactly what "Last used" did.
+   *
+   * Only ever a live one. The server filters `expires_at > clock_timestamp()`, so there is
+   * no `held` flag to check and no lapsed holder to reason about.
+   */
+  lockedBy?: DocBlockLock;
 };
 
 export type DocFolder = {
@@ -144,6 +174,28 @@ export const docsApi = {
     }),
 
   deleteBlock: (id: string) => request<void>(`/api/docs/blocks/${id}`, { method: "DELETE" }),
+
+  // --- the lock, and who is watching ---------------------------------------
+
+  /**
+   * Takes the block, or renews a claim this tab already has — one call for both, because
+   * the server decides them in one statement.
+   *
+   * Throws `ApiError` with `status === 409` when somebody else has it; the problem document
+   * carries `holder` and `freesAt`, which `lockRefusal` in `lib/doc-locks.ts` reads.
+   */
+  takeLock: (blockId: string) =>
+    request<DocBlockLock>(`/api/docs/blocks/${blockId}/lock`, { method: "PUT" }),
+
+  releaseLock: (blockId: string) =>
+    request<void>(`/api/docs/blocks/${blockId}/lock`, { method: "DELETE" }),
+
+  /**
+   * Who has the page open. Read once on mount; every change after it arrives on the
+   * page's viewers topic — see `DocumentController.viewers` for why the read exists at all
+   * rather than the first broadcast being trusted.
+   */
+  viewers: (pageId: string) => request<DocViewer[]>(`/api/docs/pages/${pageId}/viewers`),
 
   // --- the gestures inside a document --------------------------------------
 
