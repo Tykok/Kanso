@@ -56,6 +56,22 @@ export function composerEmptyReason(teamCount: number): "no-teams" | "not-editab
 }
 
 /**
+ * The sentences themselves, which until now existed nowhere — the chooser above was
+ * exported, called by nothing, and its comment promised the reader a sentence the form
+ * never drew. Written here rather than in the footer's JSX so the choice and its two
+ * answers are read together.
+ *
+ * Both end by saying the ticket still files. Neither is an objection: `7281a8a` deliberately
+ * removed the "Pick a team first." blocker so a thought could be filed before anybody decided
+ * whose it is, and a sentence that explained the empty select by refusing the form would put
+ * that blocker back wearing different words.
+ */
+const EMPTY_TEAM_NOTE: Record<ReturnType<typeof composerEmptyReason>, string> = {
+  "no-teams": "No team on this instance yet — this files as a draft.",
+  "not-editable": "No team here takes your tickets — this files as a draft.",
+};
+
+/**
  * The estimate select's value as the wire's `estimate`. Absent stays absent: `Number("")`
  * is `0`, and `0` on this field is not "unsized" but "somebody sized this at nothing" —
  * a number the cycle and workload screens would go on to sum. The membership test is what
@@ -107,8 +123,9 @@ export function newTicketBody(form: {
  * the target: team, project, priority and assignee, prefilled from the current scope,
  * clickable and reachable with Tab.
  */
-function ComposerForm({
+export function ComposerForm({
   teams,
+  teamCount,
   projects,
   users,
   meId,
@@ -116,6 +133,10 @@ function ComposerForm({
   onClose,
 }: {
   teams: Team[];
+  /** How many teams the instance holds at all. [composerEmptyReason] needs the unfiltered
+   *  count to tell "no team exists" from "no team here will take yours", and `teams` above
+   *  cannot answer it: it has already been narrowed to the composable ones. */
+  teamCount: number;
   projects: Project[];
   users: User[];
   meId?: string;
@@ -145,6 +166,14 @@ function ComposerForm({
   // Deliberately not seeded, and deliberately a string rather than an `EffortPoints`:
   // the empty string is the select's own "no choice", and every ticket starts there.
   const [estimate, setEstimate] = useState("");
+  /**
+   * Whether the last gesture asked to create a ticket with no title.
+   *
+   * State rather than a derived `!title.trim()` because the objection belongs to the
+   * gesture and not to the field: derived, it would be on screen from the moment the
+   * composer opens, scolding an empty form nobody has submitted yet.
+   */
+  const [untitled, setUntitled] = useState(false);
 
   /**
    * A ticket always belongs to a team; a project does not. The list offered is
@@ -183,7 +212,20 @@ function ComposerForm({
   const submit = () => {
     if (create.isPending) return;
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      /**
+       * The one refusal this form still swallowed. `useReportError` documents the shape of
+       * the bug — "OrganiseShell wired that callback to a `useState` whose value it then
+       * never rendered, so on four routes a refused unarchive was silent" — and a bare
+       * `return` here was the same silence with no state to even blame.
+       *
+       * [Create] stays enabled through it, deliberately. Greying it out would answer the
+       * click and leave ↵ exactly as mute, and ↵ is the gesture this composer was built
+       * around; it would also teach nothing, where a sentence names what is missing.
+       */
+      setUntitled(true);
+      return;
+    }
     create.mutate(
       newTicketBody({ teamId, title: trimmed, priority, projectId, assigneeId, estimate }),
     );
@@ -209,7 +251,12 @@ function ComposerForm({
           placeholder="New ticket…"
           value={title}
           disabled={create.isPending}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => {
+            setTitle(event.target.value);
+            // Withdrawn on the answer, not on the next submit: the objection was that the
+            // field was empty, and it is being filled.
+            setUntitled(false);
+          }}
           onKeyDown={(event) => {
             event.stopPropagation();
             if (event.key === "Enter") {
@@ -359,8 +406,19 @@ function ComposerForm({
         <Kbd>↵</Kbd> <span>create</span> <Kbd>esc</Kbd> <span>cancel</span>
         {!teamId && (
           // Not an error: it says what will happen, so nobody is surprised to find the
-          // ticket has no identifier afterwards.
-          <span className="text-faint">Files with no team — you can attach one later.</span>
+          // ticket has no identifier afterwards. With nothing composable to pick from, what
+          // will happen is the same, but "you can attach one later" is not true yet — so
+          // there the sentence says why the select is empty instead.
+          <span className="text-faint">
+            {teams.length === 0
+              ? EMPTY_TEAM_NOTE[composerEmptyReason(teamCount)]
+              : "Files with no team — you can attach one later."}
+          </span>
+        )}
+        {untitled && (
+          <span className="text-urgent" role="alert">
+            A ticket needs a title.
+          </span>
         )}
         {create.isError && (
           <span className="text-urgent" role="alert">
@@ -417,13 +475,14 @@ export function Composer({ scope, onClose }: { scope: Scope; onClose: () => void
   // must agree on what is offered, and computing it twice is how they would drift.
   // No longer a reason to refuse the whole composer: a fresh instance with no team, and
   // an instance where none will take a ticket from this actor, both still have somewhere
-  // to put a thought — the drafts. `composerEmptyReason` survives for the sentence the
-  // form draws about *why* the select is empty, which is still worth saying.
+  // to put a thought — the drafts. Which of the two it is, is what the footer now says, and
+  // telling them apart is why the unfiltered count travels down beside the filtered list.
   const composable = teams.data.filter(isComposableTeam);
 
   return (
     <ComposerForm
       teams={composable}
+      teamCount={teams.data.length}
       projects={projects.data}
       users={users.data ?? []}
       meId={me.data?.user.id}
