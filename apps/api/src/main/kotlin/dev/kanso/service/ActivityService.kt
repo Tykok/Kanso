@@ -5,7 +5,10 @@ import dev.kanso.auth.KansoAgentUser
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.User
+import dev.kanso.repo.ActivityRecord
 import dev.kanso.repo.ActivityRepository
+import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -17,6 +20,11 @@ import java.util.UUID
  * One entry of the log, with the person resolved. [actor] is null for a row whose
  * author has since been deleted — `actor_id` is `ON DELETE SET NULL`, because losing
  * the account must not lose the history.
+ *
+ * [payload] is the jsonb document as it was written, plus exactly one resolved key: `ref`,
+ * the ticket's `KAN-142`. It is here rather than beside [actor] because `ref` is the name
+ * a *sentence* reads the row under — see [ActivityService.refsFor] for why it is resolved
+ * at all, and why it is resolved here rather than written seven times.
  */
 data class ActivityRow(
 	val id: UUID,
@@ -46,6 +54,9 @@ data class ActivityRow(
 class ActivityService(
 	private val activity: ActivityRepository,
 	private val users: UserRepository,
+	/** Read only by [refsFor], and only for a ticket's feed — never on the write path. */
+	private val tickets: TicketRepository,
+	private val teams: TeamRepository,
 	private val json: ObjectMapper,
 	/** Read for provenance only — see [clientTyping]. Never to decide anything. */
 	private val currentUser: CurrentUser,
@@ -109,6 +120,7 @@ class ActivityService(
 		// One query for the whole page's actors instead of one per row — the same shape
 		// `TicketService.decorate` uses, and a feed repeats the same few people.
 		val actors = users.findAllById(records.mapNotNull { it.actorId }.toSet()).associateBy { it.id }
+		val refs = refsFor(records)
 		return records.map { record ->
 			ActivityRow(
 				id = record.id,
@@ -116,11 +128,50 @@ class ActivityService(
 				entityId = record.entityId,
 				actor = record.actorId?.let { actors[it] },
 				kind = record.kind,
-				payload = decode(record.payload),
+				// The resolved `ref` last, so it wins over anything a writer ever puts under
+				// that key: the point of resolving here is that the name is the *current* one.
+				payload = decode(record.payload) + refsKey(refs[record.entityId]),
 				createdAt = record.createdAt,
 			)
 		}
 	}
+
+	/**
+	 * `KAN-142` for every ticket a page of the feed names — the key `payload.ref` was always
+	 * read under, supplied on read because nothing was writing it.
+	 *
+	 * **Resolved and not stored, like every other derived value in this schema.** It is the
+	 * argument `TicketDetail.branchName` already makes in those words, and both of the
+	 * columns behind an identifier move: `TeamService.update` takes a new `key`, and crossing
+	 * teams takes a fresh `number` from the destination's counter, because `UNIQUE (team_id,
+	 * number)` leaves no choice. A `ref` frozen at write time would therefore make a ticket's
+	 * own feed disagree with the ticket's own header — every line above the move naming
+	 * something the reader can no longer find. Resolving here also names the rows already in
+	 * the table, which is what makes this the fix with no migration behind it: `KAN-81`'s
+	 * precedent is not to recompute history, and read-side resolution never has to.
+	 *
+	 * Two statements for the whole page and never one per row — the shape the `actors` line
+	 * above already uses, and the distinction `KAN-81` settled by measuring rather than by
+	 * assuming. Zero statements for a project, team, doc or account feed: none of those rows
+	 * is about a ticket, and `activitySentence`'s branches for them consult no `ref`.
+	 *
+	 * Absent, not blank, for a draft: a ticket no team has claimed has no identifier at all,
+	 * and the feed's own fallback for that is the sentence "created a ticket". The same
+	 * absence covers a row whose ticket has since been destroyed — the history outlives it.
+	 */
+	private fun refsFor(records: List<ActivityRecord>): Map<UUID, String> {
+		val ids = records.filter { it.entity == ActivityEntity.TICKET }.map { it.entityId }.toSet()
+		if (ids.isEmpty()) return emptyMap()
+		val found = tickets.findAllById(ids)
+		val keys = teams.findAllById(found.mapNotNull { it.teamId }.toSet()).associate { it.id to it.key }
+		return found.mapNotNull { ticket ->
+			ticketIdentifier(ticket.teamId?.let { keys[it] }, ticket.number)?.let { ticket.id to it }
+		}.toMap()
+	}
+
+	/** One key or none, so an unresolvable ticket leaves the payload exactly as it was written. */
+	private fun refsKey(ref: String?): Map<String, Any?> =
+		ref?.let { mapOf("ref" to it) } ?: emptyMap()
 
 	/** Whatever [record] was handed, back out again. jsonb objects have string keys. */
 	@Suppress("UNCHECKED_CAST")

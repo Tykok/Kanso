@@ -35,6 +35,25 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
+ * `KAN-142`, spelled once.
+ *
+ * [TicketDetail.identifier] was the definition and `ActivityService` became a second reader
+ * that holds a key and a number without holding a whole detail — six statements and a
+ * `GithubRepository` to compose one string is not a trade a feed should make, so the
+ * composition moved here instead of being written out twice. `TimelineService` has a third
+ * copy that substitutes `?` for a missing key: deliberately not folded in, because printing
+ * a placeholder is the opposite of what [TicketDetail]'s own comment argues for below, and
+ * changing what a timeline draws is not this change.
+ *
+ * Both halves are required, where the getter this replaced only asked about the key: the
+ * pair is all-or-nothing by `tickets_team_number_together_chk`, so no row can reach the
+ * stricter branch — but "KAN-null" is the string the looser one would have produced if one
+ * ever did.
+ */
+fun ticketIdentifier(teamKey: String?, number: Int?): String? =
+	if (teamKey == null || number == null) null else "$teamKey-$number"
+
+/**
  * A ticket with its team key (for `KAN-142`) and its relations already loaded.
  *
  * [teamKey] and [identifier] are null for a ticket no team has claimed. Null rather than a
@@ -94,7 +113,7 @@ data class TicketDetail(
 	 */
 	val pullRequestAuthors: Map<UUID, User> = emptyMap(),
 ) {
-	val identifier: String? get() = teamKey?.let { "$it-${ticket.number}" }
+	val identifier: String? get() = ticketIdentifier(teamKey, ticket.number)
 
 	/**
 	 * The branch to create, derived from the identifier and the title — **computed on read,
@@ -804,6 +823,25 @@ class TicketService(
 		after: Ticket,
 		viaPullRequest: String? = null,
 	) {
+		// NO `ref` IS WRITTEN HERE, AND THAT IS THE ANSWER TO `KAN-84` RATHER THAN AN OMISSION.
+		//
+		// The feed reads `payload.ref` to say "moved KAN-142 to Done" instead of "moved a
+		// ticket to Done", and this method holds the two halves of that name — `after.number`
+		// and `after.teamId` — but not the team's key. Resolving it here would have been one
+		// extra SELECT on the path every `j`/`k` followed by a status write takes, which is
+		// affordable; what is not affordable is what the value would then *be*. A team's key
+		// is editable (`TeamService.update`), and crossing teams re-numbers the ticket from
+		// the destination's counter a few lines above, so a stored `ref` is stale the moment
+		// either happens — and stale in the one place a reader goes to reconstruct what
+		// happened. `TicketDetail.branchName` already refuses to store a derived value in
+		// those words, for the same two moving columns.
+		//
+		// It would also have left every row already in the table saying "a ticket" for good,
+		// since `KAN-81`'s precedent is not to rebuild history from a guess.
+		//
+		// So it is resolved on read, for the whole page in two statements —
+		// `ActivityService.refsFor`, which is also the only place a future eighth log here,
+		// or a ninth writer in another service, has to not forget.
 		fun log(kind: ActivityKind, payload: Map<String, Any?>) =
 			activity.record(ActivityEntity.TICKET, after.id, actor?.id, kind, payload)
 
