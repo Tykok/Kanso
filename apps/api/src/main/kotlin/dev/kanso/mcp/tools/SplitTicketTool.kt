@@ -11,9 +11,7 @@ import dev.kanso.mcp.objectsField
 import dev.kanso.mcp.stringField
 import dev.kanso.mcp.stringsField
 import dev.kanso.service.BadRequestException
-import dev.kanso.service.ConflictException
 import dev.kanso.service.SubTicketService
-import dev.kanso.service.TicketDetail
 import dev.kanso.service.TicketService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -109,7 +107,10 @@ class SplitTicketTool(
 
 		val parent = TicketLines.byIdentifier(args.requiredString("ticket"), tickets::getByIdentifier)
 		val address = parent.identifier ?: parent.ticket.id.toString()
-		refuseNesting(parent, address)
+		// The rule and the sentence both live in `TicketStructure` now that three tools ask it:
+		// this one, `kanso_create_ticket`'s `parent`, and `kanso_plan`'s `ref` version over
+		// tickets that do not exist yet. The way out is the half that differs.
+		TicketStructure.refuseNesting(parent, address, instead = "split its parent instead")
 		val teamId = parent.ticket.teamId ?: throw BadRequestException(
 			"$address belongs to no team, and a part has to be filed in one",
 		)
@@ -158,32 +159,6 @@ class SplitTicketTool(
 
 		return "Split $address into ${filed.size} sub-ticket(s):\n" +
 			filed.joinToString("\n") { "  ${it.identifier}  ${it.ticket.title}" }
-	}
-
-	/**
-	 * The one state a ticket cannot be split from, refused before anything is written.
-	 *
-	 * `SubTicketService.parentRefusal` is the authority on it and it runs on every child
-	 * inside the transaction below — so this is not the guard. It is the *sentence*: that
-	 * method answers with the UUID it was handed, and an agent that typed `KAN-142` cannot
-	 * match `9f3c…` to anything it has seen. Read here off the field it reads, so the
-	 * refusal names the identifier — the same rewrite `TicketLines.byIdentifier` performs on
-	 * the lookup's own message, and the same reason.
-	 *
-	 * **A ticket that already has parts is deliberately not refused.** One level deep is the
-	 * rule; "split only once" is not, and inventing it here would be this tool holding an
-	 * opinion Kanso does not — the exact thing KAN-20 says to expose a better tool instead
-	 * of. It would also dead-end the caller, since `kanso_create_ticket` cannot set a parent:
-	 * an agent wanting a fourth part would have no way to file one that is not an orphan.
-	 * `kanso_get_ticket` prints the parts that exist, which is what an agent needs in order
-	 * not to file them twice.
-	 */
-	private fun refuseNesting(parent: TicketDetail, address: String) {
-		if (parent.ticket.parentId != null) {
-			throw ConflictException(
-				"$address is itself a sub-ticket, and sub-tickets do not nest — split its parent instead",
-			)
-		}
 	}
 
 	/**

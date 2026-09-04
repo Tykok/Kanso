@@ -1,6 +1,7 @@
 package dev.kanso.mcp.tools
 
 import dev.kanso.domain.TicketLinkType
+import dev.kanso.service.ConflictException
 import dev.kanso.service.SubTicketProgress
 import dev.kanso.service.TicketDetail
 import dev.kanso.service.TicketLinkView
@@ -83,6 +84,31 @@ internal object TicketStructure {
 				appendLine("  " + TicketLines.line(child, child.assigneeIds.mapNotNull { emails[it] }))
 			}
 		}.trimEnd()
+	}
+
+	/**
+	 * The one state a ticket cannot be made a parent in, refused in the address the caller
+	 * typed and before anything is written.
+	 *
+	 * `SubTicketService.parentRefusal` is the authority on it and it runs on every child
+	 * inside the caller's transaction — so this is not the guard, it is the **sentence**:
+	 * that method answers with the UUID it was handed, and an agent that typed `KAN-142`
+	 * cannot match `9f3c…` to anything it has seen. Read here off the field it reads, so the
+	 * refusal names the identifier — the rewrite `TicketLines.byIdentifier` performs on the
+	 * lookup's own message, and the one KAN-70 made `ScheduleService` perform on the cycle.
+	 *
+	 * [instead] is the way out, and it differs by caller: a ticket being split is told to
+	 * split its parent, a ticket being filed under one is told where to file it. The rule is
+	 * shared because it is one rule; the way out is not, because a refusal an agent cannot
+	 * act on costs the same round trip as no answer at all.
+	 *
+	 * **A ticket that already has parts is deliberately not refused here.** One level deep is
+	 * the rule; "split only once" is not, and inventing it would be `mcp/` holding an opinion
+	 * Kanso does not — the exact thing KAN-20 says to expose a better tool instead of.
+	 */
+	fun refuseNesting(parent: TicketDetail, address: String, instead: String) {
+		if (parent.ticket.parentId == null) return
+		throw ConflictException("$address is itself a sub-ticket, and sub-tickets do not nest — $instead")
 	}
 
 	/**
