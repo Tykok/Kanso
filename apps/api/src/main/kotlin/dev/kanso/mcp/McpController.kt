@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * JSON-RPC 2.0 over one `POST /api/mcp`, and the four tools behind it.
+ * JSON-RPC 2.0 over one `POST /api/mcp`, and the tools behind it.
  *
  * **Hand-written, rather than the Spring AI MCP server starter absorbing this file** —
  * the open question the stub this replaces left for "plan two". The starter does run on
@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController
  *    feature would then rest on an undocumented internal of a transitive dependency, and
  *    the fallback — reading identity out of the Reactor context instead — is a second
  *    answer to "who is acting", which is the failure the whole design opens by refusing.
- * 2. **Weight, for four tools.** The starter's transitive set includes `spring-webflux`
+ * 2. **Weight, for a surface this small.** The starter's transitive set includes `spring-webflux`
  *    (into an application with no reactive stack), `reactor-core`, `spring-messaging`,
  *    `micrometer-tracing`, ANTLR 4 with StringTemplate, three `jsonschema-generator`
  *    modules and `swagger-annotations` — to generate schemas this file writes by hand in
@@ -44,7 +44,7 @@ import org.springframework.web.bind.annotation.RestController
  *    in the first minute.
  *
  * What the starter would genuinely have bought is followed protocol revisions, sessions
- * and server-initiated streaming. None of the four tools needs the last two, and the
+ * and server-initiated streaming. None of these tools needs the last two, and the
  * first is a cost this file accepts explicitly: [PROTOCOL_VERSION] is pinned, and the day
  * that stops being true the decision above is worth re-reading rather than assuming.
  *
@@ -117,8 +117,9 @@ class McpController(
 		// asked for would claim support for a revision this file has never seen; a client
 		// that cannot speak this one is meant to say so and disconnect.
 		"protocolVersion" to PROTOCOL_VERSION,
-		// `listChanged: false` is the honest answer, not a placeholder: the surface is four
-		// beans fixed at startup, so there is no notification this server could ever send,
+		// `listChanged: false` is the honest answer, not a placeholder: the surface is a
+		// fixed set of beans resolved at startup, so there is no notification this server
+		// could ever send,
 		// and a client told otherwise would keep a subscription open for one that never comes.
 		"capabilities" to mapOf("tools" to mapOf("listChanged" to false)),
 		"serverInfo" to mapOf(

@@ -8,7 +8,7 @@ import dev.kanso.service.TicketDetail
 import java.util.UUID
 
 /**
- * The shapes the four tools share: how a team is named, how a ticket is addressed, and
+ * The shapes the tools share: how a team is named, how a ticket is addressed, and
  * what one line of a backlog looks like.
  *
  * Here rather than in each tool because two tools drawing a ticket two ways is how an

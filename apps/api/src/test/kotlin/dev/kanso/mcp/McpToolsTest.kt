@@ -176,35 +176,44 @@ class McpToolsTest : PostgresTest() {
 	fun `tools list answers the real surface, and every entry is callable as declared`() {
 		rpc("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", bearer(user())).andExpect {
 			status { isOk() }
-			jsonPath("$.result.tools.length()") { value(7) }
+			jsonPath("$.result.tools.length()") { value(8) }
 			// By index, because the order is sorted and stable — a client that caches the
 			// list keyed on its content must not see it change between restarts. KAN-20 added
-			// three, and they sort into the middle of the four rather than onto the end, which
-			// is exactly why the assertion is by index and not by membership.
+			// three and KAN-72 a fourth, and every one of them sorts into the middle rather
+			// than onto the end, which is exactly why the assertion is by index and not by
+			// membership: `kanso_plan` landed at 4 and pushed three tools along.
 			jsonPath("$.result.tools[0].name") { value("kanso_create_ticket") }
 			jsonPath("$.result.tools[1].name") { value("kanso_get_ticket") }
 			jsonPath("$.result.tools[2].name") { value("kanso_link_tickets") }
 			jsonPath("$.result.tools[3].name") { value("kanso_list_tickets") }
-			jsonPath("$.result.tools[4].name") { value("kanso_split_ticket") }
-			jsonPath("$.result.tools[5].name") { value("kanso_team_workload") }
-			jsonPath("$.result.tools[6].name") { value("kanso_update_ticket") }
+			jsonPath("$.result.tools[4].name") { value("kanso_plan") }
+			jsonPath("$.result.tools[5].name") { value("kanso_split_ticket") }
+			jsonPath("$.result.tools[6].name") { value("kanso_team_workload") }
+			jsonPath("$.result.tools[7].name") { value("kanso_update_ticket") }
 			// Every tool carries prose and an object schema. A tool with neither is one the
 			// agent has to guess at, and guessing is what the four-tools-not-forty argument in
 			// the spec exists to prevent.
 			jsonPath("$.result.tools[0].description") { exists() }
 			jsonPath("$.result.tools[0].inputSchema.type") { value("object") }
-			jsonPath("$.result.tools[6].inputSchema.type") { value("object") }
+			jsonPath("$.result.tools[7].inputSchema.type") { value("object") }
 			// The ones that write are declared as writing on the schema too, by requiring the
 			// arguments they cannot invent — a `required` list nobody could satisfy would be
 			// a tool an agent calls once and abandons.
 			jsonPath("$.result.tools[0].inputSchema.required[0]") { value("team") }
-			jsonPath("$.result.tools[6].inputSchema.required[0]") { value("ticket") }
+			jsonPath("$.result.tools[7].inputSchema.required[0]") { value("ticket") }
 			// And the one argument in the set that is a list of objects carries its element
 			// shape, not a bare `array`: a client that validates locally has to be able to
 			// refuse a part with no title before it sends the call.
-			jsonPath("$.result.tools[4].inputSchema.properties.parts.items.type") { value("object") }
-			jsonPath("$.result.tools[4].inputSchema.properties.parts.items.required[0]") { value("title") }
-			jsonPath("$.result.tools[4].inputSchema.properties.parts.items.additionalProperties") { value(false) }
+			jsonPath("$.result.tools[5].inputSchema.properties.parts.items.type") { value("object") }
+			jsonPath("$.result.tools[5].inputSchema.properties.parts.items.required[0]") { value("title") }
+			jsonPath("$.result.tools[5].inputSchema.properties.parts.items.additionalProperties") { value(false) }
+			// `kanso_plan` carries two of them, and the second is the one worth asserting: a
+			// `links` array declared as a bare `array` would let a client send `{"form":…}`
+			// and only find out from the server. `additionalProperties` reaching the element
+			// is what refuses that locally.
+			jsonPath("$.result.tools[4].inputSchema.properties.tickets.items.required[0]") { value("ref") }
+			jsonPath("$.result.tools[4].inputSchema.properties.links.items.type") { value("object") }
+			jsonPath("$.result.tools[4].inputSchema.properties.links.items.additionalProperties") { value(false) }
 		}
 	}
 
