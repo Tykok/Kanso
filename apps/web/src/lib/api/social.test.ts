@@ -65,7 +65,7 @@ describe("the shared client", () => {
    *
    * This is one of KAN-77's three layers and the outermost. A migration that widens
    * `activity_kind_chk` turns this red in its own commit; the `switch` with no `default` in
-   * `project-copy.ts` then refuses to compile until the new word has a sentence; and
+   * `activity-copy.ts` then refuses to compile until the new word has a sentence; and
    * `activitySentence`'s unknown-kind branch catches the case no test can reach, a browser
    * holding a bundle older than the server it is talking to.
    */

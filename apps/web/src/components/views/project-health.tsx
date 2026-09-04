@@ -7,7 +7,8 @@ import { usePostProjectUpdate, useProjectUpdates } from "@/lib/queries";
 import { Button } from "../ui/button";
 import { GroupLabel } from "../ui/group-label";
 import { Avatar } from "./avatar";
-import { activityTime, healthLabel } from "./project-copy";
+import { activityTime } from "./activity-copy";
+import { healthLabel } from "./project-copy";
 
 /**
  * How a project is going, beside where its work is.

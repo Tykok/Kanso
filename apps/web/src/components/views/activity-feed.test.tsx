@@ -6,7 +6,7 @@ import type { ActivityRow } from "@/lib/api";
  * The feed, rendered — because `KAN-85` mounted it on a second screen and the two things
  * that could go wrong there are not things a `.ts` test can see.
  *
- * `project-copy.test.ts` already proves every sentence this draws, and proves them faster.
+ * `activity-copy.test.ts` already proves every sentence this draws, and proves them faster.
  * What it cannot prove is that the component survives the row at all: `KAN-76` declined to
  * mount this feed on a ticket precisely because it believed `activitySentence` would throw
  * on `phrase[0]` for an actorless line, and a truth table over a pure function is not what

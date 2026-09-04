@@ -3,7 +3,7 @@
 import { useActivity } from "@/lib/queries";
 import type { ActivityRow } from "@/lib/api";
 import { GroupLabel } from "../ui/group-label";
-import { activitySentence, activityTime } from "./project-copy";
+import { activitySentence, activityTime } from "./activity-copy";
 
 /**
  * The feed screen 05 draws down its right-hand column.
