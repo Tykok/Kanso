@@ -94,7 +94,18 @@ class RequestBaseRoutesTest : MockMvcTest() {
 		assertEquals(403, fire(member, "DELETE", "/api/admin/notion/requests/$dataSourceId").status)
 		assertEquals(team.id, bases.find(dataSourceId)?.teamId, "a member's DELETE stopped no siphon")
 
-		assertEquals(200, fire(admin, "DELETE", "/api/admin/notion/requests/$dataSourceId").status)
+		/*
+		 * `204`, and the number is the assertion rather than a detail of it.
+		 *
+		 * This read `200` — not because anybody chose it, but because a `Unit`-returning
+		 * handler with no status annotation answers that, and the test was written against
+		 * what the route did. It made the test agree with a defect: `lib/api/core.ts`'s
+		 * `request` short-circuits on `204` alone and calls `response.json()` otherwise,
+		 * which throws on an empty body, so the `Stop` button on `request-bases.tsx` deleted
+		 * the row and was told it had failed. Every other delete in this package already
+		 * carried `@ResponseStatus(NO_CONTENT)`.
+		 */
+		assertEquals(204, fire(admin, "DELETE", "/api/admin/notion/requests/$dataSourceId").status)
 		assertNull(bases.find(dataSourceId))
 	}
 }
