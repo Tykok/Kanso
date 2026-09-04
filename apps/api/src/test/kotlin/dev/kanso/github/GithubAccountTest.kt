@@ -269,6 +269,15 @@ class GithubAccountTest : PostgresTest() {
 			accounts.memberFor(githubUserId = null, login = "old-name-taken-later"),
 			"and with no id on the payload, the login is all there is",
 		)
+
+		// The trap, and the reason the id lookup must not "fall back" to the login when it
+		// finds nothing: a payload from an account **nobody linked**, whose login collides
+		// with a member's. Falling through would name that member for somebody else's
+		// pull request — the one failure mode worse than naming nobody.
+		assertNull(
+			accounts.memberFor(githubUserId = 424_242_424L, login = "old-name-taken-later"),
+			"an id nobody linked is nobody, even when the login beside it belongs to a member",
+		)
 	}
 
 	// --- one GitHub identity, one member ------------------------------------
