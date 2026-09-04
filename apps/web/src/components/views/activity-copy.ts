@@ -28,7 +28,16 @@ import { MONTHS } from "./project-copy";
  * nothing points back, so the two files do not form a cycle.
  */
 
-/** What a row's `payload` may name, read by key and never assumed to be there. */
+/**
+ * `KAN-142`, or absent — what every branch below calls the thing that changed.
+ *
+ * Read by key and never assumed to be there, like every other payload reader here. It was
+ * assumed for longer than the others deserved: nothing in the API wrote `ref` at all until
+ * `KAN-84`, so every sentence this file can produce said "a ticket", including the one
+ * `V36__github.sql` documents in words. `ActivityService.refsFor` is the writer now, and
+ * it resolves rather than stores — so this stays `string | undefined` for the two cases it
+ * always had, a draft with no identifier and a ticket that has since been destroyed.
+ */
 const ref = (payload: Record<string, unknown>): string | undefined =>
   typeof payload.ref === "string" ? payload.ref : undefined;
 
