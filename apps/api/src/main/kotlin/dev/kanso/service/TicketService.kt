@@ -485,11 +485,45 @@ class TicketService(
 	/**
 	 * The hot path: a status change from the keyboard. Loads, merges, writes the
 	 * full row, then queues one mirror push.
+	 *
+	 * [actor] is null for one caller, [dev.kanso.github.GithubWebhookService]: a pull
+	 * request merged by somebody who never linked their GitHub account moves the ticket with
+	 * nobody to credit, and `activity.actor_id` is nullable precisely so the feed can say
+	 * *KAN-142 moved to Done via #418* rather than inventing a person. Nullable in the same
+	 * shape and for the same class of reason as [purge] and [create] — the consent was given
+	 * earlier, by somebody else, and the write happens with nobody left to ask.
+	 *
+	 * **The compensation is different from [create]'s, because the exposure is.** A null
+	 * actor skips [access], so an actorless call is an unchecked write. `create` answers that
+	 * by constraining *where* the row lands — it has no row yet, so naming a team is the only
+	 * thing left to pin. This method already has its row, named by the caller, so the
+	 * destination is not what is loose: **the breadth of the write is.** So an actorless
+	 * patch may change **the status and nothing else**.
+	 *
+	 * That is not a convenience: it is the earlier consent read literally. What a member
+	 * declared by naming a branch `feat/kan-142-x` is *this pull request may finish this
+	 * ticket*. It is not "GitHub may retitle my ticket", nor re-prioritise it, nor archive it,
+	 * nor move it to another team — and every one of those would be reachable from an
+	 * unauthenticated endpoint if this refusal were not here. What remains reachable is one
+	 * field, bounded a second time by `PrTransition`'s three guards.
+	 *
+	 * [viaPullRequest] names the pull request on the `status_changed` row, which is how the
+	 * feed answers *why* a ticket moved without automation getting an `ActivityKind` of its
+	 * own — `V36` argues that at length: giving it one would split the single question a
+	 * history is kept for across two vocabularies.
 	 */
 	@Transactional
-	fun patch(actor: User, id: UUID, patch: TicketPatch): TicketDetail {
+	fun patch(
+		actor: User?,
+		id: UUID,
+		patch: TicketPatch,
+		viaPullRequest: String? = null,
+	): TicketDetail {
 		val current = requireLive(tickets.findById(id) ?: throw NotFoundException("No ticket $id"))
-		access.require(actor, current)
+		// Skipped for a null actor, like `purge` and `create`, and the refusal below is what
+		// keeps that from being a hole: with no actor there is no seat to check and no
+		// membership to walk, so the only safe null case is the narrowest possible write.
+		if (actor == null) requireStatusOnly(patch) else access.require(actor, current)
 		// Losing a team would lose the identifier people already say out loud, and there is
 		// no counter that hands the same number back. A draft goes forwards only.
 		if ("teamId" in patch.unset) {
@@ -513,7 +547,7 @@ class TicketService(
 		// freely — the whole rule defeated in two requests. Asked of a team arriving via a
 		// project too, for exactly the same reason: otherwise the project field is the
 		// second request.
-		if (teamId != null && teamId != current.teamId) access.requireTeam(actor, teamId)
+		if (teamId != null && teamId != current.teamId) actor?.let { access.requireTeam(it, teamId) }
 		if (patch.teamId != null && teams.findById(patch.teamId) == null) {
 			throw BadRequestException("No team ${patch.teamId}")
 		}
@@ -597,13 +631,16 @@ class TicketService(
 			archived = patch.archived ?: current.archived,
 		) ?: throw NotFoundException("No ticket $id")
 
-		recordScalarChanges(actor, before = current, after = updated)
+		recordScalarChanges(actor, before = current, after = updated, viaPullRequest = viaPullRequest)
 		notifyStatusMoved(actor, id, before = current, after = updated)
 		patch.assigneeIds?.let { wanted ->
 			// Read before the write, not after: the log's whole value is the difference.
 			val before = tickets.assigneeIds(id)
 			tickets.setAssignees(id, wanted)
-			recordAssigneeChanges(actor, id, before, wanted)
+			// A caller with no actor cannot assign anyone — `requireStatusOnly` refuses the
+			// field outright — so this block is unreachable for one, said in the type system
+			// rather than left to a reader to work out. Same shape as `create`'s.
+			actor?.let { recordAssigneeChanges(it, id, before, wanted) }
 		}
 		patch.docIds?.let { tickets.setDocs(id, it) }
 
@@ -761,15 +798,28 @@ class TicketService(
 	 * and the same argument `follow-ups.md` records for the event applies to the log: two
 	 * hundred rows nobody reads, for a change every receiver answers by refetching.
 	 */
-	private fun recordScalarChanges(actor: User, before: Ticket, after: Ticket) {
+	private fun recordScalarChanges(
+		actor: User?,
+		before: Ticket,
+		after: Ticket,
+		viaPullRequest: String? = null,
+	) {
 		fun log(kind: ActivityKind, payload: Map<String, Any?>) =
-			activity.record(ActivityEntity.TICKET, after.id, actor.id, kind, payload)
+			activity.record(ActivityEntity.TICKET, after.id, actor?.id, kind, payload)
 
 		if (after.title != before.title) {
 			log(ActivityKind.RENAMED, mapOf("from" to before.title, "to" to after.title))
 		}
 		if (after.status != before.status) {
-			log(ActivityKind.STATUS_CHANGED, mapOf("from" to before.status.wire, "to" to after.status.wire))
+			// `via_pr` is put in only when there is one, rather than always with a null: an
+			// absent key is how every other payload here spells "does not apply", and a
+			// `"via_pr": null` on the thousands of rows a keyboard writes would make the
+			// exception look like the shape.
+			log(
+				ActivityKind.STATUS_CHANGED,
+				mapOf("from" to before.status.wire, "to" to after.status.wire) +
+					(viaPullRequest?.let { mapOf("via_pr" to it) } ?: emptyMap()),
+			)
 		}
 		if (after.priority != before.priority) {
 			log(ActivityKind.PRIORITY_CHANGED, mapOf("from" to before.priority.wire, "to" to after.priority.wire))
@@ -805,14 +855,19 @@ class TicketService(
 	 * already being told they have the ticket; a second row about a status they never held
 	 * is noise.
 	 */
-	private fun notifyStatusMoved(actor: User, id: UUID, before: Ticket, after: Ticket) {
+	private fun notifyStatusMoved(actor: User?, id: UUID, before: Ticket, after: Ticket) {
 		if (after.status == before.status) return
 		notifications.record(
 			recipients = tickets.assigneeIds(id),
 			kind = NotificationKind.STATUS_MOVED,
 			entityType = "ticket",
 			entityId = id,
-			actorId = actor.id,
+			// Null when a merge moved it and its author is nobody here. The inbox still owes
+			// the assignees the row — *their* ticket reached Done is the notification, and who
+			// pushed the button is the part that may be unknown. `NotificationService.record`
+			// already takes a nullable actor, and it is what subtracts the actor from the
+			// recipients, so a null simply subtracts nobody.
+			actorId = actor?.id,
 			payload = mapOf("from" to before.status.wire, "to" to after.status.wire),
 		)
 	}
@@ -870,6 +925,41 @@ class TicketService(
 	private fun validateDates(start: KansoInstant?, due: KansoInstant?) {
 		if (start != null && due != null && due.at.isBefore(start.at)) {
 			throw BadRequestException("due ${due.at} is before start ${start.at}")
+		}
+	}
+
+	/**
+	 * [patch]'s compensation for a null actor: the status, and nothing else.
+	 *
+	 * Enumerated field by field rather than checked with `copy(status = null) ==
+	 * TicketPatch()`, which would have been shorter and would have silently admitted every
+	 * field added after today. A new field on [TicketPatch] has to be named here to be
+	 * writable by nobody, and the direction that mistake falls in is refusal — which is the
+	 * same argument `ReadOnlySeat` makes for listing its exceptions instead of matching them.
+	 *
+	 * `unset` is refused whole rather than per key: every one of its keys clears a field this
+	 * list already forbids setting, and "may not set the title" while "may clear the title"
+	 * is not a rule anybody could hold in their head.
+	 */
+	private fun requireStatusOnly(patch: TicketPatch) {
+		val named = buildList {
+			if (patch.title != null) add("title")
+			if (patch.description != null) add("description")
+			if (patch.priority != null) add("priority")
+			if (patch.estimate != null) add("estimate")
+			if (patch.start != null) add("start")
+			if (patch.due != null) add("due")
+			if (patch.projectId != null) add("projectId")
+			if (patch.teamId != null) add("teamId")
+			if (patch.archived != null) add("archived")
+			if (patch.assigneeIds != null) add("assigneeIds")
+			if (patch.docIds != null) add("docIds")
+			if (patch.unset.isNotEmpty()) add("unset")
+		}
+		if (named.isNotEmpty()) {
+			throw BadRequestException(
+				"A ticket patched by no one may only change its status; $named needs somebody to ask",
+			)
 		}
 	}
 

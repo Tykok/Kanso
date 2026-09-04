@@ -1,6 +1,7 @@
 package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.github.GITHUB_WEBHOOK
 import dev.kanso.mcp.McpBearerFilter
 import dev.kanso.oauth.CONSENT_PAGE
 import dev.kanso.oauth.OAuthRoutes
@@ -119,6 +120,19 @@ class SecurityConfig(
 					// list is for endpoints a machine calls with no session at all, and
 					// this is a page a person is about to sign in to.
 					.requestMatchers(HttpMethod.GET, CONSENT_PAGE).permitAll()
+					// GitHub's deliveries. Inline and named exactly, never in `PublicRoutes`,
+					// whose own test asserts that every pattern it holds is under
+					// `/api/public/` and that there are precisely three — an assertion worth
+					// more than the reuse, and the same conclusion the MCP door reached for
+					// `/connect/register`.
+					//
+					// **Opened here means unauthenticated, not unguarded.** The guard is an
+					// HMAC of the raw body against the instance's webhook secret, refusing
+					// with a bodyless 401 before anything is parsed; `GithubSignature` is
+					// where it lives and `GithubWebhookTest` is where it is proved, red as
+					// well as green. It is the only route in Kanso that writes rows for a
+					// caller with no session, so it is worth reading twice.
+					.requestMatchers(HttpMethod.POST, GITHUB_WEBHOOK).permitAll()
 					.anyRequest().authenticated()
 			}
 			// A 302 to Google is useless to a fetch() call; the SPA wants a 401 and

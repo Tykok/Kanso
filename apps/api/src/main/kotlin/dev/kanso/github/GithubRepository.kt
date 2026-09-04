@@ -233,6 +233,25 @@ class GithubRepository(private val jdbc: JdbcClient) {
 		.param("keep", keep.toTypedArray())
 		.update()
 
+	/**
+	 * Which tickets this pull request is linked to at all, closing or not.
+	 *
+	 * The parser's read, and it is about the *feed* rather than about the links: [link] is an
+	 * upsert, so re-parsing an edited pull request cannot say whether it drew a link or
+	 * merely rewrote one. Without this, every `edited` delivery would write another
+	 * `pull_request_linked` activity row for links that already existed, and a ticket edited
+	 * five times would claim to have been linked five times.
+	 *
+	 * Read before the links are written, therefore, and the difference is what earns a row.
+	 */
+	fun linkedTickets(pullRequestId: UUID): List<UUID> = jdbc.sql(
+		"SELECT ticket_id FROM ticket_pull_requests WHERE pull_request_id = :prId"
+	)
+		.param("prId", pullRequestId)
+		.query(UUID::class.java)
+		.list()
+		.filterNotNull()
+
 	/** Which tickets this pull request may move. The merge handler's read. */
 	fun ticketsClosedBy(pullRequestId: UUID): List<UUID> = jdbc.sql(
 		"SELECT ticket_id FROM ticket_pull_requests WHERE pull_request_id = :prId AND closes"

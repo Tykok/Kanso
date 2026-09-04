@@ -1,0 +1,84 @@
+{
+  "action": "closed",
+  "number": 418,
+  "pull_request": {
+    "url": "https://api.github.com/repos/tykok/kanso/pulls/418",
+    "id": 1734829102,
+    "node_id": "PR_kwDOL1234M5rABCD",
+    "html_url": "https://github.com/tykok/kanso/pull/418",
+    "number": 418,
+    "state": "closed",
+    "locked": false,
+    "title": "Warn when two cycles overlap",
+    "user": {
+      "login": "elie",
+      "id": 4021,
+      "node_id": "MDQ6VXNlcjQwMjE=",
+      "type": "User",
+      "site_admin": false
+    },
+    "body": "Fixes KAN-142\n\nThe warning is drawn from the cycle's own bounds.",
+    "created_at": "2026-09-01T09:12:44Z",
+    "updated_at": "2026-09-02T14:03:11Z",
+    "closed_at": "2026-09-02T14:03:11Z",
+    "merged_at": "2026-09-02T14:03:11Z",
+    "merge_commit_sha": "77e6a1b2c3d4e5f60718293a4b5c6d7e8f901234",
+    "draft": false,
+    "head": {
+      "label": "tykok:feat/kan-142-overlap-warning",
+      "ref": "feat/kan-142-overlap-warning",
+      "sha": "9c1f2b7a4d3e5f60718293a4b5c6d7e8f9012345",
+      "repo": { "id": 789456123, "name": "kanso", "full_name": "tykok/kanso", "private": true }
+    },
+    "base": {
+      "label": "tykok:main",
+      "ref": "main",
+      "sha": "1a2b3c4d5e6f708192a3b4c5d6e7f80912345678",
+      "repo": { "id": 789456123, "name": "kanso", "full_name": "tykok/kanso", "private": true }
+    },
+    "merged": true,
+    "mergeable": null,
+    "mergeable_state": "unknown",
+    "merged_by": {
+      "login": "maintainer",
+      "id": 5150,
+      "node_id": "MDQ6VXNlcjUxNTA=",
+      "type": "User",
+      "site_admin": false
+    },
+    "comments": 2,
+    "review_comments": 4,
+    "commits": 3,
+    "additions": 84,
+    "deletions": 12,
+    "changed_files": 5
+  },
+  "repository": {
+    "id": 789456123,
+    "node_id": "R_kgDOL1234M",
+    "name": "kanso",
+    "full_name": "tykok/kanso",
+    "private": true,
+    "owner": {
+      "login": "tykok",
+      "id": 3312,
+      "node_id": "O_kgDOAAAMEA",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/tykok/kanso",
+    "default_branch": "main",
+    "visibility": "private"
+  },
+  "sender": {
+    "login": "maintainer",
+    "id": 5150,
+    "node_id": "MDQ6VXNlcjUxNTA=",
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 51234567,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNTEyMzQ1Njc="
+  }
+}

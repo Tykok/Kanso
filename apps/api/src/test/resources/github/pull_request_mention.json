@@ -1,0 +1,73 @@
+{
+  "action": "opened",
+  "number": 419,
+  "pull_request": {
+    "url": "https://api.github.com/repos/tykok/kanso/pulls/419",
+    "id": 1734829999,
+    "node_id": "PR_kwDOL1234M5rWXYZ",
+    "html_url": "https://github.com/tykok/kanso/pull/419",
+    "number": 419,
+    "state": "open",
+    "locked": false,
+    "title": "Tidy the cycle helpers",
+    "user": {
+      "login": "elie",
+      "id": 4021,
+      "node_id": "MDQ6VXNlcjQwMjE=",
+      "type": "User",
+      "site_admin": false
+    },
+    "body": "Unlike KAN-142, this one is small and touches nothing anybody is waiting on.",
+    "created_at": "2026-09-01T11:40:02Z",
+    "updated_at": "2026-09-01T11:40:03Z",
+    "closed_at": null,
+    "merged_at": null,
+    "draft": false,
+    "head": {
+      "label": "tykok:chore/tidy-cycle-helpers",
+      "ref": "chore/tidy-cycle-helpers",
+      "sha": "3f4e5d6c7b8a90112233445566778899aabbccdd",
+      "repo": { "id": 789456123, "name": "kanso", "full_name": "tykok/kanso", "private": true }
+    },
+    "base": {
+      "label": "tykok:main",
+      "ref": "main",
+      "sha": "1a2b3c4d5e6f708192a3b4c5d6e7f80912345678",
+      "repo": { "id": 789456123, "name": "kanso", "full_name": "tykok/kanso", "private": true }
+    },
+    "merged": false,
+    "comments": 0,
+    "commits": 1,
+    "additions": 9,
+    "deletions": 31,
+    "changed_files": 2
+  },
+  "repository": {
+    "id": 789456123,
+    "node_id": "R_kgDOL1234M",
+    "name": "kanso",
+    "full_name": "tykok/kanso",
+    "private": true,
+    "owner": {
+      "login": "tykok",
+      "id": 3312,
+      "node_id": "O_kgDOAAAMEA",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/tykok/kanso",
+    "default_branch": "main",
+    "visibility": "private"
+  },
+  "sender": {
+    "login": "elie",
+    "id": 4021,
+    "node_id": "MDQ6VXNlcjQwMjE=",
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 51234567,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNTEyMzQ1Njc="
+  }
+}

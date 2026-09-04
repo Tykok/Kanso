@@ -135,6 +135,49 @@ class ActivityRepository(private val jdbc: JdbcClient) {
 			.toMap()
 	}
 
+	/**
+	 * When a **person** last moved this ticket's status, or null if only automation ever has.
+	 *
+	 * `PrTransition`'s guard two, and it lives here for the reason [firstEnteredAt] does:
+	 * `activity` has timestamped every `status_changed` since `V8`, so the answer is already
+	 * on disk and the GitHub feature needs a query rather than a datum. A column on `tickets`
+	 * would be a second place for the same fact to be wrong, and the house computes derived
+	 * values on read.
+	 *
+	 * **`actor_id IS NOT NULL` is the whole of it, and it reads the guard as `PrTransition`
+	 * states it rather than as the design document's sentence does.** The spec says *if the
+	 * most recent `status_changed` has a non-null actor and is newer than the event*. Taken
+	 * literally, an automatic move landing after a person's would hide that person behind it:
+	 * the newest row would be the automation's, its actor null, and the guard would wave the
+	 * transition through over somebody who had in fact moved the ticket by hand since. So the
+	 * newest *human* row is what comes back — which is also the parameter `PrTransition`
+	 * declares, `lastHumanStatusChangeAt`, and the safer of the two readings in the only
+	 * direction that matters: it can refuse a move a person would have allowed, and it cannot
+	 * make one over a person's decision.
+	 *
+	 * Raw for [firstEnteredAt]'s reason inverted — no jsonb here, but `ORDER BY … LIMIT 1`
+	 * against the partial shape of `activity_entity_idx` is what makes this one row read
+	 * rather than a history decoded in Kotlin.
+	 */
+	fun lastHumanStatusChangeAt(ticketId: UUID): OffsetDateTime? = jdbc.sql(
+		"""
+		SELECT created_at
+		FROM activity
+		WHERE entity_type = :entityType
+		  AND entity_id = :ticketId
+		  AND kind = :kind
+		  AND actor_id IS NOT NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+		""".trimIndent()
+	)
+		.param("entityType", ActivityEntity.TICKET.wire)
+		.param("ticketId", ticketId)
+		.param("kind", ActivityKind.STATUS_CHANGED.wire)
+		.query(OffsetDateTime::class.java)
+		.optional()
+		.orElse(null)
+
 	private fun ResultRow.toRecord() = ActivityRecord(
 		id = this[Activity.id],
 		entity = ActivityEntity.from(this[Activity.entityType]),
