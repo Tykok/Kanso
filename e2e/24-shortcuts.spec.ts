@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mirrorQueueDrained } from "./settled";
+import { mirrorQueueDrained, nextPreferenceWrite } from "./settled";
 import {
   ADMIN,
   apiAs,
@@ -106,6 +106,7 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
     const capture = page.getByTestId("shortcut-capture");
     await expect(capture).toBeFocused();
     await expect(capture).toHaveAttribute("placeholder", "press a combination");
+    const captured = nextPreferenceWrite(page);
     await page.keyboard.press("j");
 
     // Added, not substituted — decision two. `n` and `↓` are one intention spelled twice
@@ -114,7 +115,10 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
     await expect(moveDown.getByText("↓", { exact: true })).toBeVisible();
     await expect(moveDown.getByText("j", { exact: true })).toBeVisible();
     // No Save button anywhere: the write went in the background, like every other
-    // preference. Reloading is what says it was stored rather than drawn.
+    // preference. Reloading is what says it was stored rather than drawn — so it waits
+    // for the server to have taken it, or it cancels the very request it is here to
+    // check and reads back the keyboard from before the capture. See `settled.ts`.
+    await captured;
     await page.reload();
     await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
     await expect(shortcutRow(page, "ticket.moveDown").getByText("j", { exact: true })).toBeVisible();
@@ -144,6 +148,7 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
     // --- Reset everything ----------------------------------------------------
 
     await openShortcuts(page);
+    const cleared = nextPreferenceWrite(page);
     await page.getByRole("button", { name: "Reset everything" }).click();
     await expect(shortcutRow(page, "ticket.moveDown").getByText("j", { exact: true })).toHaveCount(0);
     await expect(
@@ -153,7 +158,11 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
     // and changes nothing.
     await expect(page.getByRole("button", { name: "Reset everything" })).toBeDisabled();
 
-    // And the key is gone from the keyboard too, not only from the table.
+    // And the key is gone from the keyboard too, not only from the table. The navigation
+    // reads the keyboard back off the server, so it waits on the reset for the same
+    // reason the capture's reload does: `j` answering here is the write not having
+    // landed, and nothing on screen would say so.
+    await cleared;
     await page.goto("/");
     await page.getByRole("button", { name: team.name, exact: true }).click();
     await ticketRow(page, second).click();
@@ -191,14 +200,24 @@ test("scenario 24 — a held chord is refused by name, and Escape gets out of th
 
     // A bare printable key *is* allowed — §6.5's third rule — because bare keys are inert
     // inside text fields, which is exactly what this capture is.
+    //
+    // Every accepted gesture below is awaited on the server, and not because this test
+    // reads any of them back: it never reloads. A write still in flight when the test
+    // ends outlives it, lands after the `finally` has put the keyboard back, and then
+    // the override is waiting for whichever file runs next — the leak this file's header
+    // warns about, arriving with nothing in anyone's output to explain it.
+    const bare = nextPreferenceWrite(page);
     await page.keyboard.press("Shift+J");
     await expect(remove.getByText("⇧j", { exact: true })).toBeVisible();
     await expect(page.getByTestId("shortcut-capture")).toHaveCount(0);
+    await bare;
 
     // Reset means the registry's answer, and for a palette-only action the registry's
     // answer is "no key" — decision one's other half.
+    const unbound = nextPreferenceWrite(page);
     await remove.getByRole("button", { name: "Reset Delete ticket to its default" }).click();
     await expect(remove).toContainText("Not bound");
+    await unbound;
 
     // `Escape` cancels the capture and leaves the page alone. Both halves matter: the
     // shell answers `Escape` with "close what is open, then leave", and a capture that let
@@ -221,12 +240,16 @@ test("scenario 24 — a held chord is refused by name, and Escape gets out of th
     // `Mod+v` shadows paste over the list. The spec says changing it is "one click in
     // Settings if it proves wrong in use", so here is the click.
     const drawing = shortcutRow(page, "view.cycleDrawing");
+    const shadowed = nextPreferenceWrite(page);
     await drawing.getByRole("button", { name: /^Remove / }).click();
     await expect(drawing).toContainText("Not bound");
+    await shadowed;
+    const restored = nextPreferenceWrite(page);
     await drawing
       .getByRole("button", { name: "Reset Next drawing: list, board, timeline to its default" })
       .click();
     await expect(drawing).not.toContainText("Not bound");
+    await restored;
   } finally {
     await resetShortcuts();
   }
@@ -265,8 +288,13 @@ test("scenario 24 — a stored override that collided is named, with a way to di
 
     // Nothing is resolved automatically — a page that fixed this by itself would be
     // stealing on the reader's behalf. `Discard` is theirs to press.
+    const discarded = nextPreferenceWrite(page);
     await strip.getByRole("button", { name: "Discard" }).click();
+    // The strip leaving is the optimistic guess again, so the reload waits on the write
+    // the same way — otherwise it reads the override back and the discard looks like a
+    // gesture that did nothing.
     await expect(strip).toHaveCount(0);
+    await discarded;
     await page.reload();
     await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
     await expect(page.getByTestId("shortcut-rejected")).toHaveCount(0);

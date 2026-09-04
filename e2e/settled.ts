@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { ADMIN, apiAs } from "./support";
 
 /**
@@ -62,4 +62,43 @@ export async function mirrorQueueDrained(): Promise<void> {
   } finally {
     await api.dispose();
   }
+}
+
+/**
+ * The next write of this reader's preferences, held until the server has answered it.
+ *
+ * Armed *before* the gesture and awaited after it, because the race is the request and
+ * not the payload. `useSavePreferences` is optimistic — `onMutate` writes the `/api/me`
+ * cache before the `PUT` is sent — so a key appearing in the table is the guess
+ * appearing. `24-shortcuts.spec.ts` then reloads to say it was stored rather than drawn,
+ * which is the right intent and the reason it flakes: a reload issued the moment the
+ * guess is drawn cancels the request that would have made it true, and the page comes
+ * back with the preferences from before the gesture.
+ *
+ * Three gestures in that file are read across a reload or a navigation, and all three
+ * write a **complete `shortcuts` map** (`shortcuts-section.tsx`): the capture adds a
+ * chord, `Discard` drops one, `Reset everything` sends `{}`. Waiting on the request
+ * covers all three the same way, which is what the reverted `585c619` could not do — it
+ * asked instead whether `ticket.delete` had left the map after a `Discard`, and it had
+ * not. `withoutChord` stores the empty list, because `[]` is how the merge is told "no
+ * key at all", so the predicate was guessed and it was wrong.
+ *
+ * A condition and not a pause, like `mirrorQueueDrained` above: it returns as soon as
+ * the response arrives, and when the write never goes out it fails saying so instead of
+ * letting the reload go first. The status is asserted rather than matched on, so a
+ * refused write reads as a refused write and not as a write that never happened.
+ */
+export function nextPreferenceWrite(page: Page): Promise<void> {
+  return page
+    .waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname === "/api/me/preferences",
+    )
+    .then(async (response) => {
+      expect(
+        response.ok(),
+        `The preferences write answered ${response.status()}: ${await response.text()}`,
+      ).toBeTruthy();
+    });
 }
