@@ -1,5 +1,6 @@
 package dev.kanso.mcp.tools
 
+import dev.kanso.domain.EffortPoints
 import dev.kanso.domain.TicketLinkType
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
@@ -62,8 +63,14 @@ internal class PlanDraft private constructor(
 		 * one here. Left accepted, `KAN-12` would become the name of a brand-new ticket and the
 		 * edge would be drawn between two rows the caller did not mean — a plan that succeeds
 		 * and is wrong, which is worse than any refusal.
+		 *
+		 * A team key may carry digits (`Q3F9A-1` is a real identifier), so this is wider than
+		 * "letters then a number" — and wide enough to also catch a `ref` a caller genuinely
+		 * named `step-1`. That overlap costs nothing: this is only ever asked about an endpoint
+		 * already known not to be in the plan, so both readings end in a refusal, and only the
+		 * sentence explaining it differs. It says "looks like" for that reason.
 		 */
-		private val IDENTIFIER_SHAPED = Regex("^[A-Za-z]+-\\d+$")
+		private val IDENTIFIER_SHAPED = Regex("^[A-Za-z][A-Za-z0-9]*-\\d+$")
 
 		fun read(tool: String, args: McpArguments, people: McpPeople): PlanDraft {
 			val given = args.objects("tickets")
@@ -91,17 +98,38 @@ internal class PlanDraft private constructor(
 
 		private fun read(ticket: McpArguments, people: McpPeople): PlannedTicket {
 			ticket.refuseUnknown("ref", "title", "description", "status", "priority", "estimate", "assignees", "parent")
+			val ref = ticket.requiredString("ref")
 			return PlannedTicket(
-				ref = ticket.requiredString("ref"),
+				ref = ref,
 				title = ticket.requiredString("title"),
 				description = ticket.string("description"),
 				status = TicketStatus.from(ticket.string("status") ?: TicketStatus.TODO.wire),
 				priority = TicketPriority.from(ticket.string("priority") ?: TicketPriority.NONE.wire),
-				estimate = ticket.integer("estimate"),
+				estimate = estimateOf(ref, ticket),
 				assigneeIds = people.resolve(ticket.strings("assignees").orEmpty()),
 				parent = ticket.string("parent"),
 			)
 		}
+
+		/**
+		 * The estimate, checked against the scale **here** rather than where it is written.
+		 *
+		 * `TicketService.create` already calls `EffortPoints.from`, and left to it this was the
+		 * last refusal in the whole tool that could arrive after a row had been inserted: a
+		 * plan whose ninth ticket is estimated `4` would have filed eight and then rolled them
+		 * back. Calling the domain's own function earlier is not a second definition of the
+		 * scale — it is the same function, asked before the first insert, which is what makes
+		 * "a refusal wrote nothing" true of every refusal this tool has rather than most of
+		 * them. It is also the difference between a guard that can be proven from outside and
+		 * one that cannot: a `@Transactional` suite joins the transaction and never observes
+		 * its own rollback.
+		 *
+		 * The message is re-raised with the `ref` in front of it because `EffortPoints` answers
+		 * about a number and says nothing about which of fifty tickets carried it.
+		 */
+		private fun estimateOf(ref: String, ticket: McpArguments): Int? =
+			runCatching { EffortPoints.from(ticket.integer("estimate")) }
+				.getOrElse { offScale -> throw BadRequestException("`$ref`: ${offScale.message}") }
 
 		private fun read(link: McpArguments): PlannedLink {
 			link.refuseUnknown("from", "to", "type")
@@ -169,7 +197,7 @@ internal class PlanDraft private constructor(
 			for (end in listOf(link.from, link.to)) {
 				if (end in byRef) continue
 				val why = if (IDENTIFIER_SHAPED.matches(end)) {
-					"`$end` is a ticket identifier, and `links` joins tickets *this plan* files, by their `ref`"
+					"`$end` looks like a ticket identifier, and `links` joins tickets *this plan* files, by `ref`"
 				} else {
 					"no ticket in this plan is `$end`"
 				}

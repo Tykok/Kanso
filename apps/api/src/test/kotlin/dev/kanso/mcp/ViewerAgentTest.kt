@@ -235,6 +235,19 @@ class ViewerAgentTest : PostgresTest() {
 			// asserting while saying nothing about the seat.
 			"kanso_link_tickets" -> mapOf("from" to existing, "to" to other, "type" to "relates")
 			"kanso_split_ticket" -> mapOf("ticket" to existing, "parts" to listOf(mapOf("title" to "A part")))
+			// Two tickets and one edge between them, so the plan is one `TicketAccess` would
+			// have to refuse rather than one `PlanDraft` refuses first. A single ticket with no
+			// links would still reach the seat, but it would stop exercising the two writes a
+			// plan makes past the first — and those are the ones that could have skipped it.
+			"kanso_plan" -> mapOf(
+				"team" to team.key,
+				"tickets" to listOf(
+					mapOf("ref" to "one", "title" to "Planned by an agent"),
+					mapOf("ref" to "two", "title" to "And its part", "parent" to "one"),
+				),
+				"links" to listOf(mapOf("from" to "one", "to" to "two", "type" to "relates")),
+			)
+
 			else -> error("`$name` writes but this test does not know how to call it; teach it here")
 		}
 
