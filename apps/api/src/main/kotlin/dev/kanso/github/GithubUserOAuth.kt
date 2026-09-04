@@ -4,6 +4,7 @@ import dev.kanso.service.BadRequestException
 import dev.kanso.settings.InstanceSettingsService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import java.net.URI
 import java.net.URLEncoder
@@ -189,7 +190,7 @@ class GithubUserOAuth(
 	 * gateway's HTML error page becomes "GitHub refused" rather than a Jackson stack trace
 	 * in the middle of somebody's consent flow.
 	 */
-	private fun send(request: HttpRequest, what: String): tools.jackson.databind.JsonNode {
+	private fun send(request: HttpRequest, what: String): JsonNode {
 		val response = try {
 			http.send(request, HttpResponse.BodyHandlers.ofString())
 		} catch (e: Exception) {

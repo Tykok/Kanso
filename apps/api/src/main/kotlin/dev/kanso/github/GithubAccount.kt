@@ -80,10 +80,11 @@ enum class GithubTokenState(val wire: String) {
 	/** Expired with nothing to renew it. The member walks the consent screen again. */
 	EXPIRED("expired");
 
-	companion object {
-		fun from(raw: String): GithubTokenState = entries.firstOrNull { it.wire == raw }
-			?: throw IllegalArgumentException("Unknown GitHub token state '$raw'")
-	}
+	// No `from(raw)` companion, unlike `PrState` and `PrReviewState` beside it — and the
+	// asymmetry is deliberate rather than an omission. Those two parse a *stored* column
+	// back into a word; this vocabulary is never stored, because it is derived on read from
+	// two columns. A parser here would have no possible caller, and the next reader would
+	// have to check for one before touching it.
 }
 
 /**
