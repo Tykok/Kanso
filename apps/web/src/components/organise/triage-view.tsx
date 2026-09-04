@@ -204,7 +204,7 @@ export function TriageView() {
       )}
 
       {current && (
-        <div className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-8 py-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-8 py-6 max-[720px]:px-4 max-[720px]:py-5">
           <div className="flex flex-col gap-2">
             <span className="font-mono text-11 text-faint">
               {current.identifier} · opened {ago(current.createdAt)}

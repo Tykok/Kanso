@@ -214,7 +214,7 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
         <Kbd>esc</Kbd>
       </TopbarSlot>
 
-      <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-10 pt-11 pb-10">
+      <div className="flex min-h-0 flex-1 justify-center overflow-y-auto px-10 pt-11 pb-10 max-[720px]:px-4 max-[720px]:pt-5 max-[720px]:pb-8">
         <div className="flex w-[720px] max-w-full flex-col gap-5">
           <h1 className="m-0 text-30 leading-tight font-medium tracking-tight">{ticket.title}</h1>
 

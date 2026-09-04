@@ -14,24 +14,32 @@ import { PriorityMark, StatusPill, SyncBadge, TicketIdentifier } from "./pills";
 import { Menu } from "./menu";
 import { useMenuItems } from "./menu-items";
 
-/** The list's own grid: id, priority, status, title, project, points, due, mirror,
- *  actions. Shared between the column header and every row so the two always line up. */
-const COLS = "grid-cols-[70px_20px_108px_1fr_112px_32px_60px_64px_24px]";
+/**
+ * The list's own grid: id, priority, status, title, project, points, due, mirror,
+ * actions. Shared between the column header and every row so the two always line up.
+ *
+ * A class rather than a Tailwind `grid-cols-[…]`, because the row is no longer one
+ * drawing: `.ticket-grid` in `globals.css` holds five templates, one per window width,
+ * beside the `.tcol-*` rules that drop the cells each of them has no column for. Both
+ * halves have to change together, which is the argument for them being in one block in
+ * one file rather than a class string here and a set of `max-[…]:hidden` there.
+ */
+const COLS = "ticket-grid";
 
 function ColumnHeader() {
   return (
-    <GroupLabel className={`grid ${COLS} items-center gap-3 pt-0`}>
-      <span>ID</span>
-      <span />
-      <span>Status</span>
+    <GroupLabel className={`${COLS} items-center gap-3 pt-0`}>
+      <span className="tcol-id">ID</span>
+      <span className="tcol-priority" />
+      <span className="tcol-status">Status</span>
       <span>Title</span>
-      <span>Project</span>
+      <span className="tcol-project">Project</span>
       {/* Abbreviated because the column is 32px: the number is one or two digits, and
           `Estimate` would be wider than everything it labels. */}
       <span title="Estimate in points">Pts</span>
       <span>Due</span>
-      <span>Sync</span>
-      <span />
+      <span className="tcol-sync">Sync</span>
+      <span className="tcol-actions" />
     </GroupLabel>
   );
 }
@@ -115,7 +123,7 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       data-testid="ticket-row"
       data-archived={ticket.archived}
       selected={selected}
-      className={`grid ${COLS}`}
+      className={COLS}
       onClick={onSelect}
       onDoubleClick={(event) => {
         // `dblclick` is its own native event, dispatched and bubbled independently of
@@ -129,11 +137,25 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
     >
       <TicketIdentifier
         ticket={ticket}
-        className="font-mono text-11 text-faint"
+        className="tcol-id font-mono text-11 text-faint"
         data-testid="row-id"
       />
-      <PriorityMark priority={ticket.priority} ctx={ctx} />
-      <StatusPill status={ticket.status} ctx={ctx} />
+      {/*
+        * Wrapped rather than given the class directly: all three of these draw a
+        * different element depending on whether they were handed a `ctx` — a `<span>`
+        * label or a `<button>` menu trigger — and the cell has to exist either way for
+        * the columns after it to land in the right place. `SyncBadge` below makes the
+        * point sharpest: it returns `null` outright when the Notion mirror is off,
+        * which on an unmirrored instance slid the row's `⋯` into the 64px column the
+        * badge had vacated. The wrapper is the cell; what goes in it is the pill's
+        * business.
+        */}
+      <span className="tcol-priority">
+        <PriorityMark priority={ticket.priority} ctx={ctx} />
+      </span>
+      <span className="tcol-status">
+        <StatusPill status={ticket.status} ctx={ctx} />
+      </span>
 
       {editing ? (
         <TitleEditor initialTitle={ticket.title} onCommit={onRename} onCancel={onCancelEdit} />
@@ -141,8 +163,8 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
         <span
           className={
             ticket.archived
-              ? "truncate text-faint line-through"
-              : "truncate"
+              ? "ticket-title text-faint line-through"
+              : "ticket-title"
           }
         >
           {ticket.title}
@@ -150,9 +172,9 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       )}
 
       {project ? (
-        <span className="truncate text-12 text-muted-foreground">{project.name}</span>
+        <span className="tcol-project truncate text-12 text-muted-foreground">{project.name}</span>
       ) : (
-        <span />
+        <span className="tcol-project" />
       )}
 
       {/* Blank, not `0` and not `—`: an unsized ticket has no estimate, and printing a
@@ -163,13 +185,15 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       {/* `MM-DD`, sliced off the ISO string: a day is never run through a Date. */}
       <span className="text-11 text-faint">{ticket.due ? dayValue(ticket.due).slice(5) : ""}</span>
 
-      <SyncBadge mirror={ticket.mirror} />
+      <span className="tcol-sync">
+        <SyncBadge mirror={ticket.mirror} />
+      </span>
 
       <Menu
         label={`Actions for ${ticket.identifier ?? ticket.title}`}
         asChild
         trigger={
-          <button type="button" className={rowActionsTriggerClass}>
+          <button type="button" className={`tcol-actions ${rowActionsTriggerClass}`}>
             ⋯
           </button>
         }
@@ -320,7 +344,11 @@ export function TicketList({
        * behaviour anyway. The horizontal padding is repeated here rather than moved out
        * to the wrapper so the scrollbar stays at the outer edge, exactly where it was.
        */}
-      <div className="px-3 pt-2">
+      {/* Not on a narrow window: below 721px the row is down to Title, Pts and Due, and
+          a caption saying so over three self-evident columns is a line of height the
+          list wants back. `.tcol-*` would hide the labels one at a time and leave the
+          empty band they sat in. */}
+      <div className="px-3 pt-2 max-[720px]:hidden">
         <ColumnHeader />
       </div>
 

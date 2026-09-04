@@ -63,6 +63,7 @@ export function FilterInput({
   onFilters,
   onSave,
   empty,
+  search,
 }: {
   filters: ViewFilters;
   /**
@@ -83,6 +84,17 @@ export function FilterInput({
   onSave?: () => void;
   /** What to say with no chips up. The two surfaces are asking about different rooms. */
   empty?: ReactNode;
+  /**
+   * The plain "find a row on this screen" box, where the surface has one.
+   *
+   * It used to live in the top bar, three controls away from this one, which made one
+   * screen ask its question in two places — and the narrower the window, the less the bar
+   * could hold. It is a *slot* rather than a box built here because the two questions are
+   * genuinely different: this component narrows the **answer** the server gives, that one
+   * narrows what is **on screen** out of the answer already fetched. The list has both;
+   * a saved view passes nothing and keeps the one.
+   */
+  search?: ReactNode;
 }) {
   /** The words this instance knows, and the two ways an id is printed. See `filter-catalog`. */
   const { catalog, names, chipNames, settling } = useFilterVocabulary(teamId, hide);
@@ -245,9 +257,21 @@ export function FilterInput({
   const chips = chipsOf(filters, chipNames);
 
   return (
-    <div className="flex flex-col gap-2 px-6 pt-[18px] pb-3.5">
+    <div className="flex flex-col gap-2 px-6 pt-[18px] pb-3.5 max-[720px]:px-4 max-[720px]:pt-3">
       <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
+        {search}
+
+        {/*
+          * The facet language, and not on a phone.
+          *
+          * `-status:done assignee:@me cycle:24` is written, not tapped: it wants a
+          * keyboard, a completion list navigated with `↑↓`, and a line long enough to read
+          * back. None of the three survives a 390px screen, and stacking it under the
+          * search box would put two text fields on a screen the reader wanted one field on.
+          * The chips below stay visible at every width, so a question asked at a desk is
+          * still legible — and still removable, one `×` at a time — from a phone.
+          */}
+        <div className="relative min-w-0 flex-1 max-[720px]:hidden">
           <div className="relative rounded-md border border-border bg-card">
             {/*
               * The same characters as the input, in the same font at the same offset, with
@@ -338,7 +362,7 @@ export function FilterInput({
         </div>
 
         {unasked && (
-          <span className="shrink-0 text-11 text-faint">
+          <span className="shrink-0 text-11 text-faint max-[720px]:hidden">
             <Kbd>↵</Kbd> apply
           </span>
         )}

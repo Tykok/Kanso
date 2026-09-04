@@ -22,7 +22,6 @@ import { useTeamLabels } from "@/lib/queries/social";
 import { useRowMetrics } from "@/lib/row-metrics";
 import { PRIORITY_LABELS } from "@/lib/status";
 import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
-import { useUi } from "@/store/ui";
 import { BulkStrip } from "./bulk-strip";
 import { FilterInput } from "./filter-input";
 import { nameGroups } from "./grouping";
@@ -89,14 +88,6 @@ export function SavedViewScreen({ id }: { id: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [error, setError] = useState<string | null>(null);
-  /**
-   * `Mod+f` reaches the filter box through the registry — `organise.addFilter`, whose `when`
-   * is already this route — and it does it by opening `dialog.kind === "filter"`, which
-   * `FilterInput` drains into a focus of its own box. The Filter button in the top bar opens
-   * the same one, so the key and the button are one door rather than two.
-   */
-  const openDialog = useUi((state) => state.openDialog);
-
   /**
    * The page flattened back out, for everything that walks the list rather than draws it
    * — the cursor, `⇧↑↓`, the empty state. It is the flat answer, in the order the server
@@ -235,12 +226,12 @@ export function SavedViewScreen({ id }: { id: string }) {
             here now, but the star is what says which way the press will go. */}
         {view.data && <FavouriteStar target={{ kind: "view", id: id }} label={view.data.name} />}
 
-        {/* §6.6's three controls, at the left of the slot. All three, because this is the
-            one screen where all three intentions mean something: the two menus were down in
-            the chip strip until this slice, and they came up here with their ids. */}
+        {/* §6.6's controls, at the left of the slot. Group and Order, because this is the
+            one screen that stores a choice for either: the two menus were down in the chip
+            strip until this slice, and they came up here with their ids. Filter is gone
+            from the component entirely — the box it focused is on this screen already. */}
         {view.data && (
           <ViewControls
-            onFilter={() => openDialog({ kind: "filter" })}
             group={{
               value: view.data.groupBy,
               onChange: (groupBy) => patch.mutate({ id, groupBy }),

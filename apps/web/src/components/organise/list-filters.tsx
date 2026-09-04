@@ -2,6 +2,7 @@
 
 import { useUi } from "@/store/ui";
 import type { ViewFilters } from "@/lib/api";
+import { FILTER_INPUT_ID } from "@/lib/use-action-ctx";
 import { FilterInput } from "./filter-input";
 
 /**
@@ -23,10 +24,40 @@ export function ListFilters() {
   const filters = useUi((state) => state.filters);
   const setFilters = useUi((state) => state.setFilters);
   const openDialog = useUi((state) => state.openDialog);
+  const query = useUi((state) => state.query);
+  const setQuery = useUi((state) => state.setQuery);
 
   return (
     <FilterInput
       filters={filters}
+      /**
+       * The find-a-row box, which came down from the top bar to sit beside the question it
+       * is not asking. Read off the store here rather than threaded from `app/(app)/page.tsx`
+       * — the page reads `query` from exactly this store to narrow its own rows, so a prop
+       * would only be the same value taking a longer road.
+       *
+       * `FILTER_INPUT_ID` moves with it, which is what keeps `/` landing here.
+       *
+       * Only mounted where this component is, and that is a *narrowing* of where the box
+       * used to be: the top bar drew it on the timeline too, where nothing has ever read
+       * `query` — `TimelineView` draws its own query and says so. A box that filtered
+       * nothing is not a box worth keeping on a chart.
+       */
+      search={
+        <input
+          id={FILTER_INPUT_ID}
+          className="w-[200px] shrink-0 rounded-md border border-transparent bg-accent px-2 py-1.5 text-12 max-[720px]:w-auto max-[720px]:flex-1"
+          placeholder="Filter…  /"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setQuery("");
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      }
       /**
        * Whose cycles and labels can be asked about. Both are team-scoped, so an unscoped
        * list offers neither: the alternative is every team's labels in one list, where two
@@ -37,8 +68,8 @@ export function ListFilters() {
       onFilters={setFilters}
       onSave={() => openDialog({ kind: "saveView" })}
       empty={
-        <span className="text-12 text-faint">
-          No filters — every ticket in the scope. The box in the top bar searches these.
+        <span className="text-12 text-faint max-[720px]:hidden">
+          No filters — every ticket in the scope. The box beside this line searches these.
         </span>
       }
     />

@@ -116,7 +116,7 @@ export default function DocsPage() {
         </button>
       </TopbarSlot>
 
-      <div className="flex flex-col gap-7 overflow-y-auto px-8 py-6.5">
+      <div className="flex flex-col gap-7 overflow-y-auto px-8 py-6.5 max-[720px]:gap-5 max-[720px]:px-4 max-[720px]:py-5">
         <TemplateCards
           templates={templates.data ?? []}
           disabled={!writableTeamId || createPage.isPending}

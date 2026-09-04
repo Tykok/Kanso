@@ -85,6 +85,133 @@
 }
 
 /*
+ * The narrow window's row, which is two lines tall rather than one.
+ *
+ * `--row-h` is a number the virtualiser positions every row by — `index × height` —
+ * so a title allowed to wrap has to be paid for in the token rather than left to the
+ * content, or the four-hundredth row lands four hundred wrapped lines away from where
+ * it is drawn. 64px is two 13px lines at the row's own leading plus the padding a
+ * 36px row already carries, and `.ticket-title` below clamps the title to exactly the
+ * two lines the height buys.
+ *
+ * After the `pointer: coarse` block on purpose, at equal specificity: a phone is both
+ * coarse and narrow, and 64px is the answer that has somewhere to put the second line.
+ * A narrow *desktop* window gets it too, which is right — the columns it dropped are
+ * the same ones, and the title has the same wrapping to do.
+ */
+@media (max-width: 720px) {
+  :root {
+    --row-h: 64px;
+  }
+}
+
+/*
+ * The ticket list's grid, and the order its columns arrive in as the window grows.
+ *
+ * Nine columns is one drawing of a row, not the only one. A phone can hold three of
+ * them — the title, the points and the day it is due — and the ones it drops are the
+ * ones it can answer without them: the identifier is on the ticket you tapped into,
+ * the project and the team are the heading above the list, and the status is the
+ * group label the row is stacked under. What is left is what a reader standing up
+ * actually reads.
+ *
+ * Two lists, deliberately adjacent: the template says how wide each column is, and
+ * the `.tcol-*` rules say which cells exist to fill them. They have to agree — a cell
+ * left in the flow with no column for it silently takes the next one's — so they are
+ * written as one block and `e2e/16-mobile-nav.spec.ts` asserts the row never outgrows
+ * its viewport at each of these widths.
+ *
+ * Only `display: none` is ever declared, and only inside a `max-width` query. Above
+ * the breakpoint there is no rule at all, so each cell keeps whatever display its own
+ * classes give it — which is why a flex pill and a plain span can share one mechanism
+ * without this file having to know which is which.
+ */
+.ticket-grid {
+  display: grid;
+  grid-template-columns: 1fr 32px 60px;
+}
+
+@media (min-width: 480px) {
+  /* + status */
+  .ticket-grid {
+    grid-template-columns: 108px 1fr 32px 60px;
+  }
+}
+
+@media (min-width: 721px) {
+  /* + id, priority, the row's own `⋯` — the width the sidebar returns at */
+  .ticket-grid {
+    grid-template-columns: 70px 20px 108px 1fr 32px 60px 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* + project */
+  .ticket-grid {
+    grid-template-columns: 70px 20px 108px 1fr 112px 32px 60px 24px;
+  }
+}
+
+@media (min-width: 1280px) {
+  /* + the Notion mirror badge: the last thing anybody reads, so the last to arrive */
+  .ticket-grid {
+    grid-template-columns: 70px 20px 108px 1fr 112px 32px 60px 64px 24px;
+  }
+}
+
+@media (max-width: 479px) {
+  .tcol-status {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .tcol-id,
+  .tcol-priority,
+  .tcol-actions {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .tcol-project {
+    display: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  .tcol-sync {
+    display: none;
+  }
+}
+
+/*
+ * The title: one line where there is width for one, two where the row is 64px tall.
+ *
+ * A class rather than `truncate max-[720px]:…`, because the two states differ in four
+ * properties and the second of them is a `-webkit-box` — a shape no utility spells
+ * without also spelling the three that make it work.
+ */
+.ticket-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .ticket-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    text-overflow: clip;
+    /* A 40-character word with no space in it is a real ticket title, and without
+       this it is the one thing that still pushes the row past the viewport. */
+    overflow-wrap: anywhere;
+  }
+}
+
+/*
  * A size container rather than a prop: one rule holds from a 14px sidebar
  * trigger to a 220px cover because the glyph is measured in `cqw` against the
  * element's own box. Below 20px two stacked glyphs stop being legible, so the
@@ -359,6 +486,23 @@
   font-weight: 500;
 }
 
+/*
+ * A segmented control that is not offered on a narrow window — today, the List/Board/
+ * Timeline toggle, two of whose three positions draw a screen a phone does not.
+ *
+ * Here rather than as a `max-[720px]:hidden` on the element, and the reason is this
+ * file's opening comment: everything below the reset layer is unlayered, and an
+ * unlayered declaration beats a layered one whatever its specificity — so `.segmented`'s
+ * own `display: flex` silently defeated the utility, at every width. Written as
+ * `.segmented.narrow-hidden` it is unlayered too, and one class more specific than the
+ * rule it has to overrule, which is what makes it win without an `!important`.
+ */
+@media (max-width: 720px) {
+  .segmented.narrow-hidden {
+    display: none;
+  }
+}
+
 .swatches {
   display: flex;
   gap: 10px;
@@ -391,6 +535,18 @@
   border-top: 1px solid var(--border);
   color: var(--faint);
   font-size: 11px;
+}
+
+/*
+ * Not on a phone. The strip teaches the keyboard — `j` moves, `c` creates, `?` lists
+ * the rest — and a device with no keyboard to teach gets a row of keycaps it cannot
+ * press, in the one place where every pixel of height is the list's. The preference
+ * is untouched: this is a fact about the screen, not a setting the reader chose.
+ */
+@media (max-width: 720px) {
+  .statusbar {
+    display: none;
+  }
 }
 
 .error {

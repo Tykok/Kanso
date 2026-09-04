@@ -169,7 +169,7 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
         )}
       </TopbarSlot>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-12 py-9">
+      <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-12 py-9 max-[720px]:gap-5 max-[720px]:px-4 max-[720px]:py-5">
         <div className="flex flex-wrap items-start gap-12">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5">
             <div className="flex items-center gap-2.5">

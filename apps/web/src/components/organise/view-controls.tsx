@@ -10,12 +10,18 @@ import { hintFor } from "@/lib/shortcuts";
 import { useBindings } from "@/lib/use-bindings";
 
 /**
- * Filter, Group and Order, at the left of the top bar's slot — the three chords, drawn.
+ * Group and Order, at the left of the top bar's slot — two of the three chords, drawn.
  *
- * `Mod+f`, `Mod+g` and `Mod+o` already reach these three controls. This is the same three
- * intentions for the reader who would rather click, which is why each button prints the key
- * beside its label: the top bar is where a keyboard-first application's keyboard is
- * discovered, and nobody opens the help sheet to learn that a list can be grouped.
+ * Filter was the third and is gone, on every width. The button opened nothing: `Mod+f` and
+ * the click both resolve to a *focus* of the filter box, and that box now sits directly
+ * under the bar on the same screen — so the control was a button whose whole effect was to
+ * move the caret somewhere already visible, taking 90px of a bar that had none to spare on
+ * a phone. The chord stays; what went is the second spelling of it.
+ *
+ * `Mod+g` and `Mod+o` still reach the two menus below. This is the same two intentions for
+ * the reader who would rather click, which is why each button prints the key beside its
+ * label: the top bar is where a keyboard-first application's keyboard is discovered, and
+ * nobody opens the help sheet to learn that a list can be grouped.
  *
  * The keys are read from the **effective** bindings — `useBindings()` is the same merge the
  * dispatcher resolves against — so a reader who remapped `Mod+g` sees what they remapped it
@@ -25,22 +31,17 @@ import { useBindings } from "@/lib/use-bindings";
  * ## Each control is drawn only where it does something
  *
  * A control appears when the surface hands over the handler for it, and not otherwise. That
- * is not tidiness: `organise.groupBy` and `organise.sortBy` are refused off a saved view,
- * and `organise.addFilter` is refused on the chart — where nothing mounts the filter box and
- * where the dispatcher would stand down for a dialog nobody draws. A button that opened one
- * anyway would be the same trap the key was fixed for, with a mouse instead of a keyboard.
+ * is not tidiness: `organise.groupBy` and `organise.sortBy` are refused off a saved view, so
+ * the main list — which stores neither — now hands over nothing and draws nothing at all.
  *
  * `showViewControls` hides the lot. The bell, the breadcrumb and the `×` are how a reader
- * gets somewhere; these three are a second spelling of something already reachable, so
- * hiding them takes nothing away — and `Preferences` says as much in its own comment.
+ * gets somewhere; these two are a second spelling of something already reachable, so hiding
+ * them takes nothing away — and `Preferences` says as much in its own comment.
  */
 export function ViewControls({
-  onFilter,
   group,
   order,
 }: {
-  /** Opens the filter box. Absent where none is mounted — the timeline. */
-  onFilter?: () => void;
   /** A saved view's grouping. Absent on the main list, which stores no grouping at all. */
   group?: { value: ViewGroupBy; onChange: (next: ViewGroupBy) => void };
   order?: { value: ViewSortBy; onChange: (next: ViewSortBy) => void };
@@ -54,18 +55,6 @@ export function ViewControls({
 
   return (
     <div data-testid="view-controls" className="flex shrink-0 items-center gap-1.5">
-      {onFilter && (
-        <button
-          type="button"
-          id="view-filter"
-          data-testid="view-filter"
-          className={CONTROL}
-          onClick={onFilter}
-        >
-          Filter <Hint chord={keyOf("organise.addFilter")} />
-        </button>
-      )}
-
       {/*
         * The id is how the key reaches the menu — `document.getElementById("view-group-by")
         * ?.click()`, which is the registry's own trick for a control living in a component

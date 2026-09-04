@@ -41,7 +41,7 @@ export function Topbar({
   canLeave: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2.5 bg-card px-5 py-3 text-12 text-faint">
+    <div className="flex items-center gap-2.5 bg-card px-5 py-3 text-12 text-faint max-[720px]:px-4 max-[720px]:py-2">
       <MobileNavDrawer ctx={ctx} syncSummary={syncSummary} />
 
       {/* Beside the `☰` and to the left of the trail, which is where the column it
@@ -60,7 +60,15 @@ export function Topbar({
         * leave; the column is how you go somewhere else.
         */}
       {crumbs.length > 0 && (
-        <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2.5">
+        <nav
+          aria-label="Breadcrumb"
+          // Not on a phone. Every route that draws a trail also names itself in its own
+          // heading a few pixels below — which is where the list's `<h1>` went in this
+          // pass — so on a 390px screen the trail is the same words twice, and the copy
+          // that has to share a line with `☰`, the bell and `×` is the one that gets
+          // truncated to `Core / …`. The `☰` beside it reaches everything the trail names.
+          className="flex min-w-0 items-center gap-2.5 max-[720px]:hidden"
+        >
           {crumbs.map((crumb, index) => (
             <Fragment key={`${index}-${crumb}`}>
               {index > 0 && <span aria-hidden>/</span>}

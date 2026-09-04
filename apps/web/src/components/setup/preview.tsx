@@ -93,15 +93,16 @@ export function PreferencePreview({ preferences }: { preferences: Preferences })
         {sidebarMode === "hover" && <div className="border-r border-border bg-accent-soft" />}
 
         <div className="min-w-0">
-          {/* The three buttons the list and a saved view push into `shell/topbar.tsx`'s
-              slot — the bar holds them, the page owns them, because Group and Order are
-              menus only a saved view stores a choice for. Named here rather than
-              rendered: the real controls focus a filter box and open two menus, and a
-              tile that did any of that on a click would be a second implementation of
-              them rather than a preview of this setting. */}
+          {/* The two buttons a saved view pushes into `shell/topbar.tsx`'s slot — the bar
+              holds them, the page owns them, because Group and Order are menus only a
+              saved view stores a choice for. Filter used to be a third and is gone: the
+              box it focused sits under the bar on the same screen. Named here rather than
+              rendered: the real controls open two menus, and a tile that did that on a
+              click would be a second implementation of them rather than a preview of
+              this setting. */}
           {showViewControls && (
             <div className="flex items-center gap-1.5 border-b border-border px-2 py-1.5">
-              {["Filter", "Group", "Order"].map((control) => (
+              {["Group", "Order"].map((control) => (
                 <span
                   key={control}
                   className="rounded-md border border-border px-1.5 py-0.5 text-11 text-muted-foreground"

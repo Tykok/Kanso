@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/inbox/empty-state";
 import { NewMenu } from "@/components/new-menu";
 import { nameGroups } from "@/components/organise/grouping";
 import { ListFilters } from "@/components/organise/list-filters";
-import { ViewControls } from "@/components/organise/view-controls";
 import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import { usePageActions } from "@/components/shell/use-shell-keys";
 import { TicketList } from "@/components/tickets";
@@ -22,6 +21,7 @@ import {
 } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
 import { isMac } from "@/lib/platform";
+import { useNarrow } from "@/lib/use-narrow";
 import {
   useAuthMode,
   useGroupedTickets,
@@ -38,7 +38,7 @@ import {
 import { ZOOMS } from "@/lib/timeline-geometry";
 import { hintFor, type Bindings } from "@/lib/shortcuts";
 import { useBindings } from "@/lib/use-bindings";
-import { FILTER_INPUT_ID, useActionContext } from "@/lib/use-action-ctx";
+import { useActionContext } from "@/lib/use-action-ctx";
 import { useUi } from "@/store/ui";
 
 /**
@@ -80,7 +80,7 @@ export default function ListPage() {
   const {
     scope,
     selectedId,
-    view,
+    view: storedView,
     zoom,
     // `overlay` alone, where this used to read `dialog` beside it: the handler that stood
     // itself down for either of them is the shell's now, and all this page still asks is
@@ -94,9 +94,27 @@ export default function ListPage() {
     setZoom,
     open,
     close,
-    openDialog,
     setQuery,
   } = useUi();
+
+  /**
+   * Which of the three drawings is on screen, which is not always the one the reader
+   * picked.
+   *
+   * A phone gets the list, whatever the store holds. The board scrolls sideways by
+   * construction — one column per status, none of them narrower than a card — and the
+   * timeline is an axis of dates that has no useful zoom at 390px; both are named in
+   * `Kanso - Mobile.dc.html` as screens that "renvoient vers le bureau". The stored
+   * choice is left exactly as it was rather than reset, so the same session opened on a
+   * laptop is still on the board the reader put it on.
+   *
+   * Derived rather than pushed through `setView`: writing the store from a media query
+   * would make a phone silently change what a desktop window shows next, and there would
+   * be no way back to the board for a reader who rotated a tablet.
+   */
+  const narrow = useNarrow();
+  const view = narrow ? "list" : storedView;
+
   const [editingId, setEditingId] = useState<string | undefined>();
   /**
    * The ticket whose arrows the palette is asking about, and which question it is
@@ -420,31 +438,16 @@ export default function ListPage() {
   return (
     <>
       <TopbarSlot>
-        <h1 className="m-0 text-13 font-medium text-foreground">{heading}</h1>
-        {/* The whole match while the list is up and nothing is typed, which is a number
-            only the server has: `visible.length` counts the *page*, so an instance with
-            two thousand tickets read `200` here — the same lie about a fetch that KAN-6
-            took off the group headers. With a needle typed it is the rows on screen,
-            because that is the question the box asked and nobody asked the server. */}
-        <span className="font-mono text-11 text-faint">
-          {view === "list" && query.trim() === "" ? (groups.data?.total ?? 0) : visible.length}
-        </span>
-
         {/*
-          * §6.6's controls — Filter alone here, and only off the chart.
+          * The heading and the count left this bar for the page below it — see the `<h1>`
+          * further down. A team called "Plateforme & intégrations partenaires" had one
+          * line here shared with a breadcrumb, four controls and a text box, so the one
+          * word that says where you are was the first thing truncated. It has the page's
+          * full width now, and wraps rather than ends in an ellipsis.
           *
-          * Group and Order are a saved view's, since the main list stores neither: the two
-          * chords are refused off `/views/` for that reason, and a button that opened a
-          * menu whose choice nothing stored would be worse than no button. Filter follows
-          * the same rule for a sharper reason — `ListFilters` below is not mounted on the
-          * timeline, so opening the dialog there would leave the store holding a `filter`
-          * nothing drains and the dispatcher standing down over it. Same condition, said
-          * once: whatever mounts the box is what offers the button.
+          * What is left in the bar is what acts rather than what describes: the two view
+          * toggles and `New`.
           */}
-        {view !== "timeline" && (
-          <ViewControls onFilter={() => openDialog({ kind: "filter" })} />
-        )}
-
         <span className="flex-1" />
 
         {view === "timeline" && (
@@ -462,37 +465,56 @@ export default function ListPage() {
           </div>
         )}
 
-        <div className="segmented" role="group" aria-label="View">
-          <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")}>
+        {/* Hidden where two of its three buttons lead somewhere a phone does not go —
+            `narrow` above is the same 720px, and it is what already forced the drawing
+            back to the list. A toggle whose other two positions are refused would be
+            three buttons with one honest one. */}
+        <div className="segmented narrow-hidden" role="group" aria-label="View">
+          <button
+            type="button"
+            aria-pressed={storedView === "list"}
+            onClick={() => setView("list")}
+          >
             List
           </button>
-          <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>
+          <button
+            type="button"
+            aria-pressed={storedView === "board"}
+            onClick={() => setView("board")}
+          >
             Board
           </button>
           <button
             type="button"
-            aria-pressed={view === "timeline"}
+            aria-pressed={storedView === "timeline"}
             onClick={() => setView("timeline")}
           >
             Timeline
           </button>
         </div>
 
-        <input
-          id={FILTER_INPUT_ID}
-          className="w-[180px] rounded-md border border-transparent bg-accent px-2 py-1.5 text-12"
-          placeholder="Filter…  /"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              setQuery("");
-              event.currentTarget.blur();
-            }
-          }}
-        />
         <NewMenu ctx={ctx} />
       </TopbarSlot>
+
+      {/*
+        * Where the list says what it is, at the top of the page rather than in the bar.
+        *
+        * `text-15` and free to wrap: this is the one place a team or a project name is
+        * written out in full, and the names that most need reading — the long ones — are
+        * exactly the ones the bar could not hold. The count rides with it because it is a
+        * fact about this heading and nothing else.
+        */}
+      <div className="flex items-baseline gap-2.5 px-6 pt-4 max-[720px]:px-4 max-[720px]:pt-3">
+        <h1 className="m-0 min-w-0 text-15 font-medium text-foreground">{heading}</h1>
+        {/* The whole match while the list is up and nothing is typed, which is a number
+            only the server has: `visible.length` counts the *page*, so an instance with
+            two thousand tickets read `200` here — the same lie about a fetch that KAN-6
+            took off the group headers. With a needle typed it is the rows on screen,
+            because that is the question the box asked and nobody asked the server. */}
+        <span className="shrink-0 font-mono text-11 text-faint">
+          {view === "list" && query.trim() === "" ? (groups.data?.total ?? 0) : visible.length}
+        </span>
+      </div>
 
       {/*
         * The composed filters, and the one control that adds one.

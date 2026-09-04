@@ -319,27 +319,28 @@ test("scenario 19e — the question is typed, completed by pointer, and read bac
   const suggestions = page.getByTestId("filter-suggestion");
 
   /**
-   * §6.6's control, and the key beside its label.
+   * No Filter button, on any width.
    *
-   * The chord is asserted as *a* keycap rather than as `⌘F`, because it is read from the
-   * effective bindings on the platform the test happens to be running on — which is the
-   * whole point of reading them rather than printing the defaults.
+   * It was §6.6's third control and it is gone: the click and `Mod+f` both resolved to a
+   * *focus* of the box below, which is on the same screen — so the button's whole effect
+   * was to move the caret somewhere already visible, at 90px of a bar a phone has none to
+   * spare in. The chord is unchanged and is exercised further down this file.
    */
-  const filter = page.getByTestId("view-filter");
-  await expect(filter).toContainText("Filter");
-  await expect(filter.locator("kbd")).toHaveCount(1);
+  await expect(page.getByTestId("view-filter")).toHaveCount(0);
 
-  // Group and Order are not here: the main list stores neither, and the two chords are
-  // refused off a saved view for the same reason.
+  // Group and Order are not here either: the main list stores neither, and the two chords
+  // are refused off a saved view for the same reason. With Filter gone the component now
+  // draws nothing at all on this route.
+  await expect(page.getByTestId("view-controls")).toHaveCount(0);
   await expect(page.getByTestId("view-group")).toHaveCount(0);
   await expect(page.getByTestId("view-order")).toHaveCount(0);
 
   /*
    * The whole question composed with the mouse, which is the claim §7 makes about the
-   * completion list: a reader who never types a token can still ask something. The button
-   * focuses the box and opens the list; a key is clicked, then one of its answers.
+   * completion list: a reader who never types a token can still ask something. The box
+   * itself opens the list on focus; a key is clicked, then one of its answers.
    */
-  await filter.click();
+  await box.click();
   await expect(box).toBeFocused();
   await expect(suggestions.filter({ hasText: "priority" })).toBeVisible();
 
