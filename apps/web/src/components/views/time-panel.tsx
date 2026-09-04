@@ -45,11 +45,16 @@ export function TimePanel({ ticketId }: { ticketId: string }) {
    */
   const [now, setNow] = useState(() => new Date());
   const running = time.data?.entries.find((entry) => entry.id === time.data?.runningId);
+  // Keyed on the **id** and not on `running`. That object is a fresh identity after every
+  // refetch, so depending on it would tear down and restart the interval each time the query
+  // settled — and on a screen that refetches on focus, the fifteen seconds could keep
+  // restarting and the clock never tick at all.
+  const runningId = running?.id;
   useEffect(() => {
-    if (!running) return;
+    if (!runningId) return;
     const tick = setInterval(() => setNow(new Date()), 15_000);
     return () => clearInterval(tick);
-  }, [running]);
+  }, [runningId]);
 
   const runningMinutes = running?.startedAt ? elapsedSince(running.startedAt, now) : undefined;
   const failure = start.error ?? stop.error;

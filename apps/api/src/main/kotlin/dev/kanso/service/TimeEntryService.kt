@@ -220,7 +220,14 @@ class TimeEntryService(
 		if (entry.running) throw ConflictException("That timer is still running; stop it before correcting it")
 		val next = entry.copy(
 			minutes = minutes?.let { asserted(it) } ?: entry.minutes,
-			note = note?.let { trimmed(it) } ?: entry.note,
+			// Absent means unchanged; an **explicitly empty** string means clear it. The two
+			// have to be told apart or a note could be corrected but never withdrawn, and
+			// `note?.let { trimmed(it) } ?: entry.note` cannot tell them apart — `trimmed("")`
+			// is null, so the elvis puts the old note straight back and the clear is silently
+			// ignored. `TicketController` reaches for an `unset: ["due"]` list instead, which is
+			// the right shape for a ticket with fourteen nullable scalars and more machinery
+			// than one optional note on one row is worth.
+			note = if (note == null) entry.note else trimmed(note),
 			spentOn = spentOn ?: entry.spentOn,
 		)
 		entries.settle(next.id, next.minutes!!, next.note, next.spentOn)
