@@ -158,29 +158,13 @@ export function TriageView() {
       </TopbarSlot>
 
       <ShellAside>
-        <Queue items={items} total={queue.data?.total ?? 0} at={at} onPick={setCursor} />
-        {/*
-         * The second way in to the requests base, the first being the settings page.
-         *
-         * It belongs here because this is the screen the arrangement is *about*: the reason
-         * a queue is empty, or full of pages nobody in Kanso wrote, is which Notion base is
-         * wired to it — and answering that two routes away, in a settings tab, is the same
-         * mistake `KAN-53` corrected by putting the mirror's refused writes beside the
-         * connection that produced them.
-         *
-         * Offered to every member, not only to a configurator, which is `KAN-55`'s
-         * arbitration and not a decision retaken here: the panel behind it draws the
-         * workspace for anybody and the team picker for the configurator alone. Hiding the
-         * button from a member would contradict that arbitration in the one place where a
-         * member is looking at its consequences.
-         */}
-        <button
-          type="button"
-          className="button mx-1.5 mt-2.5"
-          onClick={() => setWiring(true)}
-        >
-          Where these come from…
-        </button>
+        <Queue
+          items={items}
+          total={queue.data?.total ?? 0}
+          at={at}
+          onPick={setCursor}
+          onWiring={() => setWiring(true)}
+        />
       </ShellAside>
 
       {wiring && (
@@ -283,17 +267,41 @@ function Queue({
   total,
   at,
   onPick,
+  onWiring,
 }: {
   items: Ticket[];
   total: number;
   at: number;
   onPick: (index: number) => void;
+  onWiring: () => void;
 }) {
   return (
     <>
-      <div className="flex flex-col gap-0.5 px-1.5 pb-2.5">
+      <div className="flex flex-col items-start gap-0.5 px-1.5 pb-2.5">
         <span className="text-13 font-medium text-foreground">Triage queue</span>
         <span className="text-11 text-faint">{total} tickets · oldest first</span>
+        {/*
+         * The second way in to the requests base, the first being the settings page.
+         *
+         * It belongs on this screen because this is the screen the arrangement is *about*:
+         * the reason a queue is empty, or full of pages nobody in Kanso wrote, is which
+         * Notion base is wired to it — and answering that two routes away, in a settings tab,
+         * is the mistake `KAN-53` corrected by putting the mirror's refused writes beside the
+         * connection that produced them.
+         *
+         * In the header rather than under the rows, which is where it was first drawn: the
+         * aside scrolls, so a fortieth ticket in the queue pushed the button off the bottom
+         * of a panel that is the only place it appears. Seen in a capture, not reasoned about.
+         *
+         * Offered to every member, not only to a configurator, which is `KAN-55`'s
+         * arbitration and not a decision retaken here: the panel behind it draws the
+         * workspace for anybody and the team picker for the configurator alone. Hiding it
+         * from a member would contradict that arbitration in the one place where a member is
+         * looking at its consequences.
+         */}
+        <button type="button" className="button mt-1.5" onClick={onWiring}>
+          Where these come from…
+        </button>
       </div>
       {items.map((ticket, index) => (
         <button
