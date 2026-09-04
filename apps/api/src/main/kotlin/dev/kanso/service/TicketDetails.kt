@@ -5,6 +5,7 @@ import dev.kanso.github.GithubRepository
 import dev.kanso.repo.CustomFieldRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
+import dev.kanso.repo.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -23,6 +24,7 @@ class TicketDetails(
 	private val teams: TeamRepository,
 	private val fields: CustomFieldRepository,
 	private val github: GithubRepository,
+	private val users: UserRepository,
 ) {
 
 	/**
@@ -44,6 +46,14 @@ class TicketDetails(
 	 *
 	 * So a page of 200 tickets is five statements plus the one that found them, whether the
 	 * team has defined no fields or thirty.
+	 *
+	 * `KAN-74` adds at most a sixth, and only when it would find something: the authors of
+	 * the page's pull requests who have linked their GitHub account. The `if` is not a
+	 * micro-optimisation — it is what keeps the promise above true for the instances that
+	 * have no GitHub App and for the far larger number whose pull request authors have
+	 * simply never consented. One query for a page's people, the shape
+	 * `ActivityService.forEntity` already uses for a feed's actors, because a page's authors
+	 * repeat and a query per row would ask about the same five people thirty times.
 	 */
 	@Transactional(readOnly = true)
 	fun of(found: List<Ticket>): List<TicketDetail> {
@@ -54,6 +64,12 @@ class TicketDetails(
 		val docsByTicket = tickets.docIdsFor(ids)
 		val fieldValues = fields.valuesFor(ids)
 		val pullRequests = github.forTickets(ids)
+		val authorIds = pullRequests.values.flatten().mapNotNull { it.authorUserId }.toSet()
+		val authors = if (authorIds.isEmpty()) {
+			emptyMap()
+		} else {
+			users.findAllById(authorIds).associateBy { it.id }
+		}
 		return found.map {
 			TicketDetail(
 				ticket = it,
@@ -63,6 +79,11 @@ class TicketDetails(
 				docIds = docsByTicket[it.id].orEmpty(),
 				customFields = fieldValues[it.id].orEmpty(),
 				pullRequests = pullRequests[it.id].orEmpty(),
+				// The whole page's authors on every detail rather than a per-ticket slice:
+				// the map is read by user id, so a ticket looking up an author it does not
+				// have simply does not look, and slicing it would cost a pass per ticket to
+				// save nothing a reader can measure.
+				pullRequestAuthors = authors,
 			)
 		}
 	}

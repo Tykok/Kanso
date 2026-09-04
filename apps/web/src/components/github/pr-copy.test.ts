@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { PullRequest } from "@/lib/api";
-import { prLinkExplanation, prPill, prRef, sortPullRequests } from "./pr-copy";
+import type { PullRequest, User } from "@/lib/api";
+import {
+  prAuthorLabel,
+  prAuthorTitle,
+  prLinkExplanation,
+  prPill,
+  prRef,
+  sortPullRequests,
+} from "./pr-copy";
 
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   repo: "tykok/kanso",
@@ -14,6 +21,50 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   closes: true,
   linkedByMember: false,
   ...over,
+});
+
+/**
+ * `KAN-74` on the row: the member's name once they consent, the handle until then.
+ *
+ * The fixture's `author` is deliberately absent by default, because that is what the
+ * server sends for almost every pull request on almost every repository — the mapper omits
+ * nulls, so an unlinked author has no `author` key at all.
+ */
+describe("who opened it", () => {
+  // Typed as `User` rather than inferred: `instanceRole` is a closed vocabulary, so an
+  // inferred `string` is not assignable and the fixture would drift from what the API
+  // actually sends.
+  const member: User = {
+    id: "user-1",
+    email: "elie@kanso.dev",
+    displayName: "Elie Treport",
+    instanceRole: "owner",
+    hasPassword: true,
+  };
+
+  it("shows the GitHub handle for an author who never linked", () => {
+    expect(prAuthorLabel(pr())).toBe("@elie");
+    expect(prAuthorTitle(pr())).toBeUndefined();
+  });
+
+  it("shows the member's name once they have consented", () => {
+    expect(prAuthorLabel(pr({ author: member }))).toBe("Elie Treport");
+  });
+
+  /** The name replaced the handle on the row, so the handle has to survive somewhere. */
+  it("keeps the handle reachable as the row's title", () => {
+    expect(prAuthorTitle(pr({ author: member }))).toBe("Elie Treport is @elie on GitHub");
+  });
+
+  /**
+   * `github_pull_requests.author_login` is nullable, so a pull request GitHub did not
+   * attribute has nothing to say — and says nothing, rather than an empty `@` or a bare
+   * element that collapses the row's flex gap onto the pill.
+   */
+  it("says nothing at all when GitHub named nobody", () => {
+    expect(prAuthorLabel(pr({ authorLogin: undefined }))).toBeUndefined();
+    expect(prAuthorTitle(pr({ authorLogin: undefined, author: member }))).toBeUndefined();
+  });
 });
 
 describe("what the pill says", () => {

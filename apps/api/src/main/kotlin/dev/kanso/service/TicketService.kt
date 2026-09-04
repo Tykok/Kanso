@@ -78,6 +78,21 @@ data class TicketDetail(
 	 * answer without a request per card. Same reason `parentId` rides on the row.
 	 */
 	val pullRequests: List<TicketPullRequest> = emptyList(),
+	/**
+	 * The members behind [pullRequests]' authors, keyed by user id — the people whose GitHub
+	 * account is linked, and nobody else.
+	 *
+	 * A map rather than a `User?` on each pull request, because a page's authors repeat:
+	 * three pull requests on a ticket are usually one person, and thirty across a board are
+	 * usually five. It is resolved once per page by `TicketDetails` and read by
+	 * `PullRequestDto.of`.
+	 *
+	 * Empty is the ordinary state and not an unfinished one. It is empty for every instance
+	 * with no GitHub App, and it stays empty for every author who never walked the consent
+	 * flow — which is what makes their row show `@tykok`, the same handle it showed before
+	 * any of this existed.
+	 */
+	val pullRequestAuthors: Map<UUID, User> = emptyMap(),
 ) {
 	val identifier: String? get() = teamKey?.let { "$it-${ticket.number}" }
 

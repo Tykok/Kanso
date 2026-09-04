@@ -170,6 +170,79 @@ describe("activitySentence", () => {
   });
 
   /**
+   * **`KAN-74`'s pair, and the assertion the ticket cares about most.**
+   *
+   * The same event, twice: once for a member who linked their GitHub account and once for
+   * an author who never did. The second line is exactly what `V36`'s header calls the
+   * documented fallback — no blank, no "unknown", no error, and no missing reason either.
+   * Consent adds the name and takes nothing away.
+   */
+  it("names a consented member on a merge, and says via #418 for one who never linked", () => {
+    const merged = { ref: "KAN-142", to: "done", via_pr: "#418" };
+
+    expect(activitySentence(row("status_changed", merged))).toBe(
+      "Tykok moved KAN-142 to Done via #418",
+    );
+    expect(activitySentence({ ...row("status_changed", merged), actor: null })).toBe(
+      "Moved KAN-142 to Done via #418",
+    );
+  });
+
+  /**
+   * A member's own hand-driven move is unchanged by any of this. The suffix appears only
+   * when a pull request caused the move, so the ordinary line cannot grow a "via" nobody
+   * asked for.
+   */
+  it("leaves a move nobody made through a pull request exactly as it was", () => {
+    expect(activitySentence(row("status_changed", { ref: "KAN-142", to: "done" }))).toBe(
+      "Tykok moved KAN-142 to Done",
+    );
+    expect(
+      activitySentence({ ...row("status_changed", { ref: "KAN-142", to: "done" }), actor: null }),
+    ).toBe("Moved KAN-142 to Done");
+  });
+
+  /**
+   * One `#`, whichever writer landed.
+   *
+   * A handler storing GitHub's `number` writes `418`; one storing the reference writes
+   * `#418`. Both are plausible, `payload` is untyped jsonb, and a feed that says "via
+   * ##418" for one and "via 418" for the other is a feed somebody has to explain.
+   */
+  it("prints one hash whether the payload carried a number, a string, or a hash", () => {
+    const line = (via: unknown) =>
+      activitySentence(row("status_changed", { ref: "KAN-142", to: "done", via_pr: via }));
+
+    expect(line(418)).toBe("Tykok moved KAN-142 to Done via #418");
+    expect(line("418")).toBe("Tykok moved KAN-142 to Done via #418");
+    expect(line("#418")).toBe("Tykok moved KAN-142 to Done via #418");
+    // Neither a number nor readable text is no reason at all, not "via undefined".
+    expect(line(null)).toBe("Tykok moved KAN-142 to Done");
+    expect(line("  ")).toBe("Tykok moved KAN-142 to Done");
+    expect(line({ number: 418 })).toBe("Tykok moved KAN-142 to Done");
+  });
+
+  /**
+   * The link itself, which `V36` gives its own kind rather than folding into the
+   * transition. `actor_id` is null for a link the parser drew off a branch name and set for
+   * one a member drew by hand, so both readings have to be sentences.
+   */
+  it("says a pull request was linked, with or without somebody having done it", () => {
+    expect(activitySentence(row("pull_request_linked", { ref: "KAN-142", via_pr: "#418" }))).toBe(
+      "Tykok linked #418 to KAN-142",
+    );
+    expect(
+      activitySentence({
+        ...row("pull_request_linked", { ref: "KAN-142", via_pr: "#418" }),
+        actor: null,
+      }),
+    ).toBe("Linked #418 to KAN-142");
+    expect(activitySentence(row("pull_request_linked"))).toBe(
+      "Tykok linked a pull request to a ticket",
+    );
+  });
+
+  /**
    * `payload` carries the before and after of a scalar change and nothing else, so a row
    * whose payload is empty still has to read as a sentence rather than as `undefined`.
    */

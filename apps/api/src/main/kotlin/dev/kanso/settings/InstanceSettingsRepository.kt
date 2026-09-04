@@ -28,6 +28,12 @@ class StoredInstanceSettings(
 	val notionBotId: String?,
 	/** `V36`. Still encrypted here, like every other secret on this row. */
 	val githubWebhookSecretEnc: ByteArray?,
+	/**
+	 * The App's OAuth client, which is what asks a **member** for consent — not the same
+	 * credential as `kanso.auth.github`, which signs people in. See `KansoProperties.Github`.
+	 */
+	val githubClientId: String?,
+	val githubClientSecretEnc: ByteArray?,
 )
 
 @Repository
@@ -47,7 +53,25 @@ class InstanceSettingsRepository {
 			notionWorkspaceName = it[InstanceSettings.notionWorkspaceName],
 			notionBotId = it[InstanceSettings.notionBotId],
 			githubWebhookSecretEnc = it[InstanceSettings.githubWebhookSecretEnc],
+			githubClientId = it[InstanceSettings.githubClientId],
+			githubClientSecretEnc = it[InstanceSettings.githubClientSecretEnc],
 		)
+	}
+
+	/**
+	 * The App's OAuth client. Configuration, not a connection — the same distinction
+	 * [updateNotionApp] draws: saving these connects nothing, and clearing them does not
+	 * unlink the members whose past consent already filled `github_accounts`.
+	 *
+	 * Same null-means-leave-alone rule for the secret, and for the same reason: a screen
+	 * that only ever learns a secret exists cannot re-send its value, so saving the id
+	 * must not wipe it.
+	 */
+	fun updateGithubApp(clientId: String?, clientSecretEnc: ByteArray?) {
+		InstanceSettings.update({ InstanceSettings.id eq true }) {
+			it[githubClientId] = clientId
+			if (clientSecretEnc != null) it[githubClientSecretEnc] = clientSecretEnc
+		}
 	}
 
 	/**

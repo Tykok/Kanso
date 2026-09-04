@@ -23,6 +23,20 @@ export const ACTIVITY_KINDS = [
   "carried_over",
   "health_posted",
   "estimated",
+  /**
+   * `V36`'s kind, for the link between a pull request and a ticket. The transition a merge
+   * causes is an ordinary `status_changed` with `payload.via_pr`, not this — see
+   * `activitySentence`.
+   *
+   * Adding it here is what makes `activitySentence`'s `switch` demand a branch for it: the
+   * switch has no `default`, so a kind in this list with no case is a type error and a kind
+   * *missing* from this list is a runtime one. Three of the server's eighteen are still
+   * missing — `token_revoked`, `field_set` and the `"user"` entity — and a row of one of
+   * those would make `phrase` undefined, then throw on `phrase[0]` when there is no actor.
+   * Not fixed here because it is a different feature's row and this list is the fence, not
+   * the field; recorded so the next person adding a kind knows the fence exists.
+   */
+  "pull_request_linked",
 ] as const;
 
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];

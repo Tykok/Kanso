@@ -84,12 +84,23 @@ object InstanceSettings : Table("instance_settings") {
 	val notionWorkspaceName = text("notion_workspace_name").nullable()
 	val notionBotId = text("notion_bot_id").nullable()
 
-	// The one of `V36`'s six GitHub columns anything reads today. The other five — app id,
-	// slug, client id, client secret, private key — are the App Manifest flow's, and the
-	// flow that writes them is part three of the design; a column mapped here that no code
-	// reads is a column the next reader has to check for callers before touching. This one
-	// is read because the webhook's HMAC is the only guard on an unauthenticated endpoint
-	// that writes rows, so it has to work before any of the rest of the door exists.
+	// Three of `V36`'s six GitHub columns. The webhook secret is read because the HMAC is
+	// the only guard on an unauthenticated endpoint that writes rows; the client pair is
+	// read because it is what asks a *member* for consent — the user-to-server flow that
+	// fills `github_accounts` and puts a name on the feed's line.
+	//
+	// The remaining three — app id, slug, private key — are still unmapped, and
+	// deliberately: they are what signs an *installation* JWT, which nothing does until the
+	// App writes to GitHub, and a column mapped here that no code reads is a column the
+	// next reader has to check for callers before touching.
+	//
+	// Three names, three credentials, and that is why they are added a group at a time
+	// rather than all six at once. `V36` calls the six "one group", and the rule it is
+	// stating is that halves of *one* credential must not come from different places; a
+	// client id married to a private key is not a half of anything. `InstanceSettingsService`
+	// keeps each pair together, which is where the rule bites.
+	val githubClientId = text("github_client_id").nullable()
+	val githubClientSecretEnc = binary("github_client_secret_enc").nullable()
 	val githubWebhookSecretEnc = binary("github_webhook_secret_enc").nullable()
 
 	val createdAt = timestampWithTimeZone("created_at")

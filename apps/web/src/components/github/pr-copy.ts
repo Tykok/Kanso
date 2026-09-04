@@ -64,6 +64,40 @@ export function prLinkExplanation(pr: PullRequest): string {
 }
 
 /**
+ * Who opened it, named if they have consented and handled if they have not.
+ *
+ * Three answers and not two, because "no author at all" is a real row —
+ * `github_pull_requests.author_login` is nullable, so a pull request whose author GitHub
+ * did not name has nothing to show and shows nothing rather than an empty `@`.
+ *
+ * The member's display name **replaces** the handle rather than sitting beside it, and
+ * that is the one judgement in this function. `Elie · @tykok` is the honest rendering and
+ * it is also two things to read on a row that already carries a repository, a number, a
+ * title and a pill; the handle stays available as the row's `title` — see
+ * [prLinkExplanation]'s sibling below — and what a person scanning a ticket wants is the
+ * name of somebody they work with.
+ *
+ * `undefined` and not `""` for the absent case, so a caller has to branch rather than
+ * render an empty element that collapses a flex gap onto the pill.
+ */
+export function prAuthorLabel(pr: PullRequest): string | undefined {
+  if (pr.author != null) return pr.author.displayName;
+  if (pr.authorLogin != null) return `@${pr.authorLogin}`;
+  return undefined;
+}
+
+/**
+ * The GitHub account behind a named member, for the row's tooltip.
+ *
+ * Only when both are known and only because the name replaced the handle: a reader who
+ * needs to know *which* GitHub account "Elie" is has nowhere else on the row to learn it.
+ */
+export function prAuthorTitle(pr: PullRequest): string | undefined {
+  if (pr.author == null || pr.authorLogin == null) return undefined;
+  return `${pr.author.displayName} is @${pr.authorLogin} on GitHub`;
+}
+
+/**
  * Repository first, then descending number — the same order the server sends, restated
  * here so a client that merges two responses cannot draw them in arrival order.
  */

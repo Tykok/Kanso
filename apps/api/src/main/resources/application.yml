@@ -92,6 +92,18 @@ kanso:
       client-id: ${GITHUB_CLIENT_ID:}
       client-secret: ${GITHUB_CLIENT_SECRET:}
 
+  # The GitHub *App*, which is not kanso.auth.github above. That one signs people in and
+  # reads GITHUB_CLIENT_ID; this one is installed on repositories, asks each member for
+  # their own consent, and reads KANSO_GITHUB_CLIENT_ID. The names differ by a prefix and
+  # the values differ entirely — pinning one and expecting the other presents as "GitHub
+  # says the client id is wrong" with two correct client ids in the process.
+  #
+  # Both halves of the pair or neither: see KansoProperties.Github.appConfigured.
+  github:
+    client-id: ${KANSO_GITHUB_CLIENT_ID:}
+    client-secret: ${KANSO_GITHUB_CLIENT_SECRET:}
+    webhook-secret: ${KANSO_GITHUB_WEBHOOK_SECRET:}
+
   # Bearer tokens a member creates for a CLI, an SDK or a webhook signer. There is no
   # enable flag: the door is the feature, and an instance that did not want it would
   # simply have no rows in api_tokens.

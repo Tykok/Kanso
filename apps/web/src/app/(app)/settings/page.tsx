@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AccountSection } from "@/components/settings/account-section";
 import { AgentsSection } from "@/components/settings/agents-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
 import { SettingsNote } from "@/components/settings/field";
+import { GithubSection } from "@/components/settings/github-section";
 import { NotionPeopleSection } from "@/components/settings/notion-people-section";
 import { PeopleSection } from "@/components/settings/people-section";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
@@ -21,6 +23,7 @@ type SectionId =
   | "velocity"
   | "people"
   | "connections"
+  | "github"
   | "agents"
   | "tokens";
 
@@ -31,6 +34,7 @@ const SECTION_NAMES: Record<SectionId, string> = {
   velocity: "Velocity",
   people: "People",
   connections: "Connections",
+  github: "GitHub",
   agents: "Agents",
   tokens: "API tokens",
 };
@@ -38,7 +42,23 @@ const SECTION_NAMES: Record<SectionId, string> = {
 export default function SettingsPage() {
   const me = useMe();
   const setup = useSetupState();
-  const [section, setSection] = useState<SectionId>("appearance");
+  /**
+   * `?section=` decides which tab opens, and only the initial one.
+   *
+   * An OAuth callback comes back as a fresh page load from another origin — it cannot ask
+   * this component to change tabs, so the section has to be readable from the URL or the
+   * member lands on Appearance and never sees whether their link worked. Read once as the
+   * `useState` initialiser rather than as a synchronised value, because pressing a tab
+   * afterwards must not have to write to the URL: the query string is where this screen
+   * was *entered*, not what it currently shows.
+   *
+   * An unknown value falls back to Appearance rather than rendering nothing, which is what
+   * a hand-typed or stale link deserves.
+   */
+  const requested = useSearchParams().get("section");
+  const [section, setSection] = useState<SectionId>(
+    requested !== null && requested in SECTION_NAMES ? (requested as SectionId) : "appearance",
+  );
 
   /**
    * The sign-in redirect this page ran from an effect is the shell's gate now, and so is
@@ -68,12 +88,28 @@ export default function SettingsPage() {
         "velocity",
         "people",
         "connections",
+        "github",
         "agents",
         "tokens",
       ]
     : // A member has nothing to manage about other people, but still sees the
       // connections read-only: the mirror affects their tickets.
-      ["appearance", "shortcuts", "account", "velocity", "connections", "agents", "tokens"];
+      //
+      // "github" is in both arrays, and for the reason "agents", "velocity", "shortcuts"
+      // and "tokens" are: the grant belongs to the person who made it. A member's GitHub
+      // link is theirs to make and theirs to withdraw, and there is no instance-wide
+      // version of it for an admin to administer — the App they consent *through* is the
+      // one admin-only half, and it is gated inside the section rather than by this array.
+      [
+        "appearance",
+        "shortcuts",
+        "account",
+        "velocity",
+        "connections",
+        "github",
+        "agents",
+        "tokens",
+      ];
 
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 overflow-y-auto px-5 pb-16 pt-6">
@@ -107,6 +143,7 @@ export default function SettingsPage() {
           {section === "shortcuts" && <ShortcutsSection />}
           {section === "velocity" && <VelocitySection />}
           {section === "people" && canConfigure && <PeopleSection />}
+          {section === "github" && <GithubSection canConfigure={canConfigure} />}
           {section === "agents" && <AgentsSection />}
           {section === "tokens" && <TokensSection />}
           {section === "connections" && (

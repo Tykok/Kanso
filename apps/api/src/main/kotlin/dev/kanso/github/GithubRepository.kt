@@ -3,6 +3,7 @@ package dev.kanso.github
 import dev.kanso.repo.text
 import dev.kanso.repo.timestampOrNull
 import dev.kanso.repo.uuid
+import dev.kanso.repo.uuidOrNull
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
@@ -250,14 +251,27 @@ class GithubRepository(private val jdbc: JdbcClient) {
 	 * and field values: a list of 200 tickets costs one more query than it did before this
 	 * feature, not 200. Ordered newest-first by the pull request's own number within a
 	 * repository, so the row a person is waiting on is at the top.
+	 *
+	 * **The `LEFT JOIN` on `github_accounts` is what a member's consent buys**, and it is a
+	 * join rather than a second query because it costs nothing: `github_accounts_login_idx`
+	 * is the functional index `V36` created for exactly this lookup. `LEFT` and not `INNER`
+	 * is the load-bearing word — an inner join would drop every pull request whose author
+	 * never linked, which is most of them, and turn a missing name into a missing row.
+	 *
+	 * Matched on `lower(github_login)` and not on `github_user_id`, because a
+	 * `github_pull_requests` row carries the author's *login* and not their id — the id
+	 * path is the one an inbound payload takes, and it lives in
+	 * `GithubAccountRepository.memberFor`. Lowercased on both sides because GitHub logins
+	 * are case-insensitive and a payload's capitalisation is not stable enough to join on.
 	 */
 	fun forTickets(ticketIds: Collection<UUID>): Map<UUID, List<TicketPullRequest>> {
 		if (ticketIds.isEmpty()) return emptyMap()
 		val rows = jdbc.sql(
 			"""
-			SELECT tpr.ticket_id, tpr.closes, tpr.linked_by, pr.*
+			SELECT tpr.ticket_id, tpr.closes, tpr.linked_by, ga.user_id AS author_user_id, pr.*
 			FROM ticket_pull_requests tpr
 			JOIN github_pull_requests pr ON pr.id = tpr.pull_request_id
+			LEFT JOIN github_accounts ga ON lower(ga.github_login) = lower(pr.author_login)
 			WHERE tpr.ticket_id = ANY (:ids)
 			ORDER BY pr.repo_full_name, pr.number DESC
 			""".trimIndent()
@@ -270,6 +284,9 @@ class GithubRepository(private val jdbc: JdbcClient) {
 					// The *presence* of a member, never the id: nothing downstream needs to
 					// know which member drew a link, only that automation must not undo it.
 					linkedByMember = rs.getObject("linked_by") != null,
+					// Here the id *is* wanted, because the answer is a person to name rather
+					// than a rule to apply. Null for an author who never consented.
+					authorUserId = rs.uuidOrNull("author_user_id"),
 				)
 			}
 			.list()
