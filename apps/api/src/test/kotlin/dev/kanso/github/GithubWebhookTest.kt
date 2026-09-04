@@ -216,12 +216,24 @@ class GithubWebhookTest : MockMvcTest() {
 	}
 
 	/**
-	 * **A redelivery produces nothing.** The state would survive being applied twice — the
-	 * upsert keys on `(repo_full_name, number)` — and the feed would not, which is what
-	 * `github_deliveries` is for and the whole of what it is for.
+	 * **A redelivery produces nothing** — the outcome the owner asked for, asserted end to
+	 * end.
 	 *
-	 * Red without `firstDelivery`: two `status_changed` rows saying the ticket reached Done
-	 * twice, and a history somebody has to explain.
+	 * What this test does *not* prove is worth writing down, because it took disabling
+	 * `firstDelivery` to find out: **it stays green without the delivery table.** A
+	 * sequential replay is already inert for two reasons that have nothing to do with
+	 * `github_deliveries` — guard one refuses a move to a rank the ticket already holds, so
+	 * the second merge cannot write a second `status_changed`; and
+	 * `GithubRepository.linkedTickets` refuses a second `pull_request_linked` for a link
+	 * that already exists.
+	 *
+	 * So `V36`'s sentence — *the feed pays for this table* — is right about the danger and
+	 * one layer off about who stops it in the sequential case. What the table actually earns
+	 * its keep against is **concurrent** redelivery: two deliveries of one event in flight
+	 * at once, both reading the ticket before either writes, which is exactly why
+	 * `firstDelivery` is an insert-or-skip rather than a `SELECT` then an `INSERT` and is
+	 * not something a single-threaded test can produce. The isolating assertion is
+	 * [a second delivery bearing an id already seen is dropped whatever it carries] below.
 	 */
 	@Test
 	fun `a replayed delivery writes nothing twice`() {
@@ -243,6 +255,34 @@ class GithubWebhookTest : MockMvcTest() {
 			activityOf(ActivityKind.PULL_REQUEST_LINKED).size,
 			"and one pull_request_linked, not one per delivery",
 		)
+	}
+
+	/**
+	 * The delivery id, isolated — and it is the only test here that can fail if
+	 * `firstDelivery` is removed.
+	 *
+	 * **The payload pair is deliberately unrealistic**, and that is the whole design of the
+	 * test: GitHub never reuses a delivery id for a different pull request. But a *realistic*
+	 * replay is absorbed by guard one before the delivery table is ever consulted, so a test
+	 * built from one cannot fail and therefore proves nothing. Handing the second call an
+	 * effect that guard one has no opinion about — a different pull request, number 419 — is
+	 * what makes the delivery id the only thing standing between it and a written row.
+	 *
+	 * Red without `firstDelivery`: 419 is stored and linked.
+	 */
+	@Test
+	fun `a second delivery bearing an id already seen is dropped whatever it carries`() {
+		val seen = UUID.randomUUID()
+		assertEquals(204, deliver("pull_request", payload("pull_request_opened"), deliveryId = seen).status)
+		assertNotNull(pullRequest(), "the first delivery was handled")
+
+		assertEquals(
+			204,
+			deliver("pull_request", payload("pull_request_mention"), deliveryId = seen).status,
+			"a redelivery is answered exactly like a first delivery, which is what stops it being an oracle",
+		)
+
+		assertNull(pullRequest(419), "and nothing it carried was written, because its id had been seen")
 	}
 
 	/** `synchronize` changes no field the parser reads and no field the row stores. */
