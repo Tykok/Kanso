@@ -27,6 +27,12 @@ kanso:
   # drift.
   github:
     webhook-secret: a-test-webhook-secret-and-nothing-more
+    # `GithubDeliverySweeper` off for the reason the trash sweep below is off, which `V36`
+    # asks for by name: a scheduler pruning `github_deliveries` mid-test would delete the
+    # very row a redelivery assertion depends on colliding with.
+    deliveries:
+      sweep:
+        enabled: false
 
   # Same reason, one screen along: a sweep firing mid-test would empty a countdown a
   # test is asserting about. `TrashServiceTest` calls `TrashService.empty` itself.
