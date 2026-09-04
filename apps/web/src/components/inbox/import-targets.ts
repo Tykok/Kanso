@@ -63,10 +63,16 @@ export const PEOPLE_FIELDS: readonly ImportField[] = ["assignees", "lead"];
 export const ROW_GRID = "grid-cols-[1fr_130px_150px]";
 
 /**
- * "248 pages", or "2000+ pages" when the server stopped counting at its bound.
+ * "248 pages", "1 page", or "2000+ pages" when the server stopped counting at its bound.
  *
  * The `+` is the whole reason `pagesExact` is on the wire: Notion answers no total for a
  * data source, so a count is a walk, and a bounded walk that printed a bare number would
  * put a wrong one in front of a confirm button.
+ *
+ * The singular is right only for an **exact** one, which is why the condition reads both
+ * arguments and not just the number. `1+` is a lower bound rather than a count — "1+ page"
+ * would promise the very thing the `+` exists to deny — and `0 pages` is a count of none,
+ * not a quantity of one. So one base holding one page is the only case that loses its `s`.
  */
-export const pageCount = (pages: number, exact: boolean) => `${pages}${exact ? "" : "+"} pages`;
+export const pageCount = (pages: number, exact: boolean) =>
+  `${pages}${exact ? "" : "+"} ${exact && pages === 1 ? "page" : "pages"}`;
