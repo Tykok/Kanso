@@ -35,7 +35,7 @@ test("scenario 5 — the keyboard does exactly what it did, less j and k", async
   const team = await seedTeam(api, { name: unique("Keys"), key: uniqueKey() });
   const first = unique("Alpha ticket");
   const second = unique("Beta ticket");
-  await seedTicket(api, { teamId: team.id, title: first });
+  const alpha = await seedTicket(api, { teamId: team.id, title: first });
   const beta = await seedTicket(api, { teamId: team.id, title: second });
   await api.dispose();
   // The seeded rows' sort key is still being rewritten behind us — see `settled.ts`.
@@ -48,26 +48,34 @@ test("scenario 5 — the keyboard does exactly what it did, less j and k", async
   await expect(rows).toHaveCount(2);
   const selected = page.locator('[data-testid="ticket-row"][data-selected="true"]');
 
-  // n / p and ↓ / ↑ move the cursor. The list orders by most-recently-updated
-  // first, so `second` — created after `first` — is the row on top; "down" moves
-  // towards `first`, "up" moves back towards `second`.
-  await ticketRow(page, second).click();
-  await expect(selected).toContainText(second);
+  // n / p and ↓ / ↑ move the cursor, down and up between the two rows in the order the
+  // list drew them. Which one it put on top is not ours to assume: the sort key is
+  // `updated_at`, and the mirror's bookkeeping write rewrites it on both seeded rows
+  // within a couple of milliseconds, in whichever order the drain happened to take them
+  // — 8 pairs out of 46 came back inverted on a populated instance. Read the wrong way
+  // round, "down" starts on the bottom row and moves nowhere, and this test says the
+  // keyboard is broken. Assuming "newest first" is what made it, and the one below,
+  // green by luck rather than by behaviour. See `settled.ts`.
+  const above = (await rows.nth(0).textContent())?.includes(second) ? beta : alpha;
+  const under = above === beta ? alpha : beta;
+
+  await ticketRow(page, above.title).click();
+  await expect(selected).toContainText(above.title);
   await page.keyboard.press("n");
-  await expect(selected).toContainText(first);
+  await expect(selected).toContainText(under.title);
   await page.keyboard.press("p");
-  await expect(selected).toContainText(second);
+  await expect(selected).toContainText(above.title);
   await page.keyboard.press("ArrowDown");
-  await expect(selected).toContainText(first);
+  await expect(selected).toContainText(under.title);
   await page.keyboard.press("ArrowUp");
-  await expect(selected).toContainText(second);
+  await expect(selected).toContainText(above.title);
 
   // And the two that were dropped do nothing at all. Asserted as a *non*-event, because a
   // key that still worked would be indistinguishable from one nobody had got round to
   // removing — and would mean the help sheet, which no longer lists them, was lying.
   await page.keyboard.press("j");
   await page.keyboard.press("k");
-  await expect(selected).toContainText(second);
+  await expect(selected).toContainText(above.title);
 
   // 1..6 walk the status vocabulary in its natural order.
   await page.keyboard.press("2");
@@ -77,11 +85,11 @@ test("scenario 5 — the keyboard does exactly what it did, less j and k", async
   await page.keyboard.press("1");
   await expect(selected.getByTestId("status-pill")).toHaveText("Backlog");
 
-  // Enter opens the selected ticket — `second`/`beta`, where the moves above left it.
+  // Enter opens the selected ticket — the top row, where the moves above left it.
   // `.panel-header` moved with task 7's restyle: the header is now Tailwind
   // utilities with no class of its own, so the hook is `data-testid` instead.
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("panel-header")).toContainText(beta.identifier);
+  await expect(page.getByTestId("panel-header")).toContainText(above.identifier);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("panel-header")).toHaveCount(0);
 
@@ -176,32 +184,40 @@ test("scenario 5 — the keyboard does exactly what it did, less j and k", async
 test("scenario 5 — a bare key is dispatched once, not once per shell", async ({ browser }) => {
   const api = await apiAs(ADMIN);
   const team = await seedTeam(api, { name: unique("Once"), key: uniqueKey() });
-  const top = unique("Row one");
-  const middle = unique("Row two");
-  const bottom = unique("Row three");
-  // Created oldest first: the list orders most-recently-updated first, so the reading
-  // order down the screen is the reverse of the order they were made in.
-  await seedTicket(api, { teamId: team.id, title: bottom });
-  await seedTicket(api, { teamId: team.id, title: middle });
-  await seedTicket(api, { teamId: team.id, title: top });
+  // Named in the order they are made, and nothing here depends on where the list puts
+  // them: the sort key is rewritten behind us in an order we do not choose, so the two
+  // moves below are asserted against the rows by position instead. See the test above.
+  const one = unique("Row one");
+  const two = unique("Row two");
+  const three = unique("Row three");
+  await seedTicket(api, { teamId: team.id, title: one });
+  await seedTicket(api, { teamId: team.id, title: two });
+  await seedTicket(api, { teamId: team.id, title: three });
   await api.dispose();
   // The seeded rows' sort key is still being rewritten behind us — see `settled.ts`.
   await mirrorQueueDrained();
 
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: team.name, exact: true }).click();
-  await expect(page.getByTestId("ticket-row")).toHaveCount(3);
+  const rows = page.getByTestId("ticket-row");
+  await expect(rows).toHaveCount(3);
 
-  const selected = page.locator('[data-testid="ticket-row"][data-selected="true"]');
-  await ticketRow(page, top).click();
-  await expect(selected).toContainText(top);
+  // One press, one row — which is the whole claim. A second dispatcher would land the
+  // cursor two rows down, and with three rows there is somewhere for it to land.
+  const first = rows.nth(0);
+  const next = rows.nth(1);
+  await first.click();
+  await expect(first).toHaveAttribute("data-selected", "true");
 
   await page.keyboard.press("n");
-  await expect(selected).toContainText(middle);
+  await expect(next).toHaveAttribute("data-selected", "true");
   await page.keyboard.press("p");
-  await expect(selected).toContainText(top);
+  await expect(first).toHaveAttribute("data-selected", "true");
 
-  // And the same for a key that writes: one press, one status.
+  // And the same for a key that writes: one press, one status. Asserted through the
+  // cursor and not through position 0 — the list groups by status, so a row that has just
+  // been moved to `In progress` is no longer where it was pressed.
+  const selected = page.locator('[data-testid="ticket-row"][data-selected="true"]');
   await page.keyboard.press("3");
   await expect(selected.getByTestId("status-pill")).toHaveText("In progress");
 });

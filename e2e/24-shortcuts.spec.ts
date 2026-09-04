@@ -7,7 +7,6 @@ import {
   seedInstance,
   seedTeam,
   seedTicket,
-  ticketRow,
   unique,
   uniqueKey,
 } from "./support";
@@ -127,15 +126,24 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
 
     await page.goto("/");
     await page.getByRole("button", { name: team.name, exact: true }).click();
-    const selected = page.locator('[data-testid="ticket-row"][data-selected="true"]');
-    // Newest first, so `second` is on top and "down" moves towards `first`.
-    await ticketRow(page, second).click();
-    await expect(selected).toContainText(second);
+    const rows = page.getByTestId("ticket-row");
+    await expect(rows).toHaveCount(2);
+    // Down and up between the two rows the list actually drew, rather than between the
+    // titles this test seeded. Which of the two is on top is not ours to know: the sort
+    // key is `updated_at`, and the mirror's bookkeeping write rewrites it on both seeded
+    // rows within a couple of milliseconds, in whichever order the drain took them —
+    // measured 8 pairs inverted out of 46 on a populated instance. Asked by title, "down"
+    // then starts on the bottom row, moves nowhere, and reads as a remap that never
+    // reached the keyboard. See `settled.ts`, which is what this used to lean on.
+    const top = rows.nth(0);
+    const below = rows.nth(1);
+    await top.click();
+    await expect(top).toHaveAttribute("data-selected", "true");
     await page.keyboard.press("j");
-    await expect(selected).toContainText(first);
+    await expect(below).toHaveAttribute("data-selected", "true");
     // The default it was added to still answers, which is the half a replace would have lost.
     await page.keyboard.press("p");
-    await expect(selected).toContainText(second);
+    await expect(top).toHaveAttribute("data-selected", "true");
 
     // The `?` sheet reads the effective bindings, so it now lists all three spellings.
     // This is the property the whole slice is for: the sheet is the authority on which
@@ -165,10 +173,13 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
     await cleared;
     await page.goto("/");
     await page.getByRole("button", { name: team.name, exact: true }).click();
-    await ticketRow(page, second).click();
-    await expect(selected).toContainText(second);
+    // From the top row again, and for a second reason here: on the bottom row a `j` that
+    // still answered would move nowhere, so the assertion would pass over exactly the
+    // failure it exists to catch.
+    await top.click();
+    await expect(top).toHaveAttribute("data-selected", "true");
     await page.keyboard.press("j");
-    await expect(selected).toContainText(second);
+    await expect(top).toHaveAttribute("data-selected", "true");
   } finally {
     await resetShortcuts();
   }
