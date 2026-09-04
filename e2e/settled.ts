@@ -36,44 +36,6 @@ import { ADMIN, apiAs } from "./support";
  * application, not in these specs, and it needs the trigger to leave `updated_at` alone
  * for a bookkeeping write. That is a migration and a ticket of its own.
  */
-/**
- * Waits until the server's own copy of the reader's keyboard satisfies [stored].
- *
- * `useSavePreferences` is optimistic: `onMutate` writes the `/api/me` cache before the
- * `PUT` is sent, so a key appearing in the table is the *guess* appearing, not the row
- * being saved. `24-shortcuts.spec.ts` reloads immediately after asserting that — which is
- * the right intent, and says so ("reloading is what says it was stored rather than
- * drawn") — but a reload issued the moment the guess is drawn can outrun the request that
- * would have made it true, and then the reload reads the preferences from before the
- * capture. Two assertions in that file fail exactly there, one per reload.
- *
- * So the reload happens once the server agrees, which is the thing the reload was put
- * there to check. [stored] is asked of `preferences.shortcuts` as the server holds it.
- */
-export async function preferencesStored(
-  stored: (shortcuts: Record<string, string[]>) => boolean,
-  what: string,
-): Promise<void> {
-  const api = await apiAs(ADMIN);
-  try {
-    await expect
-      .poll(
-        async () => {
-          const response = await api.get("/api/me");
-          if (!response.ok()) return false;
-          const body = (await response.json()) as {
-            preferences?: { shortcuts?: Record<string, string[]> };
-          };
-          return stored(body.preferences?.shortcuts ?? {});
-        },
-        { message: `The server never stored ${what}`, timeout: 15_000, intervals: [50] },
-      )
-      .toBe(true);
-  } finally {
-    await api.dispose();
-  }
-}
-
 export async function mirrorQueueDrained(): Promise<void> {
   const api = await apiAs(ADMIN);
   try {

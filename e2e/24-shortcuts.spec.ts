@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mirrorQueueDrained, preferencesStored } from "./settled";
+import { mirrorQueueDrained } from "./settled";
 import {
   ADMIN,
   apiAs,
@@ -114,13 +114,7 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
     await expect(moveDown.getByText("↓", { exact: true })).toBeVisible();
     await expect(moveDown.getByText("j", { exact: true })).toBeVisible();
     // No Save button anywhere: the write went in the background, like every other
-    // preference. Reloading is what says it was stored rather than drawn — once the
-    // server has it, because the assertion above is satisfied by the optimistic guess
-    // and a reload can outrun the request that makes it true. See `settled.ts`.
-    await preferencesStored(
-      (shortcuts) => (shortcuts["ticket.moveDown"] ?? []).includes("j"),
-      "the captured `j`",
-    );
+    // preference. Reloading is what says it was stored rather than drawn.
     await page.reload();
     await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
     await expect(shortcutRow(page, "ticket.moveDown").getByText("j", { exact: true })).toBeVisible();
@@ -273,12 +267,6 @@ test("scenario 24 — a stored override that collided is named, with a way to di
     // stealing on the reader's behalf. `Discard` is theirs to press.
     await strip.getByRole("button", { name: "Discard" }).click();
     await expect(strip).toHaveCount(0);
-    // The strip leaving is the optimistic guess again, so the same wait: without it the
-    // reload can read the override back and the discard reads as not having happened.
-    await preferencesStored(
-      (shortcuts) => !("ticket.delete" in shortcuts),
-      "the discarded override",
-    );
     await page.reload();
     await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
     await expect(page.getByTestId("shortcut-rejected")).toHaveCount(0);
