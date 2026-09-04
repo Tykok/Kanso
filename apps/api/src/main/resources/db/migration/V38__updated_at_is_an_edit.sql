@@ -60,7 +60,7 @@
 -- ---------------------------------------------------------------------------
 -- The shape.
 --
--- One new function, and `set_updated_at` is left exactly as `V2` wrote it. The eleven other
+-- One new function, and `set_updated_at` is left exactly as `V2` wrote it. The ten other
 -- tables that call it — `comments`, `cycles`, `saved_views`, `outbound_jobs`,
 -- `notion_request_bases` and the rest — are not claiming a person edited anything; their
 -- `updated_at` means "this row was written", which is all they have ever needed. Only the
