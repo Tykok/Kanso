@@ -42,6 +42,19 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      # The GitHub *App* — installed on repositories, one HMAC on `/api/github/webhook`.
+      # Three variables and not one, because they are two credentials: `application.yml`
+      # explains the prefix that separates them from the OAuth pair two lines up, and
+      # `InstanceSettingsService` explains why the webhook secret falls back alone.
+      #
+      # Here because the application has read them since `V36` and nothing else can set
+      # them: there is no settings endpoint for the webhook secret, so without this line an
+      # instance run from compose refuses every delivery with a 401 and no way to fix it.
+      # Left empty, which is the off switch — a delivery arriving at an instance with no
+      # secret is answered 401, deliberately indistinguishable from a bad signature.
+      KANSO_GITHUB_CLIENT_ID: ${KANSO_GITHUB_CLIENT_ID:-}
+      KANSO_GITHUB_CLIENT_SECRET: ${KANSO_GITHUB_CLIENT_SECRET:-}
+      KANSO_GITHUB_WEBHOOK_SECRET: ${KANSO_GITHUB_WEBHOOK_SECRET:-}
       # Requests one API token may make per minute. Counted in the api container's
       # own heap, so this is a limit per replica and not per instance: run two and a
       # token gets twice the quota. `ApiTokenRateLimit` is where that assumption is

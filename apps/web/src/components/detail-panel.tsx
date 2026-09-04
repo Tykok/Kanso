@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
 import { Menu, type MenuItem } from "./menu";
+import { ActivityFeed } from "./views/activity-feed";
 import { TicketIdentifier } from "./pills";
 import { Backdrop } from "./overlays";
 import { TicketDurationNote } from "./ticket-duration";
@@ -247,6 +248,15 @@ export function DetailPanel({
         <span className="text-11 text-faint">
           {ticket.mirror.notionPageId ? "Mirrored in Notion" : "Not in Notion yet"}
         </span>
+
+        {/* Last of everything, because it is the only part of the panel that is about the
+            past — a reader opening a ticket wants its state, and only then how it got here.
+            `entityType="ticket"` was written into `ActivityController` and gated there with
+            `access.requireReadable` well before anything drew it; until this line, `project
+            -page.tsx` was the sole mount and no ticket's activity row appeared anywhere in
+            the application. `ActivityFeed` draws nothing at all while the feed is in flight,
+            refused or empty, which is what lets it sit here with no condition around it. */}
+        <ActivityFeed entityType="ticket" entityId={ticket.id} />
       </div>
     </Backdrop>
   );

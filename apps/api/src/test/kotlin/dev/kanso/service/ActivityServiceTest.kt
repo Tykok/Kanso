@@ -285,6 +285,102 @@ class ActivityServiceTest : PostgresTest() {
 		assertEquals("Three", rows.first().payload["to"])
 	}
 
+	/**
+	 * `KAN-84`. The feed's copy was written and tested against `payload.ref` and a grep found
+	 * no writer for it anywhere in the API, so every sentence said "a ticket". These four
+	 * assert the resolution, not the sentence — the sentence is `project-copy.test.ts`.
+	 */
+	@Test
+	fun `every row of a ticket's feed is named, though nothing writes a ref`() {
+		val ticket = ticket()
+		tickets.patch(actor, ticket.id, TicketPatch(status = TicketStatus.DONE, title = "Named"))
+
+		val rows = log(ticket.id)
+
+		assertEquals(3, rows.size, "the status, the title, and the creation")
+		assertEquals(
+			listOf("${team.key}-${ticket.number}"),
+			rows.map { it.payload["ref"] }.distinct(),
+			"resolved for the whole page in one pass, so no row is left saying `a ticket`",
+		)
+	}
+
+	/**
+	 * The half that a write-time `ref` could not have delivered: these rows predate the
+	 * resolution by nothing at all in a test, but by every row already in the table in
+	 * production — and `KAN-81`'s precedent is not to rebuild history from a guess.
+	 */
+	@Test
+	fun `a row written with an empty payload is named all the same`() {
+		val ticket = ticket()
+		activity.record(ActivityEntity.TICKET, ticket.id, null, ActivityKind.MIRROR_PUSHED)
+
+		val row = log(ticket.id).first { it.kind == ActivityKind.MIRROR_PUSHED }
+
+		assertEquals("${team.key}-${ticket.number}", row.payload["ref"])
+	}
+
+	/** A renamed team renames its history with it, which is the whole reason this is a read. */
+	@Test
+	fun `re-keying the team re-names the rows already logged`() {
+		val ticket = ticket()
+		tickets.patch(actor, ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		val newKey = "R${UUID.randomUUID().toString().take(4).uppercase()}"
+
+		teams.update(actor, team.id, "Logged", newKey, null)
+
+		assertEquals(
+			listOf("$newKey-${ticket.number}"),
+			log(ticket.id).map { it.payload["ref"] }.distinct(),
+			"a stored ref would have left every line above the rename naming a key nobody has",
+		)
+	}
+
+	/**
+	 * A draft has no identifier to resolve, and the absent key is what the feed's own
+	 * fallback reads: "created a ticket", not "created null".
+	 */
+	@Test
+	fun `a draft's rows carry no ref at all, rather than a placeholder`() {
+		val draft = tickets.create(
+			actor = actor,
+			teamId = null,
+			title = "Unclaimed",
+			description = null,
+			status = TicketStatus.TODO,
+			priority = TicketPriority.NONE,
+			start = null,
+			due = null,
+			projectId = null,
+			assigneeIds = emptyList(),
+			docIds = emptyList(),
+		).ticket
+
+		val row = log(draft.id).single()
+
+		assertNull(row.payload["ref"])
+		assertTrue("ref" !in row.payload, "absent, so the mapper omits it and no client sees a null")
+	}
+
+	/**
+	 * `entity_type` is what decides, never the shape of the id.
+	 *
+	 * The row here is a *project's*, keyed on an id that also happens to name a ticket —
+	 * which is the only way to write this assertion as something that can fail, since a
+	 * project's feed otherwise holds no id `tickets` would recognise. Drop the entity filter
+	 * in `refsFor` and this row starts claiming a ticket's name; a project feed also asks
+	 * `tickets` and `teams` nothing at all today, and that is the half no row can show.
+	 */
+	@Test
+	fun `a feed that is not a ticket's carries no ref`() {
+		val ticket = ticket()
+		activity.record(ActivityEntity.PROJECT, ticket.id, actor.id, ActivityKind.MIRROR_PUSHED)
+
+		val row = activity.forEntity(ActivityEntity.PROJECT, ticket.id).single()
+
+		assertTrue("ref" !in row.payload, "a project's row is not about a ticket, whatever its id names")
+	}
+
 	@Test
 	fun `another ticket's log is not this ticket's log`() {
 		val mine = ticket("Mine")
