@@ -393,7 +393,9 @@ data class TicketResponse(
 				archived = t.archived,
 				// UUID keys as text, because a JSON object has no other kind.
 				customFields = detail.customFields.entries.associate { (id, value) -> id.toString() to value },
-				pullRequests = detail.pullRequests.map(PullRequestDto::of),
+				pullRequests = detail.pullRequests.map {
+					PullRequestDto.of(it, it.authorUserId?.let(detail.pullRequestAuthors::get))
+				},
 				branchName = detail.branchName,
 				mirror = MirrorDto(t.mirror.notionPageId, t.mirror.syncState.wire, t.mirror.notionSyncedAt),
 				createdAt = t.createdAt,
@@ -427,6 +429,26 @@ data class PullRequestDto(
 	/** Absent when nobody has reviewed yet, which the pill reads as "In review". */
 	val reviewState: String?,
 	val authorLogin: String?,
+	/**
+	 * The Kanso member behind [authorLogin], when that member has linked their GitHub
+	 * account — and **absent, not null**, when they have not.
+	 *
+	 * `KAN-74`'s half of the feature, in the one place a GitHub-authored thing is drawn
+	 * today. [authorLogin] stays exactly as it was and is what the row shows on its own:
+	 * an author nobody has linked reads `@tykok`, which is the documented fallback and not
+	 * a degradation. This is the name that replaces it once somebody consents.
+	 *
+	 * The shared mapper is `default-property-inclusion: non_null`, so this key is *missing*
+	 * from the JSON rather than `null` in it, and the TypeScript mirror therefore spells it
+	 * `author?: User` and never `author: User | null`. That distinction is not pedantry:
+	 * a `| null` type here is a lie no compiler catches, and the last one produced a
+	 * "Last used Invalid Date" on a screen.
+	 *
+	 * A whole [UserResponse] and not a bare display name, because it is the shape every
+	 * other person on the wire has — `ActivityResponse.actor` included — and a screen that
+	 * wants an avatar beside the name should not need a second endpoint to get one.
+	 */
+	val author: UserResponse?,
 	val headRef: String,
 	/** Whether this pull request may move the ticket, as opposed to merely naming it. */
 	val closes: Boolean,
@@ -440,7 +462,12 @@ data class PullRequestDto(
 	val linkedByMember: Boolean,
 ) {
 	companion object {
-		fun of(link: TicketPullRequest): PullRequestDto {
+		/**
+		 * @param author the member [TicketPullRequest.authorUserId] names, or null when the
+		 *   author never linked their GitHub account — which is the ordinary case, and the
+		 *   one that leaves the row reading `@login` exactly as it did before.
+		 */
+		fun of(link: TicketPullRequest, author: User?): PullRequestDto {
 			val pr = link.pullRequest
 			return PullRequestDto(
 				repo = pr.repoFullName,
@@ -451,6 +478,7 @@ data class PullRequestDto(
 				draft = pr.draft,
 				reviewState = pr.reviewState?.wire,
 				authorLogin = pr.authorLogin,
+				author = author?.let(UserResponse::of),
 				headRef = pr.headRef,
 				closes = link.closes,
 				linkedByMember = link.linkedByMember,

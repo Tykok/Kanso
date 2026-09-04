@@ -73,4 +73,14 @@ data class TicketPullRequest(
 	val pullRequest: GithubPullRequest,
 	val closes: Boolean,
 	val linkedByMember: Boolean,
+	/**
+	 * The Kanso member `authorLogin` belongs to, when that member has linked their GitHub
+	 * account — and null for everybody else, which is most authors on most repositories.
+	 *
+	 * The id and not a name, because this is the fact the join knows; turning it into a
+	 * person is `TicketDetails`' job, which already resolves a page's users in one query.
+	 * Null is the documented state and not a missing value: an author nobody has linked is
+	 * shown by their GitHub handle, exactly as before this existed.
+	 */
+	val authorUserId: UUID? = null,
 )
