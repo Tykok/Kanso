@@ -91,6 +91,21 @@ object DocBlocks : Table("doc_blocks") {
 	override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * `V40`'s lock. No `id` and no `updatedAt`, both deliberate — the migration says why.
+ *
+ * Read through Exposed, written through `JdbcClient`: the take is one `ON CONFLICT … DO
+ * UPDATE … WHERE` statement, which is the whole atomicity of this feature and is outside
+ * what the DSL expresses. `DocBlockLockRepository` carries that argument.
+ */
+object DocBlockLocks : Table("doc_block_locks") {
+	val blockId = javaUUID("block_id")
+	val userId = javaUUID("user_id")
+	val expiresAt = timestampWithTimeZone("expires_at")
+	val takenAt = timestampWithTimeZone("taken_at")
+	override val primaryKey = PrimaryKey(blockId)
+}
+
 /** `ticket_docs` at block granularity — see the migration for why that matters. */
 object DocBlockTickets : Table("doc_block_tickets") {
 	val blockId = javaUUID("block_id")

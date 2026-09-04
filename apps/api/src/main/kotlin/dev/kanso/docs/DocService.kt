@@ -1,6 +1,9 @@
 package dev.kanso.docs
 
 import dev.kanso.domain.User
+import dev.kanso.realtime.ChangeKind
+import dev.kanso.realtime.EventPublisher
+import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.TeamRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.NotFoundException
@@ -36,6 +39,8 @@ class DocService(
 	private val tickets: TicketService,
 	private val access: TicketAccess,
 	private val trash: TrashRepository,
+	private val locks: DocBlockLockRepository,
+	private val events: EventPublisher,
 ) {
 
 	// --- folders -------------------------------------------------------------
@@ -183,6 +188,12 @@ class DocService(
 			// draws this list, and a rail that reshuffles between two reads of an
 			// unchanged page reads as a change to the page.
 			tickets = blocks.ticketIdsForPage(id).map(tickets::get).sortedBy { it.identifier },
+			// One query for the whole page's locks, and the reason it is here rather than in
+			// the controller is that a lock is part of what a block *is* to a reader: a
+			// second endpoint for it would let a client draw the blocks before knowing which
+			// of them it may type in, which is a paragraph that accepts keystrokes for one
+			// paint and then refuses them.
+			locks = locks.liveForPage(id).associateBy { it.blockId },
 		)
 	}
 
@@ -205,6 +216,7 @@ class DocService(
 		template?.blocks?.forEachIndexed { index, block ->
 			blocks.insert(page.id, index, block.kind, block.content)
 		}
+		events.publish(KansoEvent.doc(ChangeKind.CREATED, page.id, teamId))
 		return page(page.id)
 	}
 
@@ -230,6 +242,10 @@ class DocService(
 		}
 		pages.update(id, title?.let(::requireName) ?: page.title, nextFolder, actor.id)
 			?: throw NotFoundException("No document $id")
+		// No `blockId`: the page itself changed — a title, a folder — and no block did.
+		// `KAN-25`'s receiver reads the absence as "the page, not a paragraph", which is
+		// what keeps a retitle from looking like somebody typing into the caret you are in.
+		events.publish(KansoEvent.doc(ChangeKind.UPDATED, id, page.teamId))
 		return page(id)
 	}
 
@@ -246,6 +262,10 @@ class DocService(
 		access.requireTeam(actor, page.teamId)
 		if (trash.find(TrashKind.DOC, id) != null) return
 		trash.add(TrashKind.DOC, id, actor.id)
+		// DELETED for a page that is only in the trash, because that is what it *is* to
+		// every reader: `pages.findLive` is a 404 for it and the tree stops drawing it. The
+		// row surviving for the retention window is the sweep's business, not a client's.
+		events.publish(KansoEvent.doc(ChangeKind.DELETED, id, page.teamId))
 	}
 
 	/** Nothing to put back — the delete wrote nothing. Who may do it is the whole of this. */

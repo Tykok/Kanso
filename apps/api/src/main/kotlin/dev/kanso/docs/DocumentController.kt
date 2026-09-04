@@ -1,6 +1,7 @@
 package dev.kanso.docs
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.realtime.DocPresence
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
@@ -24,6 +25,8 @@ import java.util.UUID
 class DocumentController(
 	private val documents: DocService,
 	private val blocks: DocBlockService,
+	private val locks: DocBlockLockService,
+	private val presence: DocPresence,
 	private val currentUser: CurrentUser,
 ) {
 
@@ -122,6 +125,58 @@ class DocumentController(
 	@DeleteMapping("/blocks/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	fun deleteBlock(@PathVariable id: UUID) = blocks.deleteBlock(currentUser.require(), id)
+
+	// --- who is holding what, and who is watching ----------------------------
+
+	/**
+	 * Takes the block, or renews a claim the caller already has. `KAN-25`.
+	 *
+	 * `PUT` and not `POST`: taking a lock is idempotent and the renewal is the same call,
+	 * so a client that fires twice because a keystroke and a timer landed together gets the
+	 * same state rather than a second lock. The refusal is a 409 carrying the holder's name
+	 * and when it frees itself — `ApiExceptionHandler.blockLocked`.
+	 */
+	@PutMapping("/blocks/{id}/lock")
+	fun takeLock(@PathVariable id: UUID): DocBlockLockResponse {
+		val actor = currentUser.require()
+		val lock = locks.take(actor, id)
+		// The caller's own name, not a second query: the only person this response is ever
+		// about is the one who just asked for it.
+		return DocBlockLockResponse(
+			userId = actor.id,
+			displayName = actor.displayName,
+			freesAt = lock.expiresAt,
+			takenAt = lock.takenAt,
+		)
+	}
+
+	/**
+	 * Lets it go — a blur, or a tab on its way out.
+	 *
+	 * 204 whether or not a row went. A release arriving after the claim lapsed is not an
+	 * error, and answering 404 would put a red line on a screen for the most ordinary thing
+	 * this feature does.
+	 */
+	@DeleteMapping("/blocks/{id}/lock")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	fun releaseLock(@PathVariable id: UUID) = locks.release(currentUser.require(), id)
+
+	/**
+	 * Who has this page open, right now.
+	 *
+	 * Answered out of memory rather than out of a table — `realtime/DocPresence.kt` and
+	 * `V40`'s header carry the argument. Open like every other `GET` here: there is nothing
+	 * behind it a reader of the page could not already see.
+	 *
+	 * It exists at all because a *newly* subscribed client cannot rely on the broadcast it
+	 * caused. `SessionSubscribeEvent` and the broker's own handling of the SUBSCRIBE frame
+	 * both travel the inbound channel and their order is not guaranteed, so the roster
+	 * announcing a join can be sent before the joiner is subscribed to hear it. One read on
+	 * mount closes that window; every change after it arrives on the topic.
+	 */
+	@GetMapping("/pages/{id}/viewers")
+	fun viewers(@PathVariable id: UUID): List<DocViewerResponse> =
+		presence.viewersOf(id).map(DocViewerResponse::of)
 
 	// --- the two gestures inside a document ----------------------------------
 

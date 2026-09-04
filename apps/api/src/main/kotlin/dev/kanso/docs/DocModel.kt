@@ -80,7 +80,59 @@ data class DocPageDetail(
 	val page: DocPage,
 	val blocks: List<DocBlock>,
 	val tickets: List<TicketDetail>,
+	/**
+	 * The live locks on this page, by block — `KAN-25`.
+	 *
+	 * Keyed rather than a list, because the one consumer matches them onto blocks and a
+	 * list would make it do that itself. Defaulted empty so the two writes that also
+	 * return a detail — creating a page, retitling one — say the honest thing without
+	 * asking the database a question about a page that has just been made.
+	 */
+	val locks: Map<UUID, DocBlockLockHolder> = emptyMap(),
 )
+
+/**
+ * A claim on one block, and there is no `held: Boolean` on it on purpose.
+ *
+ * Whether this is a lock is `expiresAt` against the database's `now()`, and
+ * [DocBlockLockRepository] never hands out a lapsed one — so an instance of this class is
+ * a live lock, and nothing downstream has to remember to check. A flag would have been
+ * the stored derived value `V40`'s header refuses.
+ */
+data class DocBlockLock(
+	val blockId: UUID,
+	val userId: UUID,
+	val expiresAt: OffsetDateTime,
+	/** When the claim began. A renewal moves [expiresAt] and leaves this alone. */
+	val takenAt: OffsetDateTime,
+)
+
+/**
+ * A live lock with the holder's name attached — what a refusal prints and what the page's
+ * blocks are drawn from.
+ *
+ * The name rather than only the id, because the whole point of the refusal is that the
+ * person who cannot type is told **who** to go and ask. `useReportError` exists in this
+ * repository because a refusal was silent on four routes; a lock that greys a paragraph out
+ * without naming anybody is the same bug with better manners.
+ */
+data class DocBlockLockHolder(
+	val blockId: UUID,
+	val userId: UUID,
+	val displayName: String,
+	val expiresAt: OffsetDateTime,
+	val takenAt: OffsetDateTime,
+)
+
+/**
+ * Somebody with the page open, right now.
+ *
+ * No timestamp on it, and that is the difference between this and every other model in
+ * this file: there is no row behind it and no last-seen to compare. It exists for exactly
+ * as long as a STOMP session is subscribed to the page's viewers topic — see
+ * `realtime/DocPresence.kt`, and `V40`'s header for why it is not a table.
+ */
+data class DocViewer(val userId: UUID, val displayName: String)
 
 data class DocTemplateBlock(val kind: DocBlockKind, val content: Map<String, Any?>)
 

@@ -3,6 +3,9 @@ package dev.kanso.docs
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.TicketStatus
 import dev.kanso.domain.User
+import dev.kanso.realtime.ChangeKind
+import dev.kanso.realtime.EventPublisher
+import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.TicketRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.NotFoundException
@@ -19,6 +22,12 @@ import java.util.UUID
  * Every write scopes through the *page's* team and then stamps the page — who touched
  * it and when — because that pair is what the footer prints and nothing about a block
  * row can answer it once the block is gone.
+ *
+ * `KAN-25` added the other two things every write here does: it asks [locks] whether
+ * somebody else is holding the block, and it announces itself on the realtime bus. Both
+ * are one line at each call site rather than a wrapper, because which of them applies is
+ * not uniform — a reorder is guarded against the whole page and an insert against
+ * nothing, and the argument for each asymmetry is at the line that makes it.
  */
 @Service
 class DocBlockService(
@@ -27,6 +36,8 @@ class DocBlockService(
 	private val tickets: TicketService,
 	private val ticketRows: TicketRepository,
 	private val access: TicketAccess,
+	private val locks: DocBlockLockService,
+	private val events: EventPublisher,
 ) {
 
 	/**
@@ -43,8 +54,16 @@ class DocBlockService(
 	): DocBlock {
 		val page = requirePage(actor, pageId)
 		requireContentFor(kind, content)
+		// No lock check, and it is the one write here that has none. Adding a paragraph is
+		// what writing a document *is*, so refusing it while a colleague holds a block
+		// somewhere on the page would make two people writing at once — the case this
+		// ticket exists to allow — impossible. It is also the write that cannot lose
+		// anything: `V9` made `position` dense but *not unique* and `findByPage` breaks a
+		// tie on `id`, so two inserts racing produce both blocks in an arbitrary order
+		// between them rather than one of them vanishing.
 		val id = insertAt(pageId, afterBlockId, kind, content)
 		pages.touch(page.id, actor.id)
+		events.publish(KansoEvent.doc(ChangeKind.CREATED, page.id, page.teamId, id))
 		return requireNotNull(blocks.findById(id))
 	}
 
@@ -52,9 +71,13 @@ class DocBlockService(
 	fun updateBlock(actor: User, id: UUID, content: Map<String, Any?>): DocBlock {
 		val block = blocks.findById(id) ?: throw NotFoundException("No block $id")
 		val page = requirePage(actor, block.pageId)
+		// The overwrite the ticket names first: `content` is written whole, so the second
+		// commit takes the whole paragraph. This is where that stops being silent.
+		locks.requireWritable(actor, id)
 		requireContentFor(block.kind, content)
 		blocks.updateContent(id, content)
 		pages.touch(page.id, actor.id)
+		events.publish(KansoEvent.doc(ChangeKind.UPDATED, page.id, page.teamId, id))
 		return requireNotNull(blocks.findById(id))
 	}
 
@@ -63,11 +86,17 @@ class DocBlockService(
 	fun moveBlock(actor: User, id: UUID, toIndex: Int): List<DocBlock> {
 		val block = blocks.findById(id) ?: throw NotFoundException("No block $id")
 		val page = requirePage(actor, block.pageId)
+		// The whole page, not this block — `requirePageWritable` argues why a reorder is
+		// the one gesture that takes everybody's claim into account.
+		locks.requirePageWritable(actor, block.pageId)
 		val order = orderOf(block.pageId).toMutableList()
 		order.remove(id)
 		order.add(toIndex.coerceIn(0, order.size), id)
 		blocks.setOrder(order)
 		pages.touch(page.id, actor.id)
+		// No `blockId`: every position on the page moved, so naming one of them would tell
+		// a receiver that the others are unchanged. The page is the unit of this change.
+		events.publish(KansoEvent.doc(ChangeKind.UPDATED, page.id, page.teamId))
 		return blocks.findByPage(block.pageId)
 	}
 
@@ -75,11 +104,16 @@ class DocBlockService(
 	fun deleteBlock(actor: User, id: UUID) {
 		val block = blocks.findById(id) ?: throw NotFoundException("No block $id")
 		val page = requirePage(actor, block.pageId)
+		// Deleting a paragraph somebody is typing in loses more than overwriting it does.
+		// The lock row goes with the block — `V40`'s `ON DELETE CASCADE` — so there is
+		// nothing to release once this is allowed.
+		locks.requireWritable(actor, id)
 		blocks.delete(id)
 		// Dense again straight away, so `position` is always 0..n-1 and no reader has to
 		// know whether the page has ever had a block removed from the middle of it.
 		blocks.setOrder(orderOf(block.pageId))
 		pages.touch(page.id, actor.id)
+		events.publish(KansoEvent.doc(ChangeKind.DELETED, page.id, page.teamId, id))
 	}
 
 	/**
@@ -96,6 +130,7 @@ class DocBlockService(
 		val id = insertAt(pageId, afterBlockId, DocBlockKind.TICKET_LINK, emptyMap())
 		blocks.setTickets(id, listOf(ticketId))
 		pages.touch(page.id, actor.id)
+		events.publish(KansoEvent.doc(ChangeKind.CREATED, page.id, page.teamId, id))
 		return requireNotNull(blocks.findById(id))
 	}
 

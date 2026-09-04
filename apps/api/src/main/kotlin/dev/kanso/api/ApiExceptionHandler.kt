@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.service.BadRequestException
+import dev.kanso.service.BlockLockedException
 import dev.kanso.service.ConflictException
 import dev.kanso.service.CountsChangedException
 import dev.kanso.service.NotFoundException
@@ -51,6 +52,23 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
 				"tickets" to e.counts.tickets,
 			),
 		)
+		return problem
+	}
+
+	/**
+	 * The other 409 that carries data, on `countsChanged`'s reading: the client greys the
+	 * block out with the holder's name on it and starts a countdown, rather than printing
+	 * "conflict" at somebody whose next question is "who".
+	 *
+	 * `freesAt` is an instant and not a number of seconds, so a client that renders it late
+	 * — a slow tab, a paused laptop — draws a countdown that is still right rather than one
+	 * that restarts from whatever the server said when the request left.
+	 */
+	@ExceptionHandler(BlockLockedException::class)
+	fun blockLocked(e: BlockLockedException): ProblemDetail {
+		val problem = problem(HttpStatus.CONFLICT, e.message)
+		problem.setProperty("holder", e.holder)
+		problem.setProperty("freesAt", e.freesAt.toString())
 		return problem
 	}
 
