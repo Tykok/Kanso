@@ -3,7 +3,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { GroupLabel } from "@/components/ui/group-label";
 import { Kbd } from "@/components/ui/kbd";
+import { Backdrop } from "@/components/overlays";
+import { RequestBases } from "@/components/settings/request-bases";
 import { actionErrorMessage } from "@/lib/errors";
+import { canConfigure as configures } from "@/lib/seat";
 import type { Ticket, TriageDecision } from "@/lib/api";
 import { ShellAside, TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { usePageActions } from "@/components/shell/use-shell-keys";
@@ -12,7 +15,7 @@ import { isMac } from "@/lib/platform";
 import { hintFor } from "@/lib/shortcuts";
 import { useActionContext } from "@/lib/use-action-ctx";
 import { useBindings } from "@/lib/use-bindings";
-import { useDecide, useSimilar, useTriageQueue } from "@/lib/queries";
+import { useDecide, useMe, useSimilar, useTriageQueue } from "@/lib/queries";
 import { useOrganiseTeam } from "./team";
 
 /**
@@ -45,6 +48,15 @@ export function TriageView() {
   const decide = useDecide();
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The requests panel, and who is looking at it.
+   *
+   * `useMe` is already mounted by the shell above this route, so this is a read of a cache
+   * rather than a second request — and it decides what the panel *draws*, never what it may
+   * do: all three of `RequestBaseController`'s routes ask the server again.
+   */
+  const [wiring, setWiring] = useState(false);
+  const me = useMe();
 
   // Memoised because it feeds `useActionContext`, which memoises on it: `?? []` is a
   // fresh array every render, and the context rebuilt on every render would re-publish to
@@ -146,8 +158,39 @@ export function TriageView() {
       </TopbarSlot>
 
       <ShellAside>
-        <Queue items={items} total={queue.data?.total ?? 0} at={at} onPick={setCursor} />
+        <Queue
+          items={items}
+          total={queue.data?.total ?? 0}
+          at={at}
+          onPick={setCursor}
+          onWiring={() => setWiring(true)}
+        />
       </ShellAside>
+
+      {wiring && (
+        /*
+         * `Backdrop` and an inner `role="dialog"`, the way `ImportDialog` does it — not
+         * `ui/dialog.tsx`, whose Radix root takes the focus and the `Escape` key, and this
+         * screen's four ruling keys are published to the shell's one listener. A dialog that
+         * fought that would be a keyboard question in a task that is not one; `KAN-69` owns
+         * that family this batch.
+         */
+        <Backdrop onClose={() => setWiring(false)} panelClassName="w-[min(620px,94vw)]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Notion requests"
+            className="flex flex-col gap-2.5 p-2.5"
+          >
+            <RequestBases canConfigure={configures(me.data?.user.instanceRole)} />
+            <div className="flex justify-end">
+              <button type="button" className="button" onClick={() => setWiring(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </Backdrop>
+      )}
 
       {queue.isPending && <div className="px-4 py-12 text-center text-faint">Loading…</div>}
 
@@ -224,17 +267,41 @@ function Queue({
   total,
   at,
   onPick,
+  onWiring,
 }: {
   items: Ticket[];
   total: number;
   at: number;
   onPick: (index: number) => void;
+  onWiring: () => void;
 }) {
   return (
     <>
-      <div className="flex flex-col gap-0.5 px-1.5 pb-2.5">
+      <div className="flex flex-col items-start gap-0.5 px-1.5 pb-2.5">
         <span className="text-13 font-medium text-foreground">Triage queue</span>
         <span className="text-11 text-faint">{total} tickets · oldest first</span>
+        {/*
+         * The second way in to the requests base, the first being the settings page.
+         *
+         * It belongs on this screen because this is the screen the arrangement is *about*:
+         * the reason a queue is empty, or full of pages nobody in Kanso wrote, is which
+         * Notion base is wired to it — and answering that two routes away, in a settings tab,
+         * is the mistake `KAN-53` corrected by putting the mirror's refused writes beside the
+         * connection that produced them.
+         *
+         * In the header rather than under the rows, which is where it was first drawn: the
+         * aside scrolls, so a fortieth ticket in the queue pushed the button off the bottom
+         * of a panel that is the only place it appears. Seen in a capture, not reasoned about.
+         *
+         * Offered to every member, not only to a configurator, which is `KAN-55`'s
+         * arbitration and not a decision retaken here: the panel behind it draws the
+         * workspace for anybody and the team picker for the configurator alone. Hiding it
+         * from a member would contradict that arbitration in the one place where a member is
+         * looking at its consequences.
+         */}
+        <button type="button" className="button mt-1.5" onClick={onWiring}>
+          Where these come from…
+        </button>
       </div>
       {items.map((ticket, index) => (
         <button

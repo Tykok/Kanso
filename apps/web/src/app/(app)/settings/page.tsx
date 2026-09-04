@@ -10,6 +10,7 @@ import { SettingsNote } from "@/components/settings/field";
 import { GithubSection } from "@/components/settings/github-section";
 import { NotionPeopleSection } from "@/components/settings/notion-people-section";
 import { PeopleSection } from "@/components/settings/people-section";
+import { RequestBases } from "@/components/settings/request-bases";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { TokensSection } from "@/components/settings/tokens-section";
 import { VelocitySection } from "@/components/settings/velocity-section";
@@ -165,6 +166,15 @@ export default function SettingsPage() {
                * property once it writes one at all.
                */}
               <NotionPeopleSection canConfigure={canConfigure} />
+              {/*
+               * The requests base, beside the person correspondence and for the same reason
+               * it is beside `ConnectionsSection` rather than inside it: that file is about
+               * the mirror — what Kanso publishes, what Notion refused — and a requests base
+               * is the one Notion relationship it has nothing to say about. `V37` keeps the
+               * two apart in the schema, and `RequestBaseController` in its own class, on a
+               * stronger version of the same argument.
+               */}
+              <RequestBases canConfigure={canConfigure} />
             </div>
           )}
         </main>
