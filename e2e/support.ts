@@ -2,6 +2,7 @@ import {
   expect,
   request as playwrightRequest,
   type APIRequestContext,
+  type APIResponse,
   type Browser,
   type Locator,
   type Page,
@@ -21,9 +22,20 @@ export function unique(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 }
 
-/** `@Size(min = 2, max = 8)` on `TeamRequest.key`: five characters fit. */
+/**
+ * A team key nobody on this instance is using yet.
+ *
+ * `@Size(min = 2, max = 8)` on `TeamRequest.key`, and it takes all eight. It used to take
+ * five — `E` and four random characters — which is 36^4 keys, and the key is unique, so
+ * the suite was competing with every team it had ever seeded for them. At 774 teams, a
+ * collision is 0.05% per team created and about 11% per full run of this suite, and it
+ * arrives as `Could not create the team …` in a spec that has nothing to do with keys.
+ * Measured once over four full runs, which is exactly the rate that predicts. Seven
+ * random characters is 36^7, and the same instance would need to be sixty thousand times
+ * bigger to make it interesting again.
+ */
 export function uniqueKey(): string {
-  return `E${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  return `E${Math.random().toString(36).slice(2, 9).toUpperCase().padEnd(7, "X")}`;
 }
 
 /**
@@ -129,12 +141,29 @@ export type SeededTeam = { id: string; name: string; key: string };
 export type SeededProject = { id: string; name: string; teamId?: string };
 export type SeededTicket = { id: string; identifier: string; title: string };
 
+/**
+ * Why a refusal has to carry the status and the body.
+ *
+ * `Could not create the team Public-…` is what a rejected seed used to say, and it names
+ * neither what the API answered nor which field it objected to. One full run failed there
+ * and the cause — a team key already taken — had to be inferred from the size of the key
+ * space and the number of teams on the instance, because the answer itself was thrown
+ * away. A seed that refuses is nearly always the environment rather than the scenario, so
+ * it is the one place in this suite where the raw answer is worth the noise.
+ */
+async function refusal(response: APIResponse, what: string): Promise<string> {
+  return `${what}: the API answered ${response.status()} — ${await response.text()}`;
+}
+
 export async function seedTeam(
   api: APIRequestContext,
   body: { name: string; key: string; parentTeamId?: string },
 ): Promise<SeededTeam> {
   const response = await api.post("/api/teams", { data: body });
-  expect(response.ok(), `Could not create the team ${body.name}`).toBeTruthy();
+  expect(
+    response.ok(),
+    response.ok() ? "" : await refusal(response, `Could not create the team ${body.name}`),
+  ).toBeTruthy();
   return (await response.json()) as SeededTeam;
 }
 
@@ -155,7 +184,10 @@ export async function seedProject(
   body: { name: string; teamId?: string },
 ): Promise<SeededProject> {
   const response = await api.post("/api/projects", { data: body });
-  expect(response.ok(), `Could not create the project ${body.name}`).toBeTruthy();
+  expect(
+    response.ok(),
+    response.ok() ? "" : await refusal(response, `Could not create the project ${body.name}`),
+  ).toBeTruthy();
   return (await response.json()) as SeededProject;
 }
 
@@ -195,7 +227,10 @@ export async function seedTicket(
       ...(due ? { due: floatingDay(due) } : {}),
     },
   });
-  expect(response.ok(), `Could not create the ticket ${body.title}`).toBeTruthy();
+  expect(
+    response.ok(),
+    response.ok() ? "" : await refusal(response, `Could not create the ticket ${body.title}`),
+  ).toBeTruthy();
   return (await response.json()) as SeededTicket;
 }
 
