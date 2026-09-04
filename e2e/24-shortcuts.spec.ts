@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { mirrorQueueDrained } from "./settled";
 import {
   ADMIN,
   apiAs,
@@ -69,6 +70,8 @@ test("scenario 24 — a captured key moves a row, and the help sheet agrees with
   await seedTicket(api, { teamId: team.id, title: first });
   await seedTicket(api, { teamId: team.id, title: second });
   await api.dispose();
+  // The seeded rows' sort key is still being rewritten behind us — see `settled.ts`.
+  await mirrorQueueDrained();
 
   try {
     const page = await openAs(browser, ADMIN);
