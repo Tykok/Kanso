@@ -64,6 +64,9 @@ export function StepTwo({
   onNext: () => void;
   onBack: () => void;
 }) {
+  // One bounded base bounds the sum, and the sentence below is about the sum.
+  const allExact = sources.every((source) => source.pagesExact);
+
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -179,7 +182,9 @@ export function StepTwo({
           Back
         </Button>
         <span className="ml-1 text-11 text-faint">
-          {counts.kept} of {counts.total} pages kept
+          {/* "pages" heads the *total* here — "1 of 1 page kept" — and so does the `+`, which
+              is the right way round: what is kept can never exceed what was found. */}
+          {counts.kept} of {pageCount(counts.total, allExact)} kept
         </span>
       </div>
     </>
