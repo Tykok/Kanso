@@ -115,7 +115,12 @@ export function StepThree({
           {teamName ? ` in ${teamName}` : ""}
         </span>
         <span className="text-12 text-muted-foreground">
-          {counts.kept} pages out of {counts.total}.
+          {/* "pages" heads `kept` in this phrasing, so that is the number [pageCount] is
+              given. The total takes the bound too, spelled out rather than borrowed: a `+` on
+              the first number alone reads as more kept than found, and none on either puts a
+              walk's stopping point in front of the confirm button as though it were a count —
+              which is the one thing `pagesExact` is on the wire to prevent. */}
+          {`${pageCount(counts.kept, allExact)} out of ${counts.total}${allExact ? "" : "+"}.`}
           {result ? "" : " Confirming is the first thing that writes anything."}
         </span>
       </div>

@@ -66,7 +66,11 @@ export function StepOne({
           ))}
           <span className="pt-2 text-11 text-faint">
             {sources.length} {sources.length === 1 ? "database" : "databases"},{" "}
-            {counted ? `${total} pages in all.` : `at least ${total} pages in all.`}
+            {/* `counted` *is* exactness, so the counted branch hands [pageCount] a `true` it
+                has already established and can never grow a `+`. The other branch says "at
+                least" and keeps its plural: the bound is in the words there, and a lower
+                bound of one is not one page. */}
+            {counted ? `${pageCount(total, true)} in all.` : `at least ${total} pages in all.`}
           </span>
         </div>
       )}

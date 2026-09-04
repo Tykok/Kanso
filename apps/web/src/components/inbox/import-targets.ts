@@ -73,6 +73,10 @@ export const ROW_GRID = "grid-cols-[1fr_130px_150px]";
  * arguments and not just the number. `1+` is a lower bound rather than a count — "1+ page"
  * would promise the very thing the `+` exists to deny — and `0 pages` is a count of none,
  * not a quantity of one. So one base holding one page is the only case that loses its `s`.
+ *
+ * Every sentence in the dialog that counts pages comes through here, and that is the point:
+ * the four sites used to hold four spellings of this rule, three of which said `pages`
+ * unconditionally.
  */
 export const pageCount = (pages: number, exact: boolean) =>
   `${pages}${exact ? "" : "+"} ${exact && pages === 1 ? "page" : "pages"}`;
