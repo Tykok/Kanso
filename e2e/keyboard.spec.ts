@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mirrorQueueDrained } from "./settled";
 import {
   ADMIN,
   apiAs,
@@ -37,6 +38,8 @@ test("scenario 5 — the keyboard does exactly what it did, less j and k", async
   await seedTicket(api, { teamId: team.id, title: first });
   const beta = await seedTicket(api, { teamId: team.id, title: second });
   await api.dispose();
+  // The seeded rows' sort key is still being rewritten behind us — see `settled.ts`.
+  await mirrorQueueDrained();
 
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: team.name, exact: true }).click();
@@ -182,6 +185,8 @@ test("scenario 5 — a bare key is dispatched once, not once per shell", async (
   await seedTicket(api, { teamId: team.id, title: middle });
   await seedTicket(api, { teamId: team.id, title: top });
   await api.dispose();
+  // The seeded rows' sort key is still being rewritten behind us — see `settled.ts`.
+  await mirrorQueueDrained();
 
   const page = await openAs(browser, ADMIN);
   await page.getByRole("button", { name: team.name, exact: true }).click();
