@@ -14,6 +14,36 @@ import {
 test.beforeAll(seedInstance);
 
 /**
+ * The ticket this file publishes, withdrawn again afterwards.
+ *
+ * The roadmap window is capped at 400 rows and `PublicRoadmapRepository.findPublished`
+ * has no `ORDER BY` at all, so which published tickets are inside it is arbitrary. A run
+ * that leaves its ticket published adds a row to that window for every run after it, and
+ * the assertions below then answer to how many times this file has been run against the
+ * instance rather than to what the projection does. Both directions rot: `shown` is
+ * eventually not in the window, and `hidden`'s absence eventually passes for the wrong
+ * reason — truncation reads exactly like exclusion from here.
+ *
+ * In an `afterEach` and not at the end of the test, because a run that fails half way is
+ * precisely the run that would otherwise leave the row behind.
+ */
+let publishedTicket: string | undefined;
+
+test.afterEach(async () => {
+  if (!publishedTicket) return;
+  const admin = await apiAs(ADMIN);
+  try {
+    const withdrawn = await admin.patch(`/api/tickets/${publishedTicket}/publication`, {
+      data: { public: false },
+    });
+    expect(withdrawn.ok(), "the published ticket is withdrawn again").toBeTruthy();
+  } finally {
+    publishedTicket = undefined;
+    await admin.dispose();
+  }
+});
+
+/**
  * Scenario 22 — the public surfaces, visited the way a stranger visits them.
  *
  * Every other scenario in this suite opens a page through `openAs`, which plants an
@@ -42,6 +72,7 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
     data: { public: true },
   });
   expect(published.ok(), "an admin may publish a ticket").toBeTruthy();
+  publishedTicket = shown.id;
 
   const pointers = await admin.put(`/api/tickets/${shown.id}/where-to-look`, {
     data: { files: [{ path: "apps/web/src/components/publik/shell.tsx", note: "the chrome" }] },

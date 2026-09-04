@@ -110,6 +110,16 @@ test("scenario 6 — archiving a team counts what the plan reaches, and Show arc
   await expect(page.getByRole("button", { name: parent.name, exact: true })).toHaveCount(0);
   await expect(sidebarRow(page, child.name)).toHaveClass(/nav-depth-0/);
   await expect(sidebarRow(page, project.name)).toHaveClass(/nav-depth-0/);
+  // Read inside the sub-team that holds it, not off `All tickets`.
+  //
+  // The unfiltered page is capped at 200 rows and the server orders it status-major —
+  // `statusRank ASC` before `updated_at DESC` — so a seeded `todo` row sits behind every
+  // `backlog` row on the instance and being the most recently touched does not save it.
+  // Measured on a 500-ticket stack: 86 `backlog` and 114 `todo` came back, and nothing at
+  // all for the four later statuses. That is the whole of why this assertion failed three
+  // runs in four there and passed on a virgin one — the ticket was active, and simply not
+  // on the page anybody was looking at.
+  await page.getByRole("button", { name: child.name, exact: true }).click();
   await expect(ticketRow(page, firstTitle)).toBeVisible();
 
   // Show archived is the only way back, and it is at the foot of the sidebar.
