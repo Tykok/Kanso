@@ -10,7 +10,7 @@ import {
 } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
 import { useTeams } from "@/lib/queries";
-import { pageCount } from "@/components/inbox/import-targets";
+import { SourceRow, WiredRow } from "./request-base-rows";
 import { SettingsInline, SettingsNote } from "./field";
 
 /**
@@ -110,8 +110,11 @@ export function RequestBases({ canConfigure }: { canConfigure: boolean }) {
   const sourceName = (dataSourceId: string) =>
     sources.find((source) => source.id === dataSourceId)?.name;
 
-  const wiredTeam = (dataSourceId: string) =>
-    bases.find((base) => base.dataSourceId === dataSourceId)?.teamId;
+  /** The name of the team this base already feeds, or `undefined` when it feeds none. */
+  const wiredTeamName = (dataSourceId: string) => {
+    const wired = bases.find((base) => base.dataSourceId === dataSourceId);
+    return wired && teamName(wired.teamId);
+  };
 
   const invalidate = () => {
     client.invalidateQueries({ queryKey: ["notion-request-bases"] });
@@ -170,33 +173,14 @@ export function RequestBases({ canConfigure }: { canConfigure: boolean }) {
       {canConfigure && bases.length > 0 && (
         <div className="flex flex-col gap-0.5 pt-1.5 text-12">
           {bases.map((base) => (
-            <div
+            <WiredRow
               key={base.dataSourceId}
-              data-testid="wired-request-base"
-              className="flex items-center gap-2.5 rounded-sm bg-background px-3 py-1.5"
-            >
-              {/* `min-w-0` and `truncate` together, because a Notion database can be called
-                  anything and neither half works alone: a flex item defaults to
-                  `min-width: auto`, so `truncate` on it has nothing to truncate into and the
-                  row grows until the team beside it is pushed off the card. */}
-              <span className="min-w-0 flex-1 truncate">
-                {sourceName(base.dataSourceId) ?? (
-                  <span className="font-mono text-11 text-faint">{base.dataSourceId}</span>
-                )}
-              </span>
-              {/* `shrink-0` for `Similar`'s reason in `triage-view.tsx`: a team name and an
-                  arrow that may shrink break apart mid-arrow, and this cell is the one that
-                  must not — it is the answer to "whose queue". */}
-              <span className="shrink-0 text-muted-foreground">→ {teamName(base.teamId)}</span>
-              <button
-                type="button"
-                className="button shrink-0"
-                disabled={unregister.isPending}
-                onClick={() => unregister.mutate(base.dataSourceId)}
-              >
-                Stop
-              </button>
-            </div>
+              base={base}
+              name={sourceName(base.dataSourceId)}
+              teamName={teamName(base.teamId)}
+              stopping={unregister.isPending}
+              onStop={() => unregister.mutate(base.dataSourceId)}
+            />
           ))}
         </div>
       )}
@@ -215,11 +199,10 @@ export function RequestBases({ canConfigure }: { canConfigure: boolean }) {
       {!discovered.isLoading && !unavailable && (
         <div className="flex flex-col gap-0.5 pt-1.5 text-12">
           {sources.map((source) => (
-            <Row
+            <SourceRow
               key={source.id}
               source={source}
-              wiredTo={canConfigure ? wiredTeam(source.id) : undefined}
-              teamName={teamName}
+              wiredTo={canConfigure ? wiredTeamName(source.id) : undefined}
               selectable={canConfigure}
               selected={selected === source.id}
               onSelect={() => setSelected(selected === source.id ? null : source.id)}
@@ -300,74 +283,5 @@ export function RequestBases({ canConfigure }: { canConfigure: boolean }) {
         </>
       )}
     </section>
-  );
-}
-
-/**
- * One database in the workspace.
- *
- * A `<button>` for a configurator and a plain row for everybody else, rather than one
- * disabled button: a disabled control is still a control, and it promises a member that
- * selecting a base would do something for them. What they are shown instead is the list,
- * which is the half `KAN-55` says is theirs.
- */
-function Row({
-  source,
-  wiredTo,
-  teamName,
-  selectable,
-  selected,
-  onSelect,
-}: {
-  source: NotionImportSource;
-  wiredTo?: string;
-  teamName: (id: string) => string;
-  selectable: boolean;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  /*
-   * `grid-cols-[1fr_auto]` with `min-w-0` on the name, not a flex row: the right-hand cell
-   * holds a page count and possibly a team name, and a `1fr` track is the one that gives
-   * that cell its content width and makes the name truncate into whatever is left. A long
-   * Notion database title is the ordinary case here, not the edge one.
-   */
-  const body = (
-    <>
-      <span className="min-w-0 truncate">{source.name}</span>
-      <span className="shrink-0 text-muted-foreground">
-        {wiredTo !== undefined && (
-          <span className="text-status-done">wired → {teamName(wiredTo)} · </span>
-        )}
-        {pageCount(source.pages, source.pagesExact)}
-      </span>
-    </>
-  );
-
-  if (!selectable) {
-    return (
-      <div
-        data-testid="request-base-option"
-        className="grid min-h-[30px] grid-cols-[1fr_auto] items-center gap-3 rounded-sm bg-background px-3"
-      >
-        {body}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      data-testid="request-base-option"
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={
-        selected
-          ? "grid min-h-[30px] grid-cols-[1fr_auto] items-center gap-3 rounded-sm bg-accent-soft px-3 text-left shadow-[inset_2px_0_0_var(--primary)]"
-          : "grid min-h-[30px] grid-cols-[1fr_auto] items-center gap-3 rounded-sm bg-background px-3 text-left hover:bg-accent"
-      }
-    >
-      {body}
-    </button>
   );
 }
