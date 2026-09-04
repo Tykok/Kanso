@@ -81,6 +81,18 @@ test("scenario 27 — a member sees the workspace, the configurator wires it to 
   const api = await apiAs(ADMIN);
   const team = await seedTeam(api, { name: unique("Requests"), key: uniqueKey() });
   await seedMember(api, team.id, await userIdOf(MEMBER));
+  /*
+   * A second team, seeded for the assertion below and for nothing else.
+   *
+   * The screen answers the team picker by itself on an instance holding exactly one team —
+   * there is no choice to make there, and `import-dialog.tsx` takes the same shortcut for
+   * the same reason. So "the button stays disabled until a queue is named" is a claim that
+   * is *unprovable* on a one-team instance and reads as a pass anyway. It went red here
+   * first, on a fresh stack, and the fix is to give the instance a choice rather than to
+   * lean on the teams another spec file happens to have seeded — the README holds that
+   * against the older scenarios.
+   */
+  await seedTeam(api, { name: unique("Elsewhere"), key: uniqueKey() });
 
   // --- the member's half: the list, and no way to change it ------------------
   //
@@ -155,7 +167,16 @@ test("scenario 27 — a member sees the workspace, the configurator wires it to 
     ]),
   );
 
-  // Stopping it. The row goes, and the server agrees.
+  /*
+   * Stopping it. The row goes, and the server agrees.
+   *
+   * Two assertions rather than one, and the first is the one that found something: the row
+   * stayed on screen while the base was gone from Postgres, because the handler answered
+   * `200` with an empty body and `request` in `lib/api/core.ts` short-circuits on `204`
+   * alone — so `response.json()` threw on nothing and the mutation was told it had failed.
+   * Every other delete in that package carries `@ResponseStatus(NO_CONTENT)`; this one had
+   * never been called by anything but `curl`.
+   */
   await wired.getByRole("button", { name: "Stop" }).click();
   await expect(asAdmin.getByTestId("wired-request-base")).toHaveCount(0);
   const after = await api.get("/api/admin/notion/requests");

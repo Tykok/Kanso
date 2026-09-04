@@ -2,6 +2,7 @@ package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
 import dev.kanso.sync.inbound.RequestBaseService
+import org.springframework.http.HttpStatus
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -57,7 +59,19 @@ class RequestBaseController(
 		return RequestBaseResponse(base.dataSourceId, base.databaseId, base.teamId.toString())
 	}
 
+	/**
+	 * `204`, like every other delete in this package — and it had to be said out loud rather
+	 * than left to Spring.
+	 *
+	 * A `Unit`-returning handler with no status annotation answers `200` with an empty body,
+	 * and `lib/api/core.ts`'s `request` short-circuits on `204` alone: on `200` it calls
+	 * `response.json()`, which throws on nothing at all. So the row disappeared from Postgres
+	 * and stayed on screen, the mutation having been told it failed. It was invisible while
+	 * this route had no caller but `curl`, which is what `KAN-21` shipping the API alone left
+	 * behind, and it went red the first time a button was wired to it.
+	 */
 	@DeleteMapping("/{dataSourceId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
 	fun unregister(@PathVariable dataSourceId: String) {
 		requireInstanceAdmin()
 		bases.unregister(dataSourceId)
