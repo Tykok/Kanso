@@ -1,0 +1,26 @@
+# Docker reads this from the build context, and `docker-compose.yml` points the web
+# service at `./apps/web` — not the repo root. A `.dockerignore` sitting at the root
+# would be read by nothing, which is why this one lives beside its Dockerfile.
+
+# 1.9 GB of a 1.9 GB context, shipped to the daemon on every `docker compose up
+# --build` — four times a batch, now that this repo works as four agents with an
+# isolated stack each. It is also a correctness fix and not only a fast one: the
+# Dockerfile installs node_modules for linux in the `deps` stage, and the `COPY . .`
+# on the line after used to lay the host's darwin-arm64 tree back over it.
+node_modules
+
+# Build output. `pnpm build` writes its own inside the image; a copy carried in from
+# the host can only be an older answer that Next then believes.
+.next
+out
+tsconfig.tsbuildinfo
+
+# Not inputs to the image. The secrets one matters most: `COPY . .` would put a local
+# `.env` into a build layer, and nothing in this Dockerfile ever wanted it there —
+# the API origin arrives as a build arg, everything else is runtime environment.
+.env
+.env.local
+.git
+.claude
+test-results
+playwright-report

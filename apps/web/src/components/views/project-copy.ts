@@ -1,4 +1,5 @@
 import {
+  ACTIVITY_KINDS,
   dayValue,
   TICKET_STATUSES,
   type ActivityRow,
@@ -153,6 +154,38 @@ const healthOf = (payload: Record<string, unknown>, key: "from" | "to"): string 
 const points = (payload: Record<string, unknown>, key: "from" | "to"): number | undefined =>
   typeof payload[key] === "number" ? (payload[key] as number) : undefined;
 
+/** A payload string that is there and says something. Blank and absent are one answer. */
+const named = (payload: Record<string, unknown>, key: string): string | undefined => {
+  const value = payload[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+};
+
+/**
+ * A custom field's value, whichever of `V35`'s four types it is.
+ *
+ * The only reader here that cannot know its own type, because `field_set` is deliberately
+ * one kind for `text`, `number`, `boolean` and `select`. A shape it does not recognise
+ * answers `undefined` and the branch reads that as "no value" — printing `[object Object]`
+ * beside a field name is the failure every payload reader in this file exists to avoid.
+ *
+ * A boolean becomes "yes"/"no" rather than "true"/"false": nothing else in the app has a
+ * word for one — `ticket-fields.tsx` draws it as a checkbox — so the feed has to coin one,
+ * and a sentence a person reads is not a place to print a wire value.
+ */
+const fieldValue = (payload: Record<string, unknown>, key: "from" | "to"): string | undefined => {
+  const value = payload[key];
+  if (typeof value === "string") return value.trim().length > 0 ? value.trim() : undefined;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return undefined;
+};
+
+/**
+ * [ACTIVITY_KINDS] as a membership test, because a `kind` off the wire is a string first
+ * and a member of that union only by the type's word for it.
+ */
+const KNOWN_KINDS: ReadonlySet<string> = new Set(ACTIVITY_KINDS);
+
 /**
  * The pull request a GitHub-driven row came from — `#418`, or absent.
  *
@@ -200,8 +233,26 @@ export function activitySentence(row: ActivityRow): string {
   const what = ref(row.payload);
 
   // Written as the verb phrase first, so the actor is prepended once rather than in
-  // thirteen branches that could each get the spacing wrong.
+  // seventeen branches that could each get the spacing wrong.
   const phrase = ((): string => {
+    // TWO GUARDS, BECAUSE THERE ARE TWO DIFFERENT MISTAKES.
+    //
+    // The one below is for a kind the *database* holds and this bundle has never heard of:
+    // `ACTIVITY_KINDS` is a third copy of a CHECK that has been widened six times, and no
+    // test can reconcile it because Vitest has no database. It had fallen two kinds behind
+    // when KAN-77 was written, and a browser holding yesterday's bundle is one deploy away
+    // from the same gap at any time. So the type's promise about `row.kind` is checked
+    // rather than believed, and the sentence says plainly that Kanso has no words for the
+    // row instead of throwing on `phrase[0]` further down.
+    //
+    // The other guard is the `switch` having no `default`, and it is the one that catches
+    // the mistake a person makes: annotated `(): string`, a kind added to `ACTIVITY_KINDS`
+    // with no case here is TS2366 at build — "Function lacks ending return statement". A
+    // `default` would answer both mistakes with one branch and silently disarm that, which
+    // is why the unknown kind is turned away *before* the switch and not inside it. Adding
+    // a `default` to this switch would undo half of KAN-77.
+    if (!KNOWN_KINDS.has(row.kind)) return "made a change nobody has taught this feed to say";
+
     switch (row.kind) {
       case "created":
         return what ? `created ${what}` : "created a ticket";
@@ -286,6 +337,39 @@ export function activitySentence(row: ActivityRow): string {
         if (to !== undefined) return `sized ${it} at ${to}`;
         if (from !== undefined) return `un-sized ${it}, from ${from}`;
         return `re-sized ${it}`;
+      }
+      case "token_revoked": {
+        // `V30`'s kind, and the only one whose entity is a person's *account* rather than a
+        // unit of work — which is why `ActivityEntity` had to gain `"user"` in the same
+        // breath. The row is all that survives the token: `V27` revokes by deleting it, so
+        // there is no `revoked_at` anywhere to read the fact off afterwards.
+        //
+        // `ref` is not consulted: the payload names a token, never a ticket.
+        const name = named(row.payload, "name");
+        // Name and prefix are the two halves a person recognises, and the digest is neither
+        // — `ApiTokenService` will not put one in a payload, and this would not print it.
+        const prefix = named(row.payload, "prefix");
+        if (name) return `revoked the API token ${name}`;
+        if (prefix) return `revoked an API token starting ${prefix}`;
+        return "revoked an API token";
+      }
+      case "field_set": {
+        // `V35`'s one word for all four field types and for all three gestures. The field
+        // is the scalar here, so its *name* carries the sentence — and it travels in the
+        // payload beside its id for `labelled`'s reason: a definition can be renamed or
+        // deleted, and a row holding only an id would have nothing left to print.
+        const name = named(row.payload, "name");
+        const to = fieldValue(row.payload, "to");
+        const from = fieldValue(row.payload, "from");
+        const it = what ?? "a ticket";
+        if (name && to) return `set ${name} on ${it} to ${to}`;
+        // Clearing is an absent `to`, never a word on the wire: the shared mapper omits
+        // nulls, so "had a value and has none" is exactly a `from` with no `to`.
+        if (name && from) return `cleared ${name} on ${it}`;
+        // A name and neither end: the row was written by something that recorded less than
+        // this hoped for, and the field is still the one fact worth saying.
+        if (name) return `changed ${name} on ${it}`;
+        return `changed a field on ${it}`;
       }
     }
   })();

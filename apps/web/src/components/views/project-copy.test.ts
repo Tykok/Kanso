@@ -272,6 +272,95 @@ describe("activitySentence", () => {
   it("still reads as a sentence when the health did not travel", () => {
     expect(activitySentence(row("health_posted"))).toBe("Tykok posted a health update");
   });
+
+  /**
+   * `V30`'s kind, and the only one whose feed belongs to an *account*: `entityType` is
+   * `"user"`, which the client type had never named either. The row is the whole history
+   * the revoke left behind — `V27` deletes the token rather than flagging it — so a
+   * sentence that dropped the token's name would leave the event unanswerable.
+   */
+  it("names the API token that was revoked, on an account's own feed", () => {
+    const revoked: ActivityRow = {
+      ...row("token_revoked", { name: "CI deploy", prefix: "kan_7f2a" }),
+      entityType: "user",
+      entityId: "user-1",
+    };
+    expect(activitySentence(revoked)).toBe("Tykok revoked the API token CI deploy");
+  });
+
+  it("falls back to the prefix, and never needs a digest", () => {
+    expect(activitySentence(row("token_revoked", { prefix: "kan_7f2a" }))).toBe(
+      "Tykok revoked an API token starting kan_7f2a",
+    );
+    expect(activitySentence(row("token_revoked"))).toBe("Tykok revoked an API token");
+  });
+
+  /**
+   * `V35`'s single word for four field types and three gestures, so these are one branch
+   * reading a payload whose `to` may be any of them. A boolean is the interesting one: the
+   * app draws it as a checkbox and has no word for it anywhere, so the feed coins "yes".
+   */
+  it("says which field was set, and to what, whatever type it is", () => {
+    expect(
+      activitySentence(row("field_set", { ref: "KAN-142", name: "Severity", to: "high" })),
+    ).toBe("Tykok set Severity on KAN-142 to high");
+    expect(
+      activitySentence(row("field_set", { ref: "KAN-142", name: "Story points", to: 8 })),
+    ).toBe("Tykok set Story points on KAN-142 to 8");
+    expect(
+      activitySentence(row("field_set", { ref: "KAN-142", name: "Regression", to: true })),
+    ).toBe("Tykok set Regression on KAN-142 to yes");
+  });
+
+  /**
+   * Clearing is an absent `to` and never a word on the wire — the shared mapper omits nulls
+   * — so "cleared" is a fact this branch infers from a `from` standing alone. And a row that
+   * arrived with neither end still has the field's name, which is the one thing worth saying.
+   */
+  it("reads a cleared field as cleared, and a bare one as changed", () => {
+    expect(
+      activitySentence(row("field_set", { ref: "KAN-142", name: "Severity", from: "high" })),
+    ).toBe("Tykok cleared Severity on KAN-142");
+    expect(activitySentence(row("field_set", { ref: "KAN-142", name: "Severity" }))).toBe(
+      "Tykok changed Severity on KAN-142",
+    );
+    expect(activitySentence(row("field_set"))).toBe("Tykok changed a field on a ticket");
+  });
+
+  /**
+   * THE GUARD KAN-77 EXISTS FOR, and the one no type can provide.
+   *
+   * `ACTIVITY_KINDS` is a copy of a CHECK that has been widened six times, so a bundle can
+   * be older than the server it is talking to — and the feed's `switch` has no `default`,
+   * on purpose, because a `default` would disarm the build-time exhaustiveness check that
+   * catches the *other* mistake. Without the membership test in front of the switch,
+   * `phrase` is `undefined` and `phrase[0]` throws a `TypeError` — and it throws only on
+   * the actorless line, which is exactly the line the GitHub webhook writes. That is why
+   * this row carries `actor: null`: the crash was one feature away, not hypothetical.
+   *
+   * The sentence says Kanso has no words for the row rather than pretending to translate
+   * it. A feed that renders every other row and admits one is a feed a reader can trust;
+   * one that throws takes the whole page down with it.
+   */
+  it("says plainly that it cannot say a kind it has never heard of", () => {
+    const fromTheFuture: ActivityRow = {
+      ...row("created"),
+      kind: "invented_by_a_later_migration" as ActivityRow["kind"],
+      actor: null,
+    };
+    expect(activitySentence(fromTheFuture)).toBe(
+      "Made a change nobody has taught this feed to say",
+    );
+  });
+
+  it("keeps the actor on a kind it cannot say either", () => {
+    expect(
+      activitySentence({
+        ...row("created"),
+        kind: "invented_by_a_later_migration" as ActivityRow["kind"],
+      }),
+    ).toBe("Tykok made a change nobody has taught this feed to say");
+  });
 });
 
 /**

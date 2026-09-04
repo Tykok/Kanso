@@ -238,10 +238,41 @@ available:
 
 So the diagnosis costs an hour and the fix is one command: `docker compose -p <project>
 down -v` and up again, then let `seedInstance` be the first thing that speaks to it. Use
-`--wait` and read its answer rather than polling the API yourself; that is what it is for.
+`--wait` rather than polling the API yourself — that is what it is for — but read `ps`
+afterwards rather than its exit code. The next section says why.
 
 On a stack nobody has touched, `dev@kanso.local` is not an admin — it is not anything.
 `owner@kanso.test` is the owner, and only because the suite claimed it.
+
+### A zero exit from `--wait` does not prove the stack is up
+
+`docker compose up -d --build --wait` has returned `EXIT=0` on a stack whose web container
+had never taken its port. A stray `next-server` left over from an earlier run still held
+3039, the container sat in `Created`, and nothing said so until a `docker ps` was read by
+hand. The suite then failed on assertions about the screen, several call frames from the
+container that was not running.
+
+So `--wait`'s exit code is one more *announced* code, and the rule this repository already
+applies to test runners applies one level lower: read the state, never the promise. It is
+one command, and its output is the whole answer:
+
+```bash
+docker compose -p <project> ps
+```
+
+Every service has to say `Up`. `Created`, `Restarting`, `Exited` or a missing row is a
+stack that is not there, whatever the exit code said.
+
+Why the lie is possible on *that* service in particular is worth carrying, because it says
+which line to distrust: in the root `docker-compose.yml` the db and the api each declare a
+`healthcheck` and **web declares none**. `--wait` can only wait for what a service offers
+it — a health probe for those two, a container state for web — and it prints `Healthy` for
+web in either case, which is the word doing the misleading. A `ps` shows the difference
+where `--wait` hides it: `Up (healthy)` for db and api against a bare `Up` for web.
+
+None of this retracts the advice above about not polling the API yourself: a `curl` at a
+fresh stack still costs you the instance. `--wait` and then `ps` asks the daemon, which is
+the one party that can answer without claiming anything.
 
 A long-lived stack is still supported and the suite is replayed against it — which is a
 constraint on how a scenario asserts, not only on how it seeds. Anything that counts rows

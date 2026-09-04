@@ -14,6 +14,21 @@ describe("how a page count is printed", () => {
     expect(pageCount(2000, false)).toBe("2000+ pages");
   });
 
+  it("prints one page as one page", () => {
+    expect(pageCount(1, true)).toBe("1 page");
+  });
+
+  /**
+   * The two neighbours of the singular, both of which keep the `s`. A bounded count of one
+   * is "at least one", and the `+` is there precisely because the real number may be
+   * larger — so the noun must not agree with the digit in front of it. And none is a count
+   * of none: "0 page" is not English anywhere this dialog is read.
+   */
+  it("keeps the plural for a bounded one and for none", () => {
+    expect(pageCount(1, false)).toBe("1+ pages");
+    expect(pageCount(0, true)).toBe("0 pages");
+  });
+
   it("has a word for every answer the mapping can take", () => {
     expect(Object.keys(TARGET_LABELS).sort()).toEqual([
       "documents",

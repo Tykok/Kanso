@@ -7,7 +7,23 @@ import { query, request, type User } from "./core";
  * the saved view filters on labels, the contributor page badges them.
  */
 
-/** The closed vocabulary the `activity` table's own CHECK enforces. */
+/**
+ * The closed vocabulary the `activity` table's own CHECK enforces.
+ *
+ * **The authority is the most recent migration that laid the list down, found by grep and
+ * never by resemblance.** Today that is `V36__github.sql`, whose seventeen this matches —
+ * and the two before it each said the same sentence about themselves: `V35` widened `V30`,
+ * `V30` widened `V23`, back to `V8`'s original eleven. A migration numbered above `V36`
+ * that re-states the CHECK is the authority instead.
+ *
+ * The house constrains a closed vocabulary in the database **and** in Kotlin, where
+ * `ActivityKind` in `domain/Model.kt` guards the CHECK and the CHECK guards it. This is a
+ * third copy, and it fell two kinds and one entity behind before anybody noticed — which is
+ * what KAN-77 was. It is no longer unguarded: `social.test.ts` reads the CHECK out of the
+ * newest migration that states it and requires this list to match it word for word, so a
+ * migration that widens the vocabulary goes red in its own commit. `activitySentence` then
+ * carries the other two layers, and its comment says what each is for.
+ */
 export const ACTIVITY_KINDS = [
   "created",
   "status_changed",
@@ -23,24 +39,35 @@ export const ACTIVITY_KINDS = [
   "carried_over",
   "health_posted",
   "estimated",
+  /** `V30`'s. An API token revoked, on the feed of the account it belonged to. */
+  "token_revoked",
+  /** `V35`'s. One word for all four field types and for setting, changing and clearing. */
+  "field_set",
   /**
    * `V36`'s kind, for the link between a pull request and a ticket. The transition a merge
    * causes is an ordinary `status_changed` with `payload.via_pr`, not this — see
    * `activitySentence`.
    *
-   * Adding it here is what makes `activitySentence`'s `switch` demand a branch for it: the
-   * switch has no `default`, so a kind in this list with no case is a type error and a kind
-   * *missing* from this list is a runtime one. Three of the server's eighteen are still
-   * missing — `token_revoked`, `field_set` and the `"user"` entity — and a row of one of
-   * those would make `phrase` undefined, then throw on `phrase[0]` when there is no actor.
-   * Not fixed here because it is a different feature's row and this list is the fence, not
-   * the field; recorded so the next person adding a kind knows the fence exists.
+   * Adding a word here is what makes `activitySentence`'s `switch` demand a branch for it,
+   * and that is the whole fence: the switch has no `default`, so a kind in this list with
+   * no case fails the build. It only ever fences what this list knows about, which is why
+   * the unknown kind is caught a second way at run time.
    */
   "pull_request_linked",
 ] as const;
 
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
-export type ActivityEntity = "ticket" | "project" | "team" | "doc";
+
+/**
+ * What a feed can be drawn *for* — `activity_entity_type_chk`, whose authority is `V30`.
+ *
+ * `"user"` is the one value whose id names a person rather than a unit of work, and that
+ * difference is a permissions difference rather than a taxonomic one: `ActivityController`
+ * gates `ticket` and carries a rule of its own for this value, because an account's feed is
+ * not something any member may already list. It arrived with `token_revoked` and was missed
+ * here at the same time.
+ */
+export type ActivityEntity = "ticket" | "project" | "team" | "doc" | "user";
 
 /**
  * One thing that happened, as the server recorded it.

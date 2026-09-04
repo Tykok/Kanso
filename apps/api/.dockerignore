@@ -1,0 +1,17 @@
+# Read from the build context, which `docker-compose.yml` sets to `./apps/api`. Same
+# reason as the web one: a `.dockerignore` at the repo root would be read by nothing.
+
+# 87 of this context's 91 MB, and both are the host's own toolchain rather than input.
+# The Dockerfile runs its own `./gradlew clean bootJar` inside a linux JDK image, so a
+# darwin `build/` and a warm host `.gradle/` are weight that could only mislead it.
+# `build` matches the directory and not `build.gradle.kts`, which the Dockerfile needs.
+build
+.gradle
+.kotlin
+
+# The generated AES key for the secrets the setup wizard stores. It belongs to the
+# machine and to the `kanso-data` volume, never to an image layer.
+data
+
+.git
+.claude
