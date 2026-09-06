@@ -16,6 +16,12 @@ export const docKeys = {
   pages: (teamId?: string) => ["docs", "pages", teamId ?? ""] as const,
   /** One page with its blocks. Its own entry, so a block edit repaints one document. */
   page: (id: string) => ["docs", "page", id] as const,
+  /**
+   * Who has one page open. Its own entry beside [page] and not part of it, because the
+   * two change at completely different rates and for unrelated reasons: somebody walking
+   * into a document must not cost everybody else a refetch of its blocks.
+   */
+  viewers: (id: string) => ["docs", "viewers", id] as const,
 };
 
 // --- reads -------------------------------------------------------------------
@@ -44,6 +50,28 @@ export const useDocPage = (id: string) =>
 /** Three seeded rows that never change. Cached for the session rather than refetched. */
 export const useDocTemplates = () =>
   useQuery({ queryKey: docKeys.templates, queryFn: docsApi.templates, staleTime: Infinity });
+
+/**
+ * Who else has this page open — `KAN-25`.
+ *
+ * Read **once on mount**, and then only when a `doc_viewers` event says the roster moved.
+ * Not polled: the whole point of presence living on the socket rather than in a table is
+ * that nothing has to ask. `staleTime: Infinity` is what says so — a refocus or a remount
+ * must not go and re-read something the bus is already keeping current, and a poll here
+ * would be a heartbeat wearing a different hat.
+ *
+ * The one read exists because a newly subscribed client cannot rely on the broadcast it
+ * caused: `SessionSubscribeEvent` and the broker's handling of the SUBSCRIBE frame both
+ * travel the inbound channel and their order is not guaranteed. `DocumentController.viewers`
+ * carries that argument.
+ */
+export const useDocViewers = (pageId: string) =>
+  useQuery({
+    queryKey: docKeys.viewers(pageId),
+    queryFn: () => docsApi.viewers(pageId),
+    enabled: pageId !== "",
+    staleTime: Infinity,
+  });
 
 // --- writes ------------------------------------------------------------------
 

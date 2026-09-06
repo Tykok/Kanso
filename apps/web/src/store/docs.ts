@@ -30,10 +30,26 @@ type DocsState = {
    */
   collapsed: Record<string, boolean>;
 
+  /**
+   * The document on screen, or nothing — `KAN-25`.
+   *
+   * Here rather than derived from the route because `topicsFor` is what reads it, and
+   * that function lives in `providers.tsx`'s tree, above the router's own params. It is
+   * also not a scope: `/docs/[id]` is reachable from any scope and from a mention inside
+   * another document, so `store/ui.ts`'s `scope` cannot answer it.
+   *
+   * Setting it is what makes this reader **present** on the page: the topic it produces
+   * is the one whose subscription the server counts as a declaration. Clearing it on the
+   * way out is therefore not tidiness — a page left set here is a ghost in somebody
+   * else's roster.
+   */
+  openDocPageId?: string;
+
   setAnchor: (blockId?: string) => void;
   openMention: (mention: DocMention) => void;
   closeMention: () => void;
   toggleFolder: (folderId: string) => void;
+  setOpenDocPage: (pageId?: string) => void;
 };
 
 export const useDocsUi = create<DocsState>((set) => ({
@@ -46,4 +62,5 @@ export const useDocsUi = create<DocsState>((set) => ({
     set((state) => ({
       collapsed: { ...state.collapsed, [folderId]: !state.collapsed[folderId] },
     })),
+  setOpenDocPage: (openDocPageId) => set({ openDocPageId }),
 }));

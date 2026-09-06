@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DocumentView } from "@/components/docs/document";
 import { DocTree } from "@/components/docs/tree";
 import { ShellAside, usePageShell } from "@/components/shell/topbar-slot";
 import { ApiError, api } from "@/lib/api";
-import { useDocFolders, useDocPage, useDocPages, useTeams } from "@/lib/queries";
+import { useDocFolders, useDocPage, useDocPages, useMe, useTeams } from "@/lib/queries";
+import { useDocsUi } from "@/store/docs";
 
 /**
  * Screen 07 — one document, at page width, with the tree beside it.
@@ -46,6 +48,26 @@ export default function DocPage() {
   // `Documents / Cycle 22 notes`. The index is a crumb here, unlike on the team-scoped
   // routes, because `/docs` is a page a reader can actually climb to from this one.
   usePageShell({ crumbs: { leaf: detail.data?.page.title } });
+
+  const me = useMe();
+
+  /**
+   * Announcing this reader on the page — `KAN-25`.
+   *
+   * Setting the id is what puts the page's viewers topic into `topicsFor`, and the
+   * *subscription* is what the server counts as presence: there is no announce call, so
+   * there is none to forget. The cleanup is not tidiness for the same reason — a page left
+   * set here is somebody who never left, in everybody else's roster.
+   *
+   * Keyed on the raw route id rather than on the loaded document, so presence begins with
+   * the navigation instead of a round trip later. Subscribing to a page that turns out to
+   * be a 404 costs a topic nobody publishes to.
+   */
+  const setOpenDocPage = useDocsUi((state) => state.setOpenDocPage);
+  useEffect(() => {
+    setOpenDocPage(id || undefined);
+    return () => setOpenDocPage(undefined);
+  }, [id, setOpenDocPage]);
 
   if (detail.isLoading) return <div className="centered">Loading…</div>;
 
@@ -89,6 +111,7 @@ export default function DocPage() {
         people={people.data ?? []}
         teamTickets={teamTickets.data ?? []}
         editable={editable}
+        meId={me.data?.user.id}
       />
     </>
   );
