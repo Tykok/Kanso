@@ -6,6 +6,7 @@ import {
   PATCH_LIMIT,
   RealtimeCache,
   resumeAfterOutage,
+  setCaretBlock,
   topicsFor,
   writeTickets,
   type CacheEntry,
@@ -537,6 +538,103 @@ describe("the batch window", () => {
   });
 });
 
+describe("a document changed, or the people reading it did", () => {
+  const target = (cache: EventCache) => ({ cache, fetchTicket: async () => undefined });
+
+  const docEvent = (overrides: Partial<KansoEvent> = {}): KansoEvent =>
+    event({ entity: "docs", id: "page-1", blockId: "b1", ...overrides });
+
+  // Every test in this block sets the caret explicitly. Left over from a previous test it
+  // would silently suppress the events the next one is asserting.
+  const withCaret = (blockId: string | undefined) => setCaretBlock(blockId);
+
+  it("repaints the page somebody else's block changed on", async () => {
+    withCaret(undefined);
+    const fake = fakeCache();
+
+    await applyEvents(target(fake.cache), [docEvent()]);
+
+    expect(fake.was(["docs", "page", "page-1"])).toBe(true);
+  });
+
+  it("does not repaint under the caret this reader is typing in", async () => {
+    withCaret("b1");
+    const fake = fakeCache();
+
+    // The echo of this reader's own commit, or of their own lock renewal. Repainting on it
+    // replaces the draft under their hands, which is the failure KAN-25 exists to stop.
+    await applyEvents(target(fake.cache), [docEvent({ blockId: "b1" })]);
+
+    expect(fake.was(["docs", "page", "page-1"])).toBe(false);
+  });
+
+  it("still repaints for a different block on the page the caret is on", async () => {
+    withCaret("b1");
+    const fake = fakeCache();
+
+    await applyEvents(target(fake.cache), [docEvent({ blockId: "b2" })]);
+
+    expect(fake.was(["docs", "page", "page-1"])).toBe(true);
+  });
+
+  it("repaints for a change to the page itself even while the caret is down", async () => {
+    withCaret("b1");
+    const fake = fakeCache();
+
+    // A retitle, a refile, or a reorder that moved every position. No `blockId`, so there
+    // is no block to be the reader's own.
+    await applyEvents(target(fake.cache), [docEvent({ blockId: undefined })]);
+
+    expect(fake.was(["docs", "page", "page-1"])).toBe(true);
+  });
+
+  it("moves the tree and the recently-changed list on a create", async () => {
+    withCaret(undefined);
+    const fake = fakeCache();
+
+    await applyEvents(target(fake.cache), [docEvent({ kind: "CREATED", blockId: undefined })]);
+
+    expect(fake.was(["docs", "pages"])).toBe(true);
+    expect(fake.was(["docs", "folders"])).toBe(true);
+  });
+
+  it("leaves the lists alone for one block's text, which reorders nothing", async () => {
+    withCaret(undefined);
+    const fake = fakeCache();
+
+    // A lock being taken publishes exactly this and moves no `updated_at` — `V38`'s rule —
+    // so a caret resting in a paragraph must not reshuffle anybody's sidebar.
+    await applyEvents(target(fake.cache), [docEvent({ kind: "UPDATED", blockId: "b9" })]);
+
+    expect(fake.was(["docs", "page", "page-1"])).toBe(true);
+    expect(fake.was(["docs", "pages"])).toBe(false);
+  });
+
+  it("reads the roster back when the people on a page change", async () => {
+    withCaret(undefined);
+    const fake = fakeCache();
+
+    await applyEvents(target(fake.cache), [
+      event({ entity: "doc_viewers", id: "page-1", blockId: undefined }),
+    ]);
+
+    expect(fake.was(["docs", "viewers", "page-1"])).toBe(true);
+    // And it does **not** refetch the page's blocks. Folding presence into `docs` would
+    // cost a document refetch every time anybody navigated.
+    expect(fake.was(["docs", "page", "page-1"])).toBe(false);
+  });
+
+  it("leaves tickets alone entirely", async () => {
+    withCaret(undefined);
+    const fake = fakeCache();
+
+    await applyEvents(target(fake.cache), [docEvent()]);
+
+    expect(fake.was(["teams"])).toBe(false);
+    expect(fake.was(["projects"])).toBe(false);
+  });
+});
+
 describe("what a screen subscribes to", () => {
   const tree = [team("team-a"), team("team-b", "team-a"), team("team-c", "team-b"), team("team-z")];
 
@@ -552,7 +650,37 @@ describe("what a screen subscribes to", () => {
       "/topic/teams/team-a/tickets",
       "/topic/teams/team-b/tickets",
       "/topic/teams/team-c/tickets",
+      "/topic/docs",
     ]);
+  });
+
+  it("listens to documents whatever the scope, like projects and teams", () => {
+    // The tree and screen 22's "recently changed" draw every team's pages whatever the
+    // sidebar is scoped to, so a narrower topic would make both wrong.
+    expect(topicsFor({ kind: "all" }, "list", tree)).toContain("/topic/docs");
+  });
+
+  it("subscribes to a page's viewers topic only while that page is open", () => {
+    // Subscribing to it *is* the declaration of presence on the server, so subscribing to
+    // a page nobody has open would put a ghost in its roster — the exact failure a
+    // `doc_page_viewers` table would have had.
+    expect(topicsFor({ kind: "all" }, "list", tree)).not.toContain(
+      "/topic/docs/page-7/viewers",
+    );
+    expect(topicsFor({ kind: "all" }, "list", tree, "page-7")).toContain(
+      "/topic/docs/page-7/viewers",
+    );
+  });
+
+  it("builds the viewers topic exactly as KansoEvent.viewersTopic does", () => {
+    // Mirrored from `realtime/Events.kt`. A mismatch here is not a broken test — it is a
+    // feature that silently does nothing: nobody would ever be present, and no roster
+    // would ever arrive, with no error anywhere.
+    const pageId = "5d230873-1a9c-429e-920c-0b73f0a4480b";
+
+    expect(topicsFor({ kind: "all" }, "list", tree, pageId)).toContain(
+      `/topic/docs/${pageId}/viewers`,
+    );
   });
 
   it("narrows the board the same way it narrows the list", () => {

@@ -58,6 +58,31 @@ data class DocPageResponse(
 	}
 }
 
+/**
+ * Who is holding a block, and when it lets go — `KAN-25`'s refusal, drawn rather than
+ * thrown.
+ *
+ * [freesAt] and not a number of seconds: the countdown on screen has to stay right in a
+ * tab that was backgrounded, and a duration computed on the server goes stale in flight.
+ * The same reasoning as [BlockLockedException]'s property of the same name, and it is the
+ * same instant.
+ *
+ * [displayName] rather than only [userId], because the person who cannot type needs to
+ * know **whom to ask** — an id would make the client join against `/api/users` to say the
+ * one thing this response exists to say.
+ */
+data class DocBlockLockResponse(
+	val userId: UUID,
+	val displayName: String,
+	val freesAt: OffsetDateTime,
+	val takenAt: OffsetDateTime,
+) {
+	companion object {
+		fun of(holder: DocBlockLockHolder) =
+			DocBlockLockResponse(holder.userId, holder.displayName, holder.expiresAt, holder.takenAt)
+	}
+}
+
 data class DocBlockResponse(
 	val id: UUID,
 	val pageId: UUID,
@@ -66,16 +91,40 @@ data class DocBlockResponse(
 	val content: Map<String, Any?>,
 	/** From `doc_block_tickets`, never from [content] — the join row is the backlink. */
 	val ticketIds: List<UUID>,
+	/**
+	 * The live lock, or nothing.
+	 *
+	 * **Absent from the JSON when there is none, not null** — Jackson omits nulls, and a
+	 * hand-written TypeScript type saying `| null` would be a lie this repository has
+	 * already shipped once as a visible "Last used Invalid Date". `lib/api/docs.ts`
+	 * declares it optional for that reason.
+	 *
+	 * Only ever a *live* lock: `DocBlockLockRepository` filters `expires_at > now()` and
+	 * never hands out a lapsed claim, so there is no `held` flag here to be a stored
+	 * derived value and no expired holder for a client to have to reason about.
+	 */
+	val lockedBy: DocBlockLockResponse? = null,
 ) {
 	companion object {
-		fun of(block: DocBlock) = DocBlockResponse(
+		fun of(block: DocBlock, lock: DocBlockLockHolder? = null) = DocBlockResponse(
 			id = block.id,
 			pageId = block.pageId,
 			position = block.position,
 			kind = block.kind.wire,
 			content = block.content,
 			ticketIds = block.ticketIds,
+			lockedBy = lock?.let(DocBlockLockResponse::of),
 		)
+	}
+}
+
+/**
+ * Somebody with the page open. No timestamp, because there is no row and nothing to
+ * compare — see `realtime/DocPresence.kt`.
+ */
+data class DocViewerResponse(val userId: UUID, val displayName: String) {
+	companion object {
+		fun of(viewer: DocViewer) = DocViewerResponse(viewer.userId, viewer.displayName)
 	}
 }
 
@@ -93,9 +142,17 @@ data class DocPageDetailResponse(
 	val tickets: List<TicketResponse>,
 ) {
 	companion object {
+		/**
+		 * The locks are matched onto the blocks here rather than being a list beside them.
+		 *
+		 * A `locks: [...]` array in this response would make every reader join it against
+		 * the blocks itself — the document, a component test, the e2e spec — and the day one
+		 * of them forgot, a locked block would draw as writable. One `lockedBy` on the block
+		 * that is locked is the shape the screen actually asks for.
+		 */
 		fun of(detail: DocPageDetail) = DocPageDetailResponse(
 			page = DocPageResponse.of(detail.page),
-			blocks = detail.blocks.map(DocBlockResponse::of),
+			blocks = detail.blocks.map { DocBlockResponse.of(it, detail.locks[it.id]) },
 			tickets = detail.tickets.map(TicketResponse::of),
 		)
 	}

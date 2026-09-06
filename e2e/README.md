@@ -181,6 +181,7 @@ docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wai
 |                          | 10. The brand menu: identity, the hinted entries, the version, sign-out.      |
 |                          | 11. A ticket row worked entirely by mouse: pills, rename, archive, delete.    |
 | `12-timeline.spec.ts`    | 12. An arrow drawn by hand, then a resize the scheduling engine cascades.     |
+| `26-doc-collaboration.spec.ts` | 26. Two people in one document: presence, a block lock, and what the second one is told. |
 
 Scenario 5 is the point of the whole thing. The action registry rewrites the keyboard
 path; this test is what says whether behaviour moved with it. When an assertion is in
@@ -197,6 +198,36 @@ Two of its handles carry no accessible name and are therefore pressed by coordin
 resize grip, the last six pixels inside a bar's right edge, and the link handle, which
 begins one pixel past it. Neither does anything when pressed — only when dragged — and
 `bar.tsx` explains why naming them would promise an activation that does not exist.
+
+### Scenario 26 needs a short lock, and says so rather than waiting
+
+`26-doc-collaboration.spec.ts` is the only scenario that drives **two browsers at once**,
+because `KAN-25`'s feature lives between them: presence is derived from a socket and a
+block lock is a refusal one person sees because of what another is doing. Every half of it
+is proved in isolation elsewhere — `doc-locks.test.ts` for the sentence,
+`block-lock-badge.test.tsx` for the rendering, `DocBlockLockTest` for the refusal and the
+expiry — and none of that says the halves ever meet. It found three bugs that every one of
+those suites passed, including a `dev`-mode identity one: a WebSocket handshake cannot
+carry a header, so every socket in the instance authenticated as `dev@kanso.local` and two
+people showed as one viewer.
+
+Its last two claims watch a lock **lapse**, which at the default thirty seconds would be
+thirty seconds of wall clock on a single-worker suite. The stack is therefore expected to
+run with a short TTL:
+
+```bash
+POSTGRES_PORT=5492 API_PORT=8142 WEB_PORT=3052 \
+  KANSO_WEB_ORIGIN=http://localhost:3052 KANSO_AUTH_MODE=dev \
+  KANSO_DOCS_LOCK_TTL=3s docker compose -p kanso_w up -d --build --wait
+```
+
+`KANSO_DOCS_LOCK_TTL` is read **when the api container boots**, so it belongs on the stack
+and not on the runner — the same split as `NOTION_BASE_URL` above. The spec does not trust
+the runner's copy of it either: it reads the countdown the badge is drawing, which is the
+server's own `freesAt`, and skips those two claims with a written annotation if the
+instance is on a long TTL. A test that silently waited thirty seconds would be
+indistinguishable from a hung one, and a green run that quietly proved less than it claims
+is worse than a red one.
 
 ## The database the suite needs, and the one it will get
 

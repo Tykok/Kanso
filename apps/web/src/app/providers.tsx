@@ -19,6 +19,7 @@ import {
   topicsFor,
 } from "@/lib/realtime-events";
 import { applyPreferences, cachePreferences, readCachedPreferences } from "@/lib/theme";
+import { useDocsUi } from "@/store/docs";
 import { useUi } from "@/store/ui";
 
 /**
@@ -74,7 +75,20 @@ function Realtime() {
   const scope = useUi((state) => state.scope);
   const view = useUi((state) => state.view);
   const teams = useTeamTree().data;
-  const topics = useMemo(() => topicsFor(scope, view, teams ?? []), [scope, view, teams]);
+  /**
+   * The document on screen, which `/docs/[id]` sets and clears — `KAN-25`.
+   *
+   * Read here rather than in the route because this is the one place that owns the
+   * subscription set, and because subscribing to a page's viewers topic is what the
+   * server counts as *being* on it: two components each subscribing on their own would
+   * be one person present twice, and a route that stopped short of unsubscribing would
+   * be one who never left.
+   */
+  const openDocPageId = useDocsUi((state) => state.openDocPageId);
+  const topics = useMemo(
+    () => topicsFor(scope, view, teams ?? [], openDocPageId),
+    [scope, view, teams, openDocPageId],
+  );
 
   // Hoisted out of the applier because the resume needs the same one: a sweep and a patch
   // that disagreed about which cache they were writing into would be two caches.

@@ -24,28 +24,57 @@ function Autosize({
   className,
   placeholder,
   onFocus,
+  onBlur,
   onKeyDown,
+  readOnly,
 }: {
   value: string;
   onCommit: (next: string) => void;
   className?: string;
   placeholder?: string;
   onFocus?: () => void;
+  onBlur?: () => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  /**
+   * Somebody else is holding this block — `KAN-25`.
+   *
+   * `readOnly` and **not** `disabled`, which is the whole accessibility of the refusal: a
+   * disabled textarea cannot be focused, so it is skipped by the tab order and its label
+   * is not announced, and a reader working by keyboard would find the paragraph simply
+   * absent. Read-only keeps it focusable, selectable and copyable — which is what somebody
+   * waiting for a block actually wants to do with it — and refuses only the typing.
+   */
+  readOnly?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLTextAreaElement>(null);
   const committed = useRef(value);
 
-  // A refetch that arrives while nobody is typing should show the new text; one that
-  // arrives mid-sentence must not. `committed` is the last value this block sent or
-  // received, so a server value that differs from it is somebody else's edit.
+  /**
+   * A refetch that arrives while nobody is typing should show the new text; one that
+   * arrives mid-sentence must not. `committed` is the last value this block sent or
+   * received, so a server value that differs from it is somebody else's edit.
+   *
+   * What decides is an **unsaved draft**, not focus, and `KAN-25`'s two-browser test is
+   * what corrected that. The guard was `document.activeElement !== ref.current`, which is
+   * a good proxy for "somebody is typing here" right up until two people are on the page:
+   * a reader who clicks into a paragraph to read it, or to copy a line out of it, has a
+   * caret in it and nothing to lose — and under the old rule that paragraph froze at
+   * whatever it said the moment they clicked. That is the one case this whole feature
+   * exists for: watching somebody else write.
+   *
+   * `draft !== committed.current` is the honest question. It is true only when this reader
+   * has typed something the server has not been told about, which is exactly what must not
+   * be overwritten, and it is false for a caret merely resting. It also subsumes the
+   * read-only case for free: a `readonly` textarea fires no `onChange`, so its draft can
+   * never diverge, so a block somebody else is holding always shows their latest word.
+   */
   useEffect(() => {
-    if (value !== committed.current && document.activeElement !== ref.current) {
-      committed.current = value;
-      setDraft(value);
-    }
-  }, [value]);
+    if (value === committed.current) return;
+    if (draft !== committed.current && document.activeElement === ref.current) return;
+    committed.current = value;
+    setDraft(value);
+  }, [value, draft]);
 
   useEffect(() => {
     const node = ref.current;
@@ -60,13 +89,25 @@ function Autosize({
       rows={1}
       value={draft}
       placeholder={placeholder}
+      readOnly={readOnly}
+      // Not `aria-disabled`: the field is genuinely readable and genuinely not writable,
+      // which is exactly what `readonly` means to a screen reader. The name of whoever is
+      // holding it is on the badge beside this, which the row labels.
+      aria-readonly={readOnly || undefined}
       className={cn(
         "w-full resize-none overflow-hidden border-none bg-transparent p-0 text-15 leading-[1.8] text-foreground",
+        // Dimmed rather than struck through or greyed to unreadable: the point of a
+        // read-only block is that somebody is *reading* it while they wait.
+        readOnly && "opacity-60",
         className,
       )}
       onChange={(event) => setDraft(event.target.value)}
       onFocus={onFocus}
       onBlur={() => {
+        onBlur?.();
+        // Ordered so the lock is released even when there is nothing to commit. The early
+        // return below is the common case — a caret that landed in a block and moved on
+        // without typing — and it used to be the only path out of this handler.
         if (draft === committed.current) return;
         committed.current = draft;
         onCommit(draft);
@@ -116,7 +157,19 @@ export type BlockProps = {
   teamTickets: Ticket[];
   onCommit: (content: DocBlockContent) => void;
   onFocus: () => void;
+  /** The caret left this block: `KAN-25`'s cue to let the lock go. */
+  onBlur: () => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  /**
+   * Somebody else is holding this block.
+   *
+   * Every writable control in every kind reads this, not just the textarea: a checkbox
+   * ticked on a locked block is `updateBlock` with a different payload, and the server
+   * refuses it identically. Letting it be clicked would mean the refusal arrived as a
+   * red line after the box had visibly ticked itself and then untickled on the refetch,
+   * which is worse than the box being unclickable with a name beside it.
+   */
+  locked?: boolean;
 };
 
 /**
@@ -132,8 +185,19 @@ export const queriedStatuses = (content: DocBlockContent): string[] | undefined 
   return Array.isArray(query?.status) ? query.status.map(String) : undefined;
 };
 
-export function BlockBody({ block, tickets, teamTickets, onCommit, onFocus, onKeyDown }: BlockProps) {
-  const editable = { onFocus, onKeyDown };
+export function BlockBody({
+  block,
+  tickets,
+  teamTickets,
+  onCommit,
+  onFocus,
+  onBlur,
+  onKeyDown,
+  locked,
+}: BlockProps) {
+  // One object spread into every `Autosize` in every kind, which is what makes the lock
+  // reach all seven of them without seven chances to forget one.
+  const editable = { onFocus, onBlur, onKeyDown, readOnly: locked };
   const commitText = (next: string) => onCommit({ ...block.content, text: next });
 
   switch (block.kind) {
@@ -155,6 +219,7 @@ export function BlockBody({ block, tickets, teamTickets, onCommit, onFocus, onKe
             type="checkbox"
             aria-label={text(block.content) || "Checkbox"}
             className="mt-1.5 size-3.5 shrink-0"
+            disabled={locked}
             checked={block.content.checked === true}
             onChange={(event) =>
               onCommit({ ...block.content, checked: event.target.checked })
@@ -213,7 +278,8 @@ export function BlockBody({ block, tickets, teamTickets, onCommit, onFocus, onKe
           ))}
           <li>
             <button
-              className="text-12 text-faint hover:text-foreground"
+              className="text-12 text-faint hover:text-foreground disabled:opacity-40 disabled:hover:text-faint"
+              disabled={locked}
               onClick={() => onCommit({ ...block.content, items: [...items(block.content), ""] })}
             >
               + one more

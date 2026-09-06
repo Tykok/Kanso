@@ -1,0 +1,209 @@
+-- KAN-25. `EventPublisher` has never emitted a document, so two people on one page do not
+-- collide — they overwrite. `position INT` plus `moveBlock(toIndex)` renumbers the whole
+-- page from an order the mover read a moment ago, and `updateBlock` writes a `content` map
+-- whole; the second commit wins both, silently, with no conflict anybody can see afterwards.
+--
+-- The ticket's answer is presence, a block lock and per-block events, and it puts the CRDT
+-- (`KAN-31`) in V4. This migration is one third of that answer — the lock — and it is the
+-- only third that needs a table. The other two thirds are stated here because the reason
+-- they need no table is the reason this one does.
+--
+-- ---------------------------------------------------------------------------
+-- Why presence is not in this file.
+--
+-- The obvious schema is `doc_page_viewers (page_id, user_id, last_seen_at)`, and it is
+-- wrong in the way this repository has a name for. Presence is a fact about a **live
+-- socket**, and a row outlives the socket that wrote it: close a laptop and the row says
+-- somebody is reading a page nobody has open. Every cure for that is worse than the
+-- disease — a heartbeat column to compare against, a sweeper to delete what the heartbeat
+-- abandoned, and a table whose rows are all lies for as long as the grace period lasts.
+--
+-- The socket is already the answer. `WebSocketConfig` runs STOMP with a 10-second
+-- heartbeat in both directions, so the server learns a reader is gone within seconds of
+-- the wire going quiet, and it learns it as an *event* rather than as an absence to be
+-- inferred from a timestamp. So presence lives in a `ConcurrentHashMap` beside the broker
+-- (`realtime/DocPresence.kt`), keyed by STOMP session, and subscribing to a page's viewers
+-- topic **is** declaring presence — there is no announce call to forget to make and no
+-- withdraw call to fail to make. `auth/UserSessions.kt` is the precedent for the shape and
+-- carries the same caveat: it is per-instance. What that costs is written down beside it.
+--
+-- This is the house rule read literally, not bent: derived values are computed on read.
+-- "Who is on this page" is a function of the set of open connections, and the set of open
+-- connections is not something a table can hold.
+--
+-- ---------------------------------------------------------------------------
+-- Why the lock *is* a row, when presence is not.
+--
+-- Because a lock is a **refusal**, and a refusal has to be decided in one place. Two
+-- people pressing into the same paragraph within the same millisecond must produce one
+-- holder and one 409, and the only party that can arbitrate that is the database — Postgres
+-- decides it here in the primary key below, with no read before write and no lock ordering
+-- to get wrong. An in-memory map would arbitrate it per API instance, which is to say it
+-- would hand the same block to one person per instance and call it locked.
+--
+-- So the two halves of this feature go to opposite homes, and it is the same question
+-- asked of each: what is this a fact *about*. Presence is a fact about a connection, and
+-- lives with the connections. A lock is a claim staked against a row, and lives with the
+-- rows.
+--
+-- ---------------------------------------------------------------------------
+-- `block_id` as the primary key, which is the whole constraint.
+--
+-- **One holder per block**, in five words of DDL, the way `V39`'s partial unique index
+-- says a person has one pair of hands. No `id` column: a lock has no identity of its own
+-- and nothing ever needs to name one — it is a property of the block, and the block's id
+-- is the only name it will ever be looked up by. A surrogate key would have permitted two
+-- rows for one block, which is precisely the state this table exists to make unreachable,
+-- and would then have needed a unique index to take it back.
+--
+-- `ON DELETE CASCADE` from `doc_blocks`, so deleting a block takes its lock. The only
+-- other option is refusing to delete a locked block, and the service does that instead —
+-- at the point where it can say who is holding it, which a foreign key cannot.
+--
+-- ---------------------------------------------------------------------------
+-- No `page_id`, and it is tempting.
+--
+-- "Every live lock on this page" is the read the screen makes on every paint, and a
+-- `page_id` here would answer it without a join. It is not stored, because it is derivable:
+-- `doc_blocks.page_id` already holds it, `doc_blocks_page_idx (page_id, position)` already
+-- indexes it, and the join is one hop from a table that has at most a handful of rows.
+-- Copying it would buy nothing but a second place for a block's page to be recorded — and
+-- blocks do not move between pages today, so the copy would be a column that cannot go
+-- stale only until the day something makes it possible.
+--
+-- ---------------------------------------------------------------------------
+-- `expires_at`, compared on read. No sweeper, and no heartbeat table.
+--
+-- All three precedents for expiry are in this tree and the choice between them is not
+-- taste:
+--
+--   * `V29`'s heartbeat on `outbound_jobs` exists because `reclaimAbandoned` had to tell
+--     "the worker is dead" from "the worker is slow" (`KAN-61`), and getting it wrong
+--     **replays a push**. Guessing wrong here costs nothing of the kind: reclaiming a
+--     block whose holder has gone quiet is not a mistake, it is the feature. Nobody's work
+--     is re-run — at worst somebody's unsent draft in an unfocused textarea stops being
+--     protected, which is the same protection they would have had before this ticket.
+--   * `GithubDeliverySweeper` (`V36`) exists because `webhook_deliveries` grows one row per
+--     delivery forever, so something must delete. This table cannot grow that way: the row
+--     is keyed by the block, so re-taking replaces it rather than appending, and the
+--     ceiling is one row per block that has ever been typed in — bounded by `doc_blocks`,
+--     cascading with it, and reached only by blocks whose holder never released cleanly.
+--     A background job to remove rows that are already inert would be motion for its own
+--     sake.
+--   * A timestamp compared on read is what is left, and it is the strongest of the three
+--     because **an expired row is not a lock**. There is no window in which the database
+--     holds a stale claim that a reader might believe: every reader asks
+--     `expires_at > now()`, so the row's authority ends by itself, at a time written into
+--     it, with nothing having to run. Whether the holder's browser, the API or the sweeper
+--     is alive does not enter into it.
+--
+-- The renewal path is what makes the short window livable: the client pushes `expires_at`
+-- forward while the caret is in the block, so a person typing a long paragraph holds it
+-- for as long as they type, and a person who shut the laptop mid-sentence holds it for
+-- `KANSO_DOCS_LOCK_TTL` and not a second longer. The renewal and the first take are the
+-- **same statement** — `ON CONFLICT (block_id) DO UPDATE`, guarded on the holder being
+-- the caller or the row being expired — so there is no second code path that could grant
+-- what the first would refuse.
+--
+-- The TTL is not in this file. It is `KansoProperties.docs.lockTtl`, because it is a
+-- policy about how long a laptop may be shut, not a property of the schema, and because a
+-- `DEFAULT now() + interval` here would have to be re-stated in Kotlin for the renewal to
+-- agree with the insert.
+--
+-- One departure worth naming, because it goes against every other statement in this
+-- database: `DocBlockLockRepository` writes and reads these two columns through
+-- **`clock_timestamp()`**, not `now()`. `V9`'s header is where that distinction was first
+-- written down here — `now()` is the *transaction's* timestamp, not the statement's — and
+-- it went the other way for `doc_pages` because two touches in one transaction should not
+-- be distinguishable. An expiry is the opposite kind of fact. Under `now()` a lock taken
+-- inside a long transaction would count its window from whenever that transaction began,
+-- and a lock read in the transaction that took it could never be observed to lapse at all.
+-- The `taken_at` default below is `now()` only because nothing ever inserts this row
+-- without supplying the column.
+--
+-- ---------------------------------------------------------------------------
+-- Taking a lock is not editing the page, and `V38` is why that sentence is here.
+--
+-- `V38` made `updated_at` on the three mirrored tables mean *an edit*, distinguished from
+-- a bookkeeping write inside the trigger, after measuring what happens when the two are
+-- confused: "récemment mis à jour" reorders on nothing, and `NotionPoller.kansoWins`
+-- wins a conflict it has no claim to and pushes away a real edit made in Notion.
+--
+-- Pressing into a paragraph and typing nothing is exactly a bookkeeping write. If it moved
+-- `doc_pages.updated_at`, then reading a document with the caret resting in it would keep
+-- floating that page to the top of screen 22's list — a page reordered by attention rather
+-- than by editing.
+--
+-- `V9` settled this for `doc_pages` in the other direction from `V38`, and its reasoning is
+-- what makes the answer here structural rather than a list to maintain. These tables carry
+-- **no trigger at all**: a page's last edit is two facts (when, and by whom) and a trigger
+-- can supply one, so `DocPageRepository.touch` writes `updated_at` beside `edited_by`, in
+-- one place, by hand. Which means the question "should this write count as an edit" is not
+-- asked of a trigger's ignore-list here — it is asked of the call site, and the answer is
+-- that **nothing on the lock path calls `touch`**. Taking, renewing and releasing a lock
+-- write one row in this table and touch nothing in `doc_pages`. `V39` made the same move
+-- for the same reason and called it structural: a future column cannot forget to be on a
+-- list that does not exist.
+--
+-- ---------------------------------------------------------------------------
+-- No closed vocabulary, and that is worth one line since the house asks for both halves.
+--
+-- There is no `kind`, `state` or `mode` column here and so there is no `CHECK (… IN (…))`
+-- to keep in step with a Kotlin enum. A lock is held or it is expired, and that is
+-- `expires_at` against `now()` — a comparison, not a word. The vocabulary this ticket does
+-- add is on the realtime bus rather than in the database (`realtime/Events.kt` gains a
+-- fourth entity), where there is no row to constrain and the exhaustive `when` in
+-- `applyEvents` is what keeps it honest.
+--
+-- ---------------------------------------------------------------------------
+-- No `activity` kind, on `V39`'s reading.
+--
+-- `activity_kind_chk`'s current authority is **`V36`** — grepped for in `db/migration`,
+-- and worth restating because `V39`'s own header had to say the same thing about `V35`.
+-- `V36` holds seventeen kinds; this migration adds none and does not restate the list.
+--
+-- A lock is the shortest-lived fact in the schema and the feed is a permanent record. "Élie
+-- held paragraph four for nineteen seconds" answers nothing anybody will ask in six
+-- months, and the edit that came out of it is already narrated by `doc_pages.edited_by`
+-- and `updated_at`. `V36` gave `pull_request_linked` a kind because a link has no other
+-- narrator; this has no story to tell once it is over.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE doc_block_locks (
+  -- The key *is* the constraint: one holder per block. See the header.
+  block_id   UUID PRIMARY KEY REFERENCES doc_blocks(id) ON DELETE CASCADE,
+
+  -- Who is holding it. `ON DELETE CASCADE` for `V39`'s reason rather than this schema's
+  -- usual `SET NULL` on authorship: a lock is *only* a claim by one person, and a claim
+  -- with nobody behind it refuses everybody forever. Unreachable through the product —
+  -- nothing deletes a `users` row, accounts retire by `users.active` — so the clause
+  -- states the intent.
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+  -- When the claim lapses. The only thing that decides whether this row is a lock, and
+  -- the reason nothing has to sweep. Written by the service from
+  -- `KansoProperties.docs.lockTtl` on both the take and the renewal.
+  expires_at TIMESTAMPTZ NOT NULL,
+
+  -- When it was first taken, and it is not bookkeeping: the screen says "free in 25 s"
+  -- from `expires_at`, and this is what lets the refusal also say how long the block has
+  -- been held — a paragraph somebody has had for four minutes reads differently from one
+  -- they took two seconds ago. Not moved by a renewal.
+  taken_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- A lock that expires before it was taken is a clock somebody got wrong, not a lock.
+  CONSTRAINT doc_block_locks_window_chk CHECK (expires_at > taken_at)
+);
+
+-- No `updated_at` and no trigger. A renewal moves `expires_at`, which *is* the datum this
+-- row exists to carry, and there is no second reader that needs to know when the row was
+-- last written — `V38`'s distinction has no work to do on a table whose only column is
+-- already a time. The ten tables `V2` gave the plain trigger to all had something else to
+-- say; this one does not.
+
+-- "Everything this person is holding", which is what a page unload releases in one
+-- statement and what a second tab's take has to be able to find. The `expires_at IS NOT
+-- NULL` half of the question is not indexed on purpose: the table is the size of "blocks
+-- currently being typed in", and an index to help a filter over a handful of rows is a
+-- write cost on every keystroke's renewal for a read that was already free.
+CREATE INDEX doc_block_locks_user_idx ON doc_block_locks (user_id);

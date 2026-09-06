@@ -14,6 +14,7 @@ data class KansoProperties(
 	val github: Github = Github(),
 	val sync: Sync = Sync(),
 	val realtime: Realtime = Realtime(),
+	val docs: Docs = Docs(),
 ) {
 	data class Auth(
 		val mode: String = "oidc",
@@ -291,4 +292,32 @@ data class KansoProperties(
 	)
 
 	data class Realtime(val channel: String = "kanso_events")
+
+	/**
+	 * Documents written here — `KAN-25`'s two settings, and both of them are answers to
+	 * "somebody shut a laptop mid-paragraph".
+	 */
+	data class Docs(
+		/**
+		 * How long a block lock outlives the last word typed into it.
+		 *
+		 * Thirty seconds, and the number is a trade between two visible failures rather
+		 * than a guess. Too short and a person who pauses to read the paragraph above
+		 * theirs has the block taken from under them by somebody who then overwrites the
+		 * draft they had not blurred yet — the exact loss this ticket exists to stop.
+		 * Too long and the block a colleague abandoned is unreachable for minutes, with
+		 * the screen telling them to wait for a person who has gone home.
+		 *
+		 * Thirty is above the pause a sentence takes to think about and well under the
+		 * patience anybody has for a paragraph they can see nobody typing in. It is
+		 * livable only because it is *renewed* — `LOCK_RENEW_MS` in `doc-locks.ts`
+		 * refreshes at a third of it while the caret is in the block — so it bounds
+		 * absence, never presence.
+		 *
+		 * Configuration and not a constant because it is a property of how a team works,
+		 * and because the e2e suite has to be able to watch a lock expire without
+		 * spending thirty seconds of wall clock on it (`KANSO_DOCS_LOCK_TTL=3s`).
+		 */
+		val lockTtl: Duration = Duration.ofSeconds(30),
+	)
 }

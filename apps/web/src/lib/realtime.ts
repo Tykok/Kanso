@@ -1,5 +1,5 @@
 import { Client, type IMessage, type StompSubscription } from "@stomp/stompjs";
-import { API_URL } from "./api";
+import { API_URL, getDevUser } from "./api";
 import type { KansoEvent } from "./realtime-events";
 
 // The wire format lives beside the code that decides what an event means, and is
@@ -46,7 +46,26 @@ export type RealtimeHandlers = {
  * call it makes every time the scope changes, rather than a special first one.
  */
 export function connectRealtime({ onEvent, onResume }: RealtimeHandlers): RealtimeConnection {
-  const url = API_URL.replace(/^http/, "ws") + "/ws";
+  /**
+   * The dev identity, on the URL, because a WebSocket handshake cannot carry a header.
+   *
+   * `new WebSocket(url)` takes a URL and nothing else — by specification — so the
+   * `X-Kanso-User` header that `request()` attaches to every fetch has no equivalent here.
+   * Under a cookie login that costs nothing: the same cookie authenticates the handshake.
+   * In dev mode it meant every socket in the instance authenticated as `dev@kanso.local`,
+   * so every browser was the *same person* on the bus.
+   *
+   * Invisible until `KAN-25`, because nothing had ever depended on who a socket belonged
+   * to — events are broadcast to topics, not to people. Presence does: it is derived from
+   * the socket itself, and two people on one document showed as one viewer called "dev".
+   *
+   * Absent outside dev mode, where `getDevUser()` is null and the cookie is the credential.
+   */
+  const devUser = getDevUser();
+  const url =
+    API_URL.replace(/^http/, "ws") +
+    "/ws" +
+    (devUser ? `?devUser=${encodeURIComponent(devUser)}` : "");
 
   const client = new Client({
     brokerURL: url,

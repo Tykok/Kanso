@@ -17,11 +17,21 @@ export type ChangeKind = "CREATED" | "UPDATED" | "DELETED";
  * the server.
  */
 export type KansoEvent = {
-  entity: "tickets" | "projects" | "teams";
+  entity: "tickets" | "projects" | "teams" | "docs" | "doc_viewers";
   kind: ChangeKind;
   id: string;
   teamId?: string;
   projectId?: string;
+  /**
+   * Which block of a document moved — `docs` events only, and absent when the change was
+   * to the page itself (a retitle, a refile, a reorder that moved every position).
+   *
+   * The one field here that is not scope, and it earns the exception for the reason
+   * `KAN-25` exists: on a page two people are typing in, a receiver has to tell somebody
+   * else's paragraph from the one under its own caret before it repaints. Absent rather
+   * than null, like every other optional field on this wire.
+   */
+  blockId?: string;
   /** "kanso" for someone's keystroke, "notion" when the inbound poller applied it. */
   origin: "kanso" | "notion";
   at: string;
@@ -55,8 +65,48 @@ export type KansoEvent = {
  * without them is deaf on exactly those. The caller in `app/providers.tsx` is what
  * guarantees it.
  */
-export function topicsFor(scope: Scope, view: View, teams: readonly Team[]): string[] {
-  return ["/topic/projects", "/topic/teams", ...ticketTopics(scope, view, teams)];
+export function topicsFor(
+  scope: Scope,
+  view: View,
+  teams: readonly Team[],
+  /**
+   * The document this reader has open, if any — `KAN-25`.
+   *
+   * Not derived from [scope]: a document is not a scope. `/docs/[id]` is reachable from
+   * any scope and from a mention inside another document, and the route is the only thing
+   * that knows which page is on screen. `store/docs.ts` is where it says so.
+   */
+  openDocPageId?: string,
+): string[] {
+  return [
+    "/topic/projects",
+    "/topic/teams",
+    ...ticketTopics(scope, view, teams),
+    ...docTopics(openDocPageId),
+  ];
+}
+
+/**
+ * What a document costs to keep current: one wide topic, and one narrow one per page open.
+ *
+ * `/topic/docs` stays global on `projects`' and `teams`' reasoning — the tree and screen
+ * 22's "recently changed" list are drawn from every team's pages whatever the sidebar is
+ * scoped to, and documents do not change often enough for the width to cost anything.
+ *
+ * The viewers topic is the interesting one, and subscribing to it is **not only listening**:
+ * on the server, a subscription to it *is* the declaration of presence (`DocPresence`).
+ * That is the whole reason presence needs no announce call, no heartbeat and no row — and
+ * the reason this is conditional. Subscribing to a page nobody has open would put a ghost
+ * in its roster, which is exactly the failure a `doc_page_viewers` table would have had.
+ *
+ * The string is `KansoEvent.viewersTopic`'s, mirrored. A mismatch would be a feature that
+ * silently does nothing, so it is asserted in `realtime-events.test.ts` against the shape
+ * the Kotlin builds.
+ */
+function docTopics(openDocPageId?: string): string[] {
+  const topics = ["/topic/docs"];
+  if (openDocPageId) topics.push(`/topic/docs/${openDocPageId}/viewers`);
+  return topics;
 }
 
 function ticketTopics(scope: Scope, view: View, teams: readonly Team[]): string[] {
@@ -163,6 +213,8 @@ export async function applyEvents(
   if (teams) cache.invalidate(["teams"]);
   if (projects) cache.invalidate(["projects"]);
 
+  applyDocEvents(target, batch);
+
   // A pin the reader holds on a team or a project somebody else has just deleted is
   // already gone from the table — `V22`'s cascade — and only gone from the screen once
   // this key is asked again. Nothing publishes a `favourites` event and nothing should:
@@ -243,6 +295,67 @@ async function applyTickets(target: CacheTarget, events: readonly KansoEvent[]):
   }
 
   writeTickets(cache, { changed: fetched, gone, overlay: target.overlay });
+}
+
+// --- documents ---------------------------------------------------------------
+
+/**
+ * What the block this reader is typing in reports, so an event about it can be ignored.
+ *
+ * Set by the document screen while a textarea holds the caret and cleared on blur. A
+ * module-level cell rather than a field on [CacheTarget] because the applier is built once
+ * per session in `providers.tsx` and the caret moves several times a second — threading it
+ * through would mean rebuilding the applier, and its 50 ms batch with it, on every focus.
+ *
+ * `Autosize` already refuses to overwrite a focused textarea from a refetch, so this is
+ * belt and braces for the *other* half: without it every keystroke this reader commits
+ * would come back as an event and invalidate the page under them, costing a request per
+ * paragraph on a document nobody else has open.
+ */
+let caretBlockId: string | undefined;
+
+export function setCaretBlock(blockId: string | undefined): void {
+  caretBlockId = blockId;
+}
+
+/**
+ * A document changed, or the people reading it did.
+ *
+ * Two entities and two different answers, which is the whole reason presence is not a
+ * `docs` event: a `docs` event says the page is not what you drew, and a `doc_viewers`
+ * event says the page is exactly what you drew and somebody else is looking at it.
+ * Folding them together would refetch a page's blocks every time anybody navigated.
+ *
+ * Both are invalidations rather than patches. `queries/docs.ts` predicted this in its own
+ * comment — every key starts with `"docs"` so one invalidation reaches every variant —
+ * and a document has no equivalent of the placement problem tickets have: there is one
+ * cached entry per page, the server returns it whole, and a block's text is not something
+ * to guess at from an id.
+ */
+function applyDocEvents(target: CacheTarget, batch: readonly KansoEvent[]): void {
+  const { cache } = target;
+  const docs = batch.filter((event) => event.entity === "docs");
+  const viewers = batch.filter((event) => event.entity === "doc_viewers");
+
+  for (const event of viewers) cache.invalidate(["docs", "viewers", event.id]);
+
+  // The reader's own caret. An event naming the block they are typing in is the echo of
+  // their own commit or of their own lock renewal — repainting on it would replace the
+  // draft under their hands, which is the exact failure this ticket exists to stop.
+  const relevant = docs.filter((event) => event.blockId === undefined || event.blockId !== caretBlockId);
+  if (relevant.length === 0) return;
+
+  for (const event of relevant) cache.invalidate(["docs", "page", event.id]);
+
+  // The tree and "recently changed" move on any write to any page: a new page appears in
+  // both, and *any* edit reorders the second, which is ordered on the page's own
+  // `updatedAt`. Taking a lock deliberately does not reach here — it publishes an event
+  // but moves no `updated_at`, `V38`'s rule — so a caret resting in a paragraph does not
+  // reshuffle anybody's list.
+  if (relevant.some((event) => event.kind !== "UPDATED" || event.blockId === undefined)) {
+    cache.invalidate(["docs", "pages"]);
+    cache.invalidate(["docs", "folders"]);
+  }
 }
 
 // --- coming back from an outage ----------------------------------------------

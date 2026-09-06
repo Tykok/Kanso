@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { DocBlockContent, DocBlockKind, DocPageDetail, Ticket, User } from "@/lib/api";
+import type { DocBlock, DocBlockContent, DocBlockKind, DocPageDetail, Ticket, User } from "@/lib/api";
+import { heldByOther, refusalMessage } from "@/lib/doc-locks";
 import { cn } from "@/lib/utils";
-import { useDocBlockWrites } from "@/lib/queries";
+import { useDocBlockWrites, useDocViewers, useRefreshDocPage } from "@/lib/queries";
 import { useDocsUi } from "@/store/docs";
 import { useUi } from "@/store/ui";
-import { TopbarSlot } from "../shell/topbar-slot";
+import { TopbarSlot, useReportError } from "../shell/topbar-slot";
+import { BlockLockBadge } from "./block-lock-badge";
+import { DocPresence } from "./presence";
+import { useBlockLock } from "./use-block-lock";
 import { FavouriteStar } from "../favourites";
 import { Kbd } from "../ui/kbd";
 import { BlockBody, queriedStatuses } from "./blocks";
@@ -29,6 +33,7 @@ export function DocumentView({
   people,
   teamTickets,
   editable,
+  meId,
   now,
 }: {
   detail: DocPageDetail;
@@ -37,10 +42,38 @@ export function DocumentView({
   teamTickets: Ticket[];
   /** The server's own answer to "may this reader write here", not a re-derivation. */
   editable: boolean;
+  /** Who is reading this, so the roster can leave them out of their own presence. */
+  meId?: string;
   now?: Date;
 }) {
   const { page, blocks, tickets } = detail;
   const writes = useDocBlockWrites(page.id);
+  const reportError = useReportError();
+
+  /**
+   * `KAN-25`. Everybody on the page except this reader — they know they are here, and a
+   * chip for themselves would make "is anybody else here" a matter of counting to two.
+   *
+   * Filtered here rather than in `DocPresence` or on the server: the endpoint's answer is
+   * the whole truth about the page, which is what makes it assertable, and the roster the
+   * *server* holds is the one an e2e spec reads back over HTTP.
+   */
+  const viewers = (useDocViewers(page.id).data ?? []).filter((viewer) => viewer.userId !== meId);
+
+  /**
+   * The refusal, in the one strip this shell has for a failure with no dialog to land in.
+   *
+   * `useReportError` and not a toast, because that is where every other refused write on
+   * every other route already goes — and because the bug it was written for was a refusal
+   * that went *nowhere*. `refusalMessage` guarantees this is never called with silence:
+   * a 409 it cannot parse still arrives as the server's own sentence, which names the
+   * holder too.
+   */
+  const lock = useBlockLock(reportError);
+
+  // A lock lapsing is the one change on this screen no event announces — see
+  // `useRefreshDocPage`. The badge counting down to it is what asks.
+  const refreshPage = useRefreshDocPage(page.id);
   const overlay = useUi((state) => state.overlay);
   const open = useUi((state) => state.open);
   const closeOverlay = useUi((state) => state.close);
@@ -93,6 +126,21 @@ export function DocumentView({
     closeOverlay();
   };
 
+  /**
+   * A block's text, on its way to the server, with the one refusal it can meet.
+   *
+   * The lock is drawn *before* anybody types, so this 409 is the narrow race rather than
+   * the common case: the block was free when the page was last drawn and somebody claimed
+   * it in between. It still has to say who — a keystroke that vanishes with no explanation
+   * is the same bug as a menu entry that does nothing, and this repository has shipped
+   * that one twice.
+   */
+  const commit = (block: DocBlock, content: DocBlockContent) =>
+    writes.patch.mutate(
+      { id: block.id, content },
+      { onError: (error) => reportError(refusalMessage(error, new Date())) },
+    );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/*
@@ -112,6 +160,10 @@ export function DocumentView({
             `s` is a letter somebody is typing, and it mounts no command palette. */}
         <FavouriteStar target={{ kind: "doc", id: page.id }} label={page.title} />
         <span className="flex-1" />
+
+        {/* Who else is here. Before the Notion chip because it is the one thing in this
+            bar that changes while somebody is looking at it. */}
+        <DocPresence viewers={viewers} />
 
         {page.notionPageId && (
           <span className="inline-flex h-[22px] items-center rounded-sm bg-accent-soft px-[7px] text-11 tracking-[0.06em] text-accent-ink uppercase">
@@ -135,45 +187,69 @@ export function DocumentView({
           <article className="flex w-[720px] max-w-full flex-col gap-[18px] px-5 lg:px-0">
             <h1 className="text-30 leading-[1.15] font-medium tracking-[-0.02em]">{page.title}</h1>
 
-            {blocks.map((block, index) => (
-              <BlockRow
-                key={block.id}
-                id={block.id}
-                editable={editable}
-                focused={block.id === anchorBlockId}
-              >
-                <BlockBody
-                  block={block}
-                  tickets={tickets}
-                  teamTickets={needsQuery ? teamTickets : []}
-                  onCommit={(content) => writes.patch.mutate({ id: block.id, content })}
-                  onFocus={() => setAnchor(block.id)}
-                  onKeyDown={onKeyDown}
-                />
+            {blocks.map((block, index) => {
+              // Whoever has this block, if it is not this reader. `undefined` in both the
+              // cases that mean "type here": nobody holds it, or they do.
+              const held = heldByOther(block, meId);
+              // Any block on the page held by anybody else refuses a *reorder*, because
+              // `setOrder` rewrites every position — `DocBlockLockService` argues it, and
+              // the arrows are disabled here so the refusal is visible before it is tried.
+              const pageHeld = blocks.some((other) => heldByOther(other, meId));
 
-                {editable && (
-                  <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
-                    <HandleButton
-                      label="Move up"
-                      disabled={index === 0}
-                      onClick={() => writes.move.mutate({ id: block.id, toIndex: index - 1 })}
-                    >
-                      ↑
-                    </HandleButton>
-                    <HandleButton
-                      label="Move down"
-                      disabled={index === blocks.length - 1}
-                      onClick={() => writes.move.mutate({ id: block.id, toIndex: index + 1 })}
-                    >
-                      ↓
-                    </HandleButton>
-                    <HandleButton label="Delete block" onClick={() => writes.remove.mutate(block.id)}>
-                      ×
-                    </HandleButton>
-                  </div>
-                )}
-              </BlockRow>
-            ))}
+              return (
+                <BlockRow
+                  key={block.id}
+                  id={block.id}
+                  editable={editable}
+                  focused={block.id === anchorBlockId}
+                >
+                  <BlockBody
+                    block={block}
+                    tickets={tickets}
+                    teamTickets={needsQuery ? teamTickets : []}
+                    onCommit={(content) => commit(block, content)}
+                    onFocus={() => {
+                      setAnchor(block.id);
+                      // Claimed on focus rather than on the first keystroke: the point is
+                      // to stop the *second* person starting, and by the first keystroke
+                      // they have already begun typing something they will lose.
+                      if (editable && !held) lock.hold(block.id);
+                    }}
+                    onBlur={lock.release}
+                    onKeyDown={onKeyDown}
+                    locked={Boolean(held)}
+                  />
+
+                  {held && <BlockLockBadge lock={held} onFreed={refreshPage} />}
+
+                  {editable && (
+                    <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+                      <HandleButton
+                        label="Move up"
+                        disabled={index === 0 || pageHeld}
+                        onClick={() => writes.move.mutate({ id: block.id, toIndex: index - 1 })}
+                      >
+                        ↑
+                      </HandleButton>
+                      <HandleButton
+                        label="Move down"
+                        disabled={index === blocks.length - 1 || pageHeld}
+                        onClick={() => writes.move.mutate({ id: block.id, toIndex: index + 1 })}
+                      >
+                        ↓
+                      </HandleButton>
+                      <HandleButton
+                        label="Delete block"
+                        disabled={Boolean(held)}
+                        onClick={() => writes.remove.mutate(block.id)}
+                      >
+                        ×
+                      </HandleButton>
+                    </div>
+                  )}
+                </BlockRow>
+              );
+            })}
 
             {editable && (
               <button
