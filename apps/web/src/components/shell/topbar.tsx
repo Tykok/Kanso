@@ -4,6 +4,7 @@ import { Fragment, type Ref } from "react";
 import { InboxBell } from "@/components/inbox/bell";
 import { MobileNavDrawer } from "@/components/mobile-nav";
 import type { ActionContext } from "@/lib/actions";
+import { SearchButton } from "./search-button";
 import { SidebarRevealButton } from "./sidebar-frame";
 
 /**
@@ -13,11 +14,15 @@ import { SidebarRevealButton } from "./sidebar-frame";
  * drew three more. This is the only one now, which is what makes the `×` a single
  * behaviour rather than four links that happened to look alike.
  *
- * Two of its four controls take no props and are not the shell's to configure. Both read
- * what they need from a query and draw nothing when there is nothing to draw:
+ * Two of its controls take no props and are not the shell's to configure. Both read what
+ * they need from a query and draw nothing when there is nothing to draw:
  * `SidebarRevealButton` is absent while the column is pinned, and `InboxBell` is on every
  * route because an unread count is true of the session rather than of a place — which is
  * the whole of why the inbox left the column for this bar.
+ *
+ * `SearchButton` joins them on the same argument: the palette is the search, and until
+ * this it had one door that needed a chord and one buried in the brand menu, which on a
+ * phone amounts to none.
  */
 export function Topbar({
   ctx,
@@ -89,8 +94,10 @@ export function Topbar({
           the bar still pushes the `×` to the right end. */}
       <div ref={slotRef} className="flex min-w-0 flex-1 items-center gap-3" />
 
-      {/* The right cluster, in the order the reader leaves the page: what arrived, then
-          the way out. Unlike the slot, neither is a page's to withhold. */}
+      {/* The right cluster, in the order the reader leaves the page: where else to go,
+          what arrived, then the way out. Unlike the slot, none of the three is a page's
+          to withhold. */}
+      <SearchButton />
       <InboxBell />
 
       {canLeave && (

@@ -197,6 +197,38 @@ test("scenario 16b — the ticket list fits a phone, and gains columns as the wi
   await expect(page.getByTestId("view-filter")).toHaveCount(0);
   await expect(page.getByRole("group", { name: "View" })).not.toBeVisible();
 
+  /*
+   * The search, reachable without a keyboard.
+   *
+   * The palette *is* the search, and until the button existed it had two doors — `⌘K`
+   * and a row in the brand menu — neither of which a thumb can open. This is the whole
+   * of `Kanso - Mobile.dc.html`'s screen 34 becoming reachable on the device it was
+   * drawn for.
+   */
+  const search = page.getByTestId("shell-search");
+  await expect(search).toBeVisible();
+  await search.click();
+  const palette = page.getByTestId("palette");
+  await expect(palette).toBeVisible();
+  // The keys are not drawn here either — three keycaps nobody can press, on the surface
+  // with the least room to spare. The count stays: it is a fact about the search.
+  //
+  // A testid rather than the words: the strip reads `↑ ↓ move`, with the caps as child
+  // elements, so `getByText("move", { exact: true })` matches nothing at any width — it
+  // passed here by being absent and would have gone on passing with the strip on screen.
+  await expect(page.getByTestId("palette-keys")).not.toBeVisible();
+  await expect(page.getByTestId("search-count")).toBeVisible();
+
+  // And it searches: the ticket seeded above is found by a word from its title.
+  await page.getByPlaceholder("Type a command…").fill(title.slice(0, 18));
+  await expect(palette.getByText(title, { exact: false }).first()).toBeVisible();
+  // The `tab` keycap goes with the rest of them once there is something to filter; the
+  // segmented strip it duplicates stays, because a thumb can press that.
+  await expect(page.getByTestId("palette-tab-key")).not.toBeVisible();
+  await expect(page.getByRole("group", { name: "What to search" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("palette")).toHaveCount(0);
+
   // The title wraps rather than being cut off, which is what the 64px row buys. A 36px
   // row would mean it did not.
   const height = await row.evaluate((el) => el.getBoundingClientRect().height);
@@ -233,6 +265,16 @@ test("scenario 16b — the ticket list fits a phone, and gains columns as the wi
   await page.setViewportSize({ width: 1400, height: 900 });
   await expect(header("Sync")).toBeVisible();
   await expect.poll(overflow, { message: "the list scrolls sideways at 1400px" }).toBeLessThanOrEqual(0);
+
+  // The same one button on a desktop window — not a mobile affordance with a twin — and
+  // here the keys under the results are worth drawing, because there is a keyboard to
+  // press them with.
+  await page.getByTestId("shell-search").click();
+  await expect(page.getByTestId("palette")).toBeVisible();
+  await expect(page.getByTestId("palette-keys")).toBeVisible();
+  await page.getByPlaceholder("Type a command…").fill("a");
+  await expect(page.getByTestId("palette-tab-key")).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // The full nine columns, and the row still ends where the window does.
   await expect(page.locator(".statusbar")).toBeVisible();

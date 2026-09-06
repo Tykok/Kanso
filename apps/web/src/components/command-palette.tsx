@@ -221,11 +221,20 @@ export function CommandPalette({
                 if (event.key === "Escape") onClose();
               }}
             />
+            {/* The tab this field is filtered to, and the key that cycles it — off on a
+                narrow window for the reason the strip under the results is: the key
+                cannot be pressed there, and the answer it names is already drawn as the
+                pressed button in the segmented strip immediately below. The label goes
+                with the keycap rather than alone: on its own it would be the same word
+                said twice, 40px apart. */}
             {searching && (
-              <>
+              <span
+                data-testid="palette-tab-key"
+                className="flex items-center gap-2.5 max-[720px]:hidden"
+              >
                 <span className="text-11 text-faint">{TAB_LABELS[tab]}</span>
                 <Kbd>tab</Kbd>
-              </>
+              </span>
             )}
           </div>
 
@@ -265,17 +274,27 @@ export function CommandPalette({
 
           <div className="h-px bg-border" />
           <div className="flex items-center gap-2.5 px-4 py-2.5 text-11 text-faint">
-            <span>
-              <Kbd>↑</Kbd> <Kbd>↓</Kbd> move
-            </span>
-            <span>
-              <Kbd>↵</Kbd> open
-            </span>
-            {searching && (
+            {/* The keys, and not on a phone. Three keycaps nobody can press is the same
+                lesson `.statusbar` stops giving under 720px, on the one surface where a
+                touch reader most needs the room — the palette is 94vw here, and the row
+                under this one is the answer they came for. The count keeps its place at
+                every width: it is a fact about the search, not about the keyboard. */}
+            <span
+              data-testid="palette-keys"
+              className="flex items-center gap-2.5 max-[720px]:hidden"
+            >
               <span>
-                <Kbd>⇧↵</Kbd> in page
+                <Kbd>↑</Kbd> <Kbd>↓</Kbd> move
               </span>
-            )}
+              <span>
+                <Kbd>↵</Kbd> open
+              </span>
+              {searching && (
+                <span>
+                  <Kbd>⇧↵</Kbd> in page
+                </span>
+              )}
+            </span>
             <span className="flex-1" />
             <span data-testid="search-count" role="status">
               {countLabel(found.shown, found.total)}
