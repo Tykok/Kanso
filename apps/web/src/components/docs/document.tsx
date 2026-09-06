@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { DocBlock, DocBlockContent, DocBlockKind, DocPageDetail, Ticket, User } from "@/lib/api";
 import { heldByOther, refusalMessage } from "@/lib/doc-locks";
 import { cn } from "@/lib/utils";
-import { useDocBlockWrites, useDocViewers } from "@/lib/queries";
+import { useDocBlockWrites, useDocViewers, useRefreshDocPage } from "@/lib/queries";
 import { useDocsUi } from "@/store/docs";
 import { useUi } from "@/store/ui";
 import { TopbarSlot, useReportError } from "../shell/topbar-slot";
@@ -70,6 +70,10 @@ export function DocumentView({
    * holder too.
    */
   const lock = useBlockLock(reportError);
+
+  // A lock lapsing is the one change on this screen no event announces — see
+  // `useRefreshDocPage`. The badge counting down to it is what asks.
+  const refreshPage = useRefreshDocPage(page.id);
   const overlay = useUi((state) => state.overlay);
   const open = useUi((state) => state.open);
   const closeOverlay = useUi((state) => state.close);
@@ -216,7 +220,7 @@ export function DocumentView({
                     locked={Boolean(held)}
                   />
 
-                  {held && <BlockLockBadge lock={held} />}
+                  {held && <BlockLockBadge lock={held} onFreed={refreshPage} />}
 
                   {editable && (
                     <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">

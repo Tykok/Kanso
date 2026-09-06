@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { docsApi, type DocBlockContent, type DocBlockKind } from "../api";
 
 /**
@@ -72,6 +73,27 @@ export const useDocViewers = (pageId: string) =>
     enabled: pageId !== "",
     staleTime: Infinity,
   });
+
+/**
+ * Re-read one page, now — `KAN-25`'s one client-side refetch that no event caused.
+ *
+ * Every other repaint on this screen is driven by the bus. A lock *expiring* is the
+ * exception, and it is the exception on purpose: `V40` chose a timestamp compared on read
+ * so that nothing has to run for a claim to lapse, which also means nothing is there to
+ * announce that it has. The client waiting on it knows the instant already — it is drawing
+ * the countdown — so `BlockLockBadge` calls this once, at zero, instead of polling.
+ *
+ * Narrowed to the page rather than the whole `docs` prefix: a lock lapsing changes one
+ * block's `lockedBy` and nothing about the tree or "recently changed", both of which are
+ * ordered on an `updatedAt` that a lock deliberately never moves.
+ */
+export function useRefreshDocPage(pageId: string) {
+  const client = useQueryClient();
+  return useCallback(
+    () => void client.invalidateQueries({ queryKey: docKeys.page(pageId) }),
+    [client, pageId],
+  );
+}
 
 // --- writes ------------------------------------------------------------------
 

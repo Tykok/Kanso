@@ -50,15 +50,31 @@ function Autosize({
   const ref = useRef<HTMLTextAreaElement>(null);
   const committed = useRef(value);
 
-  // A refetch that arrives while nobody is typing should show the new text; one that
-  // arrives mid-sentence must not. `committed` is the last value this block sent or
-  // received, so a server value that differs from it is somebody else's edit.
+  /**
+   * A refetch that arrives while nobody is typing should show the new text; one that
+   * arrives mid-sentence must not. `committed` is the last value this block sent or
+   * received, so a server value that differs from it is somebody else's edit.
+   *
+   * What decides is an **unsaved draft**, not focus, and `KAN-25`'s two-browser test is
+   * what corrected that. The guard was `document.activeElement !== ref.current`, which is
+   * a good proxy for "somebody is typing here" right up until two people are on the page:
+   * a reader who clicks into a paragraph to read it, or to copy a line out of it, has a
+   * caret in it and nothing to lose — and under the old rule that paragraph froze at
+   * whatever it said the moment they clicked. That is the one case this whole feature
+   * exists for: watching somebody else write.
+   *
+   * `draft !== committed.current` is the honest question. It is true only when this reader
+   * has typed something the server has not been told about, which is exactly what must not
+   * be overwritten, and it is false for a caret merely resting. It also subsumes the
+   * read-only case for free: a `readonly` textarea fires no `onChange`, so its draft can
+   * never diverge, so a block somebody else is holding always shows their latest word.
+   */
   useEffect(() => {
-    if (value !== committed.current && document.activeElement !== ref.current) {
-      committed.current = value;
-      setDraft(value);
-    }
-  }, [value]);
+    if (value === committed.current) return;
+    if (draft !== committed.current && document.activeElement === ref.current) return;
+    committed.current = value;
+    setDraft(value);
+  }, [value, draft]);
 
   useEffect(() => {
     const node = ref.current;

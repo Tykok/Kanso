@@ -55,6 +55,16 @@ services:
       KANSO_GITHUB_CLIENT_ID: ${KANSO_GITHUB_CLIENT_ID:-}
       KANSO_GITHUB_CLIENT_SECRET: ${KANSO_GITHUB_CLIENT_SECRET:-}
       KANSO_GITHUB_WEBHOOK_SECRET: ${KANSO_GITHUB_WEBHOOK_SECRET:-}
+      # How long a document's block lock outlives the last word typed into it — `KAN-25`,
+      # and the default is `KansoProperties.Docs.lockTtl`'s thirty seconds.
+      #
+      # Here because it is the one setting in that feature a *test* has to move: proving
+      # that a laptop closed mid-paragraph frees its block means watching a claim lapse,
+      # and at thirty seconds that is thirty seconds of wall clock in a suite that runs on
+      # one worker. `18-documents.spec.ts` asks for three. Nothing else in the product
+      # needs it changed, and an instance that never sets it gets the number the property
+      # declares rather than one this file invents.
+      KANSO_DOCS_LOCK_TTL: ${KANSO_DOCS_LOCK_TTL:-30s}
       # Requests one API token may make per minute. Counted in the api container's
       # own heap, so this is a limit per replica and not per instance: run two and a
       # token gets twice the quota. `ApiTokenRateLimit` is where that assumption is
