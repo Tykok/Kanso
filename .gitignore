@@ -23,8 +23,13 @@ apps/web/next-env.d.ts
 .pnpm-store/
 
 # playwright
-/test-results/
-/playwright-report/
+#
+# The globs cover the suffixed copies too, and that is not tidiness: `KANSO_E2E_OUTPUT_DIR`
+# and `KANSO_E2E_REPORT_DIR` exist so two runs in one checkout stop clearing each other's
+# traces, and every value anybody gives them — `test-results-b`, `playwright-report-w` —
+# landed outside these two rules. The first agent to use the pair committed a report.
+/test-results*/
+/playwright-report*/
 /blob-report/
 /playwright/.cache/
 
