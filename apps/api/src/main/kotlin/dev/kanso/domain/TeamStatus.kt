@@ -42,3 +42,4 @@ fun statusKeyOf(label: String): String {
 	if (key.isEmpty()) throw BadRequestException("A status needs a letter or a digit in its name")
 	return key
 }
+

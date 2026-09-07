@@ -46,6 +46,19 @@ object Teams : Table("teams") {
 	override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * A team's own statuses — `KAN-28`. Sorted on read by `(position, key)`; `V41` says why
+ * `position` carries no unique index.
+ */
+object TeamStatuses : Table("team_statuses") {
+	val teamId = javaUUID("team_id")
+	val key = text("key")
+	val label = text("label")
+	val category = text("category")
+	val position = integer("position")
+	override val primaryKey = PrimaryKey(teamId, key)
+}
+
 object Users : Table("users") {
 	val id = javaUUID("id")
 	val email = text("email")
