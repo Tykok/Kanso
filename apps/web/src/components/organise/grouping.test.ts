@@ -216,4 +216,22 @@ describe("workloadNote", () => {
 
     expect(workloadNote(rows)).toBeUndefined();
   });
+
+  it("lets the caller name a status bucket, since the word is the team's — KAN-28", () => {
+    const named = nameGroups(
+      [{ key: "done", count: 3, tickets: [] }],
+      "status",
+      { status: (key) => (key === "done" ? "Livré" : key) },
+    );
+
+    // `STATUS_LABELS` is Kanso's word and stays the fallback; a team that renamed `done`
+    // reads its own, and a scope spanning teams passes a category's name through here too.
+    expect(named[0].label).toBe("Livré");
+  });
+
+  it("still names a status itself when no resolver is handed over", () => {
+    const named = nameGroups([{ key: "in_review", count: 1, tickets: [] }], "status");
+
+    expect(named[0].label).toBe("In review");
+  });
 });

@@ -14,6 +14,19 @@ export const TICKET_STATUSES = [
   "canceled",
 ] as const;
 
+/**
+ * What a status *means*, as opposed to what it is called — `dev.kanso.domain.StatusCategory`.
+ *
+ * Here, with the wire types, since `KAN-28`: `lib/status.ts` held it and said "nothing
+ * crosses the wire", which was true while the five were a reading this client did of a
+ * closed status column. The server sends them now — on every `Team.statuses` row, and as
+ * the bucket keys of a list whose scope spans teams — so the vocabulary belongs beside the
+ * others it arrives with. `lib/status.ts` re-exports it for the screens that were already
+ * asking it questions.
+ */
+export const STATUS_CATEGORIES = ["backlog", "unstarted", "started", "completed", "canceled"] as const;
+export type StatusCategory = (typeof STATUS_CATEGORIES)[number];
+
 export const TICKET_PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
 
 /**
@@ -245,6 +258,33 @@ export type Team = {
   mirror: Mirror;
   /** The server's answer to "may this actor create a ticket here", from `TicketAccess`. */
   editable: boolean;
+  /**
+   * This team's own words for its work, in its own order — `KAN-28`.
+   *
+   * **Required, not optional**, like `Ticket.customFields` and for the same reason: the
+   * server sends it on every team payload from the version that introduced it, and typing
+   * it as optional would push a `?.` into every screen that prints a status.
+   *
+   * Carried on the team rather than fetched per screen because every screen that draws a
+   * status needs it — a list, a board, a chip in a filter — and `lib/statuses.ts` is where
+   * the lookups into it live.
+   */
+  statuses: TeamStatus[];
+};
+
+/**
+ * One row of a team's status catalogue — `team_statuses`, server side.
+ *
+ * `key` is what `Ticket.status` holds and what a saved view addresses; it never changes.
+ * `label` is the word this team reads, `category` is what everything that reasons about
+ * work reads instead of the word, and `position` is the order this team stacks its
+ * buckets in.
+ */
+export type TeamStatus = {
+  key: TicketStatus;
+  label: string;
+  category: StatusCategory;
+  position: number;
 };
 
 /** Wire values from `dev.kanso.domain.MemberRole`; nothing here names "lead". */

@@ -104,6 +104,7 @@ const team = (id: string, parentTeamId?: string): Team => ({
   id,
   name: id,
   key: id.toUpperCase(),
+  statuses: [],
   parentTeamId,
   archived: false,
   ticketCount: 0,

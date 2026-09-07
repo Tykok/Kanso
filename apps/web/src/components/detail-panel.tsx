@@ -5,7 +5,6 @@ import { useRef, useState } from "react";
 import {
   EFFORT_POINTS,
   TICKET_PRIORITIES,
-  TICKET_STATUSES,
   dayValue,
   fromDayValue,
   ticketAddress,
@@ -16,7 +15,8 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+import { optionsFor } from "@/lib/statuses";
+import { useTeams } from "@/lib/queries";
 import { Menu, type MenuItem } from "./menu";
 import { ActivityFeed } from "./views/activity-feed";
 import { TicketIdentifier } from "./pills";
@@ -65,6 +65,8 @@ export function DetailPanel({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  // The status control offers this ticket's team's words — `KAN-28`.
+  const teams = useTeams();
   const [description, setDescription] = useState(ticket.description ?? "");
   const initial = useRef(ticket.description ?? "");
 
@@ -111,9 +113,11 @@ export function DetailPanel({
               value={ticket.status}
               onChange={(event) => onPatch({ status: event.target.value as TicketStatus })}
             >
-              {TICKET_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_LABELS[status]}
+              {/* This ticket's team's words, in its order — `KAN-28`. The control has to
+                  offer what the row can hold: `tickets_status_fk` refuses the rest. */}
+              {optionsFor(teams.data ?? [], ticket.teamId).map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
                 </option>
               ))}
             </select>

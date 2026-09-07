@@ -8,6 +8,7 @@ import {
   LOAD_ORDER,
   PROGRESS_ORDER,
   statusesWhere,
+  CATEGORY_ORDER,
   WORKFLOW_ORDER,
 } from "./status-order";
 
@@ -205,6 +206,22 @@ describe("categories", () => {
       "completed",
       "started",
       "unstarted",
+    ]);
+  });
+});
+
+describe("the order a scope spanning teams stacks its buckets in", () => {
+  it("is the five categories, as the server also writes them", () => {
+    // The other copy is `StatusOrder.CATEGORY_ORDER` in `domain/StatusOrder.kt`, asserted
+    // as the same literal by `StatusOrderTest.kt`. A grouped page's boundary is cut
+    // against this sequence server-side, so this side may not restack what arrives — it
+    // has to agree, and the pair of tests is what says whether it still does.
+    expect([...CATEGORY_ORDER]).toEqual([
+      "backlog",
+      "unstarted",
+      "started",
+      "completed",
+      "canceled",
     ]);
   });
 });

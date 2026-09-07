@@ -25,14 +25,31 @@ const STATUS_ACTIONS = [
  * This keeps only the label and, with a `ctx`, the menu that turns the pair into a
  * control.
  */
-export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: ActionContext }) {
+export function StatusPill({
+  status,
+  label,
+  ctx,
+}: {
+  status: TicketStatus;
+  /**
+   * The word this ticket's *own team* uses — `KAN-28`, and `lib/statuses.ts` resolves it.
+   *
+   * A prop and not a lookup in here: a cross-team list draws rows from several
+   * vocabularies at once, so the word belongs to the row rather than to the screen, and
+   * the row is what knows which team it came from. Left out, the pill reads Kanso's own
+   * word, which is right for every team that has renamed nothing and for the previews
+   * that draw rows nobody can act on.
+   */
+  label?: string;
+  ctx?: ActionContext;
+}) {
   // Above the early return, because it is a hook: `useMenuItems` answers with an empty
   // list for the label-only case, which is the same nothing the branch below draws.
   const items = useMenuItems(ctx, STATUS_ACTIONS);
   const body = (
     <>
       <StatusDot status={status} />
-      <span className="text-muted-foreground">{STATUS_LABELS[status]}</span>
+      <span className="text-muted-foreground">{label ?? STATUS_LABELS[status]}</span>
     </>
   );
 
@@ -46,7 +63,7 @@ export function StatusPill({ status, ctx }: { status: TicketStatus; ctx?: Action
 
   return (
     <Menu
-      label={`Status: ${STATUS_LABELS[status]}`}
+      label={`Status: ${label ?? STATUS_LABELS[status]}`}
       // The pill IS the trigger, rather than a box with an invisible button laid over
       // it: one element, so there is nothing left to keep aligned. A `<button>` and not
       // the `<span>` above, because Radix hands the child the trigger's props and only

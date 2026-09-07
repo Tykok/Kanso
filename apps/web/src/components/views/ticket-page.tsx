@@ -6,7 +6,6 @@ import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/top
 import {
   EFFORT_POINTS,
   TICKET_PRIORITIES,
-  TICKET_STATUSES,
   dayValue,
   fromDayValue,
   isTicketId,
@@ -16,7 +15,8 @@ import {
   type TicketStatus,
   parseTicketKey,
 } from "@/lib/api";
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS } from "@/lib/status";
+import { optionsFor } from "@/lib/statuses";
 import {
   usePatchTicket,
   usePreferences,
@@ -146,6 +146,8 @@ export function TicketPageView({ ticketKey }: { ticketKey: string }) {
 }
 
 function TicketBody({ ticket }: { ticket: Ticket }) {
+  // For the status control below: the words are the ticket's team's — `KAN-28`.
+  const teams = useTeams();
   const projects = useProjects();
   const users = useUsers();
   const patch = usePatchTicket();
@@ -232,9 +234,10 @@ function TicketBody({ ticket }: { ticket: Ticket }) {
                   set({ id: ticket.id, status: event.target.value as TicketStatus })
                 }
               >
-                {TICKET_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {STATUS_LABELS[status]}
+                {/* The ticket's own team's words — `KAN-28`, same reason as the panel's. */}
+                {optionsFor(teams.data ?? [], ticket.teamId).map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
                   </option>
                 ))}
               </select>
