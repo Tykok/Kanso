@@ -227,14 +227,22 @@ The rule is short:
   reachable only through the seeder and the draft vocabulary. A rename is what turns 35
   files of silent assumption into 35 compile errors somebody has to answer one by one.
 
-## The Notion mirror
+## The Notion mirror — deferred, and why
 
-The mirror pushes `TicketStatus.label` today and reads it back with `fromLabel`. Both
-become the team's catalogue: the push sends the team's label, the inbound match resolves
-against that team's rows, and a label Notion holds that the team no longer has falls
-back to the category's first status — the same rebase rule as a team move, for the same
-reason. A Notion select option is not deleted when a team renames a status; the mirror
-adds and never prunes, which is what it already does for every other vocabulary.
+This section said the push should send the team's label and the inbound match should
+resolve against that team's rows. Writing it was easy; the mirror's shape says otherwise.
+
+There is **one** tickets database for the whole instance, and its `Status` select carries
+the six labels. Per-team labels make those options a union that grows with every rename —
+Notion never prunes a select option — and worse, the union is ambiguous on the way back:
+team A renaming `todo` to *En cours* and team B renaming `in_progress` to the same words
+means an inbound *En cours* names two different keys, and choosing wrong writes a status
+nobody set. That is corruption rather than a cosmetic gap.
+
+So the mirror keeps pushing `DefaultStatus.label` — consistent, unambiguous, and not
+localised — and the three ways out are `KAN-91`: resolve the inbound label against the
+ticket's own team (the poller knows the page, so the ticket, so the team), push the key
+instead of the label, or give each team its own database, which is a different product.
 
 ## MCP
 

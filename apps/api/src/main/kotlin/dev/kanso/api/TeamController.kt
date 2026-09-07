@@ -5,9 +5,9 @@ import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.User
 import dev.kanso.service.TeamService
+import dev.kanso.service.TeamStatusService
 import dev.kanso.service.TicketAccess
 import jakarta.validation.Valid
-import dev.kanso.repo.TeamStatusRepository
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -18,7 +18,7 @@ class TeamController(
 	private val teams: TeamService,
 	private val access: TicketAccess,
 	private val currentUser: CurrentUser,
-	private val statuses: TeamStatusRepository,
+	private val statuses: TeamStatusService,
 ) {
 
 	@GetMapping

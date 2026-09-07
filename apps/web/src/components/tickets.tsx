@@ -397,7 +397,10 @@ export function TicketList({
                       column header above both carry — a caption indented differently
                       from the rows it introduces is the one thing that would make the
                       grid look broken. */}
-                  <GroupLabel>
+                  {/* `group-header` is what `e2e/29-team-statuses.spec.ts` reads to say
+                      the buckets are stacked in the team's order — the one claim of that
+                      ticket a browser has to make, since the order comes from SQL. */}
+                  <GroupLabel data-testid="group-header">
                     {entry.label} · {entry.count}
                   </GroupLabel>
                 </div>
