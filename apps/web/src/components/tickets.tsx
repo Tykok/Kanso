@@ -12,6 +12,7 @@ import { Row, rowActionsTriggerClass } from "./ui/row";
 import { GROUP_LABEL_ESTIMATE, GroupLabel } from "./ui/group-label";
 import { PriorityMark, StatusPill, SyncBadge, TicketIdentifier } from "./pills";
 import { Menu } from "./menu";
+import { PendingWriteMark } from "@/components/offline/pending-mark";
 import { useMenuItems } from "./menu-items";
 
 /**
@@ -160,14 +161,30 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
       {editing ? (
         <TitleEditor initialTitle={ticket.title} onCommit={onRename} onCancel={onCancelEdit} />
       ) : (
-        <span
-          className={
-            ticket.archived
-              ? "ticket-title text-faint line-through"
-              : "ticket-title"
-          }
-        >
-          {ticket.title}
+        /*
+          * The title's cell holds two things now, and the mark comes first — `KAN-89`.
+          *
+          * Here rather than in a tenth column: the grid above is a nine-column contract
+          * that `16-mobile-nav.spec.ts` measures at five widths, and `tcol-id` is 70px
+          * with an identifier already in it. This cell is the `1fr`, it is the one that
+          * can spare the width, and it spares it only while a write is actually waiting
+          * — which is never, on a screen where nobody has written offline.
+          *
+          * `min-w-0` because `.ticket-title` truncates, and a flex child does not
+          * shrink below its content without it: the ellipsis would move off the row
+          * instead of appearing in it.
+          */
+        <span className="flex min-w-0 items-center gap-2">
+          <PendingWriteMark ticketId={ticket.id} />
+          <span
+            className={
+              ticket.archived
+                ? "ticket-title text-faint line-through"
+                : "ticket-title"
+            }
+          >
+            {ticket.title}
+          </span>
         </span>
       )}
 

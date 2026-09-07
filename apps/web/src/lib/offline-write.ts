@@ -1,3 +1,4 @@
+import type { QueuedWrite } from "@/components/offline/queue";
 import { dayValue, type Ticket } from "./api";
 import type { PatchInput } from "./queries/core";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./status";
@@ -89,4 +90,33 @@ function phrase(field: string, value: unknown): string | undefined {
     default:
       return undefined;
   }
+}
+
+/** What a row's own writes on disk amount to, for the mark the list draws. */
+export type Pending = "queued" | "refused";
+
+/**
+ * The tickets the queue is holding a write for, by id.
+ *
+ * `KAN-89`. The main list asks the grouped endpoint, and a guess about a stacked entry
+ * is answered by invalidating it — a bucket's count is the whole match and only SQL
+ * knows it. Offline that refetch never lands, so the row goes on showing the old status
+ * with nothing to say a change is coming. This is what it says instead: the status is
+ * left alone, the count stays true, and the row admits it is behind.
+ *
+ * The id comes off the request path because that is the only place a queued write has
+ * it: the banner prints the identifier, and a row is drawn from a `Ticket` that knows
+ * its uuid. A refusal anywhere in a row's chain speaks for the row — a chain stops at
+ * the first write that does not go through, so the ones behind it are not going either,
+ * and calling that `queued` would promise a send that cannot happen.
+ */
+export function pendingWrites(writes: readonly QueuedWrite[]): Map<string, Pending> {
+  const pending = new Map<string, Pending>();
+  for (const write of writes) {
+    const id = /^\/api\/tickets\/([^/]+)$/.exec(write.request.path)?.[1];
+    if (!id) continue;
+    if (write.state === "rejected") pending.set(id, "refused");
+    else if (!pending.has(id)) pending.set(id, "queued");
+  }
+  return pending;
 }

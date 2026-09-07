@@ -8,6 +8,7 @@ import {
   seedInstance,
   seedTeam,
   seedTicket,
+  ticketRow,
   unique,
   uniqueKey,
   viewButton,
@@ -314,6 +315,19 @@ test.describe("26. the installed app", () => {
     const queued = page.getByTestId("offline-banner").getByTestId("queued-write");
     await expect(queued).toContainText(ticket.identifier);
     await expect(queued).toContainText("status → Done");
+
+    /*
+     * The same write, read from the list — `KAN-89`.
+     *
+     * The row cannot move: the grouped endpoint answers a guess with an invalidation,
+     * and offline that refetch never lands. So the status stays as the server last gave
+     * it, the bucket count stays true, and the row says the thing that is actually the
+     * case — a write of its own is waiting.
+     */
+    await viewButton(page, "List").click();
+    const row = ticketRow(page, ticket.title);
+    await expect(row.getByTestId("status-pill")).toHaveText("Todo");
+    await expect(row.getByTestId("pending-write")).toHaveText("queued");
 
     const stillTodo = await api.get(`/api/tickets/${ticket.id}`);
     expect(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Ticket } from "./api";
-import { heldWrite, settlementOf } from "./offline-write";
+import { heldWrite, pendingWrites, settlementOf } from "./offline-write";
 
 const ticket = (overrides: Partial<Ticket> = {}): Ticket => ({
   id: "t1",
@@ -100,5 +100,50 @@ describe("how a patch settled", () => {
 
   it("is refused when the server said no, even though it left no row either", () => {
     expect(settlementOf(undefined, { status: 403 })).toBe("refused");
+  });
+});
+
+describe("which rows have a write waiting on disk", () => {
+  const write = (path: string, state: "queued" | "rejected" = "queued") => ({
+    id: path + state,
+    seq: 1,
+    actor: "me",
+    reference: "KAN-142",
+    summary: "status → Done",
+    request: { path, method: "PATCH" },
+    state,
+    queuedAt: "2026-09-07T10:00:00Z",
+  });
+
+  it("names the ticket the request's path names", () => {
+    const pending = pendingWrites([write("/api/tickets/t1")]);
+
+    // The id is in the path and nowhere else in a queued write: the banner prints the
+    // identifier, and a row is drawn from a `Ticket` that only knows its uuid.
+    expect(pending.get("t1")).toBe("queued");
+  });
+
+  it("says nothing about a write that is not a ticket's", () => {
+    // The queue's first tenant, and still in it: a notification marked read.
+    expect(pendingWrites([write("/api/notifications/n1/read")]).size).toBe(0);
+  });
+
+  it("reports a refused write as refused, since somebody has to decide something", () => {
+    expect(pendingWrites([write("/api/tickets/t1", "rejected")]).get("t1")).toBe("refused");
+  });
+
+  it("lets a refusal anywhere in a row's chain speak for the row", () => {
+    // A chain stops at a refusal, so the writes behind it are not going anywhere either
+    // — a row marked merely `queued` would promise a send that cannot happen.
+    const pending = pendingWrites([
+      write("/api/tickets/t1", "rejected"),
+      write("/api/tickets/t1", "queued"),
+    ]);
+
+    expect(pending.get("t1")).toBe("refused");
+  });
+
+  it("is empty for an empty queue, which is the normal case", () => {
+    expect(pendingWrites([]).size).toBe(0);
   });
 });
