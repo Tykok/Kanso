@@ -1,12 +1,26 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, MEMBER, openAs, seedInstance } from "./support";
+import { mirrorQueueDrained } from "./settled";
+import {
+  ADMIN,
+  MEMBER,
+  apiAs,
+  openAs,
+  seedInstance,
+  seedTeam,
+  seedTicket,
+  unique,
+  uniqueKey,
+  viewButton,
+} from "./support";
 
 /**
  * 26. Installed, and honest offline.
  *
  * The three claims KAN-24 has to make good, none of which a unit test can reach: the app
  * installs, a reload with no network arrives instead of showing a blank page, and the
- * worker's cache holds nothing that belongs to a session.
+ * worker's cache holds nothing that belongs to a session. KAN-88 adds a fourth, which is
+ * the one that makes the queue worth having: a write made with no network is kept, is
+ * visible, and is actually sent when the network comes back.
  *
  * That last one is the reason this file exists at all. A Cache Storage bucket is scoped to
  * the *origin*, not to a session, so a worker that cached one person's ticket list would
@@ -247,6 +261,79 @@ test.describe("26. the installed app", () => {
       "an old build's cache must not survive its worker",
     ).toEqual([]);
 
+    await page.context().close();
+  });
+  /**
+   * `KAN-88`. Three things a unit test cannot say together: the card keeps what the
+   * reader did, the banner names the write, and the server has it once the network is
+   * back.
+   *
+   * On the **board**, and that is a finding rather than a convenience. The list asks the
+   * grouped endpoint, and `writeTickets` answers a guess about a stacked entry by
+   * invalidating it — a bucket's count is the whole match and only SQL knows it. Offline
+   * that refetch never lands, so a status changed from the list cannot show on the row;
+   * the banner is the only feedback there. The board reads the flat list, where a guess
+   * is painted, so it is where the promise "you can keep writing" is visible.
+   *
+   * The API context is deliberately outside the browser — `setOffline` cuts the page's
+   * network and not this process's — so "the server has not been told" is asserted
+   * against the server rather than inferred from the interface that is claiming it.
+   */
+  test("offline, a status change is kept, listed, and sent on reconnect", async ({ browser }) => {
+    const api = await apiAs(ADMIN);
+    const team = await seedTeam(api, { name: unique("Offline"), key: uniqueKey() });
+    const ticket = await seedTicket(api, { teamId: team.id, title: unique("Queued ticket") });
+    // The seeded row's sort key is still being rewritten behind us — see `settled.ts`.
+    await mirrorQueueDrained();
+
+    const page = await openAs(browser, ADMIN);
+    await page.getByRole("button", { name: team.name, exact: true }).first().click();
+    await viewButton(page, "Board").click();
+    await expect(page.getByTestId("board")).toBeVisible();
+
+    const card = page
+      .getByTestId("board-card")
+      .filter({ has: page.getByText(ticket.identifier, { exact: true }) });
+    const column = (status: string) => page.locator(`[data-testid="board-column"][data-status="${status}"]`);
+
+    await card.click();
+    await expect(card).toHaveAttribute("data-selected", "true");
+    await expect(column("todo").getByTestId("board-card")).toHaveCount(1);
+
+    await page.context().setOffline(true);
+    // `5` is Done — the same key that moves a card between columns online.
+    await page.keyboard.press("5");
+
+    // The card moved and stayed moved. Before `KAN-88` the patch was lost and the guess
+    // was rolled back as though the server had refused it.
+    await expect(column("done").getByTestId("board-card")).toHaveCount(1);
+    await expect(column("todo").getByTestId("board-card")).toHaveCount(0);
+
+    // And the shell says so, on the board — not only on the inbox, which is where the
+    // banner used to live and where nobody changing a status is standing.
+    const queued = page.getByTestId("offline-banner").getByTestId("queued-write");
+    await expect(queued).toContainText(ticket.identifier);
+    await expect(queued).toContainText("status → Done");
+
+    const stillTodo = await api.get(`/api/tickets/${ticket.id}`);
+    expect(
+      ((await stillTodo.json()) as { status: string }).status,
+      "a queued write must not have reached the server",
+    ).toBe("todo");
+
+    await page.context().setOffline(false);
+
+    // The browser's own `online` event is what `useOfflineWatch` listens for, and the
+    // flush it triggers is the whole promise the banner makes.
+    await expect(page.getByTestId("offline-banner")).toBeHidden();
+    await expect
+      .poll(async () => {
+        const saved = await api.get(`/api/tickets/${ticket.id}`);
+        return ((await saved.json()) as { status: string }).status;
+      })
+      .toBe("done");
+
+    await api.dispose();
     await page.context().close();
   });
 });
