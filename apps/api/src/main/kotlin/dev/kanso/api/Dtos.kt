@@ -10,6 +10,7 @@ import dev.kanso.domain.NotionDoc
 import dev.kanso.domain.Project
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.Team
+import dev.kanso.domain.TeamStatus
 import dev.kanso.domain.TeamMember
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.DefaultStatus
@@ -116,9 +117,22 @@ data class TeamResponse(
 	val updatedAt: OffsetDateTime,
 	/** The server's answer, so the composer's team select obeys it rather than re-deriving it. */
 	val editable: Boolean,
+	/**
+	 * This team's own words for its work, in its own order — `KAN-28`.
+	 *
+	 * **Required, not optional.** `TicketResponse.customFields` states the rule and the
+	 * reason: this row is read by bearer-token scripts and by an MCP agent, and a key that
+	 * appears later is a key that breaks them. It appears now, for everybody.
+	 *
+	 * Carried on the team rather than fetched per screen, because every screen that draws
+	 * a status needs it — a list, a board, a chip in a filter — and a second request to
+	 * learn what the words are is a round trip somebody would skip, leaving the interface
+	 * printing `in_progress`.
+	 */
+	val statuses: List<TeamStatusDto>,
 ) {
 	companion object {
-		fun of(team: Team, editable: Boolean) = TeamResponse(
+		fun of(team: Team, editable: Boolean, statuses: List<TeamStatus>) = TeamResponse(
 			id = team.id,
 			name = team.name,
 			key = team.key,
@@ -129,6 +143,7 @@ data class TeamResponse(
 			createdAt = team.createdAt,
 			updatedAt = team.updatedAt,
 			editable = editable,
+			statuses = statuses.map(TeamStatusDto::of),
 		)
 	}
 }

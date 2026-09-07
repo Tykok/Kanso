@@ -7,6 +7,7 @@ import dev.kanso.domain.User
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketAccess
 import jakarta.validation.Valid
+import dev.kanso.repo.TeamStatusRepository
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -17,6 +18,7 @@ class TeamController(
 	private val teams: TeamService,
 	private val access: TicketAccess,
 	private val currentUser: CurrentUser,
+	private val statuses: TeamStatusRepository,
 ) {
 
 	@GetMapping
@@ -26,14 +28,18 @@ class TeamController(
 		// One editableTeams call for the whole page, not one per row — the same batching
 		// TimelineService does for `TimelineTicketResponse.editable`.
 		val editable = access.editableTeams(actor, found.map { it.id }.toSet())
-		return found.map { TeamResponse.of(it, it.id in editable) }
+		// One query for every team's words too, for the reason the line above gives about
+		// `editableTeams`: a catalogue read per row is the N+1 this page was batched to
+		// avoid — `KAN-28`.
+		val words = statuses.forTeams(found.map { it.id })
+		return found.map { TeamResponse.of(it, it.id in editable, words[it.id].orEmpty()) }
 	}
 
 	@GetMapping("/{id}")
 	fun get(@PathVariable id: UUID): TeamResponse {
 		val actor = currentUser.require()
 		val team = teams.get(id)
-		return TeamResponse.of(team, editableOf(actor, team))
+		return TeamResponse.of(team, editableOf(actor, team), statuses.forTeam(team.id))
 	}
 
 	/** The team and every team under it, at any depth. */
@@ -42,7 +48,8 @@ class TeamController(
 		val actor = currentUser.require()
 		val found = teams.descendants(id)
 		val editable = access.editableTeams(actor, found.map { it.id }.toSet())
-		return found.map { TeamResponse.of(it, it.id in editable) }
+		val words = statuses.forTeams(found.map { it.id })
+		return found.map { TeamResponse.of(it, it.id in editable, words[it.id].orEmpty()) }
 	}
 
 	/** What the modal shows before anyone chooses anything. */
@@ -55,7 +62,9 @@ class TeamController(
 	fun create(@Valid @RequestBody request: TeamRequest): TeamResponse {
 		val actor = currentUser.require()
 		val team = teams.create(actor, request.name, request.key?.uppercase(), request.parentTeamId)
-		return TeamResponse.of(team, editableOf(actor, team))
+		// Seeded by `teams_seed_statuses` inside the insert, so the six are already there
+		// to read back — `V41` says why that is a trigger and not a line in the service.
+		return TeamResponse.of(team, editableOf(actor, team), statuses.forTeam(team.id))
 	}
 
 	@PutMapping("/{id}")
@@ -69,21 +78,21 @@ class TeamController(
 			key = request.key?.uppercase() ?: current.key,
 			parentTeamId = request.parentTeamId,
 		)
-		return TeamResponse.of(updated, editableOf(actor, updated))
+		return TeamResponse.of(updated, editableOf(actor, updated), statuses.forTeam(updated.id))
 	}
 
 	@PutMapping("/{id}/archive")
 	fun archive(@PathVariable id: UUID, @RequestBody request: DispositionPlanRequest): TeamResponse {
 		val actor = currentUser.require()
 		val archived = teams.archive(actor, id, request.toPlan())
-		return TeamResponse.of(archived, editableOf(actor, archived))
+		return TeamResponse.of(archived, editableOf(actor, archived), statuses.forTeam(archived.id))
 	}
 
 	@PostMapping("/{id}/unarchive")
 	fun unarchive(@PathVariable id: UUID): TeamResponse {
 		val actor = currentUser.require()
 		val unarchived = teams.unarchive(actor, id)
-		return TeamResponse.of(unarchived, editableOf(actor, unarchived))
+		return TeamResponse.of(unarchived, editableOf(actor, unarchived), statuses.forTeam(unarchived.id))
 	}
 
 	private fun editableOf(actor: User, team: Team): Boolean =
