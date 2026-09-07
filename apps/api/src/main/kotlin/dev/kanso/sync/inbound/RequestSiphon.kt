@@ -1,7 +1,7 @@
 package dev.kanso.sync.inbound
 
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
@@ -102,7 +102,7 @@ class RequestSiphon(
 			// closed vocabulary Kanso owns. The columns are not lost, they are in the
 			// description above. Dates and an estimate are refused for the same reason
 			// turned round: a requester is not the person who can say when this is due.
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

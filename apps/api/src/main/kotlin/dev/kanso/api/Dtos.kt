@@ -12,7 +12,7 @@ import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.Team
 import dev.kanso.domain.TeamMember
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.github.TicketPullRequest
 import dev.kanso.service.BadRequestException
@@ -249,7 +249,7 @@ data class TicketCreateRequest(
 	val teamId: UUID? = null,
 	@field:NotBlank val title: String,
 	val description: String? = null,
-	val status: String = TicketStatus.TODO.wire,
+	val status: String = DefaultStatus.TODO.wire,
 	val priority: String = TicketPriority.NONE.wire,
 	/** Points, off `EffortPoints.SCALE`. Absent means unsized, which is not zero. */
 	val estimate: Int? = null,

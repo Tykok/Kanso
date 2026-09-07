@@ -11,7 +11,7 @@ import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
@@ -97,7 +97,7 @@ class TicketRepository(
 	fun search(
 		teamIds: Collection<UUID>? = null,
 		projectId: UUID? = null,
-		statuses: Collection<TicketStatus> = emptyList(),
+		statuses: Collection<DefaultStatus> = emptyList(),
 		assigneeId: UUID? = null,
 		includeArchived: Boolean = false,
 		limit: Int = 200,
@@ -147,7 +147,7 @@ class TicketRepository(
 		createdBy: UUID?,
 		title: String,
 		description: String?,
-		status: TicketStatus,
+		status: DefaultStatus,
 		priority: TicketPriority,
 		estimate: Int?,
 		start: KansoInstant?,
@@ -195,7 +195,7 @@ class TicketRepository(
 		teamId: UUID?,
 		title: String,
 		description: String?,
-		status: TicketStatus,
+		status: DefaultStatus,
 		priority: TicketPriority,
 		estimate: Int?,
 		start: KansoInstant?,
@@ -539,14 +539,14 @@ class TicketRepository(
 		 * `PublicRoadmapService.NOT_STARTED_STATUSES` calls a first step, read the other
 		 * way round.
 		 *
-		 * Filtered off [TicketStatus.category] rather than spelled as four names, for the
+		 * Filtered off [DefaultStatus.category] rather than spelled as four names, for the
 		 * reason that property exists: a seventh status is then classified once, where the
 		 * mapping is the definition, instead of being silently absent from this list.
 		 *
 		 * `canceled` is in here, which reads odd and is right: somebody decided about that
 		 * ticket, and deciding not to do it is the step this asks about having happened.
 		 */
-		val MOVED_ALONG_STATUSES = TicketStatus.entries
+		val MOVED_ALONG_STATUSES = DefaultStatus.entries
 			.filter { it.category != StatusCategory.BACKLOG && it.category != StatusCategory.UNSTARTED }
 			.map { it.wire }
 	}

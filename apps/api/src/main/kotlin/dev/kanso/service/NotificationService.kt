@@ -9,7 +9,7 @@ import java.util.UUID
 
 /**
  * The six things the inbox is drawn to say, closed in Kotlin and again by a `CHECK`
- * — the pattern `TicketStatus` and `user_preferences` already share. `CONFLICT` is
+ * — the pattern `DefaultStatus` and `user_preferences` already share. `CONFLICT` is
  * the seventh and is not one of the six: it is not a row in the list but the thing
  * the chooser opens on, and it lives here because it is still "somebody has to be
  * told", written at the same moment and read from the same table.

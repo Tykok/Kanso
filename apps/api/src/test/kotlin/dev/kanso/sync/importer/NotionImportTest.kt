@@ -4,7 +4,7 @@ import dev.kanso.docs.DocBlockRepository
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.DependencyRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
@@ -118,7 +118,7 @@ class NotionImportTest : ImportTestBase() {
 		assertEquals(team.id, indexed.teamId, "the team comes from the request, which is the only place it can")
 		// Nothing in this plan said which column the status is, and a column called `Status`
 		// is only the status because somebody says so — so the writer's default stands.
-		assertEquals(TicketStatus.TODO, indexed.status)
+		assertEquals(DefaultStatus.TODO, indexed.status)
 		assertEquals(TicketPriority.NONE, indexed.priority)
 		assertNull(indexed.due)
 	}
@@ -224,7 +224,7 @@ class NotionImportTest : ImportTestBase() {
 		)
 
 		val indexed = ticketsOf("Engineering tasks").single { it.title == "Index the archive" }
-		assertEquals(TicketStatus.IN_PROGRESS, indexed.status)
+		assertEquals(DefaultStatus.IN_PROGRESS, indexed.status)
 		assertEquals(TicketPriority.HIGH, indexed.priority)
 		assertEquals("2026-09-01", indexed.due?.at?.toLocalDate()?.toString())
 	}

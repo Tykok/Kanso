@@ -15,25 +15,25 @@ class StatusCategoryTest {
 	fun `every status is filed under exactly one category`() {
 		assertEquals(
 			mapOf(
-				TicketStatus.BACKLOG to StatusCategory.BACKLOG,
-				TicketStatus.TODO to StatusCategory.UNSTARTED,
-				TicketStatus.IN_PROGRESS to StatusCategory.STARTED,
-				TicketStatus.IN_REVIEW to StatusCategory.STARTED,
-				TicketStatus.DONE to StatusCategory.COMPLETED,
-				TicketStatus.CANCELED to StatusCategory.CANCELED,
+				DefaultStatus.BACKLOG to StatusCategory.BACKLOG,
+				DefaultStatus.TODO to StatusCategory.UNSTARTED,
+				DefaultStatus.IN_PROGRESS to StatusCategory.STARTED,
+				DefaultStatus.IN_REVIEW to StatusCategory.STARTED,
+				DefaultStatus.DONE to StatusCategory.COMPLETED,
+				DefaultStatus.CANCELED to StatusCategory.CANCELED,
 			),
-			TicketStatus.entries.associateWith { it.category },
+			DefaultStatus.entries.associateWith { it.category },
 		)
 	}
 
 	@Test
 	fun `review is started work, which is the whole reason the category exists`() {
-		assertEquals(TicketStatus.IN_PROGRESS.category, TicketStatus.IN_REVIEW.category)
+		assertEquals(DefaultStatus.IN_PROGRESS.category, DefaultStatus.IN_REVIEW.category)
 	}
 
 	@Test
 	fun `every category is reachable, so none is a vocabulary nothing can be in`() {
-		assertEquals(StatusCategory.entries.toSet(), TicketStatus.entries.map { it.category }.toSet())
+		assertEquals(StatusCategory.entries.toSet(), DefaultStatus.entries.map { it.category }.toSet())
 	}
 
 	/**
@@ -47,20 +47,20 @@ class StatusCategoryTest {
 	fun `the derived lists still hold exactly what they were written out as`() {
 		assertEquals(
 			listOf(
-				TicketStatus.BACKLOG,
-				TicketStatus.TODO,
-				TicketStatus.IN_PROGRESS,
-				TicketStatus.IN_REVIEW,
-				TicketStatus.DONE,
+				DefaultStatus.BACKLOG,
+				DefaultStatus.TODO,
+				DefaultStatus.IN_PROGRESS,
+				DefaultStatus.IN_REVIEW,
+				DefaultStatus.DONE,
 			),
 			CycleService.COUNTED_STATUSES,
 		)
 		assertEquals(
 			listOf(
-				TicketStatus.BACKLOG,
-				TicketStatus.TODO,
-				TicketStatus.IN_PROGRESS,
-				TicketStatus.IN_REVIEW,
+				DefaultStatus.BACKLOG,
+				DefaultStatus.TODO,
+				DefaultStatus.IN_PROGRESS,
+				DefaultStatus.IN_REVIEW,
 			),
 			WorkloadService.OPEN_STATUSES,
 		)

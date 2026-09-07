@@ -6,7 +6,7 @@ import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
@@ -84,7 +84,7 @@ class TrashControllerTest : PostgresTest() {
 			teamId = team.id,
 			title = "SVG seal",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

@@ -1,6 +1,6 @@
 package dev.kanso.github
 
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import java.time.OffsetDateTime
 
 /**
@@ -10,7 +10,7 @@ import java.time.OffsetDateTime
 sealed interface TransitionDecision {
 
 	/** Move it. */
-	data class Move(val to: TicketStatus) : TransitionDecision
+	data class Move(val to: DefaultStatus) : TransitionDecision
 
 	/** The link displays but does not act — a bare mention. Guard three. */
 	data object NotAClosingLink : TransitionDecision
@@ -42,20 +42,20 @@ object PrTransition {
 
 	/**
 	 * The ranking guard one compares on. Derived here rather than stored on
-	 * [TicketStatus], because it is this feature's opinion about progress and not the
+	 * [DefaultStatus], because it is this feature's opinion about progress and not the
 	 * status's own — `StatusCategory` is the enum's answer to a different question, and
-	 * giving `TicketStatus` a rank would invite everything else to sort by it.
+	 * giving `DefaultStatus` a rank would invite everything else to sort by it.
 	 *
 	 * `CANCELED` is deliberately **absent** rather than ranked low or high. It is outside
 	 * the ordering: a cancelled ticket is not "behind" done, it is off the board, and any
 	 * number here would make some automatic move to or from it look reasonable.
 	 */
 	private val RANK = mapOf(
-		TicketStatus.BACKLOG to 0,
-		TicketStatus.TODO to 1,
-		TicketStatus.IN_PROGRESS to 2,
-		TicketStatus.IN_REVIEW to 3,
-		TicketStatus.DONE to 4,
+		DefaultStatus.BACKLOG to 0,
+		DefaultStatus.TODO to 1,
+		DefaultStatus.IN_PROGRESS to 2,
+		DefaultStatus.IN_REVIEW to 3,
+		DefaultStatus.DONE to 4,
 	)
 
 	/**
@@ -69,8 +69,8 @@ object PrTransition {
 	 */
 	fun decide(
 		closes: Boolean,
-		current: TicketStatus,
-		target: TicketStatus,
+		current: DefaultStatus,
+		target: DefaultStatus,
 		lastHumanStatusChangeAt: OffsetDateTime?,
 		eventAt: OffsetDateTime,
 	): TransitionDecision {
@@ -82,7 +82,7 @@ object PrTransition {
 		// direction — a merge does not un-cancel a ticket somebody cancelled, and nothing
 		// here ever cancels one. Checked before the ranking because `CANCELED` has no rank
 		// and a lookup would have to invent one.
-		if (current == TicketStatus.CANCELED) return TransitionDecision.Canceled
+		if (current == DefaultStatus.CANCELED) return TransitionDecision.Canceled
 
 		// Guard one. `<=` and not `<`: equal rank means it is already there, and re-moving a
 		// ticket to the status it already holds would write an activity row saying nothing.

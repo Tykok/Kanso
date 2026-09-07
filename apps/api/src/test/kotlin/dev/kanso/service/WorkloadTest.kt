@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.db.Tickets
 import dev.kanso.repo.UserRepository
@@ -63,7 +63,7 @@ class WorkloadTest : PostgresTest() {
 
 	private fun ticket(
 		title: String,
-		status: TicketStatus = TicketStatus.TODO,
+		status: DefaultStatus = DefaultStatus.TODO,
 		priority: TicketPriority = TicketPriority.NONE,
 		assignees: List<UUID> = emptyList(),
 	) = tickets.create(
@@ -94,25 +94,25 @@ class WorkloadTest : PostgresTest() {
 	@Test
 	fun `one row per person carrying work, counted and cut by status`() {
 		val rey = person("M. Rey")
-		ticket("a", TicketStatus.IN_PROGRESS, assignees = listOf(rey.id))
-		ticket("b", TicketStatus.IN_REVIEW, assignees = listOf(rey.id))
-		ticket("c", TicketStatus.TODO, assignees = listOf(rey.id))
+		ticket("a", DefaultStatus.IN_PROGRESS, assignees = listOf(rey.id))
+		ticket("b", DefaultStatus.IN_REVIEW, assignees = listOf(rey.id))
+		ticket("c", DefaultStatus.TODO, assignees = listOf(rey.id))
 
 		val row = workload.forTeam(team.id).rows.single { it.person?.id == rey.id }
 
 		assertEquals(3, row.total)
-		assertEquals(1, row.byStatus[TicketStatus.IN_PROGRESS])
-		assertEquals(1, row.byStatus[TicketStatus.IN_REVIEW])
-		assertEquals(1, row.byStatus[TicketStatus.TODO])
+		assertEquals(1, row.byStatus[DefaultStatus.IN_PROGRESS])
+		assertEquals(1, row.byStatus[DefaultStatus.IN_REVIEW])
+		assertEquals(1, row.byStatus[DefaultStatus.TODO])
 		assertEquals(row.total, row.byStatus.values.sum(), "the bar has to add up to the number beside it")
 	}
 
 	@Test
 	fun `only open tickets count — the header says "ouverts seulement"`() {
 		val rey = person("M. Rey")
-		ticket("open", TicketStatus.IN_PROGRESS, assignees = listOf(rey.id))
-		ticket("finished", TicketStatus.DONE, assignees = listOf(rey.id))
-		ticket("dropped", TicketStatus.CANCELED, assignees = listOf(rey.id))
+		ticket("open", DefaultStatus.IN_PROGRESS, assignees = listOf(rey.id))
+		ticket("finished", DefaultStatus.DONE, assignees = listOf(rey.id))
+		ticket("dropped", DefaultStatus.CANCELED, assignees = listOf(rey.id))
 
 		assertEquals(1, workload.forTeam(team.id).rows.single { it.person?.id == rey.id }.total)
 	}
@@ -154,9 +154,9 @@ class WorkloadTest : PostgresTest() {
 	@Test
 	fun `an urgent ticket open more than three days is counted, and three days is not more than three`() {
 		val rey = person("M. Rey")
-		val old = ticket("old and urgent", TicketStatus.IN_PROGRESS, TicketPriority.URGENT, listOf(rey.id))
-		val exactly = ticket("three days old", TicketStatus.IN_PROGRESS, TicketPriority.URGENT, listOf(rey.id))
-		val calm = ticket("old but not urgent", TicketStatus.IN_PROGRESS, TicketPriority.LOW, listOf(rey.id))
+		val old = ticket("old and urgent", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT, listOf(rey.id))
+		val exactly = ticket("three days old", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT, listOf(rey.id))
+		val calm = ticket("old but not urgent", DefaultStatus.IN_PROGRESS, TicketPriority.LOW, listOf(rey.id))
 		age(old, 5)
 		age(exactly, 3)
 		age(calm, 9)

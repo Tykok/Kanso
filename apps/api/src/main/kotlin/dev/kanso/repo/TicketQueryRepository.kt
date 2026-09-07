@@ -9,7 +9,7 @@ import dev.kanso.db.toTicket
 import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.trash.TrashKind
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -45,8 +45,8 @@ data class TicketScope(
  * would silently stop meaning that the day a sixth is added.
  */
 data class TicketFilters(
-	val statuses: List<TicketStatus> = emptyList(),
-	val statusesExcluded: List<TicketStatus> = emptyList(),
+	val statuses: List<DefaultStatus> = emptyList(),
+	val statusesExcluded: List<DefaultStatus> = emptyList(),
 	val priorities: List<TicketPriority> = emptyList(),
 	val projectIds: List<UUID> = emptyList(),
 	val assigneeIds: List<UUID> = emptyList(),

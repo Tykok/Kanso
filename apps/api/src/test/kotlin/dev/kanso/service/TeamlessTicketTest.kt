@@ -6,7 +6,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.UserRepository
@@ -78,7 +78,7 @@ class TeamlessTicketTest : PostgresTest() {
 		teamId = null,
 		title = "A thought typed in a meeting",
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -203,7 +203,7 @@ class TeamlessTicketTest : PostgresTest() {
 		val team = newTeam("Core")
 		val theirs = tickets.create(
 			actor = admin, teamId = team.id, title = "Team work", description = null,
-			status = TicketStatus.TODO, priority = TicketPriority.NONE, start = null, due = null,
+			status = DefaultStatus.TODO, priority = TicketPriority.NONE, start = null, due = null,
 			projectId = null, assigneeIds = emptyList(), docIds = emptyList(),
 		)
 		val mine = draft()
@@ -247,7 +247,7 @@ class TeamlessTicketTest : PostgresTest() {
 		val team = newTeam("Core")
 		val squatter = tickets.create(
 			actor = admin, teamId = team.id, title = "Already here", description = null,
-			status = TicketStatus.TODO, priority = TicketPriority.NONE, start = null, due = null,
+			status = DefaultStatus.TODO, priority = TicketPriority.NONE, start = null, due = null,
 			projectId = null, assigneeIds = emptyList(), docIds = emptyList(),
 		)
 		assertEquals("${team.key}-1", squatter.identifier)

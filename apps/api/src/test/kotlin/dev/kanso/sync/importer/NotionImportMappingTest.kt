@@ -5,7 +5,7 @@ import dev.kanso.api.ImportPreviewRequest
 import dev.kanso.api.NotionImportController
 import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -89,7 +89,7 @@ class NotionImportMappingTest : ImportTestBase() {
 
 		val ticket = ticketRows.search(includeArchived = false, limit = 50).single()
 		assertEquals("Livrer", ticket.title)
-		assertEquals(TicketStatus.IN_PROGRESS, ticket.status)
+		assertEquals(DefaultStatus.IN_PROGRESS, ticket.status)
 		assertEquals(TicketPriority.HIGH, ticket.priority)
 		assertEquals("Ce qu'il reste", ticket.description?.lines()?.first())
 		// `KansoInstant.at` is the field the domain model carries; the brief's `.value` names

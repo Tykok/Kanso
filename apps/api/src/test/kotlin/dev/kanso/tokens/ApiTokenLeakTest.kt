@@ -5,7 +5,7 @@ import dev.kanso.auth.DevAuthenticationFilter
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.oauth.OAuthScopes
 import dev.kanso.repo.TeamRepository
@@ -83,7 +83,7 @@ class ApiTokenLeakTest : MockMvcTest() {
 		teamId = teamId,
 		title = title,
 		description = "The description of $title",
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -335,7 +335,7 @@ class ApiTokenLeakTest : MockMvcTest() {
 			teamId = null,
 			title = "A draft nobody else should read",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

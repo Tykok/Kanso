@@ -1,6 +1,6 @@
 package dev.kanso.github
 
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.test.Test
@@ -17,8 +17,8 @@ class PrTransitionTest {
 
 	private fun decide(
 		closes: Boolean = true,
-		current: TicketStatus,
-		target: TicketStatus = TicketStatus.DONE,
+		current: DefaultStatus,
+		target: DefaultStatus = DefaultStatus.DONE,
 		human: OffsetDateTime? = null,
 		eventAt: OffsetDateTime = noon,
 	) = PrTransition.decide(closes, current, target, human, eventAt)
@@ -28,16 +28,16 @@ class PrTransitionTest {
 	@Test
 	fun `a merge moves a closing ticket to done`() {
 		assertEquals(
-			TransitionDecision.Move(TicketStatus.DONE),
-			decide(current = TicketStatus.IN_PROGRESS),
+			TransitionDecision.Move(DefaultStatus.DONE),
+			decide(current = DefaultStatus.IN_PROGRESS),
 		)
 	}
 
 	@Test
 	fun `ready for review moves it to in review`() {
 		assertEquals(
-			TransitionDecision.Move(TicketStatus.IN_REVIEW),
-			decide(current = TicketStatus.IN_PROGRESS, target = TicketStatus.IN_REVIEW),
+			TransitionDecision.Move(DefaultStatus.IN_REVIEW),
+			decide(current = DefaultStatus.IN_PROGRESS, target = DefaultStatus.IN_REVIEW),
 		)
 	}
 
@@ -47,7 +47,7 @@ class PrTransitionTest {
 	fun `a bare mention displays and does not act`() {
 		assertEquals(
 			TransitionDecision.NotAClosingLink,
-			decide(closes = false, current = TicketStatus.TODO),
+			decide(closes = false, current = DefaultStatus.TODO),
 			"a link that only mentions the ticket must never move it, whatever the event",
 		)
 	}
@@ -57,7 +57,7 @@ class PrTransitionTest {
 	fun `closes false is refused before any other question is asked`() {
 		assertEquals(
 			TransitionDecision.NotAClosingLink,
-			decide(closes = false, current = TicketStatus.CANCELED),
+			decide(closes = false, current = DefaultStatus.CANCELED),
 		)
 	}
 
@@ -67,7 +67,7 @@ class PrTransitionTest {
 	fun `a lower rank is never reached backwards`() {
 		assertEquals(
 			TransitionDecision.NotBackwards,
-			decide(current = TicketStatus.DONE, target = TicketStatus.IN_REVIEW),
+			decide(current = DefaultStatus.DONE, target = DefaultStatus.IN_REVIEW),
 			"a pull request reopened must not pull a finished ticket back into review",
 		)
 	}
@@ -79,17 +79,17 @@ class PrTransitionTest {
 	 */
 	@Test
 	fun `a ticket already there does not move again`() {
-		assertEquals(TransitionDecision.NotBackwards, decide(current = TicketStatus.DONE))
+		assertEquals(TransitionDecision.NotBackwards, decide(current = DefaultStatus.DONE))
 	}
 
 	@Test
 	fun `the whole ranking, forwards and backwards`() {
 		val order = listOf(
-			TicketStatus.BACKLOG,
-			TicketStatus.TODO,
-			TicketStatus.IN_PROGRESS,
-			TicketStatus.IN_REVIEW,
-			TicketStatus.DONE,
+			DefaultStatus.BACKLOG,
+			DefaultStatus.TODO,
+			DefaultStatus.IN_PROGRESS,
+			DefaultStatus.IN_REVIEW,
+			DefaultStatus.DONE,
 		)
 		for ((i, from) in order.withIndex()) {
 			for ((j, to) in order.withIndex()) {
@@ -105,12 +105,12 @@ class PrTransitionTest {
 	fun `canceled is outside the ranking and untouched in either direction`() {
 		assertEquals(
 			TransitionDecision.Canceled,
-			decide(current = TicketStatus.CANCELED, target = TicketStatus.DONE),
+			decide(current = DefaultStatus.CANCELED, target = DefaultStatus.DONE),
 			"cancelling is a decision and a merge is not evidence against it",
 		)
 		assertEquals(
 			TransitionDecision.Canceled,
-			decide(current = TicketStatus.CANCELED, target = TicketStatus.IN_REVIEW),
+			decide(current = DefaultStatus.CANCELED, target = DefaultStatus.IN_REVIEW),
 		)
 	}
 
@@ -120,7 +120,7 @@ class PrTransitionTest {
 	fun `a person who moved it after the event keeps their answer`() {
 		assertEquals(
 			TransitionDecision.NotOverAPerson,
-			decide(current = TicketStatus.TODO, human = noon.plusMinutes(5)),
+			decide(current = DefaultStatus.TODO, human = noon.plusMinutes(5)),
 			"you moved it by hand while the pull request sat open; the merge does not overrule you",
 		)
 	}
@@ -128,8 +128,8 @@ class PrTransitionTest {
 	@Test
 	fun `a person who moved it before the event does not block it`() {
 		assertEquals(
-			TransitionDecision.Move(TicketStatus.DONE),
-			decide(current = TicketStatus.TODO, human = noon.minusMinutes(5)),
+			TransitionDecision.Move(DefaultStatus.DONE),
+			decide(current = DefaultStatus.TODO, human = noon.minusMinutes(5)),
 		)
 	}
 
@@ -142,7 +142,7 @@ class PrTransitionTest {
 	fun `a hand move in the same instant as the event resolves for the person`() {
 		assertEquals(
 			TransitionDecision.NotOverAPerson,
-			decide(current = TicketStatus.TODO, human = noon),
+			decide(current = DefaultStatus.TODO, human = noon),
 		)
 	}
 
@@ -157,8 +157,8 @@ class PrTransitionTest {
 		assertEquals(
 			TransitionDecision.NotOverAPerson,
 			decide(
-				current = TicketStatus.IN_PROGRESS,
-				target = TicketStatus.IN_REVIEW,
+				current = DefaultStatus.IN_PROGRESS,
+				target = DefaultStatus.IN_REVIEW,
 				human = noon.minusMinutes(30),
 				eventAt = noon.minusHours(1),
 			),
@@ -168,8 +168,8 @@ class PrTransitionTest {
 	@Test
 	fun `only automation has ever touched it, so nothing is in the way`() {
 		assertEquals(
-			TransitionDecision.Move(TicketStatus.DONE),
-			decide(current = TicketStatus.IN_REVIEW, human = null),
+			TransitionDecision.Move(DefaultStatus.DONE),
+			decide(current = DefaultStatus.IN_REVIEW, human = null),
 		)
 	}
 }

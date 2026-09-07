@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.outbox.Destination
 import dev.kanso.repo.OutboundJobRepository
@@ -55,7 +55,7 @@ class NotificationServiceTest : PostgresTest() {
 		teamId = teams.create(admin, "Core ${UUID.randomUUID()}", "K${UUID.randomUUID().toString().take(4).uppercase()}", null).id,
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

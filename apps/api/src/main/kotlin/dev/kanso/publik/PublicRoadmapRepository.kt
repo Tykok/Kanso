@@ -7,7 +7,7 @@ import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketFiles
 import dev.kanso.db.TicketLabels
 import dev.kanso.db.Votes
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
@@ -21,7 +21,7 @@ data class PublishedRow(
 	val teamId: UUID,
 	val title: String,
 	val description: String?,
-	val status: TicketStatus,
+	val status: DefaultStatus,
 	val completedAt: OffsetDateTime?,
 	val unclaimed: Boolean,
 )
@@ -50,7 +50,7 @@ class PublicRoadmapRepository {
 	)
 
 	/** Every published ticket in these statuses, newest work first inside each. */
-	fun findPublished(statuses: Collection<TicketStatus>, limit: Int): List<PublishedRow> =
+	fun findPublished(statuses: Collection<DefaultStatus>, limit: Int): List<PublishedRow> =
 		PublicTickets.join(Teams, JoinType.INNER, PublicTickets.teamId, Teams.id)
 			.select(
 				PublicTickets.id,
@@ -72,7 +72,7 @@ class PublicRoadmapRepository {
 					teamId = it[PublicTickets.teamId],
 					title = it[PublicTickets.title],
 					description = it[PublicTickets.description],
-					status = TicketStatus.from(it[PublicTickets.status]),
+					status = DefaultStatus.from(it[PublicTickets.status]),
 					completedAt = it[PublicTickets.completedAt],
 					unclaimed = it[unclaimed],
 				)
@@ -105,7 +105,7 @@ class PublicRoadmapRepository {
 					teamId = it[PublicTickets.teamId],
 					title = it[PublicTickets.title],
 					description = it[PublicTickets.description],
-					status = TicketStatus.from(it[PublicTickets.status]),
+					status = DefaultStatus.from(it[PublicTickets.status]),
 					completedAt = it[PublicTickets.completedAt],
 					unclaimed = it[unclaimed],
 				)

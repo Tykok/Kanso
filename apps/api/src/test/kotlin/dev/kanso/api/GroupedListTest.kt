@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
@@ -56,7 +56,7 @@ class GroupedListTest : PostgresTest() {
 		teams.create(admin, "Grouped", "H${UUID.randomUUID().toString().take(4).uppercase()}", null)
 	}
 
-	private fun ticket(title: String, status: TicketStatus = TicketStatus.TODO) = tickets.create(
+	private fun ticket(title: String, status: DefaultStatus = DefaultStatus.TODO) = tickets.create(
 		actor = admin,
 		teamId = team.id,
 		title = title,
@@ -92,7 +92,7 @@ class GroupedListTest : PostgresTest() {
 	@Test
 	fun `hands back the buckets with their counts and the page's rows`() {
 		repeat(4) { ticket("Todo $it") }
-		ticket("Done", status = TicketStatus.DONE)
+		ticket("Done", status = DefaultStatus.DONE)
 
 		val answer = grouped(limit = 2)
 
@@ -155,7 +155,7 @@ class GroupedListTest : PostgresTest() {
 	/** The facets the flat list answers, the grouped one answers — same parse, same names. */
 	@Test
 	fun `answers the same facets as the flat list`() {
-		ticket("Done", status = TicketStatus.DONE)
+		ticket("Done", status = DefaultStatus.DONE)
 		ticket("Open")
 
 		val answer = grouped(query = params("statusNot" to "done"))
@@ -166,8 +166,8 @@ class GroupedListTest : PostgresTest() {
 
 	@Test
 	fun `a view's grouped answer is the view's own question, stacked its own way`() {
-		ticket("Backlog", status = TicketStatus.BACKLOG)
-		ticket("Done", status = TicketStatus.DONE)
+		ticket("Backlog", status = DefaultStatus.BACKLOG)
+		ticket("Done", status = DefaultStatus.DONE)
 		val view = views.create(
 			actor = admin,
 			teamId = team.id,

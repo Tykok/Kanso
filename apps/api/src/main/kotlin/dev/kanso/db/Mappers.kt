@@ -10,7 +10,7 @@ import dev.kanso.domain.SyncState
 import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import org.jetbrains.exposed.v1.core.ResultRow
 import java.time.OffsetDateTime
@@ -75,7 +75,7 @@ fun ResultRow.toTicket() = Ticket(
 	createdBy = this[Tickets.createdBy],
 	title = this[Tickets.title],
 	description = this[Tickets.description],
-	status = TicketStatus.from(this[Tickets.status]),
+	status = DefaultStatus.from(this[Tickets.status]),
 	priority = this[Tickets.priority]?.let(TicketPriority::from) ?: TicketPriority.NONE,
 	estimate = this[Tickets.estimate]?.toInt(),
 	start = instant(this[Tickets.startAt], this[Tickets.startHasTime]),

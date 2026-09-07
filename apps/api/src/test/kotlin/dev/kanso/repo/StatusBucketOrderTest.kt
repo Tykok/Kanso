@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketGroups
@@ -60,7 +60,7 @@ class StatusBucketOrderTest : PostgresTest() {
 	fun `stacks every status the vocabulary has, in the workflow order`() {
 		// Created in reverse, so a query that returned them in insertion order — or in the
 		// column's alphabetical order, which starts `backlog, canceled` — fails.
-		for (status in TicketStatus.entries.reversed()) {
+		for (status in DefaultStatus.entries.reversed()) {
 			tickets.create(
 				actor = admin,
 				teamId = team.id,

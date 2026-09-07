@@ -1,7 +1,7 @@
 package dev.kanso.docs
 
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
@@ -152,7 +152,7 @@ class DocBlockService(
 			teamId = page.teamId,
 			title = title.trim().ifEmpty { throw BadRequestException("A ticket needs a title") },
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

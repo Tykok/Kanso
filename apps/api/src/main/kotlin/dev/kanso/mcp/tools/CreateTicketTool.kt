@@ -1,7 +1,7 @@
 package dev.kanso.mcp.tools
 
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.mcp.McpArguments
 import dev.kanso.mcp.McpPeople
@@ -101,7 +101,7 @@ class CreateTicketTool(
 			teamId = team.id,
 			title = args.requiredString("title"),
 			description = args.string("description"),
-			status = TicketStatus.from(args.string("status") ?: TicketStatus.TODO.wire),
+			status = DefaultStatus.from(args.string("status") ?: DefaultStatus.TODO.wire),
 			priority = TicketPriority.from(args.string("priority") ?: TicketPriority.NONE.wire),
 			start = null,
 			due = null,
@@ -123,7 +123,7 @@ class CreateTicketTool(
 	}
 
 	private companion object {
-		val STATUSES = TicketStatus.entries.map { it.wire }
+		val STATUSES = DefaultStatus.entries.map { it.wire }
 		val PRIORITIES = TicketPriority.entries.map { it.wire }
 	}
 }

@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
@@ -45,7 +45,7 @@ class TicketAuthorizationTest : PostgresTest() {
 		teamId = teamId,
 		title = "Work",
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -64,7 +64,7 @@ class TicketAuthorizationTest : PostgresTest() {
 		teamId = teamId,
 		title = "Dated",
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = day(start),
 		due = day(due),
@@ -85,7 +85,7 @@ class TicketAuthorizationTest : PostgresTest() {
 				teamId = team.id,
 				title = "Filed anyway",
 				description = null,
-				status = TicketStatus.TODO,
+				status = DefaultStatus.TODO,
 				priority = TicketPriority.NONE,
 				start = null,
 				due = null,
@@ -109,7 +109,7 @@ class TicketAuthorizationTest : PostgresTest() {
 			teamId = child.id,
 			title = "Filed from above",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -132,7 +132,7 @@ class TicketAuthorizationTest : PostgresTest() {
 			teamId = child.id,
 			title = "Unclaimed board, open door",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

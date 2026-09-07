@@ -3,7 +3,7 @@ package dev.kanso.mcp.tools
 import dev.kanso.domain.Team
 import dev.kanso.domain.TicketLinkType
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.mcp.McpArguments
 import dev.kanso.mcp.McpPeople
@@ -255,7 +255,7 @@ class PlanTool(
 	}.trimEnd()
 
 	private companion object {
-		val STATUSES = TicketStatus.entries.map { it.wire }
+		val STATUSES = DefaultStatus.entries.map { it.wire }
 		val PRIORITIES = TicketPriority.entries.map { it.wire }
 		val TYPES = TicketLinkType.entries.map { it.wire }
 	}

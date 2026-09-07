@@ -7,7 +7,7 @@ import dev.kanso.db.Tickets
 import dev.kanso.domain.EffortPoints
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
@@ -68,7 +68,7 @@ class EstimateTest : PostgresTest() {
 	private fun ticket(
 		title: String,
 		estimate: Int? = null,
-		status: TicketStatus = TicketStatus.TODO,
+		status: DefaultStatus = DefaultStatus.TODO,
 		assignees: List<UUID> = emptyList(),
 	) = tickets.create(
 		actor = admin,
@@ -184,8 +184,8 @@ class EstimateTest : PostgresTest() {
 			admin,
 			cycle.id,
 			listOf(
-				ticket("shipped", estimate = 5, status = TicketStatus.DONE),
-				ticket("also shipped", estimate = 3, status = TicketStatus.DONE),
+				ticket("shipped", estimate = 5, status = DefaultStatus.DONE),
+				ticket("also shipped", estimate = 3, status = DefaultStatus.DONE),
 				ticket("in flight", estimate = 8),
 				ticket("nobody sized this"),
 			),
@@ -213,7 +213,7 @@ class EstimateTest : PostgresTest() {
 	@Test
 	fun `the burn-down carries both units so a day's bar can be drawn in either`() {
 		val cycle = cycle()
-		val shipped = ticket("shipped", estimate = 5, status = TicketStatus.DONE)
+		val shipped = ticket("shipped", estimate = 5, status = DefaultStatus.DONE)
 		cycles.addTickets(
 			admin,
 			cycle.id,
@@ -261,7 +261,7 @@ class EstimateTest : PostgresTest() {
 	@Test
 	fun `a person's load is the sum of their points, with the unsized counted beside it`() {
 		val rey = person("M. Rey")
-		ticket("a", estimate = 5, status = TicketStatus.IN_PROGRESS, assignees = listOf(rey.id))
+		ticket("a", estimate = 5, status = DefaultStatus.IN_PROGRESS, assignees = listOf(rey.id))
 		ticket("b", estimate = 8, assignees = listOf(rey.id))
 		ticket("c", assignees = listOf(rey.id))
 
@@ -276,7 +276,7 @@ class EstimateTest : PostgresTest() {
 	fun `a done ticket's points leave the load, like its row does`() {
 		val rey = person("M. Rey")
 		ticket("open", estimate = 3, assignees = listOf(rey.id))
-		ticket("finished", estimate = 13, status = TicketStatus.DONE, assignees = listOf(rey.id))
+		ticket("finished", estimate = 13, status = DefaultStatus.DONE, assignees = listOf(rey.id))
 
 		assertEquals(3, workload.forTeam(team.id).rows.single { it.person?.id == rey.id }.points)
 	}

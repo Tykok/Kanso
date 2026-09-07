@@ -9,7 +9,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.oauth.OAuthScopes
 import dev.kanso.repo.TeamRepository
@@ -156,7 +156,7 @@ class McpToolsTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -473,7 +473,7 @@ class McpToolsTest : PostgresTest() {
 				teamId = his.id,
 				title = "Filed by the member",
 				description = null,
-				status = TicketStatus.TODO,
+				status = DefaultStatus.TODO,
 				priority = TicketPriority.NONE,
 				start = null,
 				due = null,
@@ -536,7 +536,7 @@ class McpToolsTest : PostgresTest() {
 		}
 
 		val after = tickets.get(filed.ticket.id)
-		assertEquals(TicketStatus.IN_PROGRESS, after.ticket.status, "the status moved")
+		assertEquals(DefaultStatus.IN_PROGRESS, after.ticket.status, "the status moved")
 		assertEquals(listOf(bob.id), after.assigneeIds, "and the assignee with it")
 	}
 
@@ -565,7 +565,7 @@ class McpToolsTest : PostgresTest() {
 
 		assertTrue(answer.contains("ghost@kanso.test"), "the half that could not be read is named: $answer")
 		val after = tickets.get(filed.ticket.id)
-		assertEquals(TicketStatus.TODO, after.ticket.status, "the half that could have been applied was not")
+		assertEquals(DefaultStatus.TODO, after.ticket.status, "the half that could have been applied was not")
 		assertEquals(emptyList(), after.assigneeIds, "and neither was the other")
 	}
 
@@ -581,7 +581,7 @@ class McpToolsTest : PostgresTest() {
 		)
 
 		assertTrue(answer.contains("not one of your teams"), "the rule's own sentence: $answer")
-		assertEquals(TicketStatus.TODO, tickets.get(filed.ticket.id).ticket.status, "and nothing moved")
+		assertEquals(DefaultStatus.TODO, tickets.get(filed.ticket.id).ticket.status, "and nothing moved")
 	}
 
 	/**

@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -53,7 +53,7 @@ class SavedViewTest : PostgresTest() {
 
 	private fun ticket(
 		title: String,
-		status: TicketStatus = TicketStatus.TODO,
+		status: DefaultStatus = DefaultStatus.TODO,
 		priority: TicketPriority = TicketPriority.NONE,
 		teamId: UUID = team.id,
 		assignees: List<UUID> = emptyList(),
@@ -88,7 +88,7 @@ class SavedViewTest : PostgresTest() {
 		val moving = ticket("Echo suppression drops our own writes")
 
 		assertEquals(1, views.rows(open.id).size)
-		tickets.patch(admin, moving, TicketPatch(status = TicketStatus.DONE))
+		tickets.patch(admin, moving, TicketPatch(status = DefaultStatus.DONE))
 
 		assertTrue(
 			views.rows(open.id).isEmpty(),
@@ -98,9 +98,9 @@ class SavedViewTest : PostgresTest() {
 
 	@Test
 	fun `the drawing's three chips each narrow the list on their own`() {
-		val urgent = ticket("urgent one", TicketStatus.IN_PROGRESS, TicketPriority.URGENT)
-		ticket("done one", TicketStatus.DONE, TicketPriority.URGENT)
-		ticket("low one", TicketStatus.IN_PROGRESS, TicketPriority.LOW)
+		val urgent = ticket("urgent one", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT)
+		ticket("done one", DefaultStatus.DONE, TicketPriority.URGENT)
+		ticket("low one", DefaultStatus.IN_PROGRESS, TicketPriority.LOW)
 
 		val chips = view(
 			mapOf("statusNot" to listOf("done"), "priority" to listOf("urgent")),
@@ -111,8 +111,8 @@ class SavedViewTest : PostgresTest() {
 
 	@Test
 	fun `removing a chip is a write to the filters and widens the answer`() {
-		val urgent = ticket("urgent one", TicketStatus.IN_PROGRESS, TicketPriority.URGENT)
-		val low = ticket("low one", TicketStatus.IN_PROGRESS, TicketPriority.LOW)
+		val urgent = ticket("urgent one", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT)
+		val low = ticket("low one", DefaultStatus.IN_PROGRESS, TicketPriority.LOW)
 		val narrow = view(mapOf("priority" to listOf("urgent")))
 
 		views.update(admin, narrow.id, filters = emptyMap())
@@ -190,9 +190,9 @@ class SavedViewTest : PostgresTest() {
 
 	@Test
 	fun `the sidebar count is the number of rows the view would show`() {
-		ticket("one", TicketStatus.IN_PROGRESS)
-		ticket("two", TicketStatus.IN_PROGRESS)
-		ticket("three", TicketStatus.DONE)
+		ticket("one", DefaultStatus.IN_PROGRESS)
+		ticket("two", DefaultStatus.IN_PROGRESS)
+		ticket("three", DefaultStatus.DONE)
 		val open = view(mapOf("statusNot" to listOf("done")))
 
 		assertEquals(2, views.list(team.id).single { it.view.id == open.id }.count)
@@ -232,11 +232,11 @@ class SavedViewTest : PostgresTest() {
 		val selected = listOf(ticket("a"), ticket("b"), ticket("c"))
 		val untouched = ticket("d")
 
-		val changed = bulk.apply(admin, BulkEdit(ticketIds = selected, status = TicketStatus.IN_REVIEW))
+		val changed = bulk.apply(admin, BulkEdit(ticketIds = selected, status = DefaultStatus.IN_REVIEW))
 
 		assertEquals(3, changed)
-		assertTrue(selected.all { tickets.get(it).ticket.status == TicketStatus.IN_REVIEW })
-		assertEquals(TicketStatus.TODO, tickets.get(untouched).ticket.status)
+		assertTrue(selected.all { tickets.get(it).ticket.status == DefaultStatus.IN_REVIEW })
+		assertEquals(DefaultStatus.TODO, tickets.get(untouched).ticket.status)
 	}
 
 	@Test
@@ -250,7 +250,7 @@ class SavedViewTest : PostgresTest() {
 		val notMine = ticket("not mine", teamId = theirs.id)
 
 		assertFailsWith<AccessDeniedException> {
-			bulk.apply(outsider, BulkEdit(ticketIds = listOf(mine, notMine), status = TicketStatus.DONE))
+			bulk.apply(outsider, BulkEdit(ticketIds = listOf(mine, notMine), status = DefaultStatus.DONE))
 		}
 
 		// Observable only because the refusal happens before the first write. Asserted on
@@ -258,7 +258,7 @@ class SavedViewTest : PostgresTest() {
 		// did not half-apply, and a rollback-based implementation could not be tested for
 		// it at all in a suite that never commits.
 		assertEquals(
-			TicketStatus.TODO,
+			DefaultStatus.TODO,
 			tickets.get(mine).ticket.status,
 			"a strip that half-applies leaves nobody able to say what the selection now is",
 		)
@@ -317,7 +317,7 @@ class SavedViewTest : PostgresTest() {
 	@Test
 	fun `an empty selection is refused rather than reported as a successful no-op`() {
 		assertFailsWith<BadRequestException> {
-			bulk.apply(admin, BulkEdit(ticketIds = emptyList(), status = TicketStatus.DONE))
+			bulk.apply(admin, BulkEdit(ticketIds = emptyList(), status = DefaultStatus.DONE))
 		}
 	}
 

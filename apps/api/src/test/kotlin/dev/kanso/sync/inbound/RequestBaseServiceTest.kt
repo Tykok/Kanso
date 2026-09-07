@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.RequestBaseRepository
@@ -131,7 +131,7 @@ class RequestBaseServiceTest : PostgresTest() {
 				teamId = null,
 				title = "A request from nowhere",
 				description = null,
-				status = TicketStatus.TODO,
+				status = DefaultStatus.TODO,
 				priority = TicketPriority.NONE,
 				start = null,
 				due = null,

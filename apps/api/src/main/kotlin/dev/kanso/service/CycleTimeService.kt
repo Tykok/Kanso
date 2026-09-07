@@ -2,7 +2,7 @@ package dev.kanso.service
 
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.ActivityRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
@@ -266,7 +266,7 @@ class CycleTimeService(
 	companion object {
 		/**
 		 * In flight means somebody is holding it, which is [StatusCategory.STARTED] — the
-		 * same reading `TicketStatus.category` gives for putting `in_review` here, and the
+		 * same reading `DefaultStatus.category` gives for putting `in_review` here, and the
 		 * same reason: a reviewer is work in flight.
 		 *
 		 * Off the category rather than spelled as two names, so this follows the vocabulary
@@ -274,7 +274,7 @@ class CycleTimeService(
 		 * deliberately wider — a `todo` ticket is a load somebody will pick up, and it is
 		 * not yet work in progress.
 		 */
-		val IN_FLIGHT_STATUSES = TicketStatus.entries.filter { it.category == StatusCategory.STARTED }
+		val IN_FLIGHT_STATUSES = DefaultStatus.entries.filter { it.category == StatusCategory.STARTED }
 
 		/** The same list as the `payload ->> 'to'` filter reads it. */
 		val IN_FLIGHT_WIRE = IN_FLIGHT_STATUSES.map { it.wire }

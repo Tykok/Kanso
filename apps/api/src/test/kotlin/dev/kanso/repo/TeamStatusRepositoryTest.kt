@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TeamStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.annotation.Transactional
@@ -35,7 +35,7 @@ class TeamStatusRepositoryTest : PostgresTest() {
 
 	private fun team() = teams.insert("Statuses ${UUID.randomUUID()}", "S${keys++}${(100..999).random()}", null)
 
-	private fun ticket(teamId: UUID?, status: TicketStatus) = tickets.insert(
+	private fun ticket(teamId: UUID?, status: DefaultStatus) = tickets.insert(
 		id = UUID.randomUUID(),
 		number = null,
 		teamId = teamId,
@@ -114,13 +114,13 @@ class TeamStatusRepositoryTest : PostgresTest() {
 		statuses.delete(team.id, "in_review")
 
 		// The database's answer, not a service's.
-		assertFailsWith<ExposedSQLException> { ticket(team.id, TicketStatus.IN_REVIEW) }
+		assertFailsWith<ExposedSQLException> { ticket(team.id, DefaultStatus.IN_REVIEW) }
 	}
 
 	@Test
 	fun `a draft passes with no team to ask`() {
 		// MATCH SIMPLE: a NULL in the referencing tuple satisfies the constraint without a
 		// lookup, so `KAN-9`'s drafts need no exception written anywhere.
-		assertEquals(TicketStatus.IN_REVIEW, ticket(null, TicketStatus.IN_REVIEW).status)
+		assertEquals(DefaultStatus.IN_REVIEW, ticket(null, DefaultStatus.IN_REVIEW).status)
 	}
 }

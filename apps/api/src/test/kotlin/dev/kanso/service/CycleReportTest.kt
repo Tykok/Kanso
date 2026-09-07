@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -58,7 +58,7 @@ class CycleReportTest : PostgresTest() {
 		state = state,
 	)
 
-	private fun ticket(title: String, status: TicketStatus, priority: TicketPriority = TicketPriority.NONE) =
+	private fun ticket(title: String, status: DefaultStatus, priority: TicketPriority = TicketPriority.NONE) =
 		tickets.create(
 			actor = admin,
 			teamId = team.id,
@@ -76,8 +76,8 @@ class CycleReportTest : PostgresTest() {
 	@Test
 	fun `progress is the same fact twice — a count and the percentage of it`() {
 		val cycle = cycle(24)
-		repeat(3) { cycles.addTickets(admin, cycle.id, listOf(ticket("done $it", TicketStatus.DONE))) }
-		repeat(5) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", TicketStatus.TODO))) }
+		repeat(3) { cycles.addTickets(admin, cycle.id, listOf(ticket("done $it", DefaultStatus.DONE))) }
+		repeat(5) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", DefaultStatus.TODO))) }
 
 		val report = cycles.report(cycle.id, today)
 
@@ -92,22 +92,22 @@ class CycleReportTest : PostgresTest() {
 	@Test
 	fun `the status breakdown accounts for every ticket in the cycle and no other`() {
 		val cycle = cycle(24)
-		cycles.addTickets(admin, cycle.id, listOf(ticket("a", TicketStatus.IN_PROGRESS)))
-		cycles.addTickets(admin, cycle.id, listOf(ticket("b", TicketStatus.IN_REVIEW)))
-		cycles.addTickets(admin, cycle.id, listOf(ticket("c", TicketStatus.TODO)))
-		ticket("outside the cycle", TicketStatus.TODO)
+		cycles.addTickets(admin, cycle.id, listOf(ticket("a", DefaultStatus.IN_PROGRESS)))
+		cycles.addTickets(admin, cycle.id, listOf(ticket("b", DefaultStatus.IN_REVIEW)))
+		cycles.addTickets(admin, cycle.id, listOf(ticket("c", DefaultStatus.TODO)))
+		ticket("outside the cycle", DefaultStatus.TODO)
 
 		val report = cycles.report(cycle.id, today)
 
 		assertEquals(3, report.byStatus.values.sum(), "a breakdown that does not sum to the total explains nothing")
-		assertEquals(1, report.byStatus[TicketStatus.IN_PROGRESS])
-		assertEquals(0, report.byStatus[TicketStatus.BACKLOG], "every status is named, including the empty ones")
+		assertEquals(1, report.byStatus[DefaultStatus.IN_PROGRESS])
+		assertEquals(0, report.byStatus[DefaultStatus.BACKLOG], "every status is named, including the empty ones")
 	}
 
 	@Test
 	fun `the projection is hatched exactly over the days that have not happened`() {
 		val cycle = cycle(24)
-		repeat(4) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", TicketStatus.TODO))) }
+		repeat(4) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", DefaultStatus.TODO))) }
 
 		val report = cycles.report(cycle.id, today)
 
@@ -128,8 +128,8 @@ class CycleReportTest : PostgresTest() {
 	fun `nothing slips when the rate clears the remaining work in the days left`() {
 		val cycle = cycle(24)
 		// Nine days measured, six closed: two thirds of a ticket a day, and two left.
-		repeat(6) { cycles.addTickets(admin, cycle.id, listOf(ticket("done $it", TicketStatus.DONE))) }
-		repeat(2) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", TicketStatus.TODO))) }
+		repeat(6) { cycles.addTickets(admin, cycle.id, listOf(ticket("done $it", DefaultStatus.DONE))) }
+		repeat(2) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", DefaultStatus.TODO))) }
 
 		val report = cycles.report(cycle.id, today)
 
@@ -139,10 +139,10 @@ class CycleReportTest : PostgresTest() {
 	@Test
 	fun `what slips is the tail of the order the team will actually work in`() {
 		val cycle = cycle(24)
-		repeat(2) { cycles.addTickets(admin, cycle.id, listOf(ticket("closed $it", TicketStatus.DONE))) }
-		val urgent = ticket("urgent", TicketStatus.TODO, TicketPriority.URGENT)
-		val low = ticket("low", TicketStatus.TODO, TicketPriority.LOW)
-		val none = ticket("unranked", TicketStatus.TODO, TicketPriority.NONE)
+		repeat(2) { cycles.addTickets(admin, cycle.id, listOf(ticket("closed $it", DefaultStatus.DONE))) }
+		val urgent = ticket("urgent", DefaultStatus.TODO, TicketPriority.URGENT)
+		val low = ticket("low", DefaultStatus.TODO, TicketPriority.LOW)
+		val none = ticket("unranked", DefaultStatus.TODO, TicketPriority.NONE)
 		cycles.addTickets(admin, cycle.id, listOf(urgent, low, none))
 
 		val report = cycles.report(cycle.id, today)
@@ -162,7 +162,7 @@ class CycleReportTest : PostgresTest() {
 	@Test
 	fun `a cycle that has not started claims nothing about what will slip`() {
 		val cycle = cycle(25, CycleState.UPCOMING)
-		repeat(3) { cycles.addTickets(admin, cycle.id, listOf(ticket("planned $it", TicketStatus.TODO))) }
+		repeat(3) { cycles.addTickets(admin, cycle.id, listOf(ticket("planned $it", DefaultStatus.TODO))) }
 
 		val report = cycles.report(cycle.id, LocalDate.of(2026, 8, 1))
 
@@ -176,7 +176,7 @@ class CycleReportTest : PostgresTest() {
 	@Test
 	fun `a closed cycle projects nothing because there are no days left to project into`() {
 		val cycle = cycle(23, CycleState.CLOSED)
-		repeat(2) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", TicketStatus.TODO))) }
+		repeat(2) { cycles.addTickets(admin, cycle.id, listOf(ticket("open $it", DefaultStatus.TODO))) }
 
 		val report = cycles.report(cycle.id, LocalDate.of(2026, 8, 25))
 
@@ -189,7 +189,7 @@ class CycleReportTest : PostgresTest() {
 	fun `moving a ticket to the next cycle takes it out of the one it was in`() {
 		val current = cycle(24)
 		val next = cycle(25, CycleState.UPCOMING)
-		val slipping = ticket("will not fit", TicketStatus.TODO)
+		val slipping = ticket("will not fit", DefaultStatus.TODO)
 		cycles.addTickets(admin, current.id, listOf(slipping))
 
 		cycles.addTickets(admin, next.id, listOf(slipping))

@@ -1,6 +1,6 @@
 -- KAN-28. A team's own words for its work.
 --
--- `KAN-1` derived the five categories from the status enum and said, in `TicketStatus`'s
+-- `KAN-1` derived the five categories from the status enum and said, in `DefaultStatus`'s
 -- own docstring, that the mapping *is* the definition. That is what unblocked this: every
 -- consumer that reasons — the burndown, cycle time, WIP, the cycle rollover, velocity, a
 -- project's progress, the public roadmap — reads the category, so the *word* is free to

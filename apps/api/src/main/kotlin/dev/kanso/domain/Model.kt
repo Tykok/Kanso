@@ -49,7 +49,17 @@ enum class StatusCategory(override val wire: String) : Wire {
 	}
 }
 
-enum class TicketStatus(override val wire: String) : Wire {
+/**
+ * The six a Kanso instance ships, and the vocabulary of a ticket that has no team.
+ *
+ * Called `Default` and not `Ticket` since `KAN-28`, and the rename is the point: a
+ * ticket's status is whatever its *team* defines, read from `team_statuses`, and the six
+ * here are only what a new team is seeded with and what a draft answers to. Under the old
+ * name, `entries` read as "the statuses" at a dozen call sites — a burndown filtering
+ * `entries` by category would silently miss a team's seventh status, and no test could
+ * see it. The name is the warning the compiler cannot give.
+ */
+enum class DefaultStatus(override val wire: String) : Wire {
 	BACKLOG("backlog"),
 	TODO("todo"),
 	IN_PROGRESS("in_progress"),
@@ -75,8 +85,8 @@ enum class TicketStatus(override val wire: String) : Wire {
 	}
 
 	companion object {
-		fun from(raw: String): TicketStatus = parse(entries.toTypedArray(), raw)
-		fun fromLabel(label: String): TicketStatus? =
+		fun from(raw: String): DefaultStatus = parse(entries.toTypedArray(), raw)
+		fun fromLabel(label: String): DefaultStatus? =
 			entries.firstOrNull { it.label.equals(label, ignoreCase = true) }
 	}
 }
@@ -554,7 +564,7 @@ data class Ticket(
 	val createdBy: UUID?,
 	val title: String,
 	val description: String?,
-	val status: TicketStatus,
+	val status: DefaultStatus,
 	val priority: TicketPriority,
 	/** Points, off [EffortPoints.SCALE]. Null means nobody has sized it — never zero. */
 	val estimate: Int?,

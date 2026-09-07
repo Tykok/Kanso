@@ -6,7 +6,7 @@ import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.outbox.Destination
 import dev.kanso.outbox.OutboundEntityType
 import dev.kanso.outbox.OutboundOperation
@@ -180,7 +180,7 @@ class NotionPoller(
 		}
 
 		val props = page.properties
-		val status = select(props, NotionProps.STATUS)?.let { TicketStatus.fromLabel(it) ?: unknown("status", it) }
+		val status = select(props, NotionProps.STATUS)?.let { DefaultStatus.fromLabel(it) ?: unknown("status", it) }
 		val priority = select(props, NotionProps.PRIORITY)?.let { TicketPriority.fromLabel(it) ?: unknown("priority", it) }
 
 		// Read back like a status, and refused the same way: the scale is closed, so a 7

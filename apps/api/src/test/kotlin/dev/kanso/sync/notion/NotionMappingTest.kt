@@ -2,7 +2,7 @@ package dev.kanso.sync.notion
 
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -71,8 +71,8 @@ class NotionMappingTest {
 
 	@Test
 	fun `status labels round-trip through the mirror`() {
-		for (status in TicketStatus.entries) {
-			assertEquals(status, TicketStatus.fromLabel(status.label), "label '${status.label}' should map back")
+		for (status in DefaultStatus.entries) {
+			assertEquals(status, DefaultStatus.fromLabel(status.label), "label '${status.label}' should map back")
 		}
 		for (priority in TicketPriority.entries) {
 			assertEquals(priority, TicketPriority.fromLabel(priority.label))
@@ -81,10 +81,10 @@ class NotionMappingTest {
 
 	@Test
 	fun `an unknown status coming back from Notion is refused rather than adopted`() {
-		assertNull(TicketStatus.fromLabel("Almost done"))
-		val failure = runCatching { TicketStatus.from("almost_done") }.exceptionOrNull()
+		assertNull(DefaultStatus.fromLabel("Almost done"))
+		val failure = runCatching { DefaultStatus.from("almost_done") }.exceptionOrNull()
 		assertTrue(
-			failure?.message?.contains("Unknown TicketStatus") == true,
+			failure?.message?.contains("Unknown DefaultStatus") == true,
 			"the error should name the offending value: ${failure?.message}",
 		)
 	}

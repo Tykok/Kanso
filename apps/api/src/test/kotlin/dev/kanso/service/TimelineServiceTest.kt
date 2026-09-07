@@ -7,7 +7,7 @@ import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.TeamRepository
@@ -62,7 +62,7 @@ class TimelineServiceTest : PostgresTest() {
 		false,
 	)
 
-	private fun ticket(title: String, projectId: UUID?, start: Int?, due: Int?, status: TicketStatus = TicketStatus.TODO) =
+	private fun ticket(title: String, projectId: UUID?, start: Int?, due: Int?, status: DefaultStatus = DefaultStatus.TODO) =
 		tickets.create(
 			actor = admin,
 			teamId = team.id,
@@ -134,7 +134,7 @@ class TimelineServiceTest : PostgresTest() {
 			docIds = emptyList(),
 		).project
 		val id = ticket("Undated but finished", project.id, null, null)
-		tickets.patch(admin, id, TicketPatch(status = TicketStatus.DONE))
+		tickets.patch(admin, id, TicketPatch(status = DefaultStatus.DONE))
 
 		val row = timeline.load(admin, teamId = team.id, projectId = null).projects.single { it.id == project.id }
 
@@ -160,7 +160,7 @@ class TimelineServiceTest : PostgresTest() {
 			teamId = other.id,
 			title = "Elsewhere",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = day(10),
 			due = day(30),
@@ -202,7 +202,7 @@ class TimelineServiceTest : PostgresTest() {
 			teamId = other.id,
 			title = "Theirs",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = day(2),
 			due = day(6),
@@ -237,7 +237,7 @@ class TimelineServiceTest : PostgresTest() {
 			teamId = other.id,
 			title = "No dates over there",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -269,7 +269,7 @@ class TimelineServiceTest : PostgresTest() {
 			teamId = other.id,
 			title = "Elsewhere",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = day(10),
 			due = day(30),
@@ -308,7 +308,7 @@ class TimelineServiceTest : PostgresTest() {
 	@Test
 	fun `a done successor is violated and not merely overlapping`() {
 		val first = ticket("Predecessor", null, 10, 20)
-		val second = ticket("Finished early", null, 1, 5, status = TicketStatus.DONE)
+		val second = ticket("Finished early", null, 1, 5, status = DefaultStatus.DONE)
 		deps.insert(first, second)
 
 		val edge = timeline.load(admin, teamId = team.id, projectId = null)

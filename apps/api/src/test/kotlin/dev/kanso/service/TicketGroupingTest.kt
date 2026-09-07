@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.TicketQueryRepository
@@ -55,7 +55,7 @@ class TicketGroupingTest : PostgresTest() {
 
 	private fun ticket(
 		title: String,
-		status: TicketStatus = TicketStatus.TODO,
+		status: DefaultStatus = DefaultStatus.TODO,
 		priority: TicketPriority = TicketPriority.NONE,
 		projectId: UUID? = null,
 		assignees: List<UUID> = emptyList(),
@@ -87,10 +87,10 @@ class TicketGroupingTest : PostgresTest() {
 
 	@Test
 	fun `groups by status in the order the work flows, not alphabetically`() {
-		ticket("Echo suppression drops our own writes", status = TicketStatus.DONE)
-		ticket("Reconnect storms the socket", status = TicketStatus.BACKLOG)
-		ticket("Cursor jumps on a remote rename", status = TicketStatus.IN_PROGRESS)
-		ticket("Presence ghosts survive a refresh", status = TicketStatus.IN_PROGRESS)
+		ticket("Echo suppression drops our own writes", status = DefaultStatus.DONE)
+		ticket("Reconnect storms the socket", status = DefaultStatus.BACKLOG)
+		ticket("Cursor jumps on a remote rename", status = DefaultStatus.IN_PROGRESS)
+		ticket("Presence ghosts survive a refresh", status = DefaultStatus.IN_PROGRESS)
 
 		val answer = grouped(ViewGroupBy.STATUS)
 
@@ -167,7 +167,7 @@ class TicketGroupingTest : PostgresTest() {
 	 */
 	@Test
 	fun `counts the whole match even when the page holds a fraction of it`() {
-		repeat(5) { ticket("Todo $it", status = TicketStatus.TODO) }
+		repeat(5) { ticket("Todo $it", status = DefaultStatus.TODO) }
 
 		val answer = grouped(ViewGroupBy.STATUS, limit = 2)
 
@@ -178,8 +178,8 @@ class TicketGroupingTest : PostgresTest() {
 	/** A count is of the question asked, so a chip has to move it. */
 	@Test
 	fun `counts what the filters left, not what the team holds`() {
-		ticket("Urgent", status = TicketStatus.TODO, priority = TicketPriority.URGENT)
-		ticket("Quiet", status = TicketStatus.TODO, priority = TicketPriority.LOW)
+		ticket("Urgent", status = DefaultStatus.TODO, priority = TicketPriority.URGENT)
+		ticket("Quiet", status = DefaultStatus.TODO, priority = TicketPriority.LOW)
 
 		val answer = grouped(
 			ViewGroupBy.STATUS,
@@ -198,8 +198,8 @@ class TicketGroupingTest : PostgresTest() {
 	 */
 	@Test
 	fun `orders the rows by group first, so a page never interleaves two of them`() {
-		repeat(3) { ticket("Backlog $it", status = TicketStatus.BACKLOG) }
-		repeat(3) { ticket("Done $it", status = TicketStatus.DONE) }
+		repeat(3) { ticket("Backlog $it", status = DefaultStatus.BACKLOG) }
+		repeat(3) { ticket("Done $it", status = DefaultStatus.DONE) }
 
 		val page = query.matching(scope, TicketFilters(), ViewGroupBy.STATUS, ViewSortBy.UPDATED, limit = 6)
 
@@ -242,9 +242,9 @@ class TicketGroupingTest : PostgresTest() {
 	/** The same question, two shapes. They may order differently; they may not disagree. */
 	@Test
 	fun `a grouped answer and a flat one hold exactly the same rows`() {
-		ticket("Backlog", status = TicketStatus.BACKLOG)
-		ticket("Todo", status = TicketStatus.TODO)
-		ticket("Done", status = TicketStatus.DONE)
+		ticket("Backlog", status = DefaultStatus.BACKLOG)
+		ticket("Todo", status = DefaultStatus.TODO)
+		ticket("Done", status = DefaultStatus.DONE)
 
 		val flat = tickets.list(team.id, false, false, TicketFilters(), ViewSortBy.UPDATED, 200, 0)
 		val stacked = grouped(ViewGroupBy.STATUS).flatMap { it.tickets }
@@ -260,8 +260,8 @@ class TicketGroupingTest : PostgresTest() {
 	 */
 	@Test
 	fun `names a bucket the page never reached, with its count and no rows`() {
-		repeat(2) { ticket("Backlog $it", status = TicketStatus.BACKLOG) }
-		repeat(3) { ticket("Done $it", status = TicketStatus.DONE) }
+		repeat(2) { ticket("Backlog $it", status = DefaultStatus.BACKLOG) }
+		repeat(3) { ticket("Done $it", status = DefaultStatus.DONE) }
 
 		val answer = grouped(ViewGroupBy.STATUS, limit = 2)
 
@@ -274,8 +274,8 @@ class TicketGroupingTest : PostgresTest() {
 	/** Grouping must not reorder inside a group, or `sortBy` stops working for grouped views. */
 	@Test
 	fun `keeps the view's sort inside each group`() {
-		ticket("Low but todo", status = TicketStatus.TODO, priority = TicketPriority.LOW)
-		val urgent = ticket("Urgent and todo", status = TicketStatus.TODO, priority = TicketPriority.URGENT)
+		ticket("Low but todo", status = DefaultStatus.TODO, priority = TicketPriority.LOW)
+		val urgent = ticket("Urgent and todo", status = DefaultStatus.TODO, priority = TicketPriority.URGENT)
 
 		val todo = grouped(ViewGroupBy.STATUS, ViewSortBy.PRIORITY).single { it.key == "todo" }
 
@@ -291,8 +291,8 @@ class TicketGroupingTest : PostgresTest() {
 	 */
 	@Test
 	fun `a saved view groups the way it was stored`() {
-		ticket("Backlog", status = TicketStatus.BACKLOG)
-		ticket("Done", status = TicketStatus.DONE)
+		ticket("Backlog", status = DefaultStatus.BACKLOG)
+		ticket("Done", status = DefaultStatus.DONE)
 		val view = views.create(
 			actor = admin,
 			teamId = team.id,
@@ -316,8 +316,8 @@ class TicketGroupingTest : PostgresTest() {
 	 */
 	@Test
 	fun `a view's count, its buckets and its rows are one answer`() {
-		ticket("Done", status = TicketStatus.DONE)
-		ticket("Open", status = TicketStatus.TODO)
+		ticket("Done", status = DefaultStatus.DONE)
+		ticket("Open", status = DefaultStatus.TODO)
 		val view = views.create(
 			actor = admin,
 			teamId = team.id,

@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.db.Votes
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
@@ -50,7 +50,7 @@ class VoteTest : PostgresTest() {
 			teamId = team.id,
 			title = "Read-only public API",
 			description = null,
-			status = TicketStatus.BACKLOG,
+			status = DefaultStatus.BACKLOG,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

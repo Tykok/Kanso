@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
@@ -41,7 +41,7 @@ class MovedAlongTest : PostgresTest() {
 		)
 	}
 
-	private fun ticketIn(status: TicketStatus): UUID {
+	private fun ticketIn(status: DefaultStatus): UUID {
 		val team = teams.insert(
 			name = "Moved ${UUID.randomUUID()}",
 			key = "M${UUID.randomUUID().toString().take(4).uppercase()}",
@@ -74,8 +74,8 @@ class MovedAlongTest : PostgresTest() {
 	fun `filing work is not moving it`() {
 		val baseline = tickets.anyMovedAlong()
 
-		ticketIn(TicketStatus.BACKLOG)
-		ticketIn(TicketStatus.TODO)
+		ticketIn(DefaultStatus.BACKLOG)
+		ticketIn(DefaultStatus.TODO)
 
 		assertEquals(
 			baseline,
@@ -86,8 +86,8 @@ class MovedAlongTest : PostgresTest() {
 
 	@Test
 	fun `starting one moves it along`() {
-		val id = ticketIn(TicketStatus.BACKLOG)
-		service.patch(owner, id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		val id = ticketIn(DefaultStatus.BACKLOG)
+		service.patch(owner, id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
 
 		assertTrue(tickets.anyMovedAlong(), "a started ticket is work that has moved")
 	}
@@ -100,17 +100,17 @@ class MovedAlongTest : PostgresTest() {
 	 */
 	@Test
 	fun `review, done and canceled all count as moved`() {
-		val moved = TicketStatus.entries.filter {
+		val moved = DefaultStatus.entries.filter {
 			it.category != StatusCategory.BACKLOG && it.category != StatusCategory.UNSTARTED
 		}
 		assertEquals(
-			listOf(TicketStatus.IN_PROGRESS, TicketStatus.IN_REVIEW, TicketStatus.DONE, TicketStatus.CANCELED),
+			listOf(DefaultStatus.IN_PROGRESS, DefaultStatus.IN_REVIEW, DefaultStatus.DONE, DefaultStatus.CANCELED),
 			moved,
 			"the statuses this asks about are the four the category mapping calls moved",
 		)
 
 		for (status in moved) {
-			val id = ticketIn(TicketStatus.BACKLOG)
+			val id = ticketIn(DefaultStatus.BACKLOG)
 			service.patch(owner, id, TicketPatch(status = status))
 			assertTrue(tickets.anyMovedAlong(), "$status is work that has moved")
 		}

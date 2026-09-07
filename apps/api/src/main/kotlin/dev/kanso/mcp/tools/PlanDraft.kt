@@ -3,7 +3,7 @@ package dev.kanso.mcp.tools
 import dev.kanso.domain.EffortPoints
 import dev.kanso.domain.TicketLinkType
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.mcp.McpArguments
 import dev.kanso.mcp.McpPeople
 import dev.kanso.service.BadRequestException
@@ -103,7 +103,7 @@ internal class PlanDraft private constructor(
 				ref = ref,
 				title = ticket.requiredString("title"),
 				description = ticket.string("description"),
-				status = TicketStatus.from(ticket.string("status") ?: TicketStatus.TODO.wire),
+				status = DefaultStatus.from(ticket.string("status") ?: DefaultStatus.TODO.wire),
 				priority = TicketPriority.from(ticket.string("priority") ?: TicketPriority.NONE.wire),
 				estimate = estimateOf(ref, ticket),
 				assigneeIds = people.resolve(ticket.strings("assignees").orEmpty()),
@@ -278,7 +278,7 @@ internal data class PlannedTicket(
 	val ref: String,
 	val title: String,
 	val description: String?,
-	val status: TicketStatus,
+	val status: DefaultStatus,
 	val priority: TicketPriority,
 	val estimate: Int?,
 	val assigneeIds: List<UUID>,

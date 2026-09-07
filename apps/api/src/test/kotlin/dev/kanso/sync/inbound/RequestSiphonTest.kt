@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.config.KansoProperties
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
@@ -139,7 +139,7 @@ class RequestSiphonTest : PostgresTest() {
 		val ticket = ticketRows.findAllById(triage.queue(team.id).items.map { it.ticket.id }).single()
 		assertEquals(team.id, ticket.teamId, "filed into the team the base was registered against")
 		assertNotNull(ticket.number, "so it has a number, and therefore a name people can say")
-		assertEquals(TicketStatus.TODO, ticket.status, "Kanso's default, not a status read off somebody's base")
+		assertEquals(DefaultStatus.TODO, ticket.status, "Kanso's default, not a status read off somebody's base")
 		assertEquals(TicketPriority.NONE, ticket.priority, "and no priority a requester could have set for us")
 		assertNull(ticket.createdBy, "nobody in Kanso wrote it, and V20 makes that column nullable for this")
 	}
@@ -205,7 +205,7 @@ class RequestSiphonTest : PostgresTest() {
 
 		assertEquals(emptyList(), queued(), "the edit does not put it back")
 		assertEquals(
-			TicketStatus.CANCELED,
+			DefaultStatus.CANCELED,
 			ticketRows.findById(ticketId)!!.status,
 			"and does not undo the ruling either",
 		)
@@ -263,7 +263,7 @@ class RequestSiphonTest : PostgresTest() {
 			teamId = team.id,
 			title = "The export is missing VAT",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
