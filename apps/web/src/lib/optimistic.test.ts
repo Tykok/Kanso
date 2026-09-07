@@ -193,6 +193,61 @@ describe("a guess that was wrong", () => {
   });
 });
 
+describe("a guess whose write went to the offline queue", () => {
+  it("keeps what it had drawn, because the write is on disk and not lost", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    const handle = guesses.open(store.cache, "t1", patchedTicket({ status: "done" }));
+    guesses.hold(store.cache, handle);
+
+    // `close` with no row means "the server refused", and a refusal is the one thing a
+    // queued write is not: it never reached a server. Reverting the row here would be
+    // the interface disagreeing with the banner that says the write is still coming.
+    expect(store.read<Ticket[]>(listKey("all", ""))?.[0]?.status).toBe("done");
+  });
+
+  it("is idle afterwards, so a reconnect may sweep the cache", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    guesses.hold(store.cache, guesses.open(store.cache, "t1", patchedTicket({ status: "done" })));
+
+    // The whole reason a held write settles at all: `resumeAfterOutage` waits for idle,
+    // and going offline is precisely what precedes a reconnect.
+    expect(guesses.idle).toBe(true);
+  });
+
+  it("leaves a row gone when the write ahead of it was a delete the server took", () => {
+    const store = fakeCache([{ key: listKey("all", "", false), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    const remove = guesses.open(store.cache, "t1", removedTicket);
+    const rename = guesses.open(store.cache, "t1", patchedTicket({ title: "renamed" }));
+    guesses.close(store.cache, remove, null);
+
+    // The delete landed; the rename behind it is queued against a row that no longer
+    // exists. Painting it back would put a deleted ticket in the list until the flush
+    // gets its 404.
+    guesses.hold(store.cache, rename);
+
+    expect(store.read<Ticket[]>(listKey("all", "", false))).toEqual([]);
+  });
+
+  it("folds a guess still in flight over the held one", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    const first = guesses.open(store.cache, "t1", patchedTicket({ status: "done" }));
+    guesses.open(store.cache, "t1", patchedTicket({ priority: "urgent" }));
+    guesses.hold(store.cache, first);
+
+    const row = store.read<Ticket[]>(listKey("all", ""))?.[0];
+    expect(row?.status).toBe("done");
+    expect(row?.priority).toBe("urgent");
+  });
+});
+
 describe("two guesses in flight about the same row", () => {
   it("keeps the second when the first is refused", () => {
     const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
@@ -447,6 +502,22 @@ describe("a reconnect, while a guess is in flight", () => {
     expect(store.read<Ticket[]>(listKey("all", ""))?.[0].title).toBe("renamed");
 
     guesses.close(store.cache, handle, ticket("t1", { title: "renamed" }));
+    expect(store.sweeps()).toBe(1);
+  });
+
+  it("sweeps once the last write is held, which is the reconnect's own case", () => {
+    const store = fakeCache([{ key: listKey("all", ""), data: [ticket("t1")] }]);
+    const guesses = new TicketGuesses();
+
+    const handle = guesses.open(store.cache, "t1", patchedTicket({ status: "done" }));
+    resumeAfterOutage(store.cache, guesses);
+    expect(store.sweeps()).toBe(0);
+
+    // The order this actually happens in: the network goes, the write is queued and
+    // held, the network comes back and the socket reconnects. A hold that did not drain
+    // would leave that sweep waiting for a request that has already had its answer.
+    guesses.hold(store.cache, handle);
+
     expect(store.sweeps()).toBe(1);
   });
 

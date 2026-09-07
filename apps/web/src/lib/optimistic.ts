@@ -87,6 +87,27 @@ export class Guesses<T> {
     return { subject, value };
   }
 
+  /**
+   * The write never reached a server: it is on disk, and will be sent later.
+   *
+   * So the guess becomes the base instead of being rolled back. [close] with no row is
+   * the wrong settle for this — it means "refused", and a refusal is the one thing a
+   * queued write is not. The layer still has to come off, or nothing would ever be
+   * [idle] again and `whenIdle`'s callers would wait for a network that is gone.
+   */
+  hold(handle: number): { subject: string; value: T | null } | null {
+    const layer = this.layers.find((other) => other.handle === handle);
+    if (!layer) return null;
+    const base = this.bases.get(layer.subject);
+    if (base === undefined) return null;
+    // The subject is gone and stays gone: a write held against a row a settled delete
+    // has already taken away would put it back on screen until the flush gets its 404.
+    if (base === null) return this.close(handle, null);
+    // This layer's guess alone, applied to the base. Not [value], which would bake the
+    // guesses of writes that are still in flight into a row nobody has confirmed.
+    return this.close(handle, layer.guess(base));
+  }
+
   /** The base with every live guess folded over it, oldest first. */
   value(subject: string): T | null | undefined {
     if (!this.bases.has(subject)) return undefined;
@@ -145,7 +166,22 @@ export class TicketGuesses {
 
   /** The request came back. [settled] is the row the server wrote, or `null` if it is gone. */
   close(cache: EventCache, handle: number, settled?: Ticket | null): void {
-    const done = this.guesses.close(handle, settled);
+    this.settled(cache, this.guesses.close(handle, settled));
+  }
+
+  /** The write was queued for later. [Guesses.hold] says why the guess survives it. */
+  hold(cache: EventCache, handle: number): void {
+    this.settled(cache, this.guesses.hold(handle));
+  }
+
+  /**
+   * One layer fewer, however it went: paint, then drain.
+   *
+   * Both ways out of flight come through here, and a hold has to drain as much as a
+   * close does — going offline is what precedes a reconnect, so the sweep waiting on
+   * `whenIdle` is usually waiting on exactly the write the queue just took.
+   */
+  private settled(cache: EventCache, done: { subject: string; value: Ticket | null } | null): void {
     if (done) this.paint(cache, done.subject, done.value);
     // Drained after the paint, and only on the way to idle: a settle that still leaves
     // another mutation in flight has not made the cache safe to write over.
