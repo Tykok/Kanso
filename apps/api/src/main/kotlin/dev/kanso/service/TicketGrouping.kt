@@ -1,5 +1,7 @@
 package dev.kanso.service
 
+import dev.kanso.domain.StatusGrouping
+import dev.kanso.repo.TeamStatusRepository
 import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.TicketQueryRepository
 import dev.kanso.repo.TicketScope
@@ -41,6 +43,7 @@ data class TicketGroup(val key: String, val count: Int, val tickets: List<Ticket
 class TicketGroups(
 	private val query: TicketQueryRepository,
 	private val details: TicketDetails,
+	private val statuses: TeamStatusRepository,
 ) {
 
 	@Transactional(readOnly = true)
@@ -52,10 +55,11 @@ class TicketGroups(
 		limit: Int,
 		offset: Long = 0,
 	): List<TicketGroup> {
-		val counts = query.groupCounts(scope, filters, groupBy)
+		val grouping = statusGrouping(scope)
+		val counts = query.groupCounts(scope, filters, groupBy, grouping)
 		if (counts.isEmpty()) return emptyList()
-		val page = details.of(query.matching(scope, filters, groupBy, sortBy, limit, offset))
-		val rows = page.groupBy { keyOf(it, groupBy) }
+		val page = details.of(query.matching(scope, filters, groupBy, sortBy, limit, offset, grouping))
+		val rows = page.groupBy { keyOf(it, groupBy, grouping) }
 		// Every bucket the question has, in the database's order — including the ones this
 		// page never reached, which come back with their count and no rows. Dropping those
 		// would make the answer's shape depend on how far the reader had scrolled, and a
@@ -64,16 +68,34 @@ class TicketGroups(
 	}
 
 	/**
+	 * Which buckets this scope has — `KAN-28`.
+	 *
+	 * One team reads its own words in its own order, because that is what the list on its
+	 * screen says. Anything wider reads categories: a scope holding two teams holds two
+	 * vocabularies, and a header has to be the fact they agree on rather than whichever
+	 * team's word came back first. `null` team ids is the widest scope of all — every team
+	 * in the instance — and lands in the same branch.
+	 */
+	private fun statusGrouping(scope: TicketScope): StatusGrouping {
+		val single = scope.teamIds?.singleOrNull() ?: return StatusGrouping.byCategory()
+		return StatusGrouping.of(statuses.forTeam(single))
+	}
+
+	/**
 	 * Which bucket a row landed in, read back off the row.
 	 *
 	 * It has to agree with `TicketQueryRepository.groupKey`, which is the same question
-	 * asked in SQL, and the one place that is not obvious is `assignee`: the key there is
+	 * asked in SQL — for status that agreement is the [StatusGrouping] both are handed,
+	 * and the one place that is not obvious is `assignee`: the key there is
 	 * the *first* of the ticket's people, and "first" means the order
 	 * `TicketRepository.assigneeIdsFor` sorts them in — the column's own — which is the
 	 * order the `MIN` on the other side picks from.
 	 */
-	private fun keyOf(detail: TicketDetail, groupBy: ViewGroupBy): String? = when (groupBy) {
-		ViewGroupBy.STATUS -> detail.ticket.status.wire
+	private fun keyOf(detail: TicketDetail, groupBy: ViewGroupBy, statuses: StatusGrouping): String? = when (groupBy) {
+		// Through the same mapping the `CASE` used, or a category-bucketed page would lay
+		// rows keyed `todo` over a bucket counted as `unstarted` and draw every one of
+		// them under no header at all.
+		ViewGroupBy.STATUS -> statuses.bucketOf[detail.ticket.status.wire] ?: detail.ticket.status.wire
 		ViewGroupBy.PRIORITY -> detail.ticket.priority.wire
 		ViewGroupBy.PROJECT -> detail.ticket.projectId?.toString()
 		ViewGroupBy.ASSIGNEE -> detail.assigneeIds.firstOrNull()?.toString()

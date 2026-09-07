@@ -6,6 +6,7 @@ import dev.kanso.db.TicketLabels
 import dev.kanso.db.Tickets
 import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
+import dev.kanso.domain.StatusGrouping
 import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
@@ -111,10 +112,12 @@ class TicketQueryRepository {
 		sortBy: dev.kanso.service.ViewSortBy = dev.kanso.service.ViewSortBy.UPDATED,
 		limit: Int,
 		offset: Long = 0,
+		/** Which bucket each status falls in, and where that bucket sits — `KAN-28`. */
+		statuses: StatusGrouping = StatusGrouping.SEEDED,
 	): List<Ticket> {
 		if (scope.teamIds?.isEmpty() == true) return emptyList()
 		return Tickets.selectAll().where(predicate(scope, filters))
-			.orderBy(*(groupOrder(groupBy) + order(sortBy)))
+			.orderBy(*(groupOrder(groupBy, statuses) + order(sortBy)))
 			.limit(limit).offset(offset)
 			.map { it.toTicket() }
 	}
@@ -141,18 +144,42 @@ class TicketQueryRepository {
 		scope: TicketScope,
 		filters: TicketFilters,
 		groupBy: dev.kanso.service.ViewGroupBy,
+		statuses: StatusGrouping = StatusGrouping.SEEDED,
 	): List<TicketGroupCount> {
 		if (scope.teamIds?.isEmpty() == true) return emptyList()
 		// `none` is a real choice on the control and it means one bucket, not zero — the
 		// same reading the client has always given it.
-		val key = groupKey(groupBy)
+		val key = groupKey(groupBy, statuses)
 			?: return count(scope, filters).let { if (it == 0) emptyList() else listOf(TicketGroupCount(null, it)) }
 		val tally = Tickets.id.count()
-		return Tickets.select(key, tally).where(predicate(scope, filters))
+		val counted = Tickets.select(key, tally).where(predicate(scope, filters))
 			.groupBy(key)
-			.orderBy(*groupOrder(groupBy))
+			.orderBy(*groupOrder(groupBy, statuses))
 			.map { TicketGroupCount(it[key]?.toString(), it[tally].toInt()) }
+		return if (groupBy == dev.kanso.service.ViewGroupBy.STATUS) folded(counted, statuses) else counted
 	}
+
+	/**
+	 * Status counts folded into the buckets they belong to, in the grouping's order.
+	 *
+	 * Here and not in SQL, and the reason is worth writing down. Grouping by a `CASE` that
+	 * maps statuses onto categories is valid SQL and Postgres accepts it — but the
+	 * *ordering* of such a query has to be an expression the `GROUP BY` also names, and
+	 * Exposed renders the two apart, so the database refused a query whose shape is fine
+	 * by hand. The fix that needed no fight: group by the column, which is always allowed
+	 * and indexed, and add up at most six numbers here.
+	 *
+	 * Exact rather than approximate: a count is a sum and a bucket is a partition. A
+	 * status this grouping never heard of keeps its own bucket rather than being folded
+	 * into somebody else's — wrong-ish and visible beats wrong and silent.
+	 */
+	private fun folded(
+		counts: List<TicketGroupCount>,
+		statuses: StatusGrouping,
+	): List<TicketGroupCount> = counts
+		.groupBy { row -> row.key?.let { statuses.bucketOf[it] ?: it } }
+		.map { (bucket, rows) -> TicketGroupCount(bucket, rows.sumOf { it.count }) }
+		.sortedBy { row -> row.key?.let { statuses.rankOf[it] } ?: StatusOrder.UNPLACED }
 
 	/**
 	 * A row is soft-deleted exactly when `trash_entries` names it — there is no `deleted`
@@ -275,7 +302,10 @@ class TicketQueryRepository {
 	 *
 	 * Null for `none`, which has no key: the caller reads that as "one bucket".
 	 */
-	private fun groupKey(groupBy: dev.kanso.service.ViewGroupBy): Expression<*>? = when (groupBy) {
+	private fun groupKey(
+		groupBy: dev.kanso.service.ViewGroupBy,
+		statuses: StatusGrouping,
+	): Expression<*>? = when (groupBy) {
 		dev.kanso.service.ViewGroupBy.STATUS -> Tickets.status
 		dev.kanso.service.ViewGroupBy.PRIORITY -> Tickets.priority
 		dev.kanso.service.ViewGroupBy.PROJECT -> Tickets.projectId
@@ -311,8 +341,9 @@ class TicketQueryRepository {
 	 */
 	private fun groupOrder(
 		groupBy: dev.kanso.service.ViewGroupBy,
+		statuses: StatusGrouping,
 	): Array<Pair<Expression<*>, SortOrder>> = when (groupBy) {
-		dev.kanso.service.ViewGroupBy.STATUS -> arrayOf(statusRank to SortOrder.ASC)
+		dev.kanso.service.ViewGroupBy.STATUS -> arrayOf(statusRank(statuses) to SortOrder.ASC)
 		dev.kanso.service.ViewGroupBy.PRIORITY -> arrayOf(priorityRank to SortOrder.ASC)
 		dev.kanso.service.ViewGroupBy.PROJECT -> arrayOf(Tickets.projectId to SortOrder.ASC_NULLS_LAST)
 		dev.kanso.service.ViewGroupBy.ASSIGNEE -> arrayOf(firstAssignee to SortOrder.ASC_NULLS_LAST)
@@ -342,17 +373,20 @@ class TicketQueryRepository {
 	)
 
 	/**
-	 * [StatusOrder.WORKFLOW], rendered into SQL — and rendered *from* it rather than
-	 * spelled out a second time here, so this file has an opinion about how to write a
-	 * `CASE` and none at all about what order statuses read in.
+	 * A bucket's rank, rendered into SQL from the grouping the caller built — `KAN-28`.
 	 *
-	 * The `Else` is a real branch and it has to be a number: a status the list has not
+	 * It was `StatusOrder.WORKFLOW` folded into this `CASE`, which was right while every
+	 * team read the same six in the same order. A team can reorder its own list now, so
+	 * the sequence is data; this file still has an opinion about how to write a `CASE` and
+	 * none at all about what the order is.
+	 *
+	 * The `Else` is a real branch and it has to be a number: a status the grouping has not
 	 * been told about must sort after every one it has, and a missing `WHEN` would yield
 	 * `NULL`, which Postgres sorts *first*.
 	 */
-	private val statusRank: Expression<Int> = StatusOrder.WORKFLOW
-		.fold(CaseWhen<Int>()) { case, status ->
-			case.When(Tickets.status eq status.wire, intLiteral(StatusOrder.rankOf(status)))
+	private fun statusRank(statuses: StatusGrouping): Expression<Int> = statuses.bucketOf.entries
+		.fold(CaseWhen<Int>()) { case, (status, bucket) ->
+			case.When(Tickets.status eq status, intLiteral(statuses.rankOf[bucket] ?: StatusOrder.UNPLACED))
 		}
 		.Else(intLiteral(StatusOrder.UNPLACED))
 
