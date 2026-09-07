@@ -6,7 +6,7 @@ import dev.kanso.db.Tickets
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.TeamService
@@ -83,7 +83,7 @@ class TimeEntryTest : MockMvcTest() {
 			teamId = team.id,
 			title = "Client onboarding call",
 			description = null,
-			status = TicketStatus.IN_PROGRESS,
+			status = DefaultStatus.IN_PROGRESS,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

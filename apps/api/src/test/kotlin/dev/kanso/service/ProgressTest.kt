@@ -6,7 +6,7 @@ import dev.kanso.db.Tickets
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.settings.PreferencesPatch
@@ -84,7 +84,7 @@ class ProgressTest : PostgresTest() {
 	 * nothing at all — and would start measuring something the day the clock caught up.
 	 */
 	private fun delivered(cycleId: UUID, on: LocalDate, estimate: Int?, assignees: List<UUID>) {
-		val id = open(estimate, TicketStatus.DONE, assignees)
+		val id = open(estimate, DefaultStatus.DONE, assignees)
 		Tickets.update({ Tickets.id eq id }) {
 			it[completedAt] = on.atTime(10, 0).atOffset(ZoneOffset.UTC)
 		}
@@ -93,7 +93,7 @@ class ProgressTest : PostgresTest() {
 
 	private fun open(
 		estimate: Int?,
-		status: TicketStatus = TicketStatus.TODO,
+		status: DefaultStatus = DefaultStatus.TODO,
 		assignees: List<UUID>,
 		projectId: UUID? = null,
 	): UUID = tickets.create(
@@ -228,10 +228,10 @@ class ProgressTest : PostgresTest() {
 			delivered(c.id, LocalDate.of(2026, 8, 5), 5, listOf(ana.id))
 			delivered(c.id, LocalDate.of(2026, 8, 6), 5, listOf(ana.id))
 		}
-		open(8, TicketStatus.IN_PROGRESS, listOf(ana.id))
-		open(5, TicketStatus.TODO, listOf(ana.id))
-		open(13, TicketStatus.TODO, listOf(bo.id))
-		open(3, TicketStatus.DONE, listOf(ana.id))
+		open(8, DefaultStatus.IN_PROGRESS, listOf(ana.id))
+		open(5, DefaultStatus.TODO, listOf(ana.id))
+		open(13, DefaultStatus.TODO, listOf(bo.id))
+		open(3, DefaultStatus.DONE, listOf(ana.id))
 
 		val mine = progress.forPerson(ana, team.id)
 
@@ -249,7 +249,7 @@ class ProgressTest : PostgresTest() {
 	@Test
 	fun `every open status is in the cut, including the ones nothing is in`() {
 		val ana = person("Ana")
-		open(8, TicketStatus.IN_PROGRESS, listOf(ana.id))
+		open(8, DefaultStatus.IN_PROGRESS, listOf(ana.id))
 
 		val byStatus = progress.forPerson(ana, team.id).load.byStatus
 
@@ -259,10 +259,10 @@ class ProgressTest : PostgresTest() {
 			"the legend under the chart has to be the same list every time this page opens," +
 				" not a shape that changes with the plate",
 		)
-		assertEquals(8, byStatus.getValue(TicketStatus.IN_PROGRESS).points)
-		assertEquals(0, byStatus.getValue(TicketStatus.BACKLOG).tickets)
+		assertEquals(8, byStatus.getValue(DefaultStatus.IN_PROGRESS).points)
+		assertEquals(0, byStatus.getValue(DefaultStatus.BACKLOG).tickets)
 		assertTrue(
-			byStatus.keys.none { it == TicketStatus.DONE || it == TicketStatus.CANCELED },
+			byStatus.keys.none { it == DefaultStatus.DONE || it == DefaultStatus.CANCELED },
 			"a settled ticket is not part of a load, and putting it in this cut would make the" +
 				" segments add up to something the days above were not divided from",
 		)
@@ -273,11 +273,11 @@ class ProgressTest : PostgresTest() {
 		val ana = person("Ana")
 		val light = project("Light")
 		val heavy = project("Heavy")
-		open(3, TicketStatus.TODO, listOf(ana.id), light.id)
-		open(13, TicketStatus.TODO, listOf(ana.id), heavy.id)
-		open(2, TicketStatus.TODO, listOf(ana.id))
-		open(2, TicketStatus.TODO, listOf(ana.id))
-		open(2, TicketStatus.TODO, listOf(ana.id))
+		open(3, DefaultStatus.TODO, listOf(ana.id), light.id)
+		open(13, DefaultStatus.TODO, listOf(ana.id), heavy.id)
+		open(2, DefaultStatus.TODO, listOf(ana.id))
+		open(2, DefaultStatus.TODO, listOf(ana.id))
+		open(2, DefaultStatus.TODO, listOf(ana.id))
 
 		val byProject = progress.forPerson(ana, team.id).load.byProject
 
@@ -294,9 +294,9 @@ class ProgressTest : PostgresTest() {
 	fun `points a plate has no estimate for are counted, never added to the sum as zeroes`() {
 		val ana = person("Ana")
 		preferences.save(ana.id, PreferencesPatch(declaredVelocity = 1.0))
-		open(5, TicketStatus.TODO, listOf(ana.id))
-		open(null, TicketStatus.TODO, listOf(ana.id))
-		open(null, TicketStatus.TODO, listOf(ana.id))
+		open(5, DefaultStatus.TODO, listOf(ana.id))
+		open(null, DefaultStatus.TODO, listOf(ana.id))
+		open(null, DefaultStatus.TODO, listOf(ana.id))
 
 		val load = progress.forPerson(ana, team.id).load
 
@@ -317,7 +317,7 @@ class ProgressTest : PostgresTest() {
 	fun `a person on an instance that has closed no cycle gets an absence, not zeroes`() {
 		val ana = person("Ana")
 		cycle(21, LocalDate.of(2026, 8, 3), state = CycleState.ACTIVE)
-		open(8, TicketStatus.TODO, listOf(ana.id))
+		open(8, DefaultStatus.TODO, listOf(ana.id))
 
 		val mine = progress.forPerson(ana, team.id)
 
@@ -391,7 +391,7 @@ class ProgressTest : PostgresTest() {
 		// And the measured half, which is not a validation but an arbitration: a person the
 		// closed cycles saw finish nothing is an absence rather than a rate of zero.
 		cycle(21, LocalDate.of(2026, 8, 3)).also { delivered(it.id, LocalDate.of(2026, 8, 5), 5, listOf(person("Bo").id)) }
-		open(8, TicketStatus.TODO, listOf(ana.id))
+		open(8, DefaultStatus.TODO, listOf(ana.id))
 
 		val mine = progress.forPerson(ana, team.id)
 
@@ -426,7 +426,7 @@ class ProgressTest : PostgresTest() {
 			delivered(c.id, LocalDate.of(2026, 8, 5), 5, listOf(ana.id))
 			delivered(c.id, LocalDate.of(2026, 8, 6), 8, listOf(bo.id))
 		}
-		open(8, TicketStatus.TODO, listOf(bo.id))
+		open(8, DefaultStatus.TODO, listOf(bo.id))
 
 		// This is the seam the other-person view will use, and it is asserted here so that
 		// ticket finds a service that already answers rather than one it has to widen.

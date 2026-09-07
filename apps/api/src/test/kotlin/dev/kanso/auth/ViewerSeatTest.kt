@@ -5,7 +5,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.docs.DocService
 import dev.kanso.repo.TeamRepository
@@ -90,7 +90,7 @@ class ViewerSeatTest : PostgresTest() {
 		teamId = team.id,
 		title = "Something to read",
 		description = "and not to change",
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -114,9 +114,9 @@ class ViewerSeatTest : PostgresTest() {
 		val ticket = ticketIn(team)
 
 		val refusals = mapOf(
-			"file a ticket" to { tickets.create(viewer, team.id, "New", null, TicketStatus.TODO, TicketPriority.NONE, null, null, null, emptyList(), emptyList()) },
+			"file a ticket" to { tickets.create(viewer, team.id, "New", null, DefaultStatus.TODO, TicketPriority.NONE, null, null, null, emptyList(), emptyList()) },
 			"rename a ticket" to { tickets.patch(viewer, ticket.id, TicketPatch(title = "Renamed")) },
-			"move a ticket to done" to { tickets.patch(viewer, ticket.id, TicketPatch(status = TicketStatus.DONE)) },
+			"move a ticket to done" to { tickets.patch(viewer, ticket.id, TicketPatch(status = DefaultStatus.DONE)) },
 			"delete a ticket" to { tickets.delete(viewer, ticket.id) },
 			"comment" to { comments.create(viewer, CreateComment(ticketId = ticket.id, body = "A thought")) },
 			"create a label" to { labels.create(viewer, team.id, "urgent", "rose") },
@@ -164,7 +164,7 @@ class ViewerSeatTest : PostgresTest() {
 		val theirs = ticketIn(team)
 		val draft = tickets.create(
 			demoted, null, "A draft from before", null,
-			TicketStatus.TODO, TicketPriority.NONE, null, null, null, emptyList(), emptyList(),
+			DefaultStatus.TODO, TicketPriority.NONE, null, null, null, emptyList(), emptyList(),
 		).ticket
 
 		users.setInstanceRole(demoted.id, InstanceRole.VIEWER)

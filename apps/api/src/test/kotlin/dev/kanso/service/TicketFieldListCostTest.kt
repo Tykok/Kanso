@@ -6,7 +6,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.TeamRepository
@@ -99,7 +99,7 @@ class TicketFieldListCostTest : PostgresTest() {
 		repeat(TICKETS) { index ->
 			val ticket = tickets.create(
 				actor = admin, teamId = team.id, title = "Work $index", description = null,
-				status = TicketStatus.TODO, priority = TicketPriority.NONE,
+				status = DefaultStatus.TODO, priority = TicketPriority.NONE,
 				start = null, due = null, projectId = null,
 				assigneeIds = emptyList(), docIds = emptyList(),
 			).ticket
@@ -154,7 +154,7 @@ class TicketFieldListCostTest : PostgresTest() {
 		val ids = (1..TICKETS).map { index ->
 			tickets.create(
 				actor = admin, teamId = team.id, title = "Work $index", description = null,
-				status = TicketStatus.TODO, priority = TicketPriority.NONE,
+				status = DefaultStatus.TODO, priority = TicketPriority.NONE,
 				start = null, due = null, projectId = null,
 				assigneeIds = emptyList(), docIds = emptyList(),
 			).ticket.id
@@ -197,7 +197,7 @@ class TicketFieldListCostTest : PostgresTest() {
 		repeat(TICKETS) { index ->
 			val ticket = tickets.create(
 				actor = admin, teamId = team.id, title = "Work $index", description = null,
-				status = if (index % 2 == 0) TicketStatus.TODO else TicketStatus.IN_PROGRESS,
+				status = if (index % 2 == 0) DefaultStatus.TODO else DefaultStatus.IN_PROGRESS,
 				priority = TicketPriority.NONE,
 				start = null, due = null, projectId = null,
 				assigneeIds = emptyList(), docIds = emptyList(),

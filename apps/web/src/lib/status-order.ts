@@ -47,6 +47,27 @@ export const WORKFLOW_ORDER: readonly TicketStatus[] = [
 ];
 
 /**
+ * How buckets stack when the scope holds more than one team — `KAN-28`.
+ *
+ * [WORKFLOW_ORDER] above used to be the one order that crossed the wire, and a team that
+ * can reorder its own list ended that: a grouped page scoped to one team is stacked by
+ * `team_statuses.position`, which arrives with the team. This is what took the job of the
+ * two-sided constant, and it can hold it for the same reason the docstring at the head of
+ * this file gives — the five categories are closed, while a team's words are not.
+ *
+ * `StatusOrder.CATEGORY_ORDER` in `domain/StatusOrder.kt` is the other copy, and
+ * `StatusOrderTest.kt` pins the same sequence there: between them, the side that drifts
+ * turns its own tests red.
+ */
+export const CATEGORY_ORDER: readonly StatusCategory[] = [
+  "backlog",
+  "unstarted",
+  "started",
+  "completed",
+  "canceled",
+];
+
+/**
  * Finished, then in review, then under way, then not started, then abandoned.
  *
  * A proportion bar answers one question — how much of this is done — and the reader reads

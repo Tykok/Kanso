@@ -2,7 +2,7 @@ package dev.kanso.sync.importer
 
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
@@ -166,7 +166,7 @@ class TicketImport(
 			// becoming "Todo" is better than a seventh status nothing else understands. The
 			// default belongs here rather than in the reader: null means "nobody said", and
 			// only the thing writing the row gets to decide what to write instead.
-			status = base.reader.status(page) ?: TicketStatus.TODO,
+			status = base.reader.status(page) ?: DefaultStatus.TODO,
 			priority = base.reader.priority(page) ?: TicketPriority.NONE,
 			start = base.reader.start(page),
 			due = base.reader.due(page),

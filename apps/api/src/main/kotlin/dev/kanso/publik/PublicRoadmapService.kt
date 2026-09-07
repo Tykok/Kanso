@@ -1,7 +1,7 @@
 package dev.kanso.publik
 
 import dev.kanso.domain.StatusCategory
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.TeamRepository
 import dev.kanso.service.NotFoundException
 import org.springframework.stereotype.Service
@@ -118,7 +118,7 @@ class PublicRoadmapService(
 	 * under delivered). Votes rank the work not yet decided; once it has shipped, the
 	 * question a visitor is asking changed from "will you" to "when did you".
 	 */
-	private fun List<RoadmapEntry>.sorted(status: TicketStatus) =
+	private fun List<RoadmapEntry>.sorted(status: DefaultStatus) =
 		if (status.category == StatusCategory.COMPLETED) sortedWith(byDelivery) else sortedWith(byVotes)
 
 	private companion object {
@@ -131,7 +131,7 @@ class PublicRoadmapService(
 		 * the drawing rules out. Groups with nothing in them are dropped, so an instance
 		 * whose published work sits in four of these draws four columns.
 		 */
-		val ROADMAP_STATUSES = TicketStatus.entries.filter { it.category != StatusCategory.CANCELED }
+		val ROADMAP_STATUSES = DefaultStatus.entries.filter { it.category != StatusCategory.CANCELED }
 
 		/**
 		 * Nobody has picked these up yet, which is what makes them a first step. Two
@@ -139,7 +139,7 @@ class PublicRoadmapService(
 		 * will", and a newcomer can start on either — what rules a ticket out here is
 		 * somebody having begun it, not how sure the team is that it should happen.
 		 */
-		val NOT_STARTED_STATUSES = TicketStatus.entries.filter {
+		val NOT_STARTED_STATUSES = DefaultStatus.entries.filter {
 			it.category == StatusCategory.BACKLOG || it.category == StatusCategory.UNSTARTED
 		}
 

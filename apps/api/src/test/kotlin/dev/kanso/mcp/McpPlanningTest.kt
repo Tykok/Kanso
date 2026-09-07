@@ -8,7 +8,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.oauth.OAuthScopes
 import dev.kanso.repo.TeamRepository
@@ -126,7 +126,7 @@ class McpPlanningTest : PostgresTest() {
 		team: Team,
 		owner: User,
 		title: String,
-		status: TicketStatus = TicketStatus.TODO,
+		status: DefaultStatus = DefaultStatus.TODO,
 		priority: TicketPriority = TicketPriority.NONE,
 		estimate: Int? = null,
 		assignees: List<UUID> = emptyList(),
@@ -325,7 +325,7 @@ class McpPlanningTest : PostgresTest() {
 		)
 		assertTrue(children.all { it.ticket.teamId == team.id }, "and lands in the parent's team")
 		assertEquals(
-			setOf(TicketStatus.TODO, TicketStatus.TODO, TicketStatus.IN_PROGRESS).size,
+			setOf(DefaultStatus.TODO, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS).size,
 			children.map { it.ticket.status }.toSet().size,
 			"the status each part asked for, defaulted to todo",
 		)
@@ -489,12 +489,12 @@ class McpPlanningTest : PostgresTest() {
 	fun `team workload counts the charge and the work in flight as two different numbers`() {
 		val alice = user()
 		val team = teamOf(alice, "Loaded")
-		file(team, alice, "Queued", status = TicketStatus.TODO, estimate = 5, assignees = listOf(alice.id))
-		file(team, alice, "Moving", status = TicketStatus.IN_PROGRESS, estimate = 3, assignees = listOf(alice.id))
-		file(team, alice, "Unsized", status = TicketStatus.TODO, assignees = listOf(alice.id))
-		file(team, alice, "Nobody's", status = TicketStatus.TODO)
+		file(team, alice, "Queued", status = DefaultStatus.TODO, estimate = 5, assignees = listOf(alice.id))
+		file(team, alice, "Moving", status = DefaultStatus.IN_PROGRESS, estimate = 3, assignees = listOf(alice.id))
+		file(team, alice, "Unsized", status = DefaultStatus.TODO, assignees = listOf(alice.id))
+		file(team, alice, "Nobody's", status = DefaultStatus.TODO)
 		// Settled work is on nobody's plate, so it must not raise either number.
-		file(team, alice, "Finished", status = TicketStatus.DONE, estimate = 8, assignees = listOf(alice.id))
+		file(team, alice, "Finished", status = DefaultStatus.DONE, estimate = 8, assignees = listOf(alice.id))
 
 		val answer = textOf(call("kanso_team_workload", """{"team":"${team.key}"}""", bearer(alice)))
 		val hers = answer.lines().first { it.contains(alice.email) }.split(Regex("\\s+"))

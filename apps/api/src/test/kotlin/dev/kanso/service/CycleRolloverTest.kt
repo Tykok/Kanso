@@ -5,7 +5,7 @@ import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.PostgresTest
 import dev.kanso.repo.CycleRepository
@@ -64,7 +64,7 @@ class CycleRolloverTest : PostgresTest() {
 	private fun cycle(number: Int, state: CycleState = CycleState.ACTIVE) =
 		cycles.create(admin, team.id, number, start, end, state)
 
-	private fun ticket(title: String, status: TicketStatus) = tickets.create(
+	private fun ticket(title: String, status: DefaultStatus) = tickets.create(
 		actor = admin,
 		teamId = team.id,
 		title = title,
@@ -87,10 +87,10 @@ class CycleRolloverTest : PostgresTest() {
 		val closing = cycle(24)
 		val next = cycle(25, CycleState.UPCOMING)
 		val open = listOf(
-			ticket("still to do", TicketStatus.TODO),
-			ticket("half written", TicketStatus.IN_PROGRESS),
-			ticket("waiting on review", TicketStatus.IN_REVIEW),
-			ticket("never started", TicketStatus.BACKLOG),
+			ticket("still to do", DefaultStatus.TODO),
+			ticket("half written", DefaultStatus.IN_PROGRESS),
+			ticket("waiting on review", DefaultStatus.IN_REVIEW),
+			ticket("never started", DefaultStatus.BACKLOG),
 		)
 		cycles.addTickets(admin, closing.id, open)
 
@@ -104,9 +104,9 @@ class CycleRolloverTest : PostgresTest() {
 	fun `work that is finished or abandoned stays where it happened`() {
 		val closing = cycle(24)
 		val next = cycle(25, CycleState.UPCOMING)
-		val done = ticket("shipped", TicketStatus.DONE)
-		val canceled = ticket("dropped", TicketStatus.CANCELED)
-		val open = ticket("slipped", TicketStatus.TODO)
+		val done = ticket("shipped", DefaultStatus.DONE)
+		val canceled = ticket("dropped", DefaultStatus.CANCELED)
+		val open = ticket("slipped", DefaultStatus.TODO)
 		cycles.addTickets(admin, closing.id, listOf(done, canceled, open))
 
 		close(closing.id)
@@ -126,7 +126,7 @@ class CycleRolloverTest : PostgresTest() {
 	@Test
 	fun `the next cycle is created when the team planned none, one cadence long`() {
 		val closing = cycle(24)
-		val open = ticket("slipped", TicketStatus.TODO)
+		val open = ticket("slipped", DefaultStatus.TODO)
 		cycles.addTickets(admin, closing.id, listOf(open))
 
 		close(closing.id)
@@ -143,7 +143,7 @@ class CycleRolloverTest : PostgresTest() {
 	fun `an upcoming cycle the team already planned is used rather than a second one invented`() {
 		val closing = cycle(24)
 		val planned = cycle(25, CycleState.UPCOMING)
-		cycles.addTickets(admin, closing.id, listOf(ticket("slipped", TicketStatus.TODO)))
+		cycles.addTickets(admin, closing.id, listOf(ticket("slipped", DefaultStatus.TODO)))
 
 		close(closing.id)
 
@@ -161,7 +161,7 @@ class CycleRolloverTest : PostgresTest() {
 		cycles.addTickets(
 			admin,
 			closing.id,
-			listOf(ticket("shipped", TicketStatus.DONE), ticket("dropped", TicketStatus.CANCELED)),
+			listOf(ticket("shipped", DefaultStatus.DONE), ticket("dropped", DefaultStatus.CANCELED)),
 		)
 
 		close(closing.id)
@@ -177,8 +177,8 @@ class CycleRolloverTest : PostgresTest() {
 	fun `each carried ticket says so in its own feed, naming both cycles`() {
 		val closing = cycle(24)
 		val next = cycle(25, CycleState.UPCOMING)
-		val open = ticket("slipped", TicketStatus.TODO)
-		val done = ticket("shipped", TicketStatus.DONE)
+		val open = ticket("slipped", DefaultStatus.TODO)
+		val done = ticket("shipped", DefaultStatus.DONE)
 		cycles.addTickets(admin, closing.id, listOf(open, done))
 
 		close(closing.id)
@@ -199,7 +199,7 @@ class CycleRolloverTest : PostgresTest() {
 	fun `closing a cycle that is already closed moves nothing a second time`() {
 		val closing = cycle(24)
 		val next = cycle(25, CycleState.UPCOMING)
-		val open = ticket("slipped", TicketStatus.TODO)
+		val open = ticket("slipped", DefaultStatus.TODO)
 		cycles.addTickets(admin, closing.id, listOf(open))
 		close(closing.id)
 
@@ -220,9 +220,9 @@ class CycleRolloverTest : PostgresTest() {
 	fun `a cycle closed twice over work put back into it carries that work once`() {
 		val closing = cycle(24)
 		val next = cycle(25, CycleState.UPCOMING)
-		cycles.addTickets(admin, closing.id, listOf(ticket("slipped", TicketStatus.TODO)))
+		cycles.addTickets(admin, closing.id, listOf(ticket("slipped", DefaultStatus.TODO)))
 		close(closing.id)
-		val late = ticket("filed against the old cycle", TicketStatus.TODO)
+		val late = ticket("filed against the old cycle", DefaultStatus.TODO)
 		cycles.addTickets(admin, closing.id, listOf(late))
 
 		close(closing.id)

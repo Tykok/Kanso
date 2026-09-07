@@ -2,7 +2,7 @@ package dev.kanso.sync.importer
 
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.Wire
 import dev.kanso.sync.notion.NotionDataSource
 import dev.kanso.sync.notion.NotionProps
@@ -162,7 +162,7 @@ object ImportSchema {
 	 */
 	private fun vocabulary(field: ImportField, target: ImportTarget): ((String) -> Wire?)? = when (field) {
 		ImportField.STATUS -> when (target) {
-			ImportTarget.TICKETS -> { label: String -> TicketStatus.fromLabel(label) }
+			ImportTarget.TICKETS -> { label: String -> DefaultStatus.fromLabel(label) }
 			ImportTarget.PROJECTS -> { label: String -> ProjectStatus.fromLabel(label) }
 			else -> null
 		}
@@ -173,7 +173,7 @@ object ImportSchema {
 	/**
 	 * What each field of [target] becomes when nothing fills it — read from the writers
 	 * rather than restated from a spec, so this cannot say something the writer does not
-	 * do. [TicketImport] applies [TicketStatus.TODO] and [TicketPriority.NONE];
+	 * do. [TicketImport] applies [DefaultStatus.TODO] and [TicketPriority.NONE];
 	 * [ProjectImport] applies [ProjectStatus.IN_PROGRESS] for the same field's other
 	 * vocabulary. Every other field is passed through as null: a relation is resolved
 	 * rather than defaulted to a wire value, and [ImportField.ASSIGNEES] and
@@ -183,7 +183,7 @@ object ImportSchema {
 	 */
 	private fun defaults(target: ImportTarget): Map<ImportField, String?> = target.fields.associateWith { field ->
 		when {
-			field == ImportField.STATUS && target == ImportTarget.TICKETS -> TicketStatus.TODO.wire
+			field == ImportField.STATUS && target == ImportTarget.TICKETS -> DefaultStatus.TODO.wire
 			field == ImportField.STATUS && target == ImportTarget.PROJECTS -> ProjectStatus.IN_PROGRESS.wire
 			field == ImportField.PRIORITY -> TicketPriority.NONE.wire
 			else -> null

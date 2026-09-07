@@ -3,7 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.Project
 import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TeamRepository
@@ -59,7 +59,7 @@ data class ProjectLoad(val project: Project?, val load: LoadSlice)
  * is zero days, and [LoadSlice.unestimated] is what says how much of a non-empty one the
  * division could not see.
  */
-data class OpenLoad(val load: LoadSlice, val byStatus: Map<TicketStatus, LoadSlice>, val byProject: List<ProjectLoad>, val workingDays: Double?)
+data class OpenLoad(val load: LoadSlice, val byStatus: Map<DefaultStatus, LoadSlice>, val byProject: List<ProjectLoad>, val workingDays: Double?)
 
 /**
  * Everything screen 40 draws about one person, computed on read.

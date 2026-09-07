@@ -1,7 +1,7 @@
 package dev.kanso.domain
 
 /**
- * The one status order the server has an opinion about.
+ * The two orders the server has an opinion about — one of them since `KAN-28`.
  *
  * A grouped page is ordered by bucket before it is ordered by the view's sort, so the page
  * boundary is cut against this sequence — which is what lets the client lay a page of rows
@@ -26,24 +26,56 @@ package dev.kanso.domain
 object StatusOrder {
 
 	/**
-	 * Downwards as the work flows: what is waiting at the top, what is finished at the
-	 * bottom.
+	 * The six a new team is seeded with, downwards as the work flows.
 	 *
-	 * Written out rather than folded over `TicketStatus.entries`, and never derived from
+	 * This was "the order every grouped view reads" until `KAN-28`, and the sentence is
+	 * worth keeping because the change is easy to miss: a team can now reorder its own
+	 * list, so a grouped page ranks by `team_statuses.position` and this constant no
+	 * longer decides anything a reader sees. What it still decides is where a *new* team
+	 * starts — `V41`'s `seed_team_statuses` holds the same six in SQL, because a migration
+	 * is a fact about a moment and must not move when this file does.
+	 *
+	 * Written out rather than folded over `DefaultStatus.entries`, and never derived from
 	 * [StatusCategory]. The order of a closed vocabulary is a product decision, and taking
 	 * it from the enum's declaration would make reordering the enum — or adding a value in
 	 * the obvious place — silently restack every grouped view and move every saved view's
 	 * page boundary. `StatusOrderTest` asserts this names every status exactly once, so a
 	 * seventh one is a decision somebody has to make rather than a default they inherit.
 	 */
-	val WORKFLOW: List<TicketStatus> = listOf(
-		TicketStatus.BACKLOG,
-		TicketStatus.TODO,
-		TicketStatus.IN_PROGRESS,
-		TicketStatus.IN_REVIEW,
-		TicketStatus.DONE,
-		TicketStatus.CANCELED,
+	val WORKFLOW: List<DefaultStatus> = listOf(
+		DefaultStatus.BACKLOG,
+		DefaultStatus.TODO,
+		DefaultStatus.IN_PROGRESS,
+		DefaultStatus.IN_REVIEW,
+		DefaultStatus.DONE,
+		DefaultStatus.CANCELED,
 	)
+
+	/**
+	 * The order a scope spanning teams reads in — and the one ordering left that is a
+	 * constant on both sides of the wire.
+	 *
+	 * [WORKFLOW] stopped being that when a team could reorder its list. This took the job
+	 * and can hold it for the reason the docstring above gives for the pattern: the five
+	 * categories are closed, so the sequence is a rendering decision rather than data, and
+	 * sending it would put a fetch between a chart and knowing how to draw itself. The
+	 * copy is `CATEGORY_ORDER` in the web app's `lib/status-order.ts`, pinned equal by a
+	 * test on each side.
+	 *
+	 * Why a scope of two teams groups by this rather than by either team's words: the
+	 * header of a list holding two vocabularies has to be the fact both of them agree on.
+	 * `Todo` and `Qualifié` are one bucket, and the bucket is called `unstarted`.
+	 */
+	val CATEGORY_ORDER: List<StatusCategory> = listOf(
+		StatusCategory.BACKLOG,
+		StatusCategory.UNSTARTED,
+		StatusCategory.STARTED,
+		StatusCategory.COMPLETED,
+		StatusCategory.CANCELED,
+	)
+
+	/** One-based, for the same reason [rankOf] is: this is rendered as a SQL `CASE` too. */
+	fun rankOfCategory(category: StatusCategory): Int = CATEGORY_ORDER.indexOf(category) + 1
 
 	/**
 	 * Where [status] sits, one-based — and where anything [WORKFLOW] does not name sits,
@@ -54,7 +86,7 @@ object StatusOrder {
 	 * `NULL` a missing `WHEN` would produce: `NULL` sorts first in Postgres by default, so
 	 * an unplaced status would go to the *top* of a grouped list.
 	 */
-	fun rankOf(status: TicketStatus): Int =
+	fun rankOf(status: DefaultStatus): Int =
 		WORKFLOW.indexOf(status).let { if (it == -1) UNPLACED else it + 1 }
 
 	/** The rank of a status [WORKFLOW] has not been told about. Last, and stable. */

@@ -3,7 +3,7 @@ package dev.kanso.docs
 import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
@@ -119,17 +119,17 @@ class DocBlockServiceTest : PostgresTest() {
 		val team = newTeam()
 		val page = newPage(team.id)
 		val ticket = tickets.create(
-			admin, team.id, "Echo suppression", null, TicketStatus.TODO,
+			admin, team.id, "Echo suppression", null, DefaultStatus.TODO,
 			dev.kanso.domain.TicketPriority.NONE, null, null, null, emptyList(), emptyList(),
 		)
 
 		val block = blocks.linkTicket(admin, page.id, ticket.ticket.id, null)
-		tickets.patch(admin, ticket.ticket.id, dev.kanso.service.TicketPatch(status = TicketStatus.IN_PROGRESS))
+		tickets.patch(admin, ticket.ticket.id, dev.kanso.service.TicketPatch(status = DefaultStatus.IN_PROGRESS))
 
 		val detail = documents.page(page.id)
 		assertEquals(DocBlockKind.TICKET_LINK, block.kind)
 		assertEquals(listOf(ticket.ticket.id), block.ticketIds)
-		assertEquals(TicketStatus.IN_PROGRESS, detail.tickets.single().ticket.status)
+		assertEquals(DefaultStatus.IN_PROGRESS, detail.tickets.single().ticket.status)
 	}
 
 	/** `c` inside a document. Not the generic composer: the link is the point. */

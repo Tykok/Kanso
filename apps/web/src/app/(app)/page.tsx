@@ -6,6 +6,7 @@ import { BoardView } from "@/components/board/view";
 import { EmptyState } from "@/components/inbox/empty-state";
 import { NewMenu } from "@/components/new-menu";
 import { nameGroups } from "@/components/organise/grouping";
+import { bucketLabel } from "@/lib/statuses";
 import { ListFilters } from "@/components/organise/list-filters";
 import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import { usePageActions } from "@/components/shell/use-shell-keys";
@@ -184,12 +185,16 @@ export default function ListPage() {
      * server's bucket keys and touches neither the order they arrived in nor the numbers
      * on them.
      *
-     * No `names` argument, because this screen asks for `status` and a status names
-     * itself out of `lib/status.ts`. The day a stacking control lands on the list, an
-     * assignee and a project are ids and this is where the two lookups come in — a
-     * header reading a UUID is what a missing one looks like.
+     * A `status` resolver, because a status stopped naming itself in `KAN-28`: the word
+     * is the team's, and across teams the bucket is a category. `bucketLabel` reads the
+     * same scope the server bucketed by, so a header always names a bucket that is
+     * actually there. The day a stacking control lands on the list, an assignee and a
+     * project are ids and this is where those two lookups come in — a header reading a
+     * UUID is what a missing one looks like.
      */
-    const named = nameGroups(groups.data?.groups ?? [], groups.data?.groupBy ?? "status");
+    const named = nameGroups(groups.data?.groups ?? [], groups.data?.groupBy ?? "status", {
+      status: (key) => bucketLabel(teams.data ?? [], scope, key),
+    });
     const needle = query.trim().toLowerCase();
     if (!needle) return named;
     return named
@@ -199,7 +204,7 @@ export default function ListPage() {
       // scroll away", which is true and worth drawing; while somebody is typing it would
       // mean the opposite, and `Done · 12` over a gap reads as a broken list.
       .filter((group) => group.tickets.length > 0);
-  }, [groups.data, query]);
+  }, [groups.data, query, teams.data, scope]);
 
   /**
    * The list flattened back out, for everything that walks it rather than draws it — the

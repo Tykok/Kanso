@@ -1,6 +1,6 @@
 package dev.kanso.mcp.tools
 
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.mcp.McpArguments
 import dev.kanso.mcp.McpPeople
@@ -126,7 +126,7 @@ class SplitTicketTool(
 			Part(
 				title = part.requiredString("title"),
 				description = part.string("description"),
-				status = TicketStatus.from(part.string("status") ?: TicketStatus.TODO.wire),
+				status = DefaultStatus.from(part.string("status") ?: DefaultStatus.TODO.wire),
 				estimate = part.integer("estimate"),
 				assigneeIds = people.resolve(part.strings("assignees").orEmpty()),
 			)
@@ -172,13 +172,13 @@ class SplitTicketTool(
 	private data class Part(
 		val title: String,
 		val description: String?,
-		val status: TicketStatus,
+		val status: DefaultStatus,
 		val estimate: Int?,
 		val assigneeIds: List<UUID>,
 	)
 
 	private companion object {
-		val STATUSES = TicketStatus.entries.map { it.wire }
+		val STATUSES = DefaultStatus.entries.map { it.wire }
 
 		const val MAX_PARTS = 20
 	}

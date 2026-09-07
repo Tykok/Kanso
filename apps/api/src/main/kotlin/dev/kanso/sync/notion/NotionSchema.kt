@@ -3,7 +3,7 @@ package dev.kanso.sync.notion
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 
 /**
  * Property names and value builders, in one place.
@@ -137,7 +137,7 @@ object NotionSchema {
 		NotionProps.NAME to mapOf("title" to emptyMap<String, Any>()),
 		NotionProps.KANSO_ID to mapOf("rich_text" to emptyMap<String, Any>()),
 		NotionProps.IDENTIFIER to mapOf("rich_text" to emptyMap<String, Any>()),
-		NotionProps.STATUS to selectOf(TicketStatus.entries.map { it.label }),
+		NotionProps.STATUS to selectOf(DefaultStatus.entries.map { it.label }),
 		NotionProps.PRIORITY to selectOf(TicketPriority.entries.map { it.label }),
 		NotionProps.ESTIMATE to mapOf("number" to emptyMap<String, Any>()),
 		NotionProps.DESCRIPTION to mapOf("rich_text" to emptyMap<String, Any>()),

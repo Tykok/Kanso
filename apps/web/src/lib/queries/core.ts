@@ -674,6 +674,44 @@ export function usePatchTicket() {
  * children answers `null` to the first and `[]` to the second, and the panel draws
  * nothing — which is most tickets.
  */
+/**
+ * A team's words, edited — `KAN-28`.
+ *
+ * No read query beside them: a team's catalogue rides on `Team.statuses`, which every
+ * screen already holds, so what these invalidate is the teams themselves. `teams` and not
+ * a key of their own is also what makes a rename reach the pills on the list behind the
+ * settings panel.
+ *
+ * Not optimistic, unlike the ticket writes. A rename is a deliberate act on a settings
+ * screen, one at a time, and the round trip is the only thing that knows whether the word
+ * collides with another team member's rename a second ago — which is exactly what the
+ * server answers with a sentence.
+ */
+export function useRenameStatus(teamId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ key, label }: { key: string; label: string }) =>
+      api.renameStatus(teamId, key, label),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useReorderStatuses(teamId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (keys: readonly string[]) => api.reorderStatuses(teamId, keys),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      // The order a grouped page is stacked in comes from the server, and the page
+      // boundary is cut against it — so a reorder makes every list of this team's
+      // tickets stale, not merely differently labelled.
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
 export function useSubTickets(ticketId: string) {
   const children = useQuery({
     queryKey: keys.ticketChildren(ticketId),

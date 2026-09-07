@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.outbox.Destination
 import dev.kanso.outbox.Failure
@@ -156,7 +156,7 @@ class NotionOutboundHandlerTest : PostgresTest() {
 		).id.also { teamRows.markSynced(it, "page-team", null) },
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

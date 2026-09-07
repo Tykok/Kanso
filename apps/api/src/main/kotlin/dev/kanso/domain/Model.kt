@@ -21,24 +21,45 @@ internal inline fun <reified E> parse(values: Array<E>, raw: String): E where E 
 /**
  * What a status *means*, as opposed to what it is called.
  *
- * Not a [Wire]: nothing writes a category to the database or sends one to Notion, so
- * there is no raw string to parse back and no `CHECK` constraint to keep honest. It is a
- * reading of the status column, and the status column already has both.
- *
  * The point is that "is this finished", "has anybody started" and "is this still open"
  * are questions four screens ask — the burndown, the board, the workload chart, the
  * public roadmap — and each one used to answer by naming statuses. Naming a category
  * instead is what lets a seventh status exist without those four quietly going wrong.
+ *
+ * `KAN-28` is that seventh status arriving, and it made this a [Wire]. The docstring here
+ * used to say the opposite — "nothing writes a category to the database or sends one to
+ * Notion" — and that was true while the five were a reading of a closed status column.
+ * They are now written: `team_statuses.category` is where a team-defined status declares
+ * its meaning, kept honest by `team_statuses_category_chk`, and the five cross the wire
+ * as the buckets of a scope that spans teams. So there is a raw string to parse back, and
+ * [from] is where it is parsed.
  */
-enum class StatusCategory {
-	BACKLOG,
-	UNSTARTED,
-	STARTED,
-	COMPLETED,
-	CANCELED,
+enum class StatusCategory(override val wire: String) : Wire {
+	BACKLOG("backlog"),
+	UNSTARTED("unstarted"),
+	STARTED("started"),
+	COMPLETED("completed"),
+	CANCELED("canceled");
+
+	/** The word a bucket header prints when the scope spans two vocabularies. */
+	val label: String get() = wire.replaceFirstChar(Char::uppercase)
+
+	companion object {
+		fun from(raw: String): StatusCategory = parse(entries.toTypedArray(), raw)
+	}
 }
 
-enum class TicketStatus(override val wire: String) : Wire {
+/**
+ * The six a Kanso instance ships, and the vocabulary of a ticket that has no team.
+ *
+ * Called `Default` and not `Ticket` since `KAN-28`, and the rename is the point: a
+ * ticket's status is whatever its *team* defines, read from `team_statuses`, and the six
+ * here are only what a new team is seeded with and what a draft answers to. Under the old
+ * name, `entries` read as "the statuses" at a dozen call sites — a burndown filtering
+ * `entries` by category would silently miss a team's seventh status, and no test could
+ * see it. The name is the warning the compiler cannot give.
+ */
+enum class DefaultStatus(override val wire: String) : Wire {
 	BACKLOG("backlog"),
 	TODO("todo"),
 	IN_PROGRESS("in_progress"),
@@ -64,8 +85,8 @@ enum class TicketStatus(override val wire: String) : Wire {
 	}
 
 	companion object {
-		fun from(raw: String): TicketStatus = parse(entries.toTypedArray(), raw)
-		fun fromLabel(label: String): TicketStatus? =
+		fun from(raw: String): DefaultStatus = parse(entries.toTypedArray(), raw)
+		fun fromLabel(label: String): DefaultStatus? =
 			entries.firstOrNull { it.label.equals(label, ignoreCase = true) }
 	}
 }
@@ -543,7 +564,7 @@ data class Ticket(
 	val createdBy: UUID?,
 	val title: String,
 	val description: String?,
-	val status: TicketStatus,
+	val status: DefaultStatus,
 	val priority: TicketPriority,
 	/** Points, off [EffortPoints.SCALE]. Null means nobody has sized it — never zero. */
 	val estimate: Int?,

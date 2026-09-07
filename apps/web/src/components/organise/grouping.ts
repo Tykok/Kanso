@@ -54,6 +54,21 @@ const PRIORITY_ORDER: TicketPriority[] = ["urgent", "high", "medium", "low", "no
  * It cannot collide with a key the server sends: `status` and `priority` are closed
  * vocabularies, and an assignee or a project is a UUID.
  */
+/**
+ * The three bucket keys this module cannot name by itself.
+ *
+ * A person and a project are ids, and their names live in tables a grouping function has
+ * no business joining. A status *was* nameable here, out of `lib/status.ts`, until
+ * `KAN-28` made the word a team's own — so it joins them, resolved by whoever holds the
+ * teams. All three are optional: a caller with nothing to look in gets the key, which is
+ * what a missing name should look like.
+ */
+export type StatusNames = {
+  person?: (id: string) => string;
+  project?: (id: string) => string;
+  status?: (key: string) => string;
+};
+
 export const DRAFTS_GROUP = "drafts";
 
 /**
@@ -72,7 +87,7 @@ export const DRAFTS_GROUP = "drafts";
 export function nameGroups(
   groups: readonly ServerGroup[],
   groupBy: ViewGroupBy,
-  names?: { person?: (id: string) => string; project?: (id: string) => string },
+  names?: StatusNames,
 ): Group[] {
   if (groupBy === "none") {
     // One flat list, and no header over it — the same reading `groupTickets` gives `none`.
@@ -88,7 +103,7 @@ export function nameGroups(
 export function groupTickets(
   tickets: readonly Ticket[],
   groupBy: ViewGroupBy,
-  names?: { person?: (id: string) => string; project?: (id: string) => string },
+  names?: StatusNames,
 ): Group[] {
   if (tickets.length === 0) return [];
   // `none` is a real choice on the group-by control and it means one flat list — not zero
@@ -177,14 +192,18 @@ const indexOr = (order: readonly string[], key: string) => {
 function labelOf(
   key: string,
   groupBy: Exclude<ViewGroupBy, "none">,
-  names?: { person?: (id: string) => string; project?: (id: string) => string },
+  names?: StatusNames,
 ): string {
   // Before the switch, because a draft answers to no facet: whichever way the list is
   // stacked, the bucket is the same one and reads the same way.
   if (key === DRAFTS_GROUP) return "Drafts";
   switch (groupBy) {
     case "status":
-      return STATUS_LABELS[key as TicketStatus] ?? key;
+      // The resolver first, because the word is the team's since `KAN-28` — and it also
+      // names a category, which is what a scope spanning teams buckets by.
+      // `STATUS_LABELS` stays the fallback: Kanso's own word, right for every team that
+      // has not renamed anything and for a screen with no teams loaded.
+      return names?.status?.(key) ?? STATUS_LABELS[key as TicketStatus] ?? key;
     case "priority":
       return PRIORITY_LABELS[key as TicketPriority] ?? key;
     case "assignee":

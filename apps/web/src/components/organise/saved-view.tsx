@@ -24,6 +24,7 @@ import { PRIORITY_LABELS } from "@/lib/status";
 import { flatIndexOf, flatten, sizeAt } from "@/lib/virtual";
 import { BulkStrip } from "./bulk-strip";
 import { FilterInput } from "./filter-input";
+import { bucketLabel } from "@/lib/statuses";
 import { nameGroups } from "./grouping";
 import { ViewControls } from "./view-controls";
 import { FavouriteStar } from "../favourites";
@@ -74,7 +75,8 @@ export function SavedViewScreen({ id }: { id: string }) {
       })
     : resolved;
 
-  const views = useSavedViews(team?.id);
+  const teamId = team?.id;
+  const views = useSavedViews(teamId);
   const cycles = useCycles(team?.id);
   const users = useUsers();
   const projects = useProjects();
@@ -114,8 +116,16 @@ export function SavedViewScreen({ id }: { id: string }) {
       },
       label: (labelId: string) =>
         labels.data?.find((label) => label.id === labelId)?.name ?? labelId,
+      // `KAN-28`: the word is the team's, and a saved view has exactly one — its own,
+      // the one named in the path, not whichever the sidebar is scoped to.
+      // `team` itself is a conditional object literal above — a fresh identity on every
+      // render — so this closes over its id. Depending on the object would recompute this
+      // memo every render and rebuild every callback under it, which is the shape of the
+      // loop `shell/topbar-slot.tsx` exists to have caught once already.
+      status: (key: string) =>
+        teamId ? bucketLabel(teams, { kind: "team", id: teamId }, key) : key,
     }),
-    [users.data, cycles.data, projects.data, labels.data],
+    [users.data, cycles.data, projects.data, labels.data, teams, teamId],
   );
 
   const clear = useCallback(() => {

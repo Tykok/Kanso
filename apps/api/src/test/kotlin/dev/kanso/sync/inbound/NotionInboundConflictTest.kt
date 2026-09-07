@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.config.KansoProperties
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.repo.NotionMetaRepository
@@ -93,7 +93,7 @@ class NotionInboundConflictTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

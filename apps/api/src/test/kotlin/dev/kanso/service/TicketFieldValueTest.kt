@@ -7,7 +7,7 @@ import dev.kanso.domain.MemberRole
 import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.outbox.OutboundEntityType
 import dev.kanso.repo.TeamRepository
@@ -61,7 +61,7 @@ class TicketFieldValueTest : PostgresTest() {
 
 	private fun ticketIn(teamId: UUID?): Ticket = tickets.create(
 		actor = admin, teamId = teamId, title = "Work", description = null,
-		status = TicketStatus.TODO, priority = TicketPriority.NONE,
+		status = DefaultStatus.TODO, priority = TicketPriority.NONE,
 		start = null, due = null, projectId = null,
 		assigneeIds = emptyList(), docIds = emptyList(),
 	).ticket

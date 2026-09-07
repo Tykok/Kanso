@@ -182,6 +182,7 @@ docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wai
 |                          | 11. A ticket row worked entirely by mouse: pills, rename, archive, delete.    |
 | `12-timeline.spec.ts`    | 12. An arrow drawn by hand, then a resize the scheduling engine cascades.     |
 | `26-doc-collaboration.spec.ts` | 26. Two people in one document: presence, a block lock, and what the second one is told. |
+| `29-team-statuses.spec.ts` | 29. A team's own words: a rename reaches every screen, a reorder restacks a page the server ordered. |
 
 Scenario 5 is the point of the whole thing. The action registry rewrites the keyboard
 path; this test is what says whether behaviour moved with it. When an assertion is in

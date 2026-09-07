@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.db.Tickets
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.jetbrains.exposed.v1.core.eq
@@ -92,7 +92,7 @@ class VelocityTest : PostgresTest() {
 			teamId = team.id,
 			title = "delivered $estimate",
 			description = null,
-			status = TicketStatus.DONE,
+			status = DefaultStatus.DONE,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

@@ -4,7 +4,7 @@ import dev.kanso.PostgresTest
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -68,7 +68,7 @@ class NotificationCallSitesTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -115,7 +115,7 @@ class NotificationCallSitesTest : PostgresTest() {
 		val lea = person("Lea")
 		val ticket = newTicket(assignees = listOf(lea.id))
 
-		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = TicketStatus.IN_REVIEW))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.IN_REVIEW))
 
 		val rows = notifications.inbox(lea.id).rows
 		assertEquals(listOf("status_moved", "assigned"), rows.map { it.kind })
@@ -141,7 +141,7 @@ class NotificationCallSitesTest : PostgresTest() {
 	fun `the actor is not told about a status they moved themselves`() {
 		val ticket = newTicket(assignees = listOf(admin.id))
 
-		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = TicketStatus.DONE))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.DONE))
 
 		assertEquals(0, notifications.inbox(admin.id).rows.size)
 	}

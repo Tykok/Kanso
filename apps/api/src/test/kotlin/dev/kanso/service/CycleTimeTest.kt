@@ -7,7 +7,7 @@ import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.ActivityRepository
 import dev.kanso.repo.UserRepository
@@ -92,13 +92,13 @@ class CycleTimeTest : PostgresTest() {
 		assignees: List<UUID>,
 		estimate: Int? = 3,
 	): UUID {
-		val id = ticket(TicketStatus.DONE, assignees, estimate)
+		val id = ticket(DefaultStatus.DONE, assignees, estimate)
 		Tickets.update({ Tickets.id eq id }) { it[Tickets.completedAt] = completedAt }
 		cycles.addTickets(admin, cycleId, listOf(id))
 		return id
 	}
 
-	private fun ticket(status: TicketStatus, assignees: List<UUID>, estimate: Int? = 3): UUID =
+	private fun ticket(status: DefaultStatus, assignees: List<UUID>, estimate: Int? = 3): UUID =
 		tickets.create(
 			actor = admin,
 			teamId = team.id,
@@ -115,7 +115,7 @@ class CycleTimeTest : PostgresTest() {
 		).ticket.id
 
 	/** One `status_changed`, at an instant this test chose. */
-	private fun moved(ticketId: UUID, from: TicketStatus, to: TicketStatus, on: OffsetDateTime) {
+	private fun moved(ticketId: UUID, from: DefaultStatus, to: DefaultStatus, on: OffsetDateTime) {
 		activityRows.insert(
 			id = UUID.randomUUID(),
 			entity = ActivityEntity.TICKET,
@@ -134,7 +134,7 @@ class CycleTimeTest : PostgresTest() {
 		val ana = person("Ana")
 		val closed = cycle(20, MONDAY)
 		val id = delivered(closed.id, at(MONDAY.plusDays(2), 9), listOf(ana.id))
-		moved(id, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
+		moved(id, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY, 9))
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
 
@@ -150,9 +150,9 @@ class CycleTimeTest : PostgresTest() {
 		val ana = person("Ana")
 		val closed = cycle(20, MONDAY)
 		val id = delivered(closed.id, at(MONDAY.plusDays(4), 9), listOf(ana.id))
-		moved(id, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
-		moved(id, TicketStatus.IN_PROGRESS, TicketStatus.TODO, at(MONDAY.plusDays(1), 9))
-		moved(id, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9))
+		moved(id, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY, 9))
+		moved(id, DefaultStatus.IN_PROGRESS, DefaultStatus.TODO, at(MONDAY.plusDays(1), 9))
+		moved(id, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9))
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
 
@@ -170,7 +170,7 @@ class CycleTimeTest : PostgresTest() {
 		val id = delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id))
 		// Straight from `todo` to review, which a small team does constantly. Keyed on the
 		// category rather than on `in_progress` by name, so this is a start.
-		moved(id, TicketStatus.TODO, TicketStatus.IN_REVIEW, at(MONDAY, 9))
+		moved(id, DefaultStatus.TODO, DefaultStatus.IN_REVIEW, at(MONDAY, 9))
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
 
@@ -184,7 +184,7 @@ class CycleTimeTest : PostgresTest() {
 		val closed = cycle(20, MONDAY)
 		val id = delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id))
 		// The only row is a transition into a *completed* status. Nothing ever started.
-		moved(id, TicketStatus.TODO, TicketStatus.DONE, at(MONDAY.plusDays(1), 9))
+		moved(id, DefaultStatus.TODO, DefaultStatus.DONE, at(MONDAY.plusDays(1), 9))
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
 
@@ -200,13 +200,13 @@ class CycleTimeTest : PostgresTest() {
 		val ana = person("Ana")
 		val closed = cycle(20, MONDAY)
 		val sane = delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id))
-		moved(sane, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
+		moved(sane, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY, 9))
 		// Unreachable through the product — `TicketService` stamps `completedAt` at the
 		// transition that sets it — and entirely reachable through an import, which is the
 		// only reason the guard exists. A negative span in a median is worse than a gap: it
 		// would pull the middle *below* every real ticket in the sample.
 		val imported = delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id))
-		moved(imported, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9))
+		moved(imported, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9))
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
 
@@ -226,7 +226,7 @@ class CycleTimeTest : PostgresTest() {
 		// work. The middle of the sample is unmoved.
 		listOf(1, 1, 1, 30).forEach { days ->
 			val id = delivered(closed.id, at(MONDAY.plusDays(2), 9), listOf(ana.id))
-			moved(id, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY.plusDays(2), 9).minusDays(days.toLong()))
+			moved(id, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY.plusDays(2), 9).minusDays(days.toLong()))
 		}
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
@@ -242,7 +242,7 @@ class CycleTimeTest : PostgresTest() {
 		val closed = cycle(20, MONDAY)
 		listOf(1L, 2L).forEach { days ->
 			val id = delivered(closed.id, at(MONDAY.plusDays(3), 9), listOf(ana.id))
-			moved(id, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9).minusDays(days))
+			moved(id, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY.plusDays(3), 9).minusDays(days))
 		}
 
 		val insights = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
@@ -258,10 +258,10 @@ class CycleTimeTest : PostgresTest() {
 		val ben = person("Ben")
 		val closed = cycle(20, MONDAY)
 		delivered(closed.id, at(MONDAY.plusDays(1), 9), listOf(ana.id)).also {
-			moved(it, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
+			moved(it, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY, 9))
 		}
 		delivered(closed.id, at(MONDAY.plusDays(4), 9), listOf(ben.id)).also {
-			moved(it, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
+			moved(it, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY, 9))
 		}
 
 		val hers = cycleTime.forCycles(listOf(closed), team.id, ana.id, NOW)
@@ -283,10 +283,10 @@ class CycleTimeTest : PostgresTest() {
 		val newer = cycle(21, MONDAY.plusDays(7))
 		val quiet = cycle(22, MONDAY.plusDays(14))
 		delivered(older.id, at(MONDAY.plusDays(1), 9), listOf(ana.id)).also {
-			moved(it, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY, 9))
+			moved(it, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY, 9))
 		}
 		delivered(newer.id, at(MONDAY.plusDays(8), 9), listOf(ana.id)).also {
-			moved(it, TicketStatus.TODO, TicketStatus.IN_PROGRESS, at(MONDAY.plusDays(7), 9))
+			moved(it, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, at(MONDAY.plusDays(7), 9))
 		}
 
 		// Handed over newest first, the order `CycleService.closed` answers in.
@@ -322,14 +322,14 @@ class CycleTimeTest : PostgresTest() {
 	@Test
 	fun `work in flight is the started statuses only, aged from the first start`() {
 		val ana = person("Ana")
-		val inProgress = ticket(TicketStatus.IN_PROGRESS, listOf(ana.id))
-		val inReview = ticket(TicketStatus.IN_REVIEW, listOf(ana.id), estimate = 5)
+		val inProgress = ticket(DefaultStatus.IN_PROGRESS, listOf(ana.id))
+		val inReview = ticket(DefaultStatus.IN_REVIEW, listOf(ana.id), estimate = 5)
 		// A `todo` ticket is a load somebody will pick up and is not work in progress, so it
 		// is out of this count however long it has sat. `WorkloadService.OPEN_STATUSES` is
 		// deliberately wider than this.
-		ticket(TicketStatus.TODO, listOf(ana.id))
-		moved(inProgress, TicketStatus.TODO, TicketStatus.IN_PROGRESS, NOW.minusHours(72))
-		moved(inReview, TicketStatus.IN_PROGRESS, TicketStatus.IN_REVIEW, NOW.minusHours(24))
+		ticket(DefaultStatus.TODO, listOf(ana.id))
+		moved(inProgress, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, NOW.minusHours(72))
+		moved(inReview, DefaultStatus.IN_PROGRESS, DefaultStatus.IN_REVIEW, NOW.minusHours(24))
 
 		val wip = cycleTime.forCycles(emptyList(), team.id, ana.id, NOW).wip
 
@@ -343,11 +343,11 @@ class CycleTimeTest : PostgresTest() {
 	@Test
 	fun `something in flight with no recorded start is counted but not aged`() {
 		val ana = person("Ana")
-		val known = ticket(TicketStatus.IN_PROGRESS, listOf(ana.id))
+		val known = ticket(DefaultStatus.IN_PROGRESS, listOf(ana.id))
 		// Created straight into `in_progress`, so there is no transition into it anywhere —
 		// the shape an import leaves, and the shape a ticket someone typed in flight leaves.
-		ticket(TicketStatus.IN_PROGRESS, listOf(ana.id))
-		moved(known, TicketStatus.TODO, TicketStatus.IN_PROGRESS, NOW.minusHours(10))
+		ticket(DefaultStatus.IN_PROGRESS, listOf(ana.id))
+		moved(known, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, NOW.minusHours(10))
 
 		val wip = cycleTime.forCycles(emptyList(), team.id, ana.id, NOW).wip
 

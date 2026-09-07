@@ -3,7 +3,7 @@ package dev.kanso.sync.importer
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.sync.notion.NotionPage
 import dev.kanso.sync.notion.NotionProps
 import tools.jackson.databind.JsonNode
@@ -74,10 +74,10 @@ class MappedPageReader(private val mapping: ColumnMapping) {
 		else -> null
 	}
 
-	fun status(page: NotionPage): TicketStatus? = option(page, ImportField.STATUS)?.let { chosen ->
+	fun status(page: NotionPage): DefaultStatus? = option(page, ImportField.STATUS)?.let { chosen ->
 		// A mapped answer beats a matching label: the reader was shown both and picked.
-		mapping.values[ImportField.STATUS]?.get(chosen)?.let(TicketStatus::from)
-			?: TicketStatus.fromLabel(chosen)
+		mapping.values[ImportField.STATUS]?.get(chosen)?.let(DefaultStatus::from)
+			?: DefaultStatus.fromLabel(chosen)
 	}
 
 	fun priority(page: NotionPage): TicketPriority? = option(page, ImportField.PRIORITY)?.let { chosen ->

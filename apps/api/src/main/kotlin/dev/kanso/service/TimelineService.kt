@@ -3,7 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.ProjectRepository
@@ -32,7 +32,7 @@ data class TimelineTicket(
 	/** Whose work this is — a context row is drawn under its owner's key, not the reader's. */
 	val teamKey: String,
 	val projectId: UUID?,
-	val status: TicketStatus,
+	val status: DefaultStatus,
 	val start: KansoInstant?,
 	val due: KansoInstant?,
 	/** Null for an unscheduled ticket or one with no dependencies. */

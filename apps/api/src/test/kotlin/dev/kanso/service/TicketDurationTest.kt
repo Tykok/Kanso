@@ -5,7 +5,7 @@ import dev.kanso.auth.hash
 import dev.kanso.db.Tickets
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.settings.PreferencesPatch
@@ -75,7 +75,7 @@ class TicketDurationTest : PostgresTest() {
 		estimate: Int?,
 		assignees: List<UUID>,
 		teamId: UUID? = team.id,
-		state: TicketStatus = TicketStatus.TODO,
+		state: DefaultStatus = DefaultStatus.TODO,
 	) = tickets.create(
 		actor = admin,
 		teamId = teamId,
@@ -276,7 +276,7 @@ class TicketDurationTest : PostgresTest() {
 
 	/** Closed on [on], in [cycleId] — the shape `VelocityService` measures. */
 	private fun delivered(cycleId: UUID, on: LocalDate, estimate: Int, assignee: UUID) {
-		val id = ticket(estimate, listOf(assignee), state = TicketStatus.DONE).ticket.id
+		val id = ticket(estimate, listOf(assignee), state = DefaultStatus.DONE).ticket.id
 		// Written here rather than left to the insert's `now()`: cycles in August 2026 would
 		// otherwise measure nothing until the clock caught up with them.
 		Tickets.update({ Tickets.id eq id }) {

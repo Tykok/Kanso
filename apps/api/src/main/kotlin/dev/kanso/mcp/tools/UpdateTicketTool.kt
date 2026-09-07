@@ -1,6 +1,6 @@
 package dev.kanso.mcp.tools
 
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.mcp.McpArguments
 import dev.kanso.mcp.McpPeople
@@ -79,7 +79,7 @@ class UpdateTicketTool(
 		val args = McpArguments(name, arguments)
 		args.refuseUnknown("ticket", "status", "assignees", "fields")
 
-		val status = args.string("status")?.let(TicketStatus::from)
+		val status = args.string("status")?.let(DefaultStatus::from)
 		val assignees = args.strings("assignees")
 		val fields = args.map("fields")
 		// Before the read, so a no-op costs nothing and says why. Reporting success for a
@@ -146,6 +146,6 @@ class UpdateTicketTool(
 	}
 
 	private companion object {
-		val STATUSES = TicketStatus.entries.map { it.wire }
+		val STATUSES = DefaultStatus.entries.map { it.wire }
 	}
 }

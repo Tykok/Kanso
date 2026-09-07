@@ -1,4 +1,4 @@
-import type { ProjectHealth, ProjectStatus, TicketPriority, TicketStatus } from "./api";
+import type { ProjectHealth, ProjectStatus, StatusCategory, TicketPriority, TicketStatus } from "./api";
 
 /**
  * How a status is written and coloured, wherever it is drawn.
@@ -26,23 +26,16 @@ export const STATUS_COLORS: Record<TicketStatus, string> = {
 };
 
 /**
- * What a status *means*, as opposed to what it is called. The API's `StatusCategory`,
- * spelled the same way and mapped the same way, because the two have to agree about what
- * "finished" is or the roadmap and the burndown drawn from the same tickets disagree.
+ * Re-exported, and it used to be defined here — `KAN-28` moved it to `lib/api/core.ts`.
  *
- * Nothing crosses the wire: the server sends statuses and this reads them. It exists so
- * that "is this finished", "has anybody started" and "is this still open" are asked once
- * here rather than re-derived from literals on every screen that needs an answer.
+ * The docstring it had said "nothing crosses the wire: the server sends statuses and this
+ * reads them", which was true while the five categories were a reading this client did of
+ * a closed status column. They arrive now: on every `Team.statuses` row, and as the bucket
+ * keys of a list whose scope spans teams. So the vocabulary sits with the wire types, and
+ * the questions it exists to answer — is this finished, has anybody started, is this still
+ * open — go on being asked here.
  */
-export const STATUS_CATEGORIES = [
-  "backlog",
-  "unstarted",
-  "started",
-  "completed",
-  "canceled",
-] as const;
-
-export type StatusCategory = (typeof STATUS_CATEGORIES)[number];
+export { STATUS_CATEGORIES, type StatusCategory } from "./api";
 
 /**
  * `in_review` is `started` because somebody is holding it — a reviewer is work in flight,

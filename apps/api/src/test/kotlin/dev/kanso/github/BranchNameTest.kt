@@ -3,7 +3,7 @@ package dev.kanso.github
 import dev.kanso.domain.MirrorInfo
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.service.TicketDetail
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -30,7 +30,7 @@ class BranchNameTest {
 			createdBy = null,
 			title = title,
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.MEDIUM,
 			estimate = null,
 			start = null,

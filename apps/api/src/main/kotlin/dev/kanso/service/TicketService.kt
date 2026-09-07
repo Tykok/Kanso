@@ -8,7 +8,7 @@ import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.SyncState
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.github.TicketPullRequest
 import dev.kanso.outbox.Destination
@@ -154,7 +154,7 @@ data class TicketDetail(
 data class TicketPatch(
 	val title: String? = null,
 	val description: String? = null,
-	val status: TicketStatus? = null,
+	val status: DefaultStatus? = null,
 	val priority: TicketPriority? = null,
 	val estimate: Int? = null,
 	val start: KansoInstant? = null,
@@ -283,7 +283,7 @@ class TicketService(
 		teamId: UUID?,
 		includeDescendants: Boolean,
 		projectId: UUID?,
-		statuses: List<TicketStatus>,
+		statuses: List<DefaultStatus>,
 		assigneeId: UUID?,
 		includeArchived: Boolean,
 		limit: Int,
@@ -397,7 +397,7 @@ class TicketService(
 		teamId: UUID?,
 		title: String,
 		description: String?,
-		status: TicketStatus,
+		status: DefaultStatus,
 		priority: TicketPriority,
 		start: KansoInstant?,
 		due: KansoInstant?,

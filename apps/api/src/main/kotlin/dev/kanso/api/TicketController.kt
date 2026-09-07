@@ -2,7 +2,7 @@ package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.TicketFilters
 import dev.kanso.service.ScheduleService
 import dev.kanso.service.TicketFilterVocabulary
@@ -176,7 +176,7 @@ class TicketController(
 			teamId = request.teamId,
 			title = request.title,
 			description = request.description,
-			status = TicketStatus.from(request.status),
+			status = DefaultStatus.from(request.status),
 			priority = TicketPriority.from(request.priority),
 			estimate = request.estimate,
 			start = request.start?.toDomain(),
@@ -193,7 +193,7 @@ class TicketController(
 			TicketPatch(
 				title = it.title,
 				description = it.description,
-				status = it.status?.let(TicketStatus::from),
+				status = it.status?.let(DefaultStatus::from),
 				priority = it.priority?.let(TicketPriority::from),
 				estimate = it.estimate,
 				start = it.start?.toDomain(),

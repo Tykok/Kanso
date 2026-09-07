@@ -31,6 +31,9 @@ const core: Team = {
   id: "team-core",
   name: "Core",
   key: "KAN",
+  // Empty on purpose: nothing here reads a status word, and an empty catalogue is what
+  // `lib/statuses.ts` answers Kanso's own six for.
+  statuses: [],
   archived: false,
   ticketCount: 1,
   mirror: { state: "synced" },

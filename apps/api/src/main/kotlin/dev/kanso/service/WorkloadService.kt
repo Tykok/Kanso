@@ -3,7 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.CycleRepository
 import dev.kanso.repo.TeamRepository
@@ -38,7 +38,7 @@ data class WorkloadRow(
 	val points: Int,
 	/** How many of [total] carry no estimate — what [points] cannot speak for. */
 	val unestimated: Int,
-	val byStatus: Map<TicketStatus, Int>,
+	val byStatus: Map<DefaultStatus, Int>,
 	/** What the sentence under the chart is about. Strictly more than three, not at least. */
 	val urgentOverThreeDays: Int,
 	val oldestOpenDays: Int,
@@ -126,7 +126,7 @@ class WorkloadService(
 
 	companion object {
 		/** Open means not settled: neither category that ends a ticket is in here. */
-		val OPEN_STATUSES = TicketStatus.entries.filter {
+		val OPEN_STATUSES = DefaultStatus.entries.filter {
 			it.category != StatusCategory.COMPLETED && it.category != StatusCategory.CANCELED
 		}
 

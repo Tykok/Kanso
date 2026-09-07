@@ -2,7 +2,7 @@ package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.service.BulkEdit
 import dev.kanso.service.BulkEditService
 import dev.kanso.service.CycleService
@@ -239,7 +239,7 @@ class SavedViewController(
 			actor = currentUser.require(),
 			edit = BulkEdit(
 				ticketIds = request.ticketIds,
-				status = request.status?.let(TicketStatus::from),
+				status = request.status?.let(DefaultStatus::from),
 				priority = request.priority?.let(TicketPriority::from),
 				assigneeIds = request.assigneeIds,
 				cycleId = request.cycleId,

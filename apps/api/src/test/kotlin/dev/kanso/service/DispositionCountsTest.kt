@@ -7,7 +7,7 @@ import dev.kanso.domain.DispositionCounts
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -54,7 +54,7 @@ class DispositionCountsTest : PostgresTest() {
 		teamId = teamId,
 		title = "Ticket ${UUID.randomUUID().toString().take(4)}",
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

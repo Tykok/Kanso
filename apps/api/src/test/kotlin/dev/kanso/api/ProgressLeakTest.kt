@@ -6,7 +6,7 @@ import dev.kanso.db.Tickets
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.CycleService
@@ -101,7 +101,7 @@ class ProgressLeakTest : MockMvcTest() {
 	/** A second root, so "administers Product" can be shown not to mean "administers everything". */
 	private val unrelated by lazy { teams.create(owner, "Platform", key(), null) }
 
-	private fun ticket(teamId: UUID, estimate: Int, status: TicketStatus, assignees: List<UUID>): UUID =
+	private fun ticket(teamId: UUID, estimate: Int, status: DefaultStatus, assignees: List<UUID>): UUID =
 		tickets.create(
 			actor = owner,
 			teamId = teamId,
@@ -131,8 +131,8 @@ class ProgressLeakTest : MockMvcTest() {
 	private fun history() {
 		listOf(LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 10)).forEachIndexed { at, monday ->
 			val cycle = cycles.create(owner, mobile.id, 70 + at, monday, monday.plusDays(4), CycleState.CLOSED)
-			val delivered = mutableListOf(ticket(mobile.id, 5, TicketStatus.DONE, listOf(subject.id)))
-			if (at == 1) delivered += ticket(mobile.id, 3, TicketStatus.DONE, emptyList())
+			val delivered = mutableListOf(ticket(mobile.id, 5, DefaultStatus.DONE, listOf(subject.id)))
+			if (at == 1) delivered += ticket(mobile.id, 3, DefaultStatus.DONE, emptyList())
 			delivered.forEach { id ->
 				Tickets.update({ Tickets.id eq id }) {
 					it[completedAt] = monday.plusDays(1).atTime(10, 0).atOffset(ZoneOffset.UTC)
@@ -141,7 +141,7 @@ class ProgressLeakTest : MockMvcTest() {
 			cycles.addTickets(owner, cycle.id, delivered)
 		}
 		// The open plate, so `load` is a number and not a zero.
-		ticket(mobile.id, 8, TicketStatus.IN_PROGRESS, listOf(subject.id))
+		ticket(mobile.id, 8, DefaultStatus.IN_PROGRESS, listOf(subject.id))
 	}
 
 	private fun progressOf(actor: User, of: User, teamId: UUID) =

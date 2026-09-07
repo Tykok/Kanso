@@ -1,7 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.TicketLinkType
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
@@ -145,12 +145,12 @@ class TriageService(
 				cycles.addTickets(actor, cycle.id, listOf(ticketId))
 			}
 			TriageDecision.BACKLOGGED ->
-				ticketService.patch(actor, ticketId, TicketPatch(status = TicketStatus.BACKLOG))
+				ticketService.patch(actor, ticketId, TicketPatch(status = DefaultStatus.BACKLOG))
 			// Both end the ticket. They differ in the record, not the outcome: "marked
 			// duplicate" points somewhere, "closed without action" does not, and a reader
 			// six weeks later needs to know which one happened.
 			TriageDecision.DUPLICATE, TriageDecision.CLOSED ->
-				ticketService.patch(actor, ticketId, TicketPatch(status = TicketStatus.CANCELED))
+				ticketService.patch(actor, ticketId, TicketPatch(status = DefaultStatus.CANCELED))
 		}
 
 		// The ruling also draws the link, so that "what does this duplicate?" has one

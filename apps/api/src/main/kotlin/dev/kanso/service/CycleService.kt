@@ -3,7 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.StatusCategory
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
@@ -78,7 +78,7 @@ data class CycleReport(
 	 * and [CyclePoints.unestimated] is what says which of the two to believe.
 	 */
 	val points: CyclePoints,
-	val byStatus: Map<TicketStatus, Int>,
+	val byStatus: Map<DefaultStatus, Int>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDay>,
 	val slipping: List<TicketDetail>,
@@ -236,7 +236,7 @@ class CycleService(
 		// halves of this and present in `unestimated` instead, which is the only honest way
 		// to report a fraction whose numerator and denominator are both incomplete.
 		val totalPoints = counted.sumOf { it.estimate ?: 0 }
-		val donePoints = counted.filter { it.status == TicketStatus.DONE }.sumOf { it.estimate ?: 0 }
+		val donePoints = counted.filter { it.status == DefaultStatus.DONE }.sumOf { it.estimate ?: 0 }
 
 		val daysLeft = ChronoUnit.DAYS.between(today, cycle.endsOn).toInt().coerceAtLeast(0)
 		// Inclusive of today: a cycle on its first day has measured one day, not zero, and
@@ -382,7 +382,7 @@ class CycleService(
 	): List<Int> {
 		val total = counted.sumOf(weight)
 		val closed = counted.mapNotNull { ticket -> ticket.completedAt?.let { it.toLocalDate() to weight(ticket) } }
-		val openNow = counted.filter { it.status != TicketStatus.DONE }.sumOf(weight)
+		val openNow = counted.filter { it.status != DefaultStatus.DONE }.sumOf(weight)
 		val floorAt = slipCount(openNow, rate, ChronoUnit.DAYS.between(today, days.last()).toInt())
 		return days.map { day ->
 			if (!day.isAfter(today)) {
@@ -451,12 +451,12 @@ class CycleService(
 		 * and the day a seventh status means it, the rollover has to stop carrying it
 		 * without anybody remembering this line exists.
 		 */
-		val FINISHED_STATUSES = TicketStatus.entries
+		val FINISHED_STATUSES = DefaultStatus.entries
 			.filterTo(mutableSetOf()) {
 				it.category == StatusCategory.COMPLETED || it.category == StatusCategory.CANCELED
 			}
 
 		/** What the drawing plots. `canceled` is not work, so it is not counted. */
-		val COUNTED_STATUSES = TicketStatus.entries.filter { it.category != StatusCategory.CANCELED }
+		val COUNTED_STATUSES = DefaultStatus.entries.filter { it.category != StatusCategory.CANCELED }
 	}
 }

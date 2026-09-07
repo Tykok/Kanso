@@ -3,7 +3,7 @@ package dev.kanso.publik
 import dev.kanso.PostgresTest
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.UserRepository
@@ -50,7 +50,7 @@ class PublicRoadmapTest : PostgresTest() {
 	}
 
 	/** A published ticket, with as many votes as asked for. */
-	private fun published(title: String, status: TicketStatus, voters: Int = 0): String {
+	private fun published(title: String, status: DefaultStatus, voters: Int = 0): String {
 		val created = tickets.create(
 			actor = owner,
 			teamId = team.id,
@@ -83,52 +83,52 @@ class PublicRoadmapTest : PostgresTest() {
 
 	@Test
 	fun `the columns are the application's own statuses, canceled excluded`() {
-		published("Two-level sub-tickets", TicketStatus.BACKLOG)
-		published("Documents trash", TicketStatus.TODO)
-		published("Plan with dependencies", TicketStatus.IN_PROGRESS)
-		published("Notion import", TicketStatus.DONE)
-		published("A road not taken", TicketStatus.CANCELED)
+		published("Two-level sub-tickets", DefaultStatus.BACKLOG)
+		published("Documents trash", DefaultStatus.TODO)
+		published("Plan with dependencies", DefaultStatus.IN_PROGRESS)
+		published("Notion import", DefaultStatus.DONE)
+		published("A road not taken", DefaultStatus.CANCELED)
 
 		val groups = groups()
 		assertEquals(
-			listOf(TicketStatus.BACKLOG, TicketStatus.TODO, TicketStatus.IN_PROGRESS, TicketStatus.DONE),
+			listOf(DefaultStatus.BACKLOG, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS, DefaultStatus.DONE),
 			roadmap.roadmap().groups.map { it.status },
 			"four columns, in the application's own order, and only the ones holding work",
 		)
-		assertNull(groups[TicketStatus.CANCELED], "a roadmap does not have a 'we refused this' column")
-		assertEquals(1, groups.getValue(TicketStatus.IN_PROGRESS).count)
+		assertNull(groups[DefaultStatus.CANCELED], "a roadmap does not have a 'we refused this' column")
+		assertEquals(1, groups.getValue(DefaultStatus.IN_PROGRESS).count)
 	}
 
 	@Test
 	fun `a column's count is the number of rows under it`() {
-		published("First", TicketStatus.TODO)
-		published("Second", TicketStatus.TODO)
-		published("Third", TicketStatus.TODO)
+		published("First", DefaultStatus.TODO)
+		published("Second", DefaultStatus.TODO)
+		published("Third", DefaultStatus.TODO)
 
-		val todo = groups().getValue(TicketStatus.TODO)
+		val todo = groups().getValue(DefaultStatus.TODO)
 		assertEquals(3, todo.count)
 		assertEquals(todo.tickets.size, todo.count, "the heading may not disagree with the rows")
 	}
 
 	@Test
 	fun `the open columns read most wanted first, and delivered reads most recent first`() {
-		published("Barely wanted", TicketStatus.BACKLOG, voters = 1)
-		published("Widely wanted", TicketStatus.BACKLOG, voters = 3)
-		published("Somewhat wanted", TicketStatus.BACKLOG, voters = 2)
+		published("Barely wanted", DefaultStatus.BACKLOG, voters = 1)
+		published("Widely wanted", DefaultStatus.BACKLOG, voters = 3)
+		published("Somewhat wanted", DefaultStatus.BACKLOG, voters = 2)
 
 		assertEquals(
 			listOf("Widely wanted", "Somewhat wanted", "Barely wanted"),
-			groups().getValue(TicketStatus.BACKLOG).tickets.map { it.title },
+			groups().getValue(DefaultStatus.BACKLOG).tickets.map { it.title },
 		)
 
 		// `completed_at` is written by the status move, so ship them through it rather
 		// than writing the column: the ordering has to hold for data the application
 		// produced, not for data a test arranged.
-		val older = published("Shipped first", TicketStatus.TODO)
-		val newer = published("Shipped second", TicketStatus.TODO)
+		val older = published("Shipped first", DefaultStatus.TODO)
+		val newer = published("Shipped second", DefaultStatus.TODO)
 		for (key in listOf(older, newer)) ship(key)
 
-		val delivered = groups().getValue(TicketStatus.DONE).tickets
+		val delivered = groups().getValue(DefaultStatus.DONE).tickets
 		assertEquals(
 			listOf("Shipped second", "Shipped first"),
 			delivered.map { it.title },
@@ -140,12 +140,12 @@ class PublicRoadmapTest : PostgresTest() {
 	private fun ship(key: String) {
 		val (teamKey, number) = key.split("-")
 		val detail = tickets.getByIdentifier(teamKey, number.toInt())
-		tickets.patch(owner, detail.ticket.id, TicketPatch(status = TicketStatus.DONE))
+		tickets.patch(owner, detail.ticket.id, TicketPatch(status = DefaultStatus.DONE))
 	}
 
 	@Test
 	fun `unpublishing takes a ticket back out of the window`() {
-		val key = published("Briefly public", TicketStatus.TODO)
+		val key = published("Briefly public", DefaultStatus.TODO)
 		val (teamKey, number) = key.split("-")
 		assertNotNull(roadmap.contributorPage(teamKey, number.toInt()))
 
@@ -160,7 +160,7 @@ class PublicRoadmapTest : PostgresTest() {
 
 	@Test
 	fun `an archived ticket is not in the window even while it is still marked public`() {
-		val key = published("Archived but published", TicketStatus.TODO)
+		val key = published("Archived but published", DefaultStatus.TODO)
 		val (teamKey, number) = key.split("-")
 		val detail = tickets.getByIdentifier(teamKey, number.toInt())
 		tickets.patch(owner, detail.ticket.id, TicketPatch(archived = true))
@@ -173,8 +173,8 @@ class PublicRoadmapTest : PostgresTest() {
 
 	@Test
 	fun `the contributor page carries the context around one ticket`() {
-		val other = published("Documents trash", TicketStatus.TODO)
-		val key = published("The seal is unreadable at 100% zoom", TicketStatus.TODO, voters = 2)
+		val other = published("Documents trash", DefaultStatus.TODO)
+		val key = published("The seal is unreadable at 100% zoom", DefaultStatus.TODO, voters = 2)
 		val (teamKey, number) = key.split("-")
 
 		val detail = tickets.getByIdentifier(teamKey, number.toInt())
@@ -212,9 +212,9 @@ class PublicRoadmapTest : PostgresTest() {
 	 */
 	@Test
 	fun `first steps narrow to the good first step label once a team defines one`() {
-		val chosen = published("Translate the status labels", TicketStatus.TODO)
-		val alsoChosen = published("Documents trash", TicketStatus.TODO)
-		val bare = published("Rewrite the synchronisation engine", TicketStatus.TODO)
+		val chosen = published("Translate the status labels", DefaultStatus.TODO)
+		val alsoChosen = published("Documents trash", DefaultStatus.TODO)
+		val bare = published("Rewrite the synchronisation engine", DefaultStatus.TODO)
 		val first = labels.create(owner, team.id, "good first step", "green")
 		labels.attach(owner, idOf(chosen), first.id)
 		labels.attach(owner, idOf(alsoChosen), first.id)
@@ -237,7 +237,7 @@ class PublicRoadmapTest : PostgresTest() {
 	 */
 	@Test
 	fun `a defined label nobody has used yet leaves no first steps rather than falling back`() {
-		val key = published("Rewrite the synchronisation engine", TicketStatus.TODO)
+		val key = published("Rewrite the synchronisation engine", DefaultStatus.TODO)
 		labels.create(owner, team.id, "good first step", "green")
 
 		val page = page(key)
@@ -250,7 +250,7 @@ class PublicRoadmapTest : PostgresTest() {
 	/** The drawing's badges beside the title: the ticket's own labels, then `nobody on it`. */
 	@Test
 	fun `the badges beside the title are the ticket's own labels, by name`() {
-		val key = published("The seal is unreadable at 100% zoom", TicketStatus.TODO)
+		val key = published("The seal is unreadable at 100% zoom", DefaultStatus.TODO)
 		val design = labels.create(owner, team.id, "design system", "blue")
 		val first = labels.create(owner, team.id, "good first step", "green")
 		labels.attach(owner, idOf(key), design.id)
@@ -264,7 +264,7 @@ class PublicRoadmapTest : PostgresTest() {
 
 	@Test
 	fun `where to look is replaced wholesale, not merged`() {
-		val key = published("Somewhere to look", TicketStatus.TODO)
+		val key = published("Somewhere to look", DefaultStatus.TODO)
 		val (teamKey, number) = key.split("-")
 		val id = tickets.getByIdentifier(teamKey, number.toInt()).ticket.id
 

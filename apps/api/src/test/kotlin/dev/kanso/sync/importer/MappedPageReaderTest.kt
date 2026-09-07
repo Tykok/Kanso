@@ -2,7 +2,7 @@ package dev.kanso.sync.importer
 
 import dev.kanso.domain.ProjectStatus
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -34,7 +34,7 @@ class MappedPageReaderTest {
 		)
 		val page = fakePage("Ship it", mapOf("Etat" to notionSelect("Bloqué")))
 
-		assertEquals(TicketStatus.TODO, reader.status(page))
+		assertEquals(DefaultStatus.TODO, reader.status(page))
 	}
 
 	@Test
@@ -89,7 +89,7 @@ class MappedPageReaderTest {
 		)
 		val page = fakePage("Ship it", mapOf("State" to notionSelect("In Progress"), "Urgency" to notionSelect("High")))
 
-		assertEquals(TicketStatus.IN_PROGRESS, reader.status(page))
+		assertEquals(DefaultStatus.IN_PROGRESS, reader.status(page))
 		assertEquals(TicketPriority.HIGH, reader.priority(page))
 	}
 

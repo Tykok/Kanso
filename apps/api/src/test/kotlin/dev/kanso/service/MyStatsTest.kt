@@ -7,7 +7,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.MemberRole
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.TeamRepository
@@ -82,7 +82,7 @@ class MyStatsTest : PostgresTest() {
 	private fun open(
 		assignees: List<UUID>,
 		estimate: Int? = null,
-		status: TicketStatus = TicketStatus.IN_PROGRESS,
+		status: DefaultStatus = DefaultStatus.IN_PROGRESS,
 		due: KansoInstant? = null,
 	): UUID = tickets.create(
 		actor = admin,
@@ -111,7 +111,7 @@ class MyStatsTest : PostgresTest() {
 			teamId = team.id,
 			title = "finished $estimate",
 			description = null,
-			status = TicketStatus.DONE,
+			status = DefaultStatus.DONE,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -302,7 +302,7 @@ class MyStatsTest : PostgresTest() {
 	fun `a cancelled predecessor blocks nothing, because nobody is waiting for it`() {
 		val ana = person("Ana")
 		val successor = open(listOf(ana.id))
-		val abandoned = open(listOf(ana.id), status = TicketStatus.CANCELED)
+		val abandoned = open(listOf(ana.id), status = DefaultStatus.CANCELED)
 		dependencies.insert(predecessorId = abandoned, successorId = successor)
 
 		assertEquals(

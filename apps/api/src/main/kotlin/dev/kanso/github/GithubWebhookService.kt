@@ -3,7 +3,7 @@ package dev.kanso.github
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.Ticket
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.ActivityRepository
 import dev.kanso.repo.TeamRepository
@@ -143,10 +143,10 @@ class GithubWebhookService(
 	 * to leave out: `ready_for_review` fires only when a draft is *promoted*, so a pull
 	 * request opened ready would otherwise move nothing at all — which is most pull requests.
 	 */
-	private fun targetFor(event: GithubWebhookPayload.PullRequestEvent): TicketStatus? = when {
-		event.merged -> TicketStatus.DONE
-		event.action == READY_FOR_REVIEW -> TicketStatus.IN_REVIEW
-		event.action == OPENED && !event.draft -> TicketStatus.IN_REVIEW
+	private fun targetFor(event: GithubWebhookPayload.PullRequestEvent): DefaultStatus? = when {
+		event.merged -> DefaultStatus.DONE
+		event.action == READY_FOR_REVIEW -> DefaultStatus.IN_REVIEW
+		event.action == OPENED && !event.draft -> DefaultStatus.IN_REVIEW
 		else -> null
 	}
 
@@ -233,7 +233,7 @@ class GithubWebhookService(
 	private fun move(
 		pullRequestId: UUID,
 		event: GithubWebhookPayload.PullRequestEvent,
-		target: TicketStatus,
+		target: DefaultStatus,
 	) {
 		// **The sender, and the author only as a fallback.** The sender is by definition
 		// whoever performed the action this transition is caused by, which is the case the

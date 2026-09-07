@@ -7,7 +7,7 @@ import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -56,7 +56,7 @@ class ActivityServiceTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -70,7 +70,7 @@ class ActivityServiceTest : PostgresTest() {
 	@Test
 	fun `a status change records one activity row carrying before and after`() {
 		val ticket = ticket()
-		tickets.patch(actor, ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		tickets.patch(actor, ticket.id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
 
 		val rows = log(ticket.id)
 
@@ -83,7 +83,7 @@ class ActivityServiceTest : PostgresTest() {
 	@Test
 	fun `a patch that changed nothing records nothing`() {
 		val ticket = ticket()
-		tickets.patch(actor, ticket.id, TicketPatch(status = TicketStatus.TODO, title = "Echo"))
+		tickets.patch(actor, ticket.id, TicketPatch(status = DefaultStatus.TODO, title = "Echo"))
 
 		assertEquals(
 			listOf(ActivityKind.CREATED),
@@ -98,7 +98,7 @@ class ActivityServiceTest : PostgresTest() {
 		tickets.patch(
 			actor,
 			ticket.id,
-			TicketPatch(title = "Renamed", status = TicketStatus.DONE, priority = TicketPriority.HIGH),
+			TicketPatch(title = "Renamed", status = DefaultStatus.DONE, priority = TicketPriority.HIGH),
 		)
 
 		val kinds = log(ticket.id).map { it.kind }
@@ -293,7 +293,7 @@ class ActivityServiceTest : PostgresTest() {
 	@Test
 	fun `every row of a ticket's feed is named, though nothing writes a ref`() {
 		val ticket = ticket()
-		tickets.patch(actor, ticket.id, TicketPatch(status = TicketStatus.DONE, title = "Named"))
+		tickets.patch(actor, ticket.id, TicketPatch(status = DefaultStatus.DONE, title = "Named"))
 
 		val rows = log(ticket.id)
 
@@ -324,7 +324,7 @@ class ActivityServiceTest : PostgresTest() {
 	@Test
 	fun `re-keying the team re-names the rows already logged`() {
 		val ticket = ticket()
-		tickets.patch(actor, ticket.id, TicketPatch(status = TicketStatus.IN_PROGRESS))
+		tickets.patch(actor, ticket.id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
 		val newKey = "R${UUID.randomUUID().toString().take(4).uppercase()}"
 
 		teams.update(actor, team.id, "Logged", newKey, null)
@@ -347,7 +347,7 @@ class ActivityServiceTest : PostgresTest() {
 			teamId = null,
 			title = "Unclaimed",
 			description = null,
-			status = TicketStatus.TODO,
+			status = DefaultStatus.TODO,
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -385,7 +385,7 @@ class ActivityServiceTest : PostgresTest() {
 	fun `another ticket's log is not this ticket's log`() {
 		val mine = ticket("Mine")
 		val theirs = ticket("Theirs")
-		tickets.patch(actor, theirs.id, TicketPatch(status = TicketStatus.DONE))
+		tickets.patch(actor, theirs.id, TicketPatch(status = DefaultStatus.DONE))
 
 		assertEquals(listOf(ActivityKind.CREATED), log(mine.id).map { it.kind })
 	}

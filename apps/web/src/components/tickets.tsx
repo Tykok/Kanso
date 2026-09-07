@@ -13,6 +13,7 @@ import { GROUP_LABEL_ESTIMATE, GroupLabel } from "./ui/group-label";
 import { PriorityMark, StatusPill, SyncBadge, TicketIdentifier } from "./pills";
 import { Menu } from "./menu";
 import { PendingWriteMark } from "@/components/offline/pending-mark";
+import { labelOf } from "@/lib/statuses";
 import { useMenuItems } from "./menu-items";
 
 /**
@@ -155,7 +156,8 @@ function TicketRow({ ticket, selected, editing, ctx, onSelect, onOpen, onRename,
         <PriorityMark priority={ticket.priority} ctx={ctx} />
       </span>
       <span className="tcol-status">
-        <StatusPill status={ticket.status} ctx={ctx} />
+        {/* Its own team's word, not the scope's — `lib/statuses.ts` says why. */}
+        <StatusPill status={ticket.status} label={labelOf(ctx.teams, ticket.teamId, ticket.status)} ctx={ctx} />
       </span>
 
       {editing ? (
@@ -395,7 +397,10 @@ export function TicketList({
                       column header above both carry — a caption indented differently
                       from the rows it introduces is the one thing that would make the
                       grid look broken. */}
-                  <GroupLabel>
+                  {/* `group-header` is what `e2e/29-team-statuses.spec.ts` reads to say
+                      the buckets are stacked in the team's order — the one claim of that
+                      ticket a browser has to make, since the order comes from SQL. */}
+                  <GroupLabel data-testid="group-header">
                     {entry.label} · {entry.count}
                   </GroupLabel>
                 </div>

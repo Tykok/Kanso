@@ -1,7 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.TicketRepository
 import org.springframework.stereotype.Service
@@ -17,7 +17,7 @@ import java.util.UUID
  */
 data class BulkEdit(
 	val ticketIds: List<UUID>,
-	val status: TicketStatus? = null,
+	val status: DefaultStatus? = null,
 	val priority: TicketPriority? = null,
 	val assigneeIds: List<UUID>? = null,
 	val cycleId: UUID? = null,

@@ -7,7 +7,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.KansoInstant
 import dev.kanso.domain.TicketLinkType
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.TicketLinkRepository
@@ -79,7 +79,7 @@ class TicketLinkTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = TicketStatus.TODO,
+		status = DefaultStatus.TODO,
 		priority = TicketPriority.NONE,
 		start = start?.let(::day),
 		due = due?.let(::day),

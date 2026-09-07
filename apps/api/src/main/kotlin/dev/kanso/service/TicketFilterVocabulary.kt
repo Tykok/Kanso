@@ -1,7 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.TicketPriority
-import dev.kanso.domain.TicketStatus
+import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.TicketFilters
 import java.util.UUID
 
@@ -95,8 +95,8 @@ object TicketFilterVocabulary {
 	}
 
 	fun parse(filters: Map<String, Any?>): TicketFilters = TicketFilters(
-		statuses = strings(filters["status"]).map(TicketStatus::from),
-		statusesExcluded = strings(filters["statusNot"]).map(TicketStatus::from),
+		statuses = strings(filters["status"]).map(DefaultStatus::from),
+		statusesExcluded = strings(filters["statusNot"]).map(DefaultStatus::from),
 		priorities = strings(filters["priority"]).map(TicketPriority::from),
 		projectIds = uuids("project", filters["project"]),
 		assigneeIds = uuids("assignee", filters["assignee"]),
