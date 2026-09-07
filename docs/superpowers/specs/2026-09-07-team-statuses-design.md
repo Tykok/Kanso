@@ -14,6 +14,27 @@ The premise worth stating before anything else: **a status is a word, a category
 fact.** A burndown may not care what a team calls the end of the line, and must never
 guess which end it is.
 
+## Staged, after the plan met the domain
+
+`KAN-28` ships **the words and their order**. `KAN-90` ships **adding and removing**, and
+the split is not a hedge — it is where the type system draws the line.
+
+`Ticket.status` is typed `DefaultStatus` throughout the domain: ten types carry one, 47
+sites name a constant, 29 read `.wire`, `.label` or `.category` off it. Renaming and
+reordering leave every one of those valid, because the six *keys* do not move — the
+catalogue supplies labels and positions and nothing else. A seventh status makes that
+field unrepresentable as an enum, so it becomes a value resolved by joining the catalogue,
+and about twenty of those sites turn into product decisions rather than mechanics: `KAN-18`'s
+pull-request transition, the vocabulary four MCP tools advertise, the Notion select, the
+seven `IN (...)` lists that filter by category in SQL and become joins, the public
+roadmap's grouping, the cycle rollover.
+
+So the sections below describe the whole design, and the parts belonging to `KAN-90` are
+marked. Everything unmarked is this ticket. Three rules move wholesale to `KAN-90`, and
+one of them stops existing until then: with the keys fixed, every team has the same six,
+so **a ticket moving between teams never needs a rebase** — the composite foreign key is
+satisfied by construction.
+
 ## What this is not
 
 - **Free-form statuses.** Every status declares a category. Without one, nothing that
@@ -162,24 +183,27 @@ already fetched, a wider scope orders by the category constant. `PROGRESS_ORDER`
 
 ## Four moves, and a fifth that is not a move
 
-- **Add.** A label and a category. The key is derived, the position appends. Refused on
+- **Add** — `KAN-90`. A label and a category. The key is derived, the position appends. Refused on
   a duplicate key or label, with the sentence naming the existing one.
 - **Rename.** `label` only. The key stays.
 - **Reorder.** The whole list, one transaction. A partial order sent by a client that
   disagrees about how many statuses exist is refused rather than merged.
-- **Remove.** Requires naming the status its tickets move to. This is `KAN-4`'s
+- **Remove** — `KAN-90`. Requires naming the status its tickets move to. This is `KAN-4`'s
   disposition shape rather than a refusal: deleting a team already asks what happens to
   what it holds, and the answer there is a plan the caller sends. Removing the last
   status of a category is allowed — a team with no `canceled` status simply cannot
   cancel — with one exception below.
-- **Moving a ticket between teams** is where the foreign key bites, and `KAN-9` made
+- **Moving a ticket between teams** — `KAN-90`, and until then a non-question: the six
+  keys are the same everywhere, so the foreign key is satisfied by construction. It is
+  where the foreign key bites, and `KAN-9` made
   that move ordinary. The status rebases: the same key if the destination has it,
   otherwise the destination's first status of the same category, otherwise its first
   status — first by `position`, which is the only order a catalogue has. The rebase is recorded as a `status_changed` activity row, because the ticket
   did change status and a burndown that saw the number move with no line explaining it
   would be a burndown nobody trusts.
 
-**The exception:** a team must keep at least one status, whatever its category. A team with an empty catalogue
+**The exception** (`KAN-90`, since nothing can be removed before it): a team must keep at
+least one status, whatever its category. A team with an empty catalogue
 could hold no tickets at all, and the failure would surface as a foreign key violation
 on ticket creation rather than as the sentence *a team needs somewhere to put work*.
 
@@ -241,15 +265,21 @@ appears now, for everybody, in the version that introduces it.
 
 ## Migration
 
-`V41__team_statuses.sql` — and the number is worth checking again at commit time, since
-`V40` landed on `main` while this spec was being written.
+`V41__team_statuses.sql`.
 
 1. Create the table and its indexes.
-2. Insert six rows per existing team, from `StatusOrder.WORKFLOW`, with the enum's
-   labels and categories.
-3. Drop `tickets_status_chk`, add `tickets_status_fk`.
+2. Insert six rows per existing team, from the same six the enum holds.
+3. **Seed every team created from then on, with a trigger.** This spec said
+   `TeamService.create`; switching the constraint on turned 550 of 1356 tests red,
+   because half of them build a team through `TeamRepository` and never reach the
+   service — and so could an import, an MCP tool, or a write path added next year. A team
+   with no statuses cannot hold a single ticket, so it is not a state anybody should be
+   able to produce, and the insert is the only place that cannot be bypassed. `V38`'s
+   `set_updated_at_on_edit` is the same argument about a different invariant.
+4. Drop `tickets_status_chk`, add `tickets_status_fk`.
 
-Step 2 before step 3 or the foreign key has nothing to point at. Every existing ticket
+Steps 2 and 3 before step 4, or the foreign key has nothing to point at and no way to
+acquire anything. Every existing ticket
 is valid unchanged, which is the property that makes this a one-way migration nobody has
 to schedule: a ticket holding `in_progress` in team KAN now points at KAN's own
 `in_progress` row.
@@ -269,6 +299,8 @@ to schedule: a ticket holding `in_progress` in team KAN now points at KAN's own
 
 ## Deferred, deliberately
 
+- **Adding and removing a status — `KAN-90`**, with the domain change it forces. See
+  "Staged" above for the count.
 - Per-status colour, and per-status description.
 - Statuses on a project or a cycle.
 - Transition rules of any kind.

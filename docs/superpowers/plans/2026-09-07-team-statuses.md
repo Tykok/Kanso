@@ -10,14 +10,32 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-07-team-statuses-design.md`
 
+## What execution changed
+
+Three things, recorded here because the plan was wrong about them and the commits argue
+from this file.
+
+1. **The seed is a trigger, not a service call.** Task 3 was going to seed in
+   `TeamService.create`. Switching `tickets_status_fk` on turned 550 of 1356 tests red:
+   half of them build a team through `TeamRepository` and never reach the service, and so
+   could an import, an MCP tool, or a write path added next year. `V41` seeds from
+   `teams_seed_statuses` instead — `V38`'s `set_updated_at_on_edit` is the same argument.
+2. **Adding and removing a status left this plan.** `Ticket.status` is typed
+   `DefaultStatus` across the domain: ten types carry one, 47 sites name a constant, 29
+   read `.wire`/`.label`/`.category`. Renaming and reordering leave all of them valid
+   because the six *keys* do not move. A seventh status does not, and about twenty of
+   those sites become product decisions — so they are `KAN-90`, and Tasks 4 to 10 below
+   are narrowed to the words and their order. `KAN-28` blocks `KAN-90`.
+3. **With the keys fixed, a team move needs no rebase.** Every team has the same six, so
+   the composite foreign key is satisfied by construction and Task 5's rebase — the whole
+   of it — moves to `KAN-90`.
+
 ## Global Constraints
 
 - **The wire string never changes.** `TicketResponse.status` stays the status key as text. No response shape may lose a key; `TeamResponse.statuses` is added as always-present, never optional.
 - **Categories are exactly five, closed:** `backlog`, `unstarted`, `started`, `completed`, `canceled`. Their order, everywhere, is that order.
 - **The key is derived, never accepted from a client:** lowercase, accents folded (NFD, combining marks stripped), every run of non-alphanumeric characters to a single `_`, leading and trailing `_` trimmed. A label with no letter or digit is refused.
-- **The key is immutable.** A rename writes `label` only.
-- **A team always has at least one status.** The last one cannot be removed.
-- **Removing a status names its destination.** Tickets move there, each move writing a `status_changed` activity row.
+- **The key is immutable.** A rename writes `label` only — and in this ticket nothing else can change the set of keys at all.
 - **`position` carries no unique index.** Readers sort by `(position, key)`.
 - **Migration number:** `V41__team_statuses.sql` — re-check the highest `V*` on `main` immediately before committing, per the repo's history of numbers moving mid-branch.
 - **Tests:** every task is TDD. Server tests are `class …Test : PostgresTest()` with `@Transactional`, `kotlin.test` assertions, `@Autowired` services. Web logic tests are `.ts` (node), component tests `.tsx` (happy-dom).
