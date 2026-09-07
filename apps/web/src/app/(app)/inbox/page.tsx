@@ -6,7 +6,6 @@ import { ConflictChooser } from "@/components/inbox/conflict-chooser";
 import { groupOf } from "@/components/inbox/copy";
 import { InboxRow } from "@/components/inbox/row";
 import { InboxTabs } from "@/components/inbox/tabs";
-import { OfflineBanner, useOfflineWatch } from "@/components/offline/banner";
 import { TopbarSlot, useReportError } from "@/components/shell/topbar-slot";
 import { usePageActions } from "@/components/shell/use-shell-keys";
 import { GroupLabel } from "@/components/ui/group-label";
@@ -75,7 +74,6 @@ export default function InboxPage() {
   const retryPushes = useRetryFailedPushes();
   const patch = usePatchTicket();
 
-  useOfflineWatch();
 
   /**
    * The moment the rows were fetched, which is what every "4 min ago" is measured from.
@@ -157,7 +155,6 @@ export default function InboxPage() {
         {markAllReadKey && <Kbd>{markAllReadKey}</Kbd>}
       </TopbarSlot>
 
-      <OfflineBanner />
 
       <InboxTabs active={tab} counts={counts} onSelect={setTab} />
 
