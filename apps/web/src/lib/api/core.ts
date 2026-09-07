@@ -1324,6 +1324,25 @@ export const api = {
     }>,
   ) => request<Ticket>(`/api/tickets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
+  // --- a team's own words ---------------------------------------------------
+  //
+  // `KAN-28`. No create and no delete, and their absence is the ticket's boundary rather
+  // than an oversight: adding or removing a status is `KAN-90`, because it makes
+  // `Ticket.status` unrepresentable as an enum on the server.
+
+  renameStatus: (teamId: string, key: string, label: string) =>
+    request<TeamStatus>(`/api/teams/${teamId}/statuses/${key}`, {
+      method: "PATCH",
+      body: JSON.stringify({ label }),
+    }),
+
+  /** The whole order, because the server refuses a partial one — see `TeamStatusService`. */
+  reorderStatuses: (teamId: string, keys: readonly string[]) =>
+    request<TeamStatus[]>(`/api/teams/${teamId}/statuses/order`, {
+      method: "PUT",
+      body: JSON.stringify({ keys }),
+    }),
+
   deleteTicket: (id: string) => request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
 
   // --- timeline ------------------------------------------------------------

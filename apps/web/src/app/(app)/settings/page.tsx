@@ -12,6 +12,7 @@ import { NotionPeopleSection } from "@/components/settings/notion-people-section
 import { PeopleSection } from "@/components/settings/people-section";
 import { RequestBases } from "@/components/settings/request-bases";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
+import { StatusesSection } from "@/components/settings/statuses-section";
 import { TokensSection } from "@/components/settings/tokens-section";
 import { VelocitySection } from "@/components/settings/velocity-section";
 import { useMe, useSetupState } from "@/lib/queries";
@@ -22,6 +23,7 @@ type SectionId =
   | "shortcuts"
   | "account"
   | "velocity"
+  | "statuses"
   | "people"
   | "connections"
   | "github"
@@ -33,6 +35,7 @@ const SECTION_NAMES: Record<SectionId, string> = {
   shortcuts: "Shortcuts",
   account: "Account",
   velocity: "Velocity",
+  statuses: "Statuses",
   people: "People",
   connections: "Connections",
   github: "GitHub",
@@ -87,6 +90,10 @@ export default function SettingsPage() {
         "shortcuts",
         "account",
         "velocity",
+        // Configurators only, like `people`: a team's vocabulary is its shape, and
+        // `TeamStatusService` refuses the writes from anybody else anyway — this is the
+        // tab not being offered rather than the backstop.
+        "statuses",
         "people",
         "connections",
         "github",
@@ -143,6 +150,7 @@ export default function SettingsPage() {
           {section === "appearance" && <AppearanceSection />}
           {section === "shortcuts" && <ShortcutsSection />}
           {section === "velocity" && <VelocitySection />}
+          {section === "statuses" && canConfigure && <StatusesSection />}
           {section === "people" && canConfigure && <PeopleSection />}
           {section === "github" && <GithubSection canConfigure={canConfigure} />}
           {section === "agents" && <AgentsSection />}
