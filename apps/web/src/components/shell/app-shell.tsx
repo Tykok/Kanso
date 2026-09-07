@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation";
 import { BrandSplash } from "@/components/brand-logo";
 import { LoginScreen } from "@/components/login";
+import { OfflineBanner } from "@/components/offline/banner";
+import { useOfflineWatch } from "@/components/offline/watch";
 import { ApiError } from "@/lib/api";
 import { breadcrumbOf, sameScope } from "@/lib/nav";
 import { useAuthMode, useMe, useSetupState, useSyncStatus } from "@/lib/queries";
@@ -43,6 +45,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sync = useSyncStatus();
   const { scope, setScope } = useUi();
   const pinned = useSidebarPinned();
+  // Here rather than on the one page that draws the banner: a write queued on the board
+  // is a write this shell has promised to send. `offline/watch.ts` says the rest.
+  useOfflineWatch();
 
   /**
    * A failure belongs to the view it happened in, so the scope it was reported against is
@@ -206,6 +211,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               </button>
             </div>
           )}
+
+          {/*
+            * The writes this reader made that the network could not carry, wherever they
+            * are standing — `KAN-88`. It drew on the inbox alone, which was the only
+            * screen that could queue anything until ticket patches went through the same
+            * queue; a status changed on the board would have shown as saved and said
+            * nothing. Draws nothing at all when the queue is empty, which is normally.
+            *
+            * Beside the error strip rather than inside the page column: both are the
+            * shell speaking about the session, not about the screen.
+            */}
+          <OfflineBanner />
 
           {/*
             * The rail, and the page beside it.

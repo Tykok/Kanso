@@ -103,6 +103,25 @@ export const useOffline = create<OfflineState>((set) => {
 });
 
 /**
+ * What a mutation that holds its own writes has to say to React Query.
+ *
+ * With the default `networkMode`, a mutation started while `navigator.onLine` is false is
+ * *paused*: `onMutate` paints its guess, `mutationFn` is never called, and the write
+ * waits in memory until the network comes back. That is a queue — an invisible one, with
+ * no order a reader can see and no disk under it, so a reload loses every write in it.
+ * Kanso already has the other kind, which is what `queue.ts` and the banner are.
+ *
+ * `always` is therefore not "ignore the network": it is "let the request fail, so
+ * [withOfflineFallback] can catch it and put the write somewhere that survives". Every
+ * mutation spread with this must go through that function, or it goes back to losing
+ * writes offline — which is why the two live in one file.
+ *
+ * It is also why `KAN-24`'s queue held nothing but a notification marked read: the writes
+ * it was built for never reached it. `KAN-88`.
+ */
+export const RUNS_OFFLINE = { networkMode: "always" } as const;
+
+/**
  * Runs [attempt], and holds the write instead of losing it when the network is what
  * failed.
  *

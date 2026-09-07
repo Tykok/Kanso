@@ -8,7 +8,7 @@ import {
   type InboxTab,
   type NotionImportPlanRow,
 } from "@/lib/api";
-import { withOfflineFallback } from "@/store/offline";
+import { RUNS_OFFLINE, withOfflineFallback } from "@/store/offline";
 
 /**
  * Slice D's hooks. Keyed under `inbox` so one `invalidateQueries({ queryKey: ["inbox"] })`
@@ -57,6 +57,9 @@ export function useMarkAllRead() {
   const client = useQueryClient();
 
   return useMutation({
+    // `RUNS_OFFLINE` for the reason that constant gives: paused in memory, this write
+    // would not survive the reload the reader is one gesture away from making.
+    ...RUNS_OFFLINE,
     mutationFn: () =>
       withOfflineFallback(inboxApi.markAllRead, {
         reference: "Inbox",
@@ -94,6 +97,7 @@ export function useMarkRead() {
   const client = useQueryClient();
 
   return useMutation({
+    ...RUNS_OFFLINE,
     mutationFn: (id: string) =>
       withOfflineFallback(() => inboxApi.markRead(id), {
         reference: "Inbox",
