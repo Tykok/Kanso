@@ -2,8 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { heldWrite, settlementOf } from "@/lib/offline-write";
 import { patchedTicket, removedTicket, ticketGuesses } from "@/lib/optimistic";
-import { queryCache } from "@/lib/realtime-events";
+import { findTicket, queryCache } from "@/lib/realtime-events";
+import { RUNS_OFFLINE, withOfflineFallback } from "@/store/offline";
 import { DRAFTS_GROUP } from "@/components/organise/grouping";
 import { useUi, type Scope } from "@/store/ui";
 import {
@@ -614,7 +616,18 @@ export function usePatchTicket() {
   const cache = useEventCache();
 
   return useMutation({
-    mutationFn: ({ id, ...body }: PatchInput) => api.patchTicket(id, body),
+    // Run even with the network gone, so the request fails and the queue gets the write
+    // rather than React Query holding it in memory — `RUNS_OFFLINE`.
+    ...RUNS_OFFLINE,
+
+    // Through the offline queue, which until `KAN-88` carried one kind of write: a
+    // notification marked read. Only a request that never arrived is held — see
+    // `withOfflineFallback` — so a refusal still refuses here, immediately.
+    mutationFn: ({ id, ...body }: PatchInput) =>
+      withOfflineFallback(
+        () => api.patchTicket(id, body),
+        heldWrite(id, findTicket(cache, id), body),
+      ),
 
     // `unset` is destructured out of `body` here and nowhere else: the request needs
     // it, the cached ticket has no such field, and spreading it would leave a stray
@@ -628,8 +641,20 @@ export function usePatchTicket() {
     // becomes the new base, and its absence — a refusal — leaves the base as it was.
     // Either way what is repainted is the base with whatever else is still in flight
     // folded back over it, so a second edit of the same row survives this one failing.
-    onSettled: (saved, _error, _input, context) => {
-      if (context) ticketGuesses.close(cache, context.handle, saved);
+    onSettled: (saved, error, _input, context) => {
+      // Three outcomes and not two: `settlementOf` says why a queued write and a refused
+      // one are told apart here, and `TicketGuesses.hold` why the queued one keeps what
+      // it drew.
+      const settlement = settlementOf(saved, error);
+      if (context) {
+        if (settlement === "held") ticketGuesses.hold(cache, context.handle);
+        else ticketGuesses.close(cache, context.handle, saved);
+      }
+      // Nothing to ask for, and nothing that could answer: the write is still on disk,
+      // so the server holds the same rows it did before, and every refetch would fail on
+      // the network that just failed. The numbers this would have refreshed are stale
+      // until the reconnect, which sweeps the whole cache — `resumeAfterOutage`.
+      if (settlement === "held") return;
       // A patch may have cascaded into tickets this mutation never named, and it
       // changes slack and criticality for others that did not move at all.
       queryClient.invalidateQueries({ queryKey: ["timeline"] });
