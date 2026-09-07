@@ -15,6 +15,7 @@ import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.RequestBaseRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TeamStatusRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.NotificationService
@@ -57,6 +58,7 @@ class NotionInboundTeamTest : PostgresTest() {
 	@Autowired lateinit var requestBases: RequestBaseRepository
 	@Autowired lateinit var siphon: RequestSiphon
 	@Autowired lateinit var jobs: OutboundJobRepository
+	@Autowired lateinit var statusRows: TeamStatusRepository
 	@Autowired lateinit var schedule: ScheduleService
 	@Autowired lateinit var notifications: NotificationService
 	@Autowired lateinit var events: EventPublisher
@@ -179,6 +181,7 @@ class NotionInboundTeamTest : PostgresTest() {
 			notifications = notifications,
 			events = events,
 			tx = tx,
+			statuses = statusRows,
 		)
 		poller.poll()
 		return pageId

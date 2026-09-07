@@ -43,3 +43,36 @@ fun statusKeyOf(label: String): String {
 	return key
 }
 
+
+/**
+ * The word the Notion mirror writes for [status] — `KAN-91`.
+ *
+ * The team's, falling back to Kanso's own. `NotionProps.select` sends a name and Notion
+ * invents the option if it has never seen it, which is what lets a renamed status reach a
+ * database whose schema was created with the six: the select's options are a seed, not a
+ * vocabulary.
+ */
+fun mirroredWord(status: DefaultStatus, catalogue: List<TeamStatus>): String =
+	catalogue.firstOrNull { it.key == status.wire }?.label ?: status.label
+
+/**
+ * The status a word read back off a Notion page means, for the team that owns the page's
+ * ticket — or `null` for one nobody uses.
+ *
+ * **Per team, and that is the whole design.** The mirror has one tickets database for the
+ * instance, so its select carries every word every team uses — and two teams may rename
+ * two *different* keys to the same word: `todo` to "En cours" in one, `in_progress` to
+ * "En cours" in another. Resolved against a union, that word names two statuses and
+ * choosing wrong writes a status nobody set. Resolved against the ticket's own team it
+ * names exactly one, which is why `NotionPoller` looks the ticket up before it reads the
+ * property.
+ *
+ * The team's word is tried first and Kanso's second, so a page edited before a rename
+ * still reads — and a team that renamed nothing is unaffected either way.
+ */
+fun statusFromWord(word: String, catalogue: List<TeamStatus>): DefaultStatus? {
+	val said = word.trim()
+	catalogue.firstOrNull { it.label.equals(said, ignoreCase = true) }
+		?.let { return DefaultStatus.from(it.key) }
+	return DefaultStatus.fromLabel(said)
+}

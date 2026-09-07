@@ -227,7 +227,7 @@ The rule is short:
   reachable only through the seeder and the draft vocabulary. A rename is what turns 35
   files of silent assumption into 35 compile errors somebody has to answer one by one.
 
-## The Notion mirror — deferred, and why
+## The Notion mirror — `KAN-91`, and what it turned out to be
 
 This section said the push should send the team's label and the inbound match should
 resolve against that team's rows. Writing it was easy; the mirror's shape says otherwise.
@@ -239,10 +239,20 @@ team A renaming `todo` to *En cours* and team B renaming `in_progress` to the sa
 means an inbound *En cours* names two different keys, and choosing wrong writes a status
 nobody set. That is corruption rather than a cosmetic gap.
 
-So the mirror keeps pushing `DefaultStatus.label` — consistent, unambiguous, and not
-localised — and the three ways out are `KAN-91`: resolve the inbound label against the
-ticket's own team (the poller knows the page, so the ticket, so the team), push the key
-instead of the label, or give each team its own database, which is a different product.
+The way out was the first of the three: **resolve against the ticket's own team.** The
+poller already looks the ticket up before it reads a property — that is how the echo guard
+and `kansoWins` work — so the team is in hand, and its catalogue names exactly one status
+for the word. The union is then never consulted, and the ambiguity that made it unusable
+cannot arise.
+
+The outbound half needed nothing but the same catalogue: `NotionProps.select` sends a
+*name*, and Notion invents the option when it has never seen it. So the six labels the
+schema is created with are a seed rather than a vocabulary, and a renamed status reaches a
+database created before the rename.
+
+Both halves are `mirroredWord` and `statusFromWord` in `domain/TeamStatus.kt` — pure, and
+tested against the case that decides the design: `todo` renamed to *En cours* in one team
+while another team's `in_progress` already reads that way.
 
 ## MCP
 

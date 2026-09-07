@@ -4,10 +4,12 @@ import dev.kanso.domain.NotionDoc
 import dev.kanso.domain.Project
 import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
+import dev.kanso.domain.mirroredWord
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TeamStatusRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.sync.notion.NotionProps
@@ -38,6 +40,7 @@ class NotionMapper(
 	private val users: UserRepository,
 	private val docs: DocRepository,
 	private val dependencies: DependencyRepository,
+	private val statuses: TeamStatusRepository,
 ) {
 
 	fun teamProperties(team: Team): Map<String, Any?> {
@@ -92,7 +95,13 @@ class NotionMapper(
 				NotionProps.IDENTIFIER,
 				NotionProps.richText(team?.let { "${it.key}-${ticket.number}" }),
 			)
-			put(NotionProps.STATUS, NotionProps.select(ticket.status.label))
+			// The *team's* word, not Kanso's — `KAN-91`. `select` sends a name and Notion
+			// invents the option if it has never seen it, so a renamed status reaches a
+			// database whose schema was created with the six: those options are a seed.
+			put(
+				NotionProps.STATUS,
+				NotionProps.select(mirroredWord(ticket.status, team?.let { statuses.forTeam(it.id) }.orEmpty())),
+			)
 			put(NotionProps.PRIORITY, NotionProps.select(ticket.priority.label))
 			// An unestimated ticket writes an explicit null, like every absent date does:
 			// leaving the key out would let the mirror keep a number the ticket no longer

@@ -13,12 +13,14 @@ import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
+import dev.kanso.domain.statusFromWord
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.RequestBase
 import dev.kanso.repo.RequestBaseRepository
 import dev.kanso.repo.TeamRepository
+import dev.kanso.repo.TeamStatusRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.service.NotificationKind
 import dev.kanso.service.NotificationService
@@ -72,6 +74,7 @@ class NotionPoller(
 	private val notifications: NotificationService,
 	private val events: EventPublisher,
 	private val tx: TransactionTemplate,
+	private val statuses: TeamStatusRepository,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -180,7 +183,12 @@ class NotionPoller(
 		}
 
 		val props = page.properties
-		val status = select(props, NotionProps.STATUS)?.let { DefaultStatus.fromLabel(it) ?: unknown("status", it) }
+		// Resolved against *this ticket's team* — `KAN-91`. The mirror has one database for
+		// the instance, so its select carries every word every team uses, and two teams can
+		// rename two different keys to the same one. A union would name two statuses with
+		// it and write the wrong one; the ticket's own catalogue names exactly one.
+		val words = ticket.teamId?.let(statuses::forTeam).orEmpty()
+		val status = select(props, NotionProps.STATUS)?.let { statusFromWord(it, words) ?: unknown("status", it) }
 		val priority = select(props, NotionProps.PRIORITY)?.let { TicketPriority.fromLabel(it) ?: unknown("priority", it) }
 
 		// Read back like a status, and refused the same way: the scale is closed, so a 7
