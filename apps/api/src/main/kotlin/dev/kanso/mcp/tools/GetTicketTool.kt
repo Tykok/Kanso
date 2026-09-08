@@ -6,7 +6,9 @@ import dev.kanso.mcp.McpPeople
 import dev.kanso.mcp.McpTool
 import dev.kanso.mcp.objectSchema
 import dev.kanso.mcp.stringField
+import dev.kanso.service.CommentService
 import dev.kanso.service.CustomFieldService
+import dev.kanso.service.LabelService
 import dev.kanso.service.SubTicketService
 import dev.kanso.service.TicketLinkService
 import dev.kanso.service.TicketService
@@ -20,16 +22,25 @@ import org.springframework.transaction.annotation.Transactional
  * in as many as it takes. Two tools rather than a `verbose` flag on one, because the
  * choice is the agent's whole context budget and a flag makes it an afterthought.
  *
- * Still smaller than the spec's `kanso_context`: no comments, no linked documents, no
- * activity. The rule that decides what is in it has not changed — **what is here is what
- * the writing tools need in order to be used correctly**, which is the identifier, the
- * status vocabulary in use, and the assignees by the email the write tool takes back.
+ * Still smaller than the spec's `kanso_context`: no linked documents, no activity. The
+ * rule that decides what is in it has not changed — **what is here is what the writing
+ * tools need in order to be used correctly**, which is the identifier, the status
+ * vocabulary in use, and the assignees by the email the write tool takes back.
  *
  * Dependencies *were* on that excluded list, and KAN-20 moved them off it rather than
  * relaxing the rule: `kanso_link_tickets` and `kanso_split_ticket` are writing tools whose
  * argument is the graph, so an agent that cannot read the graph cannot use them correctly.
  * It would propose an arrow that is already drawn, or split a ticket that is already in
  * parts. Two more services on the expensive read, which is where a query belongs.
+ *
+ * **The comment thread came off the same list for the same reason — `KAN-30`.**
+ * `kanso_triage` is a writing tool whose argument is a judgement about a request, and the
+ * request is not the title: it is the four comments where the reporter gave their row
+ * count and somebody else said this looks like last week's ticket. An agent that cannot
+ * read the thread cannot rule on the case, and would be triaging a headline. That ticket
+ * also asked for "thread summaries", which is this and nothing more: Kanso prints the
+ * thread, and whoever is reading does the summarising — `PlanTool` states the house rule
+ * about which of those two Kanso is allowed to be.
  */
 @Service
 class GetTicketTool(
@@ -44,6 +55,16 @@ class GetTicketTool(
 	 * here the cost is one query, on the tool that is explicitly the expensive one.
 	 */
 	private val fields: CustomFieldService,
+	/**
+	 * The thread, oldest first — `KAN-30`. `forTicket` resolves the authors, so a line can
+	 * name who said it by the email every writing tool here takes back.
+	 */
+	private val comments: CommentService,
+	/**
+	 * The team's label vocabulary — `KAN-30`. All of it, not only what this ticket wears:
+	 * the same argument the custom fields make about printing the unset ones.
+	 */
+	private val labels: LabelService,
 	/**
 	 * The graph, both directions. `of` filters the far end through `TicketAccess.mayRead`
 	 * and drops what this actor may not see, so an edge into somebody's private draft
@@ -122,6 +143,13 @@ class GetTicketTool(
 					appendLine("  ${inUse.field.name}: ${value?.toString() ?: "not set"}")
 				}
 			}
+			// The team's labels, the worn ones marked. Whole vocabulary rather than only what
+			// this ticket carries, for the reason the fields above give: what a reading tool
+			// prints is what a writing tool takes back, so an agent that has seen `export`
+			// unworn knows both that the word exists and how to spell it in
+			// `kanso_update_ticket`. Printing only the worn ones would make a team's
+			// vocabulary discoverable exclusively on tickets that already use it.
+			labelLine(ticket.teamId, ticket.id)?.let { appendLine(it) }
 			// What the ticket is attached to, above the description for the same reason the
 			// fields are: these are facts a writing tool takes back, and a long description
 			// between them and the header would push them out of a reader that stops early.
@@ -129,9 +157,48 @@ class GetTicketTool(
 			TicketStructure.children(children, subTickets.progress(listOf(ticket.id))[ticket.id], emails)
 				?.let { appendLine(); appendLine(it) }
 			appendLine()
-			// Last, and unbounded: everything a caller needs to act is above it, so a long
-			// description truncates the reading rather than the facts.
-			append(ticket.description?.takeIf { it.isNotBlank() } ?: "(no description)")
+			// The description before the thread, because the thread is a reply to it.
+			appendLine(ticket.description?.takeIf { it.isNotBlank() } ?: "(no description)")
+			// Last, and unbounded, for the reason the description used to be last: everything
+			// a caller needs in order to *act* is above this, so a long argument truncates
+			// the reading and not the facts. Absent entirely when nobody has said anything,
+			// rather than an empty heading a reader pays to rule out.
+			thread(ticket.id)?.let { appendLine(); append(it) }
 		}
+	}
+
+	/**
+	 * `labels: bug ✓, export` — the team's vocabulary, with a tick on what is worn.
+	 *
+	 * One line and not a section: a team has a handful of labels, and a heading over three
+	 * words costs an agent more to skip than to read. Absent for a team that has defined
+	 * none, like the fields.
+	 */
+	private fun labelLine(teamId: java.util.UUID?, ticketId: java.util.UUID): String? {
+		if (teamId == null) return null
+		val defined = labels.list(teamId)
+		if (defined.isEmpty()) return null
+		val worn = labels.forTicket(ticketId).map { it.id }.toSet()
+		return "labels: " + defined.joinToString { if (it.id in worn) "${it.name} ✓" else it.name }
+	}
+
+	/**
+	 * The comments, oldest first, one paragraph each.
+	 *
+	 * Bodies whole and not truncated: a thread is the case, and a case cut off mid-sentence
+	 * is how an agent rules on half of one. The cost is the caller's to bear — this is the
+	 * expensive read, and the tool description says so.
+	 */
+	private fun thread(ticketId: java.util.UUID): String? {
+		val said = comments.forTicket(ticketId)
+		if (said.isEmpty()) return null
+		return buildString {
+			appendLine("thread — ${said.size} comment(s), oldest first:")
+			for (row in said) {
+				appendLine()
+				appendLine("  ${row.author.email}  ${row.createdAt.toLocalDate()}")
+				row.body.trim().lines().forEach { appendLine("  $it") }
+			}
+		}.trimEnd()
 	}
 }
