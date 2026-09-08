@@ -37,6 +37,38 @@ deserves to be made deliberately. Two were already made and are recorded below.
 
 ---
 
+## Decisions taken while executing, and the order they changed
+
+**Task 3 runs before Task 2.** The plan had the door before the type, and that order has a
+window in it: `remove` moves tickets to a status it is given the key of, so a team that has
+added *Devis* and then removes `done` naming *Devis* as the destination writes
+`status = 'devis'` onto real rows — and `Mappers.kt` calls `DefaultStatus.from` on every
+read of them. That is a 500 on data somebody owns, not a red test. The type change has to
+land first, so the order is **1 → 3 → 2 → 4 → 5 → 6**.
+
+**A category filter in SQL is a join, not a list of keys.** Three of the seven
+`DefaultStatus.entries.filter { … }` lists feed queries whose scope spans teams —
+`WorkloadService.OPEN_STATUSES` into `tickets.search(teamIds = …)`,
+`PublicRoadmapService.ROADMAP_STATUSES` and `NOT_STARTED_STATUSES` into `findPublished`,
+and `TicketRepository.MOVED_ALONG_STATUSES` into a probe with no team scope at all. No
+single team's keys can serve any of them, so `keysMeaning` is not the answer there:
+`search` and `findPublished` take `categories: List<StatusCategory>` and the repository
+joins `team_statuses` on `(team_id, status)`. Rejected: a denormalised `tickets.category`
+column, because a second copy of the mapping on disk is what `DefaultStatus.category`'s
+docstring exists to refuse; and expanding every team's keys in Kotlin, because the
+unscoped probe would have to read all of `team_statuses` to ask whether anything moved.
+
+**The three client bars follow `KAN-28`'s rule rather than a third one.** `burndown.ts`,
+`progress-charts.tsx` and `workload-view.tsx` all segment a `Record<string, number>` by
+iterating a hardcoded order, so a seventh status vanishes from all three without a sound.
+A scope of one team reads that team's order out of `Team.statuses`, which already carries
+`position`; a scope spanning teams reads `CATEGORY_ORDER`. This is exactly what `KAN-28`
+decided for the grouped lists, so there is no third rule to remember — and it retires
+`StatusOrder`'s argument that these two client orders must never come from the server,
+which held only while the vocabulary was closed.
+
+---
+
 ## Global Constraints
 
 - **The wire keeps its shape.** `TicketResponse.status` stays a string. `TeamResponse.statuses` already carries the catalogue.
