@@ -1,17 +1,23 @@
 package dev.kanso.api
 
 import dev.kanso.auth.CurrentUser
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TeamStatus
 import dev.kanso.service.TeamStatusService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -20,9 +26,8 @@ import java.util.UUID
  * same reason: a team-scoped catalogue somebody edits, read whole because every read of it
  * is a list a screen draws.
  *
- * There is no `POST` and no `DELETE`, and their absence is the ticket's boundary rather
- * than an omission: adding or removing a status makes `Ticket.status` unrepresentable as
- * an enum, which is `KAN-90`. What is here writes a word or an order.
+ * `POST` and `DELETE` arrived with `KAN-90`, once `Ticket.status` became the key of one of
+ * the team's own statuses rather than an enum. The rest writes a word or an order.
  */
 @RestController
 @RequestMapping("/api/teams/{teamId}/statuses")
@@ -34,6 +39,38 @@ class TeamStatusController(
 	@GetMapping
 	fun list(@PathVariable teamId: UUID): List<TeamStatusDto> =
 		statuses.list(currentUser.require(), teamId).map(TeamStatusDto::of)
+
+	/**
+	 * A word and what it means. The key is derived and never sent — see `statusKeyOf`.
+	 *
+	 * `category` is required rather than defaulted, and that is the shape carrying the
+	 * decision: `TeamStatusService.add` will not let it change afterwards, so the one
+	 * moment it can be chosen is the one where somebody is deciding what the word means.
+	 * A default would answer that question for them, silently, in whichever way the
+	 * server's author guessed.
+	 */
+	@PostMapping
+	fun add(
+		@PathVariable teamId: UUID,
+		@Valid @RequestBody request: TeamStatusAddRequest,
+	): TeamStatusDto = TeamStatusDto.of(
+		statuses.add(currentUser.require(), teamId, request.label, StatusCategory.from(request.category)),
+	)
+
+	/**
+	 * `into` as a query parameter rather than a body, because a `DELETE` with a body is
+	 * refused or dropped by enough proxies that it is not a shape to rely on — and because
+	 * it reads as what it is: not part of the thing being deleted, but where its tickets
+	 * go. Absent is a real answer, and the service accepts it exactly when the status
+	 * holds nothing.
+	 */
+	@DeleteMapping("/{key}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	fun remove(
+		@PathVariable teamId: UUID,
+		@PathVariable key: String,
+		@RequestParam(required = false) into: String?,
+	) = statuses.remove(currentUser.require(), teamId, key, into)
 
 	@PatchMapping("/{key}")
 	fun rename(
@@ -55,6 +92,13 @@ class TeamStatusController(
 	): List<TeamStatusDto> =
 		statuses.reorder(currentUser.require(), teamId, request.keys).map(TeamStatusDto::of)
 }
+
+data class TeamStatusAddRequest(
+	/** 40 because a bucket header has to fit on a board column — [TeamStatusRenameRequest]. */
+	@field:NotBlank @field:Size(max = 40) val label: String,
+	/** One of `StatusCategory`'s five. Parsed, so an unknown one is a 400 with the list. */
+	@field:NotBlank val category: String,
+)
 
 data class TeamStatusRenameRequest(
 	/** 40 because a bucket header has to fit on a board column. */

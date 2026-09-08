@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.rebase
 import dev.kanso.domain.DispositionChoice
 import dev.kanso.domain.DispositionContents
 import dev.kanso.domain.DispositionCounts
@@ -15,6 +16,7 @@ import dev.kanso.outbox.OutboundOperation
 import dev.kanso.realtime.ChangeKind
 import dev.kanso.realtime.EventPublisher
 import dev.kanso.realtime.KansoEvent
+import dev.kanso.repo.TeamStatusRepository
 import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TeamRepository
@@ -36,6 +38,18 @@ class TeamService(
 	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val trash: TrashDisposal,
+	/**
+	 * The repository and not `TeamStatusService`, for the disposition's rebase.
+	 *
+	 * `TeamStatusService` depends on *this* service — it calls `get` so a team nobody can
+	 * see answers 404 — so taking it here is a cycle Spring refuses to build. Measured
+	 * rather than reasoned: it made every case in `TeamStatusServiceTest` and
+	 * `TicketStatusRebaseTest` fail at once, which is what a context that will not start
+	 * looks like from a test report. What `rebase` needs is the destination's rows in
+	 * order, and that is the repository's answer anyway.
+	 */
+	private val teamStatuses: TeamStatusRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
@@ -255,8 +269,20 @@ class TeamService(
 				// is held for the same span either way, so allocating one number at a time
 				// would only add a round trip per ticket inside it.
 				val numbers = teams.nextTicketNumbers(target, held.size)
+				// The destination's catalogue once for the whole block, and each ticket's
+				// meaning resolved against the team it is leaving — `KAN-90`. A disposition
+				// is the same boundary crossing `TicketService.patch` handles for one
+				// ticket, and `tickets_status_fk` is not deferred, so the status has to be
+				// rebased into the very statement that writes `team_id`.
+				val destination = teamStatuses.forTeam(target)
+				val meanings = statusCategories.forTeams(held.map { it.teamId })
 				held.forEachIndexed { index, ticket ->
-					tickets.moveToTeam(ticket.id, target, numbers[index])
+					tickets.moveToTeam(
+						ticket.id,
+						target,
+						numbers[index],
+						rebase(ticket.status, destination, meanings[ticket]),
+					)
 					outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, ticket.id, OutboundOperation.UPSERT)
 					events.publish(
 						KansoEvent.ticket(

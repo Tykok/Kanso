@@ -300,6 +300,36 @@ class TicketRepository(
 			}
 			.limit(1).empty()
 
+	/**
+	 * Every ticket of [teamId] sitting in [key], archived ones included — `KAN-90`.
+	 *
+	 * Archived counts, and that is the point: `tickets_status_fk` does not care whether a
+	 * row is on a board, so a removal that skipped archived rows would be refused by the
+	 * database after the service had already told the team it worked.
+	 */
+	fun withStatus(teamId: UUID, key: String): List<Ticket> =
+		Tickets.selectAll()
+			.where { (Tickets.teamId eq teamId) and (Tickets.status eq key) }
+			.map { it.toTicket() }
+
+	/**
+	 * Moves one ticket's status and nothing else — the write behind a status's removal.
+	 *
+	 * Not `update`, which takes every column and would need the whole row read back first;
+	 * and deliberately not through `TicketService.patch`, which is where a status move
+	 * normally belongs. `TeamStatusService` explains why: `TicketService` validates a
+	 * status against the catalogue, so the two services needing each other is a Spring
+	 * context that does not start.
+	 *
+	 * `updated_at` moves with it, because the row did change and a mirror that pushes on
+	 * `updated_at` would otherwise never learn about it.
+	 */
+	fun moveStatus(id: UUID, key: String): Boolean =
+		Tickets.update({ Tickets.id eq id }) {
+			it[Tickets.status] = key
+			it[updatedAt] = OffsetDateTime.now()
+		} > 0
+
 	/** Archived tickets count: they still need a decision when their team goes away. */
 	fun countByTeams(teamIds: Collection<UUID>, includeArchived: Boolean = true): Int {
 		if (teamIds.isEmpty()) return 0
@@ -345,10 +375,24 @@ class TicketRepository(
 	 * same one, and the pair is set together so `tickets_team_number_together_chk` is never
 	 * momentarily false.
 	 */
-	fun moveToTeam(ticketId: UUID, teamId: UUID, number: Int): Boolean =
+	/**
+	 * The three columns a team boundary moves, in one statement — `KAN-90` added the third.
+	 *
+	 * [status] has to be written here rather than by the `update` that follows, and this is
+	 * not a tidiness argument: `tickets_status_fk` is a composite key onto
+	 * `(team_id, key)` and it is **not deferred**, so a statement that set `team_id` while
+	 * `status` still held the source team's word would be refused by Postgres — measured,
+	 * as `insert or update on table "tickets" violates foreign key constraint
+	 * "tickets_status_fk"`. The caller rebases first and hands the answer in.
+	 *
+	 * `number` was already here for `UNIQUE (team_id, number)`, which is the same shape of
+	 * reason: crossing into another team is one transition over three columns, not three.
+	 */
+	fun moveToTeam(ticketId: UUID, teamId: UUID, number: Int, status: String): Boolean =
 		Tickets.update({ Tickets.id eq ticketId }) {
 			it[Tickets.teamId] = teamId
 			it[Tickets.number] = number
+			it[Tickets.status] = status
 		} > 0
 
 	/** Returns only the rows that actually changed — the others need no mirror push. */

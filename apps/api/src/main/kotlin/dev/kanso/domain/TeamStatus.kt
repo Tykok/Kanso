@@ -45,6 +45,39 @@ fun statusKeyOf(label: String): String {
 
 
 /**
+ * Where [status] lands in [destination]'s vocabulary — `KAN-90`.
+ *
+ * A ticket crossing into another team has to take that team's word for where it is:
+ * `tickets_status_fk` is a composite key onto `(team_id, key)`, so a move that carried
+ * the source team's status would be refused by the database, and `TicketService.patch`
+ * validates against the destination, so it would answer 400 for a gesture `KAN-9` made
+ * ordinary. So this is not a nicety; the only question is *which* status.
+ *
+ * Three steps, narrowest true answer first:
+ *
+ * 1. **The same key**, if the destination has it. This is the overwhelmingly common case
+ *    — both teams were seeded with the six — and it is also what makes a *rename*
+ *    invisible here, because a rename never moves a key.
+ * 2. **The destination's first status of the same category**, by `position`. The meaning
+ *    is what survives a boundary: a ticket in flight is still in flight, and dropping it
+ *    back to a backlog would be the destination team inventing a decision nobody made.
+ * 3. **The destination's first status**, when it cannot express that meaning at all.
+ *    A last resort and deliberately not a refusal: failing the move would make an
+ *    ordinary gesture depend on the destination team's own configuration, which is worse
+ *    than a status a reader can see is wrong and correct in one click.
+ *
+ * Pure, and here rather than in the service, so the table of cases is assertable without
+ * a database — the same argument `PrTransition` and `SubTicketService.progressOf` make.
+ * [destination] must not be empty; a team keeps at least one status, and
+ * `TeamStatusService.remove` is what guarantees it.
+ */
+fun rebase(status: String, destination: List<TeamStatus>, meant: StatusCategory): String {
+	destination.firstOrNull { it.key == status }?.let { return it.key }
+	destination.firstOrNull { it.category == meant }?.let { return it.key }
+	return destination.first().key
+}
+
+/**
  * The word the Notion mirror writes for [status] — `KAN-91`.
  *
  * The team's, falling back to Kanso's own. `NotionProps.select` sends a name and Notion

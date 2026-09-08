@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.rebase
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.EffortPoints
@@ -194,6 +195,13 @@ class TicketService(
 	 */
 	private val notifications: NotificationService,
 	private val statusCategories: StatusCategories,
+	/**
+	 * The catalogue itself, for `rebase` — which needs the destination's rows in order,
+	 * not just what each of them means. Through the service, so it runs in this
+	 * transaction; `TeamStatusService` does not depend on this one, which is the whole
+	 * reason that direction is available.
+	 */
+	private val statuses: TeamStatusService,
 	/**
 	 * The repository, not `TrashService`: that one is built out of [TrashSource] beans and
 	 * one of them is built out of this service, so depending on it here would close a
@@ -612,26 +620,6 @@ class TicketService(
 		patch.assigneeIds?.let { requireUsers(it) }
 		patch.docIds?.let { requireDocs(it) }
 
-		// Crossing into another team means taking that team's next number, from its own
-		// counter. `UNIQUE (team_id, number)` leaves no choice: keeping the old number
-		// either collides with one already in use over there, or squats one the
-		// destination's counter will hand out again later. Same allocation the
-		// disposition makes for a whole block, for one ticket.
-		//
-		// The same write is a draft's first naming: it arrives with the pair null on both
-		// sides and leaves with both set, which is the only transition
-		// `tickets_team_number_together_chk` allows out of that state.
-		if (teamId != null && teamId != current.teamId) {
-			tickets.moveToTeam(id, teamId, teams.nextTicketNumber(teamId))
-			// The mirror was switched off while this had no team — see `TicketRepository.insert`
-			// — so the first attach switches it back on. Before the row is read back below, so
-			// the response carries the state the push it is about to queue will act on.
-			if (current.teamId == null) tickets.markSyncState(id, SyncState.PENDING)
-		}
-
-		// Written here rather than in a trigger: the rule belongs next to the status
-		// logic that owns it, and a trigger would be the only part of the transition
-		// invisible from this file.
 		// **Validated against the team the ticket ends up in, and this is the one guard.**
 		// Every write door reaches a status through here — the controller, the bulk strip,
 		// the three MCP tools, the triage ruling, the GitHub webhook — so one refusal here
@@ -643,7 +631,21 @@ class TicketService(
 		// and re-checking it would refuse a patch of the *title* on a ticket whose team
 		// has meanwhile removed the status it sits in — punishing an edit for a decision
 		// somebody else made. `KAN-90`'s `remove` moves those rows itself.
-		val status = patch.status?.let { statusCategories.require(teamId, it) } ?: current.status
+		val status = patch.status?.let { statusCategories.require(teamId, it) }
+			// Nobody named one, and the ticket may be crossing into another team's
+			// vocabulary — `KAN-90`'s `rebase`. Only when the team actually changes: for
+			// every other patch `current.status` is already in the catalogue, and running
+			// the rule anyway would let a status the team removed be silently rewritten by
+			// an edit to the title.
+			?: if (teamId != null && teamId != current.teamId) {
+				rebase(
+					current.status,
+					statuses.forTeam(teamId),
+					statusCategories.categoryOf(current.teamId, current.status),
+				)
+			} else {
+				current.status
+			}
 		// Resolved against the team the ticket *ends up in*, and the old one against the
 		// team it is leaving — `KAN-90`. A move across teams is also a status change, and
 		// asking one catalogue about both words would read the destination's meaning for a
@@ -652,6 +654,27 @@ class TicketService(
 		val completed = statusCategories.categoryOf(teamId, status) == StatusCategory.COMPLETED
 		val wasCompleted =
 			statusCategories.categoryOf(current.teamId, current.status) == StatusCategory.COMPLETED
+
+		// Crossing into another team means taking that team's next number, from its own
+		// counter. `UNIQUE (team_id, number)` leaves no choice: keeping the old number
+		// either collides with one already in use over there, or squats one the
+		// destination's counter will hand out again later. Same allocation the
+		// disposition makes for a whole block, for one ticket.
+		//
+		// The same write is a draft's first naming: it arrives with the pair null on both
+		// sides and leaves with both set, which is the only transition
+		// `tickets_team_number_together_chk` allows out of that state.
+		if (teamId != null && teamId != current.teamId) {
+			tickets.moveToTeam(id, teamId, teams.nextTicketNumber(teamId), status)
+			// The mirror was switched off while this had no team — see `TicketRepository.insert`
+			// — so the first attach switches it back on. Before the row is read back below, so
+			// the response carries the state the push it is about to queue will act on.
+			if (current.teamId == null) tickets.markSyncState(id, SyncState.PENDING)
+		}
+
+		// Written here rather than in a trigger: the rule belongs next to the status
+		// logic that owns it, and a trigger would be the only part of the transition
+		// invisible from thiMPLETED
 		val completedAt = when {
 			completed && !wasCompleted -> OffsetDateTime.now()
 			!completed -> null

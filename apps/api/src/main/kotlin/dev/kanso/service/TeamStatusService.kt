@@ -1,5 +1,9 @@
 package dev.kanso.service
 
+import dev.kanso.domain.ActivityEntity
+import dev.kanso.domain.ActivityKind
+import dev.kanso.domain.StatusCategory
+import dev.kanso.repo.TicketRepository
 import dev.kanso.domain.TeamStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.statusKeyOf
@@ -10,13 +14,12 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * A team's own words for its work, and the order it reads them in — `KAN-28`.
+ * A team's own words for its work, the order it reads them in, and which of them exist.
  *
- * Two writes, and neither touches the set of keys: `label`, and `position`. Adding and
- * removing a status is `KAN-90`, because `Ticket.status` is an enum across the domain and
- * the six keys staying fixed is exactly what lets this ticket leave twenty semantic sites
- * alone — the pull-request transition, four MCP vocabularies, the Notion select, the seven
- * `IN (...)` lists that filter by category in SQL.
+ * `KAN-28` landed the first two — `label` and `position`, neither of which touches the set
+ * of keys. `KAN-90` landed the third, once `Ticket.status` stopped being an enum: [add]
+ * and [remove] change the vocabulary itself, and the twenty semantic sites that used to
+ * depend on the six keys staying fixed now read `StatusCategories` instead.
  *
  * Reading is open to anybody who can see the team: a status is a word every screen prints,
  * and a member who could not read it would see keys. Changing it is a configurator's, like
@@ -26,6 +29,19 @@ import java.util.UUID
 class TeamStatusService(
 	private val statuses: TeamStatusRepository,
 	private val teams: TeamService,
+	/**
+	 * The repository and not `TicketService`, and this is the one dependency worth a note.
+	 *
+	 * `TicketService.create` and `patch` validate a status against the team's catalogue —
+	 * they call `StatusCategories`, which reads `TeamStatusRepository` — so if this service
+	 * reached for `TicketService` the two would need each other and the Spring context
+	 * would refuse to start. What [remove] actually needs is narrower than a patch anyway:
+	 * move the rows, write a line each. No mirror push, no notification, no cascade, and
+	 * none of those is right here — a status disappearing is one administrative act, not N
+	 * edits by whoever performed it.
+	 */
+	private val tickets: TicketRepository,
+	private val activity: ActivityService,
 ) {
 
 	@Transactional(readOnly = true)
@@ -53,6 +69,103 @@ class TeamStatusService(
 
 	@Transactional(readOnly = true)
 	fun forTeam(id: UUID): List<TeamStatus> = statuses.forTeam(id)
+
+	/**
+	 * A seventh word, at the end of the list — `KAN-90`.
+	 *
+	 * [category] is asked for and never editable afterwards, which is the deliberate half.
+	 * Moving a status between categories moves what every burndown, workload chart and
+	 * roadmap column counts, with no edit to any of them and no line in any feed — so it
+	 * is decided once, here, by somebody who is deciding what the word *means* rather
+	 * than what it says. A team that got it wrong removes the status and adds it again,
+	 * which is a gesture that says where its tickets go.
+	 *
+	 * Last by `position`, never inserted: adding a status must not restack a board
+	 * somebody is looking at. Where it belongs is a reorder, which the team already has.
+	 */
+	@Transactional
+	fun add(actor: User, teamId: UUID, label: String, category: StatusCategory): TeamStatus {
+		requireConfigurator(actor)
+		val existing = list(actor, teamId)
+
+		// Derived, so a client never sends one — and called before the conflict check so a
+		// label with nothing nameable in it is refused as itself rather than as a duplicate
+		// of another unnameable one.
+		val key = statusKeyOf(label)
+
+		// By the word and case-insensitively, which is what `team_statuses_label_uniq`
+		// compares — the same pre-check `rename` makes, for the same reason: the index
+		// would otherwise surface as an opaque 409 from the driver.
+		if (existing.any { it.label.equals(label, ignoreCase = true) }) {
+			throw ConflictException("""This team already has a status called "${label.lowercase()}"""")
+		}
+		// The key too, separately: two different words can fold to one key — `En cours` and
+		// `en-cours` — and that collision is the primary key's, which has no sentence.
+		if (existing.any { it.key == key }) {
+			throw ConflictException("""This team already has a status called "$key"""")
+		}
+
+		val row = TeamStatus(teamId, key, label, category, position = existing.size)
+		statuses.insert(row)
+		return row
+	}
+
+	/**
+	 * One word gone, and its tickets somewhere the team named — `KAN-90`.
+	 *
+	 * [into] is required exactly when the status holds tickets, which is `KAN-4`'s
+	 * disposition shape: a removal that would orphan rows has to say where they go, and
+	 * one that would orphan none does not have to invent a destination. `tickets_status_fk`
+	 * makes the alternative unavailable rather than merely unwise — the delete would be
+	 * refused by the database after this method had returned.
+	 *
+	 * Archived tickets count, because the foreign key does not care whether a row is on a
+	 * board.
+	 */
+	@Transactional
+	fun remove(actor: User, teamId: UUID, key: String, into: String?) {
+		requireConfigurator(actor)
+		val existing = list(actor, teamId)
+		existing.firstOrNull { it.key == key }
+			?: throw BadRequestException("This team has no status '$key'")
+
+		// Before anything moves. A team with no statuses could hold no tickets at all —
+		// `tickets_status_fk` would have nothing to point at — so every write on that
+		// team's screens would answer a foreign key error instead of a sentence.
+		if (existing.size == 1) throw BadRequestException("A team keeps at least one status")
+
+		val held = tickets.withStatus(teamId, key)
+		if (held.isNotEmpty()) {
+			val destination = into
+				?: throw BadRequestException(
+					"""Removing "$key" has to say where its ${held.size} ticket${if (held.size == 1) "" else "s"} go${if (held.size == 1) "es" else ""}""",
+				)
+			if (destination == key) {
+				throw BadRequestException("""Removing "$key" cannot move its tickets into itself""")
+			}
+			if (existing.none { it.key == destination }) {
+				throw BadRequestException("This team has no status '$destination'")
+			}
+			for (ticket in held) {
+				tickets.moveStatus(ticket.id, destination)
+				// The same `status_changed` an edit writes, and with the actor who removed
+				// the status: the ticket did change status, and a burndown whose number
+				// moved with no line behind it is a burndown nobody trusts.
+				activity.record(
+					ActivityEntity.TICKET,
+					ticket.id,
+					actor.id,
+					ActivityKind.STATUS_CHANGED,
+					mapOf("from" to key, "to" to destination),
+				)
+			}
+		}
+
+		statuses.delete(teamId, key)
+		// Contiguous again, so the next `add` does not collide with a hole — `position`
+		// has no unique index, but a list whose numbers skip reads as one that lost a row.
+		statuses.reposition(teamId, statuses.forTeam(teamId).map { it.key })
+	}
 
 	@Transactional
 	fun rename(actor: User, teamId: UUID, key: String, label: String): TeamStatus {
