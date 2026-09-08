@@ -148,9 +148,12 @@ class OwnProgressTest : MockMvcTest() {
 			jsonPath("$.delivered.length()") { value(0) }
 			jsonPath("$.load.load.points") { value(0) }
 			jsonPath("$.load.byProject.length()") { value(0) }
-			// The legend is still the full list of open statuses, so the page has a shape to
-			// draw rather than an empty box.
-			jsonPath("$.load.byStatus.todo.tickets") { value(0) }
+			// Empty, and the page still has a shape to draw — `KAN-90` moved the legend to
+			// the client. It used to be the full list of open statuses with their zeros,
+			// which the server can no longer name: "every open status" has a per-team
+			// answer now. The client draws it from the vocabulary it asked for, which for
+			// one team is that team's own ordered list, and fills the zeros itself.
+			jsonPath("$.load.byStatus.length()") { value(0) }
 		}
 	}
 

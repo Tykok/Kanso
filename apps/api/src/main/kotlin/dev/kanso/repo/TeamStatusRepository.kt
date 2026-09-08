@@ -44,6 +44,20 @@ class TeamStatusRepository {
 			.map { it.toTeamStatus() }
 			.groupBy { it.teamId }
 
+	/**
+	 * Every team's rows, for the one scope that cannot name its teams — `KAN-90`.
+	 *
+	 * `TicketScope.teamIds` null means "every team in the instance", and a grouped page
+	 * over that scope has to bucket words it was never handed a team for. Unbounded on
+	 * purpose and cheap in fact: this table holds one handful of rows per team, and the
+	 * alternative — a second query per bucket the page discovers — is the N+1 [forTeams]
+	 * exists to refuse.
+	 */
+	fun all(): List<TeamStatus> =
+		TeamStatuses.selectAll()
+			.orderBy(TeamStatuses.position to SortOrder.ASC, TeamStatuses.key to SortOrder.ASC)
+			.map { it.toTeamStatus() }
+
 	fun insert(status: TeamStatus) {
 		TeamStatuses.insert {
 			it[teamId] = status.teamId

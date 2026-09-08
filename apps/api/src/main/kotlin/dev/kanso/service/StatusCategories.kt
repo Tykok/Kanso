@@ -2,6 +2,7 @@ package dev.kanso.service
 
 import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.StatusCategory
+import dev.kanso.domain.StatusGrouping
 import dev.kanso.domain.Ticket
 import dev.kanso.repo.TeamStatusRepository
 import org.springframework.stereotype.Service
@@ -60,15 +61,57 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
 	 *
 	 * This is the honest replacement for `DefaultStatus.entries.filter { it.category == … }`,
 	 * and it is honest only for a query scoped to *one* team. A query whose scope spans
-	 * teams cannot be served by any single team's keys: it has to filter on the category
-	 * column itself, by joining `team_statuses`. `WorkloadService.OPEN_STATUSES`,
-	 * `PublicRoadmapService.ROADMAP_STATUSES` and `TicketRepository.MOVED_ALONG_STATUSES`
-	 * are all that second shape, and calling this for them would quietly narrow the query
-	 * to one team's vocabulary.
+	 * teams cannot be served by any single team's keys: it filters on the category column
+	 * itself, through `TicketFilters.categories` and the `EXISTS` behind it.
+	 * `WorkloadService.OPEN_CATEGORIES`, `PublicRoadmapService.ROADMAP_CATEGORIES` and
+	 * `TicketRepository.MOVED_ALONG_CATEGORIES` are all that second shape, and calling this
+	 * for them would quietly narrow the query to one team's vocabulary.
 	 */
 	@Transactional(readOnly = true)
 	fun keysMeaning(teamId: UUID, category: StatusCategory): List<String> =
 		statuses.forTeam(teamId).filter { it.category == category }.map { it.key }
+
+	/**
+	 * Every key any of [teamIds] uses for any of [categories], each named once.
+	 *
+	 * What a legend that must not change shape is built from — `ProgressService.byStatus`
+	 * asks for "every open status, zeros included" so the chart's key is the same list on
+	 * every page load, and since `KAN-90` that list is the scope's teams' words rather
+	 * than Kanso's six.
+	 *
+	 * Deliberately unordered beyond being distinct: two teams' catalogues have two
+	 * `position` sequences and there is no honest way to interleave them. The client
+	 * orders what it draws, by `KAN-28`'s rule — one team's own order, or the five
+	 * categories across teams.
+	 */
+	@Transactional(readOnly = true)
+	fun keysMeaning(teamIds: Collection<UUID>, categories: Collection<StatusCategory>): List<String> =
+		statuses.forTeams(teamIds.toSet()).values.flatten()
+			.filter { it.category in categories }
+			.map { it.key }
+			.distinct()
+
+	/**
+	 * How a scope buckets and stacks its statuses — `KAN-28`'s rule, read for `KAN-90`.
+	 *
+	 * One team reads its own words in its own order, because that is the list on its
+	 * screen. Anything wider reads the five categories: a scope holding two teams holds
+	 * two vocabularies, and the header has to be the fact they agree on. `null` is the
+	 * widest scope there is — every team in the instance — and lands in the same branch.
+	 *
+	 * Lives here rather than in `TicketGrouping`, where it was private, because the
+	 * grouped list is no longer its only reader: the workload chart and the progress bar
+	 * bucket their own `byStatus` maps by the same rule, and a second copy of it would be
+	 * a screen whose bars and whose list disagreed about what a bucket is.
+	 */
+	@Transactional(readOnly = true)
+	fun groupingFor(teamIds: Collection<UUID>?): StatusGrouping {
+		val single = teamIds?.singleOrNull()
+			?: return StatusGrouping.byCategory(
+				if (teamIds == null) statuses.all() else statuses.forTeams(teamIds.toSet()).values.flatten()
+			)
+		return StatusGrouping.of(statuses.forTeam(single))
+	}
 
 	/**
 	 * Every category [tickets] needs, from one read of the catalogue.

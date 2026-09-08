@@ -45,6 +45,7 @@ class SubTicketService(
 	private val details: TicketDetails,
 	private val access: TicketAccess,
 	private val events: EventPublisher,
+	private val statusCategories: StatusCategories,
 ) {
 
 	/**
@@ -114,23 +115,33 @@ class SubTicketService(
 	 */
 	@Transactional(readOnly = true)
 	fun progress(parentIds: Collection<UUID>): Map<UUID, SubTicketProgress> =
-		tickets.childrenOf(parentIds).mapValues { (_, children) -> progressOf(children) }
-			.filterValues { it.total > 0 }
+		tickets.childrenOf(parentIds).let { byParent ->
+			// One read for every team the children are in, not one per parent: a parent's
+			// children can sit in another team, and a query per parent is the N+1 this
+			// method's batched signature exists to avoid.
+			val categories = statusCategories.of(byParent.values.flatten())
+			byParent.mapValues { (_, children) -> progressOf(children, categories) }
+		}.filterValues { it.total > 0 }
 
 	/**
 	 * Pure, so the arithmetic is provable without a database — and internal rather than
 	 * private for exactly that reason.
+	 *
+	 * [categories] is a parameter rather than a service call for that same reason: since
+	 * `KAN-90` what a status means is a read of the children's teams, and injecting the
+	 * reader here would have put a database behind the one piece of arithmetic that was
+	 * worth proving without one. A test builds a `Categories` from a literal.
 	 */
-	internal fun progressOf(children: List<Ticket>): SubTicketProgress {
-		val counted = children.filter { it.status.category != StatusCategory.CANCELED }
-		val done = counted.count { it.status.category == StatusCategory.COMPLETED }
+	internal fun progressOf(children: List<Ticket>, categories: Categories): SubTicketProgress {
+		val counted = children.filter { categories[it] != StatusCategory.CANCELED }
+		val done = counted.count { categories[it] == StatusCategory.COMPLETED }
 		val estimates = counted.map { it.estimate }
 		val allEstimated = counted.isNotEmpty() && estimates.none { it == null }
 		return SubTicketProgress(
 			total = counted.size,
 			done = done,
 			donePoints = if (!allEstimated) null else
-				counted.filter { it.status.category == StatusCategory.COMPLETED }.sumOf { it.estimate ?: 0 },
+				counted.filter { categories[it] == StatusCategory.COMPLETED }.sumOf { it.estimate ?: 0 },
 			totalPoints = if (!allEstimated) null else estimates.sumOf { it ?: 0 },
 		)
 	}

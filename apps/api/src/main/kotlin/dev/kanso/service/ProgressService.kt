@@ -59,7 +59,18 @@ data class ProjectLoad(val project: Project?, val load: LoadSlice)
  * is zero days, and [LoadSlice.unestimated] is what says how much of a non-empty one the
  * division could not see.
  */
-data class OpenLoad(val load: LoadSlice, val byStatus: Map<DefaultStatus, LoadSlice>, val byProject: List<ProjectLoad>, val workingDays: Double?)
+data class OpenLoad(
+	val load: LoadSlice,
+	/**
+	 * Keyed by the scope's teams' own status keys — `KAN-90`.
+	 *
+	 * Holds the buckets the plate actually has, not every open one with its zeros — see
+	 * [ProgressService.load] for why that changed and who draws the zeros now.
+	 */
+	val byStatus: Map<String, LoadSlice>,
+	val byProject: List<ProjectLoad>,
+	val workingDays: Double?,
+)
 
 /**
  * Everything screen 40 draws about one person, computed on read.
@@ -152,6 +163,7 @@ class ProgressService(
 	private val tickets: TicketRepository,
 	private val projects: ProjectRepository,
 	private val teams: TeamRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
@@ -235,9 +247,10 @@ class ProgressService(
 
 	/** [assigneeId] null is no filter at all: the team's plate rather than one person's. */
 	private fun load(assigneeId: UUID?, teamId: UUID, perWorkingDay: Double?): OpenLoad {
+		val scope = teams.descendantIds(teamId)
 		val open = tickets.search(
-			teamIds = teams.descendantIds(teamId),
-			statuses = WorkloadService.OPEN_STATUSES,
+			teamIds = scope,
+			categories = WorkloadService.OPEN_CATEGORIES,
 			assigneeId = assigneeId,
 			// The same cap and the same argument: a person holding more open tickets than
 			// this has a bigger problem than an off-by-some chart, and an uncapped scan is
@@ -245,14 +258,20 @@ class ProgressService(
 			limit = WorkloadService.SCAN_LIMIT,
 		)
 		val whole = slice(open)
+		val grouping = statusCategories.groupingFor(scope)
 		return OpenLoad(
 			load = whole,
-			// Every open status present, zeros included, so the chart's legend is the same
-			// list every time somebody opens the page rather than a shape that changes with
-			// the plate. Keyed off the category, as `WorkloadService` keys its own row.
-			byStatus = WorkloadService.OPEN_STATUSES.associateWith { status ->
-				slice(open.filter { it.status == status })
-			},
+			// The buckets this scope groups by, counted from the plate — `KAN-90`. This
+			// used to name every open status including the empty ones, so the legend was
+			// the same list on every page load. It cannot any more: "every open status" is
+			// now a question with a different answer per team, and answering it here would
+			// put a catalogue read behind a chart whose client already holds the answer.
+			// The zeros are the client's to draw, out of the vocabulary it asked for —
+			// `Team.statuses` for one team, `CATEGORY_ORDER` for a wider scope, which is
+			// `KAN-28`'s rule and the same `StatusGrouping` that bucketed these keys.
+			byStatus = open
+				.groupBy { grouping.bucketOf[it.status.wire] ?: it.status.wire }
+				.mapValues { (_, rows) -> slice(rows) },
 			byProject = byProject(open),
 			// Zero is not a pace anything can be divided by — it is what somebody who has
 			// never delivered looks like from here — and dividing by it would send an

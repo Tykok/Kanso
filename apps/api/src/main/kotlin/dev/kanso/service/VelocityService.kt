@@ -106,6 +106,7 @@ class VelocityService(
 	private val membership: CycleRepository,
 	private val tickets: TicketRepository,
 	private val users: UserRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	/**
@@ -298,10 +299,13 @@ class VelocityService(
 	 * reads this rather than a fourth copy of the two conditions documented above.
 	 */
 	fun finishedIn(cycle: Cycle): List<Ticket> =
-		membership.ticketsIn(cycle.id).filter { it.reachedDoneDuring(cycle) }
+		membership.ticketsIn(cycle.id).let { inCycle ->
+			val categories = statusCategories.of(inCycle)
+			inCycle.filter { it.reachedDoneDuring(cycle, categories) }
+		}
 
-	private fun Ticket.reachedDoneDuring(cycle: Cycle): Boolean {
-		if (status.category != StatusCategory.COMPLETED) return false
+	private fun Ticket.reachedDoneDuring(cycle: Cycle, categories: Categories): Boolean {
+		if (categories[this] != StatusCategory.COMPLETED) return false
 		val on = completedAt?.toLocalDate() ?: return false
 		return !on.isBefore(cycle.startsOn) && !on.isAfter(cycle.endsOn)
 	}

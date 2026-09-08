@@ -88,17 +88,20 @@ class TeamWorkloadTool(
 	 * other and a sentence per person makes that a parsing job.
 	 *
 	 * **`open` and `started` are two different questions and the house keeps them apart.**
-	 * `WorkloadService.OPEN_STATUSES` is the charge — everything not yet settled, which is
+	 * `WorkloadService.OPEN_CATEGORIES` is the charge — everything not yet settled, which is
 	 * what somebody is answerable for; `StatusCategory.STARTED` is the work actually in
 	 * flight, which is what `CycleTimeService` measures WIP over. A person with nine open
 	 * and one started has room; a person with three open and three started does not, and a
-	 * single column would have hidden whichever of those the reader needed. Keyed off the
-	 * category, so a status added to the enum lands in the right column with no edit here.
+	 * single column would have hidden whichever of those the reader needed.
+	 *
+	 * `started` arrives resolved on the row rather than summed here — `KAN-90`. For a
+	 * single team `byStatus` is keyed by that team's own words, and turning a word into a
+	 * meaning needs the catalogue, which is a read this printer has no business making.
 	 */
 	private fun line(row: WorkloadRow): String = buildString {
 		append((row.person?.email ?: UNASSIGNED).padEnd(30))
 		append(row.total.toString().padStart(5))
-		append(row.byStatus.filterKeys { it.category == StatusCategory.STARTED }.values.sum().toString().padStart(9))
+		append(row.started.toString().padStart(9))
 		append(row.points.toString().padStart(8))
 		// Printed even when it is zero, unlike everything else that is absent when empty:
 		// this column is the caveat on the one before it, and a blank would read as "the

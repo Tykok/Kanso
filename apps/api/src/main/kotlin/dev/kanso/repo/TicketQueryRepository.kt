@@ -1,11 +1,13 @@
 package dev.kanso.repo
 
+import dev.kanso.db.TeamStatuses
 import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketCycles
 import dev.kanso.db.TicketLabels
 import dev.kanso.db.Tickets
 import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.StatusGrouping
 import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.Ticket
@@ -48,6 +50,20 @@ data class TicketScope(
 data class TicketFilters(
 	val statuses: List<DefaultStatus> = emptyList(),
 	val statusesExcluded: List<DefaultStatus> = emptyList(),
+	/**
+	 * "Whatever these teams call work in this state" — `KAN-90`.
+	 *
+	 * Beside [statuses] rather than replacing it: a reader who picked `Done` off a filter
+	 * chip asked for that status and no other, while a workload chart asking for open work
+	 * means a meaning, and every team in scope may spell it differently. Both are asked at
+	 * once by nobody, and the predicate ANDs them if anybody does.
+	 *
+	 * This is the filter that cannot be a list of keys. Three callers — the workload
+	 * chart, the public roadmap and the "has anything moved along" probe — run over a
+	 * scope that spans teams or has no team scope at all, so no single team's keys can
+	 * express what they are asking.
+	 */
+	val categories: List<StatusCategory> = emptyList(),
 	val priorities: List<TicketPriority> = emptyList(),
 	val projectIds: List<UUID> = emptyList(),
 	val assigneeIds: List<UUID> = emptyList(),
@@ -215,6 +231,30 @@ class TicketQueryRepository {
 			if (filters.statuses.isNotEmpty()) add(Tickets.status inList filters.statuses.map { it.wire })
 			if (filters.statusesExcluded.isNotEmpty()) {
 				add(Tickets.status notInList filters.statusesExcluded.map { it.wire })
+			}
+			// An `EXISTS` against the asking team's own catalogue, and not a join —
+			// `KAN-90`. A join would change the `FROM` of every query this predicate
+			// serves and could multiply a row by its own status, which is a count silently
+			// too high on the one screen that only reports counts. It is also not a list of
+			// keys expanded in Kotlin: the scope here can be every team in the instance,
+			// and expanding that would read every catalogue to write an `IN` that grows
+			// with the number of teams.
+			//
+			// A draft cannot reach this: `Tickets.teamId.isNotNull()` above already keeps
+			// every list free of them, so there is no "resolve against the six" branch to
+			// write here — and if there were, it would belong beside that line rather than
+			// hidden in this one.
+			if (filters.categories.isNotEmpty()) {
+				val wanted = filters.categories.map { it.wire }
+				add(
+					exists(
+						TeamStatuses.selectAll().where {
+							(TeamStatuses.teamId eq Tickets.teamId) and
+								(TeamStatuses.key eq Tickets.status) and
+								(TeamStatuses.category inList wanted)
+						}
+					)
+				)
 			}
 			if (filters.priorities.isNotEmpty()) add(Tickets.priority inList filters.priorities.map { it.wire })
 			if (filters.projectIds.isNotEmpty()) add(Tickets.projectId inList filters.projectIds)

@@ -101,9 +101,15 @@ class WorkloadTest : PostgresTest() {
 		val row = workload.forTeam(team.id).rows.single { it.person?.id == rey.id }
 
 		assertEquals(3, row.total)
-		assertEquals(1, row.byStatus[DefaultStatus.IN_PROGRESS])
-		assertEquals(1, row.byStatus[DefaultStatus.IN_REVIEW])
-		assertEquals(1, row.byStatus[DefaultStatus.TODO])
+		// The team's own keys, because this scope is one team — `KAN-90`. A scope holding
+		// descendants would key these by category instead, and `StatusGrouping` is the one
+		// place that decides which.
+		assertEquals(1, row.byStatus["in_progress"])
+		assertEquals(1, row.byStatus["in_review"])
+		assertEquals(1, row.byStatus["todo"])
+		// Two of those three are STARTED, and the column that prints it is resolved here
+		// rather than summed by a reader who would need the catalogue to do it.
+		assertEquals(2, row.started)
 		assertEquals(row.total, row.byStatus.values.sum(), "the bar has to add up to the number beside it")
 	}
 
@@ -183,7 +189,10 @@ class WorkloadTest : PostgresTest() {
 		// `unestimated` has to travel with it, because a bar drawn in points has to be able
 		// to say what it is not showing.
 		assertEquals(
-			listOf("person", "total", "points", "unestimated", "byStatus", "urgentOverThreeDays", "oldestOpenDays"),
+			listOf(
+				"person", "total", "points", "unestimated", "byStatus", "started",
+				"urgentOverThreeDays", "oldestOpenDays",
+			),
 			WorkloadRow::class.primaryConstructor!!.parameters.map { it.name },
 			"a points column that arrives without the count, or without the tally of what it" +
 				" left out, throws away the screen's own argument",

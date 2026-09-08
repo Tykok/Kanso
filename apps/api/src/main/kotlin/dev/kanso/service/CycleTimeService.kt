@@ -130,6 +130,7 @@ class CycleTimeService(
 	private val activity: ActivityRepository,
 	private val tickets: TicketRepository,
 	private val teams: TeamRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	/**
@@ -152,7 +153,7 @@ class CycleTimeService(
 		val theirs = mine(cycles.map { cycle -> cycle to velocity.finishedIn(cycle) }, assigneeId)
 		val startedAt = activity.firstEnteredAt(
 			theirs.flatMap { it.second }.map { it.id },
-			IN_FLIGHT_WIRE,
+			inFlightKeys(teams.descendantIds(teamId)),
 		)
 		val spans = theirs.map { (cycle, delivered) -> cycle to spans(delivered, startedAt) }
 
@@ -201,15 +202,16 @@ class CycleTimeService(
 	 * another way on the other half is a screen that cannot be added up.
 	 */
 	private fun wip(teamId: UUID, assigneeId: UUID?, now: OffsetDateTime): Wip {
+		val scope = teams.descendantIds(teamId)
 		val inFlight = tickets.search(
-			teamIds = teams.descendantIds(teamId),
-			statuses = IN_FLIGHT_STATUSES,
+			teamIds = scope,
+			categories = IN_FLIGHT_CATEGORIES,
 			assigneeId = assigneeId,
 			// The same cap and the same argument `ProgressService` gives: an uncapped scan
 			// is how one page takes the instance down.
 			limit = WorkloadService.SCAN_LIMIT,
 		)
-		val startedAt = activity.firstEnteredAt(inFlight.map { it.id }, IN_FLIGHT_WIRE)
+		val startedAt = activity.firstEnteredAt(inFlight.map { it.id }, inFlightKeys(scope))
 		val ages = inFlight.mapNotNull { ticket ->
 			startedAt[ticket.id]?.let { elapsedHours(it, now) }?.takeIf { it >= 0 }
 		}
@@ -263,20 +265,31 @@ class CycleTimeService(
 		return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2
 	}
 
+	/**
+	 * The words this scope's teams use for work in flight — for `activity`, which stores
+	 * the word and not its meaning.
+	 *
+	 * The one place `KAN-90` cannot filter by category: `payload ->> 'to'` is the status
+	 * key somebody moved a ticket *to*, written when they moved it, and a status removed
+	 * since then no longer has a catalogue row to join. So the filter is a union of the
+	 * scope's teams' started keys, and that union is exact for the question asked — a
+	 * ticket's own activity rows can only name its own team's words — unless two teams in
+	 * one scope have invented the same word for different meanings.
+	 */
+	private fun inFlightKeys(scope: Collection<UUID>): List<String> =
+		statusCategories.keysMeaning(scope, IN_FLIGHT_CATEGORIES)
+
 	companion object {
 		/**
 		 * In flight means somebody is holding it, which is [StatusCategory.STARTED] — the
 		 * same reading `DefaultStatus.category` gives for putting `in_review` here, and the
 		 * same reason: a reviewer is work in flight.
 		 *
-		 * Off the category rather than spelled as two names, so this follows the vocabulary
-		 * without anybody remembering the line is here. `WorkloadService.OPEN_STATUSES` is
-		 * deliberately wider — a `todo` ticket is a load somebody will pick up, and it is
-		 * not yet work in progress.
+		 * The category itself since `KAN-90`, rather than the statuses that have it, so
+		 * this follows a team's own vocabulary without anybody remembering the line is
+		 * here. `WorkloadService.OPEN_CATEGORIES` is deliberately wider — a `todo` ticket
+		 * is a load somebody will pick up, and it is not yet work in progress.
 		 */
-		val IN_FLIGHT_STATUSES = DefaultStatus.entries.filter { it.category == StatusCategory.STARTED }
-
-		/** The same list as the `payload ->> 'to'` filter reads it. */
-		val IN_FLIGHT_WIRE = IN_FLIGHT_STATUSES.map { it.wire }
+		val IN_FLIGHT_CATEGORIES = listOf(StatusCategory.STARTED)
 	}
 }

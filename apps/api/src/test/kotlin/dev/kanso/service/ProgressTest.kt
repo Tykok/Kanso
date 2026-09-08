@@ -247,22 +247,21 @@ class ProgressTest : PostgresTest() {
 	}
 
 	@Test
-	fun `every open status is in the cut, including the ones nothing is in`() {
+	fun `the cut holds the buckets the plate has, and nothing settled`() {
 		val ana = person("Ana")
 		open(8, DefaultStatus.IN_PROGRESS, listOf(ana.id))
 
 		val byStatus = progress.forPerson(ana, team.id).load.byStatus
 
-		assertEquals(
-			WorkloadService.OPEN_STATUSES.toSet(),
-			byStatus.keys,
-			"the legend under the chart has to be the same list every time this page opens," +
-				" not a shape that changes with the plate",
-		)
-		assertEquals(8, byStatus.getValue(DefaultStatus.IN_PROGRESS).points)
-		assertEquals(0, byStatus.getValue(DefaultStatus.BACKLOG).tickets)
+		// This used to assert every open status was present with its zeros, so the chart's
+		// legend was the same list on every page load. `KAN-90` moved that job: "every open
+		// status" has a per-team answer now, and the client already holds it — the team's
+		// own ordered list for one team, `CATEGORY_ORDER` for a wider scope. What the
+		// server owes is the numbers, and it owes them for the buckets it found.
+		assertEquals(setOf("in_progress"), byStatus.keys)
+		assertEquals(8, byStatus.getValue("in_progress").points)
 		assertTrue(
-			byStatus.keys.none { it == DefaultStatus.DONE || it == DefaultStatus.CANCELED },
+			byStatus.keys.none { it == "done" || it == "canceled" },
 			"a settled ticket is not part of a load, and putting it in this cut would make the" +
 				" segments add up to something the days above were not divided from",
 		)

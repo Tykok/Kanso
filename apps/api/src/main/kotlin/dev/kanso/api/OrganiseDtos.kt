@@ -24,7 +24,10 @@ import java.util.UUID
  * its own controller for the same reason.
  *
  * Every status-keyed map is sent with its keys as the wire strings, so the client reads
- * `byStatus.in_progress` and not an index into an order it would have to know.
+ * `byStatus.in_progress` and not an index into an order it would have to know. Since
+ * `KAN-90` those keys are the *team's*, so a map may carry a word Kanso never shipped and
+ * may omit a status holding nothing — the client draws the vocabulary it was given
+ * separately, out of `Team.statuses`.
  */
 
 // --- cycles ---------------------------------------------------------------
@@ -92,7 +95,7 @@ data class CycleReportResponse(
 				percent = report.points.percent,
 				unestimated = report.points.unestimated,
 			),
-			byStatus = report.byStatus.mapKeys { it.key.wire },
+			byStatus = report.byStatus,
 			daysLeft = report.daysLeft,
 			remaining = report.remaining.map {
 				RemainingDayResponse(it.day, it.open, it.openPoints, it.projected)
@@ -252,7 +255,7 @@ data class WorkloadRowResponse(
 			total = row.total,
 			points = row.points,
 			unestimated = row.unestimated,
-			byStatus = row.byStatus.mapKeys { it.key.wire },
+			byStatus = row.byStatus,
 			urgentOverThreeDays = row.urgentOverThreeDays,
 			oldestOpenDays = row.oldestOpenDays,
 		)

@@ -2,6 +2,7 @@ package dev.kanso.repo
 
 import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketDocs
+import dev.kanso.db.TeamStatuses
 import dev.kanso.db.Tickets
 import dev.kanso.db.TrashEntries
 import dev.kanso.db.toTicket
@@ -25,6 +26,16 @@ class TicketRepository(
 	 * over it, and the day a tenth filter lands it lands in one place.
 	 */
 	private val query: TicketQueryRepository,
+	/**
+	 * The catalogue, for the one domain rule [insert] owns — see `completed_at` below.
+	 *
+	 * A repository and not `StatusCategories`, deliberately: that one is a service, and a
+	 * repository reaching up into the service layer to answer a question about its own
+	 * write would invert the layering for one line. What it needs from there is the
+	 * fallback chain, which is `StatusCategories.resolve` — module-internal, and the only
+	 * copy of that chain in the codebase.
+	 */
+	private val teamStatuses: TeamStatusRepository,
 ) {
 
 	/**
@@ -98,6 +109,8 @@ class TicketRepository(
 		teamIds: Collection<UUID>? = null,
 		projectId: UUID? = null,
 		statuses: Collection<DefaultStatus> = emptyList(),
+		/** What the callers asking for a *meaning* pass — see `TicketFilters.categories`. */
+		categories: Collection<StatusCategory> = emptyList(),
 		assigneeId: UUID? = null,
 		includeArchived: Boolean = false,
 		limit: Int = 200,
@@ -106,6 +119,7 @@ class TicketRepository(
 		scope = TicketScope(teamIds = teamIds, includeArchived = includeArchived),
 		filters = TicketFilters(
 			statuses = statuses.toList(),
+			categories = categories.toList(),
 			projectIds = listOfNotNull(projectId),
 			assigneeIds = listOfNotNull(assigneeId),
 		),
@@ -174,7 +188,7 @@ class TicketRepository(
 			// A ticket can be created already done — logging work that is finished is a
 			// normal thing to do. Leaving this null would hide it from the project bounds,
 			// which fall back on completion dates precisely when nobody planned anything.
-			it[Tickets.completedAt] = if (status.category == StatusCategory.COMPLETED) now else null
+			it[Tickets.completedAt] = if (categoryOf(teamId, status) == StatusCategory.COMPLETED) now else null
 			it[Tickets.projectId] = projectId
 			it[archived] = false
 			// `pending` means "queued for Notion", and the badge on every row says so. A
@@ -270,7 +284,21 @@ class TicketRepository(
 	 * breaking the promise `first-session.ts` makes for all four of them.
 	 */
 	fun anyMovedAlong(): Boolean =
-		!Tickets.select(Tickets.id).where { Tickets.status inList MOVED_ALONG_STATUSES }.limit(1).empty()
+		!Tickets.select(Tickets.id)
+			.where {
+				// The categories, through each row's own team — `KAN-90`. Spelled as an
+				// `EXISTS` for the reason `TicketFilters.categories` gives: this question
+				// has no team scope at all, so a list of keys would mean reading every
+				// catalogue in the instance to build an `IN` that grows with the teams.
+				exists(
+					TeamStatuses.selectAll().where {
+						(TeamStatuses.teamId eq Tickets.teamId) and
+							(TeamStatuses.key eq Tickets.status) and
+							(TeamStatuses.category inList MOVED_ALONG_CATEGORIES.map { it.wire })
+					}
+				)
+			}
+			.limit(1).empty()
 
 	/** Archived tickets count: they still need a decision when their team goes away. */
 	fun countByTeams(teamIds: Collection<UUID>, includeArchived: Boolean = true): Int {
@@ -533,6 +561,18 @@ class TicketRepository(
 		Tickets.update({ Tickets.id eq id }) { it[notionLastEditedTime] = lastEdited }
 	}
 
+	/**
+	 * What [status] means for [teamId] — the fallback chain, reached from the repository.
+	 *
+	 * One query, and only on a write: [insert] is a single row, so the N+1 that
+	 * `StatusCategories.of` exists to prevent cannot arise here.
+	 */
+	private fun categoryOf(teamId: UUID?, status: DefaultStatus): StatusCategory =
+		dev.kanso.service.StatusCategories.resolve(
+			teamId?.let { id -> teamStatuses.forTeam(id).associate { it.key to it.category } },
+			status.wire,
+		)
+
 	private companion object {
 		/**
 		 * Neither "we might" nor "we will" — the two categories
@@ -546,8 +586,7 @@ class TicketRepository(
 		 * `canceled` is in here, which reads odd and is right: somebody decided about that
 		 * ticket, and deciding not to do it is the step this asks about having happened.
 		 */
-		val MOVED_ALONG_STATUSES = DefaultStatus.entries
-			.filter { it.category != StatusCategory.BACKLOG && it.category != StatusCategory.UNSTARTED }
-			.map { it.wire }
+		val MOVED_ALONG_CATEGORIES = StatusCategory.entries
+			.filter { it != StatusCategory.BACKLOG && it != StatusCategory.UNSTARTED }
 	}
 }

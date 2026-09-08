@@ -170,13 +170,14 @@ class MyStatsService(
 	private val cycles: CycleRepository,
 	private val teams: TeamRepository,
 	private val details: TicketDetails,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
 	fun forPerson(person: User, now: OffsetDateTime = OffsetDateTime.now()): MyStats {
 		val open = tickets.search(
 			assigneeId = person.id,
-			statuses = WorkloadService.OPEN_STATUSES,
+			categories = WorkloadService.OPEN_CATEGORIES,
 			limit = WorkloadService.SCAN_LIMIT,
 		)
 		val window = weekStarts(now)
@@ -295,7 +296,7 @@ class MyStatsService(
 	 * blocked, and counting both directions would report the person holding the queue up as
 	 * the person stuck in it.
 	 *
-	 * "Unfinished" is `CycleService.FINISHED_STATUSES` inverted, which is the categories
+	 * "Unfinished" is `CycleService.FINISHED_CATEGORIES` inverted, which is the categories
 	 * rather than the names, and includes cancelled among the things that no longer hold
 	 * anybody: a cancelled predecessor is a decision not to do the work, so reading it as a
 	 * block would leave the successor waiting for something nobody will ever finish. The
@@ -314,9 +315,13 @@ class MyStatsService(
 		if (incoming.isEmpty()) return 0
 
 		val upstream = tickets.findAllById(incoming.values.flatten().toSet()).associateBy { it.id }
+		// The predecessors' categories, not the successors': what blocks somebody is the
+		// state of the ticket they are waiting on, resolved against *its* team — which may
+		// not be theirs, since a dependency crosses teams freely.
+		val categories = statusCategories.of(upstream.values)
 		return open.count { ticket ->
 			incoming[ticket.id].orEmpty().any { id ->
-				upstream[id]?.let { it.status !in CycleService.FINISHED_STATUSES } ?: false
+				upstream[id]?.let { categories[it] !in CycleService.FINISHED_CATEGORIES } ?: false
 			}
 		}
 	}
@@ -366,14 +371,16 @@ class MyStatsService(
 	 * fault, which would then be fixable in one place.
 	 */
 	private fun commitment(person: User, cycle: CycleRow, team: Team): MyCommitment? {
-		val counted = cycles.ticketsIn(cycle.id).filter { it.status.category != StatusCategory.CANCELED }
+		val inCycle = cycles.ticketsIn(cycle.id)
+		val categories = statusCategories.of(inCycle)
+		val counted = inCycle.filter { categories[it] != StatusCategory.CANCELED }
 		if (counted.isEmpty()) return null
 
 		val assignees = tickets.assigneeIdsFor(counted.map { it.id })
 		val mine = counted.filter { person.id in assignees[it.id].orEmpty() }
 		if (mine.isEmpty()) return null
 
-		val done = mine.filter { it.status.category == StatusCategory.COMPLETED }
+		val done = mine.filter { categories[it] == StatusCategory.COMPLETED }
 		// Their share, by the rule `VelocityService.delivered` sets: the same 8 halved on
 		// two plates. Unsized tickets contribute nothing and are tallied instead.
 		fun share(ticket: Ticket): Double =

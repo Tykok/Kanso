@@ -43,7 +43,7 @@ data class TicketGroup(val key: String, val count: Int, val tickets: List<Ticket
 class TicketGroups(
 	private val query: TicketQueryRepository,
 	private val details: TicketDetails,
-	private val statuses: TeamStatusRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
@@ -76,10 +76,8 @@ class TicketGroups(
 	 * team's word came back first. `null` team ids is the widest scope of all — every team
 	 * in the instance — and lands in the same branch.
 	 */
-	private fun statusGrouping(scope: TicketScope): StatusGrouping {
-		val single = scope.teamIds?.singleOrNull() ?: return StatusGrouping.byCategory()
-		return StatusGrouping.of(statuses.forTeam(single))
-	}
+	private fun statusGrouping(scope: TicketScope): StatusGrouping =
+		statusCategories.groupingFor(scope.teamIds)
 
 	/**
 	 * Which bucket a row landed in, read back off the row.

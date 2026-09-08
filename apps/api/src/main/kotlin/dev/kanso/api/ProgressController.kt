@@ -78,7 +78,11 @@ data class ProjectLoadResponse(
 
 data class OpenLoadResponse(
 	val load: LoadSliceResponse,
-	/** Keyed by the status wire value, and every open status is present, including zeros. */
+	/**
+	 * Keyed by the bucket this scope groups by — one team's own status keys, or the five
+	 * categories across teams. Only the buckets the plate has: the client draws the rest
+	 * as zeros out of the vocabulary it asked for.
+	 */
 	val byStatus: Map<String, LoadSliceResponse>,
 	val byProject: List<ProjectLoadResponse>,
 	/** Points divided by the pace in force. Null — never `0` — when there is no pace. */
@@ -87,9 +91,7 @@ data class OpenLoadResponse(
 	companion object {
 		fun of(load: OpenLoad) = OpenLoadResponse(
 			load = LoadSliceResponse.of(load.load),
-			byStatus = load.byStatus
-				.mapKeys { it.key.wire }
-				.mapValues { LoadSliceResponse.of(it.value) },
+			byStatus = load.byStatus.mapValues { LoadSliceResponse.of(it.value) },
 			byProject = load.byProject.map(ProjectLoadResponse::of),
 			workingDays = load.workingDays,
 		)

@@ -94,6 +94,7 @@ class TimelineService(
 	private val teams: TeamRepository,
 	private val dependencies: DependencyRepository,
 	private val access: TicketAccess,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
@@ -170,8 +171,12 @@ class TimelineService(
 		// reaches a component, so it gets no slack rather than a wrong one.
 		val nodes = (graphTickets + drawn).distinctBy { it.id }
 		val byId = nodes.associateBy { it.id }
-		val slack = CriticalPath.slack(nodes.map(::toNode), edges, deadlines)
-		val broken = brokenEdges(byId, edges)
+		// One read for every team on the timeline, beside the one that resolves their keys
+		// below: a Gantt filtered on a parent team draws several vocabularies at once, and
+		// "is this bar done" is a question about each row's own team.
+		val categories = statusCategories.of(nodes)
+		val slack = CriticalPath.slack(nodes.map { toNode(it, categories) }, edges, deadlines)
+		val broken = brokenEdges(byId, edges, categories)
 
 		// One query for every team on screen rather than one per row — the scope crosses
 		// teams whenever the filter is a parent team, and a context row prints the key of
@@ -236,7 +241,7 @@ class TimelineService(
 	 * never examines that edge at all. This reports what is broken *now*, including
 	 * breakage that predates every request.
 	 */
-	private fun brokenEdges(byId: Map<UUID, Ticket>, edges: List<Edge>): Map<Edge, Boolean> =
+	private fun brokenEdges(byId: Map<UUID, Ticket>, edges: List<Edge>, categories: Categories): Map<Edge, Boolean> =
 		edges.mapNotNull { edge ->
 			val predecessorEnd = byId[edge.predecessorId]?.let { it.due?.at ?: it.start?.at }
 			val successor = byId[edge.successorId]
@@ -244,7 +249,7 @@ class TimelineService(
 			if (predecessorEnd == null || successorStart == null) return@mapNotNull null
 			if (!successorStart.isBefore(predecessorEnd)) return@mapNotNull null
 			// The value is "is this one the cascade cannot repair".
-			edge to (successor.status.category == StatusCategory.COMPLETED)
+			edge to (categories[successor] == StatusCategory.COMPLETED)
 		}.toMap()
 
 	/**
@@ -306,11 +311,11 @@ class TimelineService(
 		}
 	}
 
-	private fun toNode(ticket: Ticket) = Node(
+	private fun toNode(ticket: Ticket, categories: Categories) = Node(
 		id = ticket.id,
 		start = ticket.start?.at,
 		end = ticket.due?.at,
-		done = ticket.status.category == StatusCategory.COMPLETED,
+		done = categories[ticket] == StatusCategory.COMPLETED,
 	)
 
 	private companion object {

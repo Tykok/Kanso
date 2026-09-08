@@ -37,6 +37,7 @@ class ScheduleService(
 	private val outbox: OutboundJobRepository,
 	private val events: EventPublisher,
 	private val access: TicketAccess,
+	private val statusCategories: StatusCategories,
 ) {
 
 	/**
@@ -54,7 +55,10 @@ class ScheduleService(
 		val edges = dependencies.edgesTouching(componentIds)
 		val loaded = tickets.findAllById(componentIds).associateBy { it.id }
 
-		val result = Cascade.apply(loaded.values.map(::toNode), edges, changedId)
+		// The whole component in one read: a dependency chain crosses teams freely, so
+		// "is this one done" is a question about each ticket's own team's catalogue.
+		val categories = statusCategories.of(loaded.values)
+		val result = Cascade.apply(loaded.values.map { toNode(it, categories) }, edges, changedId)
 		for (placement in result.moved) {
 			// Only the bounds the ticket already had. A milestone carries one of the two
 			// on purpose — a deadline with no start is a normal shape — and writing both
@@ -173,10 +177,10 @@ class ScheduleService(
 		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, successor.id, successor.teamId, successor.projectId))
 	}
 
-	private fun toNode(ticket: Ticket) = Node(
+	private fun toNode(ticket: Ticket, categories: Categories) = Node(
 		id = ticket.id,
 		start = ticket.start?.at,
 		end = ticket.due?.at,
-		done = ticket.status.category == StatusCategory.COMPLETED,
+		done = categories[ticket] == StatusCategory.COMPLETED,
 	)
 }

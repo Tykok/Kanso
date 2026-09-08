@@ -15,6 +15,7 @@ import java.time.LocalDate
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -100,8 +101,13 @@ class CycleReportTest : PostgresTest() {
 		val report = cycles.report(cycle.id, today)
 
 		assertEquals(3, report.byStatus.values.sum(), "a breakdown that does not sum to the total explains nothing")
-		assertEquals(1, report.byStatus[DefaultStatus.IN_PROGRESS])
-		assertEquals(0, report.byStatus[DefaultStatus.BACKLOG], "every status is named, including the empty ones")
+		assertEquals(1, report.byStatus["in_progress"])
+		// Absent rather than zero, since `KAN-90`. The map is counted from the tickets the
+		// cycle holds, because "every status" is a question with a per-team answer and a
+		// map built from Kanso's six would have silently dropped a team's seventh. The
+		// client draws the empty segments from the vocabulary it asked for — `Team.statuses`
+		// here, which is one team's own ordered list.
+		assertNull(report.byStatus["backlog"], "the map holds what the cycle holds, not a fixed vocabulary")
 	}
 
 	@Test

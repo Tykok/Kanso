@@ -117,6 +117,32 @@ class StatusCategoriesTest : PostgresTest() {
 		assertEquals(listOf("done"), categories.keysMeaning(team.id, StatusCategory.COMPLETED))
 	}
 
+	@Test
+	fun `keysMeaning over several teams names every word any of them uses`() {
+		val actor = owner()
+		val one = team(actor)
+		val other = team(actor)
+		add(one.id, "Devis", StatusCategory.BACKLOG, 6)
+		add(other.id, "Qualifié", StatusCategory.UNSTARTED, 6)
+
+		val open = categories.keysMeaning(
+			listOf(one.id, other.id),
+			listOf(StatusCategory.BACKLOG, StatusCategory.UNSTARTED),
+		)
+
+		// Distinct across the teams — both were seeded with `backlog` and `todo`, and a
+		// legend listing either of them twice would draw two segments for one meaning.
+		assertEquals(listOf("backlog", "devis", "qualifie", "todo"), open.sorted())
+	}
+
+	@Test
+	fun `keysMeaning over no teams names nothing, without reading anything`() {
+		// The scope of a screen whose team has no descendants and no rows. An empty list
+		// rather than every key in the instance: `forTeams` already answers that way, and
+		// a legend built from every team's words would be a disclosure.
+		assertEquals(emptyList(), categories.keysMeaning(emptyList(), listOf(StatusCategory.BACKLOG)))
+	}
+
 	/**
 	 * What `of` is for: two teams and a draft resolved from one read of the catalogue.
 	 *

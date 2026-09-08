@@ -1,6 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.StatusCategory
+import dev.kanso.domain.StatusGrouping
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.DefaultStatus
@@ -38,7 +39,30 @@ data class WorkloadRow(
 	val points: Int,
 	/** How many of [total] carry no estimate — what [points] cannot speak for. */
 	val unestimated: Int,
-	val byStatus: Map<DefaultStatus, Int>,
+	/**
+	 * Counted into the buckets this scope groups by — `KAN-90`, through `StatusGrouping`.
+	 *
+	 * One team's scope keys this by that team's own status keys. A scope holding a parent
+	 * and its descendants keys it by the five categories, and it has to: two teams may
+	 * both call a status `review` and declare it in different categories, so a map keyed
+	 * by the bare word would add two meanings into one number. Bucketing here rather than
+	 * in the client is what makes that impossible to get wrong — and it is the same rule,
+	 * from the same `StatusGrouping`, that the grouped list already uses.
+	 *
+	 * Counted from the tickets carried, so a bucket holding nothing is absent rather than
+	 * zero. The client draws the vocabulary it knows it asked for: `Team.statuses` for one
+	 * team, `CATEGORY_ORDER` for a wider scope.
+	 */
+	val byStatus: Map<String, Int>,
+	/**
+	 * How much of [total] is actually in flight — the STARTED category, resolved here.
+	 *
+	 * A field rather than a sum the reader takes over [byStatus], because for a single
+	 * team that map is keyed by words and no reader outside this service can turn a word
+	 * into a meaning without a second read. `TeamWorkloadTool` prints it as its own
+	 * column, and its docstring is where the open-versus-started argument lives.
+	 */
+	val started: Int,
 	/** What the sentence under the chart is about. Strictly more than three, not at least. */
 	val urgentOverThreeDays: Int,
 	val oldestOpenDays: Int,
@@ -60,6 +84,7 @@ class WorkloadService(
 	private val cycles: CycleRepository,
 	private val teams: TeamRepository,
 	private val users: UserRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	/**
@@ -71,9 +96,14 @@ class WorkloadService(
 	fun forTeam(teamId: UUID, cycleId: UUID? = null, now: OffsetDateTime = OffsetDateTime.now()): Workload {
 		val teamIds = teams.descendantIds(teamId)
 		val open = if (cycleId == null) {
-			tickets.search(teamIds = teamIds, statuses = OPEN_STATUSES, limit = SCAN_LIMIT)
+			tickets.search(teamIds = teamIds, categories = OPEN_CATEGORIES, limit = SCAN_LIMIT)
 		} else {
-			cycles.ticketsIn(cycleId).filter { it.status in OPEN_STATUSES && !it.archived }
+			// In memory rather than in SQL, because `ticketsIn` is a membership read and
+			// not a predicate. One catalogue read for the cycle's teams, same answer.
+			cycles.ticketsIn(cycleId).let { inCycle ->
+				val categories = statusCategories.of(inCycle)
+				inCycle.filter { categories[it] in OPEN_CATEGORIES && !it.archived }
+			}
 		}
 		if (open.isEmpty()) return Workload(cycleId, emptyList())
 
@@ -89,7 +119,14 @@ class WorkloadService(
 		}
 
 		val people = users.findAllById(byPerson.keys.filterNotNull()).associateBy { it.id }
-		val rows = byPerson.map { (userId, carried) -> row(people[userId], carried, now) }
+		// Both read once for the whole screen: the grouping is a catalogue read per scope,
+		// and `Categories` a catalogue read per team holding a row. A person's row asking
+		// for either would be a query per plate.
+		val grouping = statusCategories.groupingFor(teamIds)
+		val categories = statusCategories.of(open)
+		val rows = byPerson.map { (userId, carried) ->
+			row(people[userId], carried, now, grouping, categories)
+		}
 
 		return Workload(
 			cycleId = cycleId,
@@ -103,12 +140,21 @@ class WorkloadService(
 		)
 	}
 
-	private fun row(person: User?, carried: List<Ticket>, now: OffsetDateTime) = WorkloadRow(
+	private fun row(
+		person: User?,
+		carried: List<Ticket>,
+		now: OffsetDateTime,
+		grouping: StatusGrouping,
+		categories: Categories,
+	) = WorkloadRow(
 		person = person,
 		total = carried.size,
 		points = carried.sumOf { it.estimate ?: 0 },
 		unestimated = carried.count { it.estimate == null },
-		byStatus = OPEN_STATUSES.associateWith { status -> carried.count { it.status == status } },
+		byStatus = carried
+			.groupingBy { grouping.bucketOf[it.status.wire] ?: it.status.wire }
+			.eachCount(),
+		started = carried.count { categories[it] == StatusCategory.STARTED },
 		urgentOverThreeDays = carried.count {
 			it.priority == TicketPriority.URGENT && daysOpen(it, now) > 3
 		},
@@ -125,9 +171,16 @@ class WorkloadService(
 		ChronoUnit.DAYS.between(ticket.createdAt, now).toInt().coerceAtLeast(0)
 
 	companion object {
-		/** Open means not settled: neither category that ends a ticket is in here. */
-		val OPEN_STATUSES = DefaultStatus.entries.filter {
-			it.category != StatusCategory.COMPLETED && it.category != StatusCategory.CANCELED
+		/**
+		 * Open means not settled: neither category that ends a ticket is in here.
+		 *
+		 * The categories themselves since `KAN-90`, not the statuses that have them. This
+		 * constant is read by four screens over scopes that span teams — a parent team and
+		 * every descendant, or one person's work across every team they are in — and no
+		 * single team's keys can say what any of them mean.
+		 */
+		val OPEN_CATEGORIES = StatusCategory.entries.filter {
+			it != StatusCategory.COMPLETED && it != StatusCategory.CANCELED
 		}
 
 		/**

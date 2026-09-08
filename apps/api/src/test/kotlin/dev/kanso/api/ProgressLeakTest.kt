@@ -220,7 +220,9 @@ class ProgressLeakTest : MockMvcTest() {
 			// `Infinity`, neither of which a status assertion would catch.
 			jsonPath("$.velocity.source") { value("none") }
 			jsonPath("$.load.workingDays") { doesNotExist() }
-			jsonPath("$.load.byStatus.todo.tickets") { value(0) }
+			// Empty for an empty plate, since `KAN-90` — see `OwnProgressTest` for where
+			// the legend went and why the page still draws.
+			jsonPath("$.load.byStatus.length()") { value(0) }
 		}
 	}
 

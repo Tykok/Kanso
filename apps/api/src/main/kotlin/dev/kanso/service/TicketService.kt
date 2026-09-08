@@ -192,6 +192,7 @@ class TicketService(
 	 * nowhere else.
 	 */
 	private val notifications: NotificationService,
+	private val statusCategories: StatusCategories,
 	/**
 	 * The repository, not `TrashService`: that one is built out of [TrashSource] beans and
 	 * one of them is built out of this service, so depending on it here would close a
@@ -628,9 +629,16 @@ class TicketService(
 		// logic that owns it, and a trigger would be the only part of the transition
 		// invisible from this file.
 		val status = patch.status ?: current.status
-		val completed = status.category == StatusCategory.COMPLETED
+		// Resolved against the team the ticket *ends up in*, and the old one against the
+		// team it is leaving — `KAN-90`. A move across teams is also a status change, and
+		// asking one catalogue about both words would read the destination's meaning for a
+		// status the source team defined, which is how `completed_at` gets cleared on a
+		// ticket nobody reopened.
+		val completed = statusCategories.categoryOf(teamId, status.wire) == StatusCategory.COMPLETED
+		val wasCompleted =
+			statusCategories.categoryOf(current.teamId, current.status.wire) == StatusCategory.COMPLETED
 		val completedAt = when {
-			completed && current.status.category != StatusCategory.COMPLETED -> OffsetDateTime.now()
+			completed && !wasCompleted -> OffsetDateTime.now()
 			!completed -> null
 			else -> current.completedAt
 		}

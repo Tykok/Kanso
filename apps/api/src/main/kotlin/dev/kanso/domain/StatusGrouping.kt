@@ -37,13 +37,28 @@ data class StatusGrouping(
 		/**
 		 * A scope spanning teams: the five categories, in `StatusOrder.CATEGORY_ORDER`.
 		 *
-		 * Built from [DefaultStatus] rather than from the teams' catalogues, and that is
-		 * exact rather than approximate *while the six keys are fixed* — which is the whole
-		 * of `KAN-28`. `KAN-90` lets a team define a seventh, and this becomes a read of
-		 * every catalogue in scope; the shape it produces does not change.
+		 * [catalogues] is every status row of every team in scope, and reading it is what
+		 * `KAN-28` said `KAN-90` would have to do here — the shape it produces has not
+		 * changed. Built from `DefaultStatus` it was exact only while the six keys were
+		 * fixed; a team's seventh word would have had no bucket, so its rows would have
+		 * grouped under no header and the page's counts would not have matched its rows.
+		 *
+		 * **Two teams may declare one key in two categories** — `statusKeyOf("Review")` is
+		 * `review` for both, and one may call it started while the other calls it
+		 * unstarted. `bucketOf` is keyed by the word alone, so it cannot hold both, and the
+		 * first catalogue read wins. That is a real narrowing and it is the honest one
+		 * available at this shape: the alternative is a per-team bucket map, which would
+		 * make the header of a cross-team page depend on which team a row came from —
+		 * which is precisely the thing categories exist to avoid. The six are seeded
+		 * identically in every team, so the collision needs two teams to have invented the
+		 * same word for different meanings.
+		 *
+		 * The default is folded in for a key no catalogue in scope declares: a row read
+		 * through a path nobody has written yet groups as unstarted rather than vanishing.
 		 */
-		fun byCategory(): StatusGrouping = StatusGrouping(
-			bucketOf = DefaultStatus.entries.associate { it.wire to it.category.wire },
+		fun byCategory(catalogues: Collection<TeamStatus>): StatusGrouping = StatusGrouping(
+			bucketOf = DefaultStatus.entries.associate { it.wire to it.category.wire } +
+				catalogues.associate { it.key to it.category.wire },
 			rankOf = StatusOrder.CATEGORY_ORDER.associate { it.wire to StatusOrder.rankOfCategory(it) },
 		)
 

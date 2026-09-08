@@ -1,6 +1,7 @@
 package dev.kanso.domain
 
 import dev.kanso.service.CycleService
+import dev.kanso.service.CycleTimeService
 import dev.kanso.service.WorkloadService
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,32 +38,42 @@ class StatusCategoryTest {
 	}
 
 	/**
-	 * The two lists this refactor rewrote, pinned against the literals they held before
-	 * it. They are what the burndown and the workload chart plot, so a category that
-	 * quietly admits or drops a status changes a drawing, and the point of the ticket was
-	 * that nothing on screen moves. (The roadmap's own list is private to it and stays
-	 * pinned by `PublicRoadmapTest`, which asserts the columns themselves.)
+	 * The lists this refactor rewrote, pinned against what they meant before it.
+	 *
+	 * They used to be lists of statuses, derived from the categories and asserted against
+	 * the literals they had replaced. `KAN-90` turned them into the categories themselves,
+	 * because a list of Kanso's own six statuses cannot say what a team's seventh means —
+	 * so what is pinned now is the set of meanings, and `StatusCategoryTest` above already
+	 * pins which of the six falls in each. Together those two still say exactly which
+	 * seeded statuses the burndown and the workload chart plot, which is what this test
+	 * was for: nothing on screen moves for a team that invented nothing.
+	 *
+	 * (The roadmap's own list is private to it and stays pinned by `PublicRoadmapTest`,
+	 * which asserts the columns themselves.)
 	 */
 	@Test
-	fun `the derived lists still hold exactly what they were written out as`() {
+	fun `the derived lists still mean exactly what they were written out as`() {
+		// Everything but a decision not to do the work.
 		assertEquals(
 			listOf(
-				DefaultStatus.BACKLOG,
-				DefaultStatus.TODO,
-				DefaultStatus.IN_PROGRESS,
-				DefaultStatus.IN_REVIEW,
-				DefaultStatus.DONE,
+				StatusCategory.BACKLOG,
+				StatusCategory.UNSTARTED,
+				StatusCategory.STARTED,
+				StatusCategory.COMPLETED,
 			),
-			CycleService.COUNTED_STATUSES,
+			StatusCategory.entries.filter { it != StatusCategory.CANCELED },
 		)
+		// Not settled either way — the charge somebody is answerable for.
 		assertEquals(
-			listOf(
-				DefaultStatus.BACKLOG,
-				DefaultStatus.TODO,
-				DefaultStatus.IN_PROGRESS,
-				DefaultStatus.IN_REVIEW,
-			),
-			WorkloadService.OPEN_STATUSES,
+			listOf(StatusCategory.BACKLOG, StatusCategory.UNSTARTED, StatusCategory.STARTED),
+			WorkloadService.OPEN_CATEGORIES,
+		)
+		// In flight, which is narrower than open: `todo` is a load, not work in progress.
+		assertEquals(listOf(StatusCategory.STARTED), CycleTimeService.IN_FLIGHT_CATEGORIES)
+		// Somebody has decided about it, whichever way — the rollover's rule.
+		assertEquals(
+			setOf(StatusCategory.COMPLETED, StatusCategory.CANCELED),
+			CycleService.FINISHED_CATEGORIES,
 		)
 	}
 }

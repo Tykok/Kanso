@@ -3,7 +3,6 @@ package dev.kanso.service
 import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.StatusCategory
-import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
@@ -78,7 +77,17 @@ data class CycleReport(
 	 * and [CyclePoints.unestimated] is what says which of the two to believe.
 	 */
 	val points: CyclePoints,
-	val byStatus: Map<DefaultStatus, Int>,
+	/**
+	 * Keyed by the team's own status keys, and counted from the tickets the cycle holds.
+	 *
+	 * Not `associateWith` over a fixed vocabulary — `KAN-90`. A map that could only hold
+	 * the six would have dropped a team's seventh status out of the bar with no sound: the
+	 * count would be right, the drawing would be short, and no test could see it. The
+	 * consequence is that a status holding nothing is absent rather than zero, which is
+	 * why the client supplies the vocabulary it draws — `Team.statuses` for one team,
+	 * `CATEGORY_ORDER` across teams.
+	 */
+	val byStatus: Map<String, Int>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDay>,
 	val slipping: List<TicketDetail>,
@@ -88,10 +97,11 @@ data class CycleReport(
 /**
  * Cycles: what a team committed to, and how much of it is going to happen.
  *
- * The five statuses the drawing plots are the whole vocabulary here — `canceled` is
- * excluded from every number. A cancelled ticket is a decision not to do the work, so
- * leaving it in the denominator would make a cycle that cut its own scope look failed,
- * and leaving it in the burn-down would draw a line that can never reach zero.
+ * The CANCELED category is excluded from every number, and it is the *category* that is
+ * excluded rather than the word `canceled` — `KAN-90`. A cancelled ticket is a decision
+ * not to do the work, so leaving it in the denominator would make a cycle that cut its own
+ * scope look failed, and leaving it in the burn-down would draw a line that can never
+ * reach zero. A team that calls that decision `Abandonné` gets the same arithmetic.
  */
 @Service
 class CycleService(
@@ -100,6 +110,7 @@ class CycleService(
 	private val details: TicketDetails,
 	private val access: TicketAccess,
 	private val activity: ActivityService,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
@@ -224,19 +235,27 @@ class CycleService(
 	@Transactional(readOnly = true)
 	fun report(cycleId: UUID, today: LocalDate = LocalDate.now()): CycleReport {
 		val cycle = require(cycleId).toDomain()
-		val counted = cycles.ticketsIn(cycleId).filter { it.status.category != StatusCategory.CANCELED }
+		val inCycle = cycles.ticketsIn(cycleId)
+		// One read of the catalogue for every team the cycle's rows are in, then every
+		// question below asked of it — `StatusCategories`. A lookup per ticket here is an
+		// N+1 on the burndown, which is the screen that holds the most rows.
+		val categories = statusCategories.of(inCycle)
+		val counted = inCycle.filter { categories[it] != StatusCategory.CANCELED }
 		val loaded = details.of(counted)
 
-		val byStatus = COUNTED_STATUSES.associateWith { status -> counted.count { it.status == status } }
+		val byStatus = counted.groupingBy { it.status.wire }.eachCount()
 		val total = counted.size
-		val done = counted.count { it.status.category == StatusCategory.COMPLETED }
-		val open = loaded.filter { it.ticket.status.category != StatusCategory.COMPLETED }
+		val done = counted.count { categories[it] == StatusCategory.COMPLETED }
+		val open = loaded.filter { categories[it.ticket] != StatusCategory.COMPLETED }
 
 		// Summed, never counted as zero: a ticket nobody has sized is missing from both
 		// halves of this and present in `unestimated` instead, which is the only honest way
 		// to report a fraction whose numerator and denominator are both incomplete.
 		val totalPoints = counted.sumOf { it.estimate ?: 0 }
-		val donePoints = counted.filter { it.status == DefaultStatus.DONE }.sumOf { it.estimate ?: 0 }
+		// The COMPLETED category, not `DefaultStatus.DONE` — `KAN-90`. A team whose
+		// finished status is called `Livré` delivers points too, and reading the word here
+		// would have reported zero delivered for it while `done` above counted correctly.
+		val donePoints = counted.filter { categories[it] == StatusCategory.COMPLETED }.sumOf { it.estimate ?: 0 }
 
 		val daysLeft = ChronoUnit.DAYS.between(today, cycle.endsOn).toInt().coerceAtLeast(0)
 		// Inclusive of today: a cycle on its first day has measured one day, not zero, and
@@ -261,7 +280,7 @@ class CycleService(
 			),
 			byStatus = byStatus,
 			daysLeft = daysLeft,
-			remaining = burnDown(cycle, counted, today, rate, pointsRate),
+			remaining = burnDown(cycle, counted, categories, today, rate, pointsRate),
 			slipping = slipping(open, rate, daysLeft),
 			tickets = loaded,
 		)
@@ -289,7 +308,9 @@ class CycleService(
 	 * apply. It is the same act either way — the tickets are the cycle's contents.
 	 */
 	private fun carryOver(actor: User, closing: CycleRow) {
-		val unfinished = cycles.ticketsIn(closing.id).filterNot { it.status in FINISHED_STATUSES }
+		val inCycle = cycles.ticketsIn(closing.id)
+		val categories = statusCategories.of(inCycle)
+		val unfinished = inCycle.filterNot { categories[it] in FINISHED_CATEGORIES }
 		// Before the destination is resolved, so a cycle that finished everything closes
 		// without an empty cycle 25 appearing beside the plan the team actually made.
 		if (unfinished.isEmpty()) return
@@ -350,6 +371,7 @@ class CycleService(
 	private fun burnDown(
 		cycle: Cycle,
 		counted: List<dev.kanso.domain.Ticket>,
+		categories: Categories,
 		today: LocalDate,
 		rate: Double?,
 		pointsRate: Double?,
@@ -357,11 +379,11 @@ class CycleService(
 		val days = generateSequence(cycle.startsOn) { it.plusDays(1) }
 			.takeWhile { !it.isAfter(cycle.endsOn) }
 			.toList()
-		val rows = descent(days, counted, today, rate) { 1 }
+		val rows = descent(days, counted, categories, today, rate) { 1 }
 		// An unsized ticket weighs nothing here, and is reported by `CyclePoints.unestimated`
 		// instead: giving it a 1, or the median of the scale, would be inventing the very
 		// number somebody declined to give.
-		val points = descent(days, counted, today, pointsRate) { it.estimate ?: 0 }
+		val points = descent(days, counted, categories, today, pointsRate) { it.estimate ?: 0 }
 		return days.mapIndexed { index, day ->
 			RemainingDay(day, rows[index], points[index], projected = day.isAfter(today))
 		}
@@ -376,13 +398,14 @@ class CycleService(
 	private fun descent(
 		days: List<LocalDate>,
 		counted: List<dev.kanso.domain.Ticket>,
+		categories: Categories,
 		today: LocalDate,
 		rate: Double?,
 		weight: (dev.kanso.domain.Ticket) -> Int,
 	): List<Int> {
 		val total = counted.sumOf(weight)
 		val closed = counted.mapNotNull { ticket -> ticket.completedAt?.let { it.toLocalDate() to weight(ticket) } }
-		val openNow = counted.filter { it.status != DefaultStatus.DONE }.sumOf(weight)
+		val openNow = counted.filter { categories[it] != StatusCategory.COMPLETED }.sumOf(weight)
 		val floorAt = slipCount(openNow, rate, ChronoUnit.DAYS.between(today, days.last()).toInt())
 		return days.map { day ->
 			if (!day.isAfter(today)) {
@@ -447,16 +470,11 @@ class CycleService(
 		 * decided against. Everything else is unfinished, backlog included — a ticket
 		 * nobody started is still a commitment nobody has withdrawn.
 		 *
-		 * Read off the category rather than spelled as two names: "finished" is a meaning,
-		 * and the day a seventh status means it, the rollover has to stop carrying it
-		 * without anybody remembering this line exists.
+		 * Two categories rather than a set of statuses — `KAN-90`. "Finished" is a
+		 * meaning, and the day a team invents a seventh status that means it, the rollover
+		 * stops carrying that one without anybody remembering this line exists. A set of
+		 * keys could only ever have listed Kanso's own two.
 		 */
-		val FINISHED_STATUSES = DefaultStatus.entries
-			.filterTo(mutableSetOf()) {
-				it.category == StatusCategory.COMPLETED || it.category == StatusCategory.CANCELED
-			}
-
-		/** What the drawing plots. `canceled` is not work, so it is not counted. */
-		val COUNTED_STATUSES = DefaultStatus.entries.filter { it.category != StatusCategory.CANCELED }
+		val FINISHED_CATEGORIES = setOf(StatusCategory.COMPLETED, StatusCategory.CANCELED)
 	}
 }
