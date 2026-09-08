@@ -20,7 +20,7 @@ import java.time.OffsetDateTime
 data class RoadmapEntryResponse(
 	val key: String,
 	val title: String,
-	/** The application's own wire value: `backlog`, `todo`, `in_progress`, … */
+	/** The owning team's own status key — `backlog`, `todo`, or a word it invented. */
 	val status: String,
 	val votes: Int,
 	val deliveredAt: OffsetDateTime?,
@@ -29,17 +29,26 @@ data class RoadmapEntryResponse(
 		fun of(entry: RoadmapEntry) = RoadmapEntryResponse(
 			key = entry.identifier,
 			title = entry.title,
-			status = entry.status.wire,
+			status = entry.status,
 			votes = entry.votes,
 			deliveredAt = entry.completedAt,
 		)
 	}
 }
 
+/**
+ * A column, named by the **category** it groups — `KAN-90`. `backlog`, `unstarted`,
+ * `started`, `completed`.
+ *
+ * The field is still called `status` on the wire and its values changed underneath it,
+ * which is the honest trade: a public page holding several teams' vocabularies has no
+ * other header available, and `RoadmapGroup`'s docstring is where the argument lives.
+ * Each ticket under the column still carries its own team's word.
+ */
 data class RoadmapGroupResponse(val status: String, val count: Int, val tickets: List<RoadmapEntryResponse>) {
 	companion object {
 		fun of(group: RoadmapGroup) = RoadmapGroupResponse(
-			status = group.status.wire,
+			status = group.category.wire,
 			count = group.count,
 			tickets = group.tickets.map(RoadmapEntryResponse::of),
 		)
@@ -85,7 +94,7 @@ data class ContributorResponse(
 			key = page.identifier,
 			title = page.title,
 			explanation = page.explanation,
-			status = page.status.wire,
+			status = page.status,
 			votes = page.votes,
 			unclaimed = page.unclaimed,
 			labels = page.labels,

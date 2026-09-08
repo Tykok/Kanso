@@ -99,7 +99,7 @@ class TicketFieldListCostTest : PostgresTest() {
 		repeat(TICKETS) { index ->
 			val ticket = tickets.create(
 				actor = admin, teamId = team.id, title = "Work $index", description = null,
-				status = DefaultStatus.TODO, priority = TicketPriority.NONE,
+				status = "todo", priority = TicketPriority.NONE,
 				start = null, due = null, projectId = null,
 				assigneeIds = emptyList(), docIds = emptyList(),
 			).ticket
@@ -154,7 +154,7 @@ class TicketFieldListCostTest : PostgresTest() {
 		val ids = (1..TICKETS).map { index ->
 			tickets.create(
 				actor = admin, teamId = team.id, title = "Work $index", description = null,
-				status = DefaultStatus.TODO, priority = TicketPriority.NONE,
+				status = "todo", priority = TicketPriority.NONE,
 				start = null, due = null, projectId = null,
 				assigneeIds = emptyList(), docIds = emptyList(),
 			).ticket.id
@@ -197,7 +197,7 @@ class TicketFieldListCostTest : PostgresTest() {
 		repeat(TICKETS) { index ->
 			val ticket = tickets.create(
 				actor = admin, teamId = team.id, title = "Work $index", description = null,
-				status = if (index % 2 == 0) DefaultStatus.TODO else DefaultStatus.IN_PROGRESS,
+				status = if (index % 2 == 0) "todo" else "in_progress",
 				priority = TicketPriority.NONE,
 				start = null, due = null, projectId = null,
 				assigneeIds = emptyList(), docIds = emptyList(),

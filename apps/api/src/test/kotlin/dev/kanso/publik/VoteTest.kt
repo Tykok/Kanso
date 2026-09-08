@@ -50,7 +50,7 @@ class VoteTest : PostgresTest() {
 			teamId = team.id,
 			title = "Read-only public API",
 			description = null,
-			status = DefaultStatus.BACKLOG,
+			status = "backlog",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

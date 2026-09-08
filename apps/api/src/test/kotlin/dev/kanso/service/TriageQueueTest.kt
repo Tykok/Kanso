@@ -51,7 +51,7 @@ class TriageQueueTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -146,7 +146,7 @@ class TriageQueueTest : PostgresTest() {
 
 		triage.decide(admin, incoming, TriageDecision.BACKLOGGED, null)
 
-		assertEquals(DefaultStatus.BACKLOG, tickets.get(incoming).ticket.status)
+		assertEquals("backlog", tickets.get(incoming).ticket.status)
 	}
 
 	@Test

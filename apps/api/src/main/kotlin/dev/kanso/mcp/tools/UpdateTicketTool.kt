@@ -73,7 +73,7 @@ class UpdateTicketTool(
 
 	override val inputSchema = objectSchema(
 		"ticket" to stringField("The ticket identifier, e.g. `KAN-142`."),
-		"status" to stringField("The status to move it to.", STATUSES),
+		"status" to stringField("The status to move it to — a status key of this ticket's team. The six every team starts with are $SEEDED_STATUSES, and a team may rename or replace any of them; a key the team does not have is refused with the list of the ones it does."),
 		"assignees" to stringsField("Who should hold it, by email or by user id. Replaces the current list."),
 		// Untyped, because the shape depends on the team's own definitions and a schema
 		// cannot name them: `properties` here would have to be generated per team, and the
@@ -89,7 +89,9 @@ class UpdateTicketTool(
 		val args = McpArguments(name, arguments)
 		args.refuseUnknown("ticket", "status", "assignees", "labels", "fields")
 
-		val status = args.string("status")?.let(DefaultStatus::from)
+		// Unparsed — `TicketService.patch` checks it against this ticket's own team,
+		// which is the only side that knows the team's words.
+		val status = args.string("status")
 		val assignees = args.strings("assignees")
 		val wornLabels = args.strings("labels")
 		val fields = args.map("fields")
@@ -119,7 +121,7 @@ class UpdateTicketTool(
 			patch = TicketPatch(status = status, assigneeIds = assignees?.let(people::resolve)),
 		)
 
-		val moved = status?.let { "status ${before.ticket.status.wire} → ${it.wire}" }
+		val moved = status?.let { "status ${before.ticket.status} → $it" }
 		val handed = assignees?.let {
 			"assignees ${people.emailsOf(after.assigneeIds).values.joinToString().ifEmpty { "nobody" }}"
 		}
@@ -196,6 +198,26 @@ class UpdateTicketTool(
 	}
 
 	private companion object {
-		val STATUSES = DefaultStatus.entries.map { it.wire }
+		/**
+		 * The words a team is *seeded* with, named in a description and never as an `enum`
+		 * — `KAN-90`.
+		 *
+		 * A tool schema is built once, at startup, with no actor and no team, so it cannot
+		 * advertise the vocabulary of the team an agent happens to be working in: a team
+		 * that added `devis` or removed `in_review` would be described wrongly to every
+		 * caller. An `enum` here would therefore be a closed list that is not closed, which
+		 * is worse than no list — a client validating against it would refuse a status the
+		 * server accepts.
+		 *
+		 * So the field is a plain string, these six are offered as the likely answer, and a
+		 * key the ticket's team does not have is refused by `StatusCategories.require` with
+		 * the team's own list in the sentence. The agent learns the vocabulary in one
+		 * round-trip, from the side that knows it.
+		 *
+		 * Rejected: a schema of the five categories, which would be genuinely closed and
+		 * validatable but would make `in_review` unreachable — an agent could no longer say
+		 * "put it in review" rather than "in progress", and both are `STARTED`.
+		 */
+		val SEEDED_STATUSES = DefaultStatus.entries.joinToString(", ") { it.wire }
 	}
 }

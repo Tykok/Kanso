@@ -58,7 +58,7 @@ class DependencyTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = start?.let(::day),
 		due = due?.let(::day),

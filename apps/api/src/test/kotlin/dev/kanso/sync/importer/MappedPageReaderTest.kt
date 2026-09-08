@@ -34,7 +34,7 @@ class MappedPageReaderTest {
 		)
 		val page = fakePage("Ship it", mapOf("Etat" to notionSelect("Bloqué")))
 
-		assertEquals(DefaultStatus.TODO, reader.status(page))
+		assertEquals("todo", reader.status(page))
 	}
 
 	@Test
@@ -89,7 +89,7 @@ class MappedPageReaderTest {
 		)
 		val page = fakePage("Ship it", mapOf("State" to notionSelect("In Progress"), "Urgency" to notionSelect("High")))
 
-		assertEquals(DefaultStatus.IN_PROGRESS, reader.status(page))
+		assertEquals("in_progress", reader.status(page))
 		assertEquals(TicketPriority.HIGH, reader.priority(page))
 	}
 

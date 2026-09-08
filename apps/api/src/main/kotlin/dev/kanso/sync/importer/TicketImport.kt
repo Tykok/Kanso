@@ -9,6 +9,7 @@ import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.ProjectService
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.TicketService
 import dev.kanso.sync.notion.NotionPage
 import org.springframework.stereotype.Service
@@ -39,6 +40,7 @@ class TicketImport(
 	private val projects: ProjectService,
 	private val users: UserRepository,
 	private val origins: ImportOriginRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	fun write(
@@ -166,7 +168,7 @@ class TicketImport(
 			// becoming "Todo" is better than a seventh status nothing else understands. The
 			// default belongs here rather than in the reader: null means "nobody said", and
 			// only the thing writing the row gets to decide what to write instead.
-			status = base.reader.status(page) ?: DefaultStatus.TODO,
+			status = base.reader.status(page) ?: statusCategories.intakeOf(teamId),
 			priority = base.reader.priority(page) ?: TicketPriority.NONE,
 			start = base.reader.start(page),
 			due = base.reader.due(page),

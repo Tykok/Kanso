@@ -53,7 +53,7 @@ class SubTicketTest : PostgresTest() {
 
 	private fun ticket(
 		title: String,
-		status: DefaultStatus = DefaultStatus.TODO,
+		status: String = "todo",
 		estimate: Int? = null,
 	): UUID {
 		val id = tickets.create(
@@ -182,9 +182,9 @@ class SubTicketTest : PostgresTest() {
 	@Test
 	fun `progress counts the children that are done`() {
 		val parent = ticket("Parent")
-		subTickets.setParent(admin, ticket("One", DefaultStatus.DONE), parent)
-		subTickets.setParent(admin, ticket("Two", DefaultStatus.DONE), parent)
-		subTickets.setParent(admin, ticket("Three", DefaultStatus.IN_PROGRESS), parent)
+		subTickets.setParent(admin, ticket("One", "done"), parent)
+		subTickets.setParent(admin, ticket("Two", "done"), parent)
+		subTickets.setParent(admin, ticket("Three", "in_progress"), parent)
 
 		val progress = subTickets.progress(listOf(parent))[parent]
 		assertNotNull(progress)
@@ -195,8 +195,8 @@ class SubTicketTest : PostgresTest() {
 	@Test
 	fun `a cancelled child is in neither half of the fraction`() {
 		val parent = ticket("Parent")
-		subTickets.setParent(admin, ticket("Done", DefaultStatus.DONE), parent)
-		subTickets.setParent(admin, ticket("Dropped", DefaultStatus.CANCELED), parent)
+		subTickets.setParent(admin, ticket("Done", "done"), parent)
+		subTickets.setParent(admin, ticket("Dropped", "canceled"), parent)
 
 		val progress = subTickets.progress(listOf(parent))[parent]
 		assertNotNull(progress)
@@ -209,7 +209,7 @@ class SubTicketTest : PostgresTest() {
 	@Test
 	fun `a parent whose children were all cancelled has no progress either`() {
 		val parent = ticket("Parent")
-		subTickets.setParent(admin, ticket("Dropped", DefaultStatus.CANCELED), parent)
+		subTickets.setParent(admin, ticket("Dropped", "canceled"), parent)
 
 		assertEquals(
 			emptyMap(),
@@ -221,8 +221,8 @@ class SubTicketTest : PostgresTest() {
 	@Test
 	fun `points are counted only when every child is estimated`() {
 		val parent = ticket("Parent")
-		subTickets.setParent(admin, ticket("Sized", DefaultStatus.DONE, estimate = 3), parent)
-		subTickets.setParent(admin, ticket("Unsized", DefaultStatus.TODO), parent)
+		subTickets.setParent(admin, ticket("Sized", "done", estimate = 3), parent)
+		subTickets.setParent(admin, ticket("Unsized", "todo"), parent)
 
 		val mixed = subTickets.progress(listOf(parent))[parent]
 		assertNotNull(mixed)
@@ -236,8 +236,8 @@ class SubTicketTest : PostgresTest() {
 	@Test
 	fun `points are counted when every child is estimated`() {
 		val parent = ticket("Parent")
-		subTickets.setParent(admin, ticket("One", DefaultStatus.DONE, estimate = 3), parent)
-		subTickets.setParent(admin, ticket("Two", DefaultStatus.TODO, estimate = 5), parent)
+		subTickets.setParent(admin, ticket("One", "done", estimate = 3), parent)
+		subTickets.setParent(admin, ticket("Two", "todo", estimate = 5), parent)
 
 		val progress = subTickets.progress(listOf(parent))[parent]
 		assertNotNull(progress)
@@ -250,8 +250,8 @@ class SubTicketTest : PostgresTest() {
 		val first = ticket("First")
 		val second = ticket("Second")
 		val childless = ticket("Childless")
-		subTickets.setParent(admin, ticket("A", DefaultStatus.DONE), first)
-		subTickets.setParent(admin, ticket("B", DefaultStatus.TODO), second)
+		subTickets.setParent(admin, ticket("A", "done"), first)
+		subTickets.setParent(admin, ticket("B", "todo"), second)
 
 		val progress = subTickets.progress(listOf(first, second, childless))
 

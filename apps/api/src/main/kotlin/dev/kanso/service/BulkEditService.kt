@@ -17,7 +17,8 @@ import java.util.UUID
  */
 data class BulkEdit(
 	val ticketIds: List<UUID>,
-	val status: DefaultStatus? = null,
+	/** A status key. Validated per row by `TicketService.patch`, against each row's team. */
+	val status: String? = null,
 	val priority: TicketPriority? = null,
 	val assigneeIds: List<UUID>? = null,
 	val cycleId: UUID? = null,

@@ -93,7 +93,7 @@ class TicketGroups(
 		// Through the same mapping the `CASE` used, or a category-bucketed page would lay
 		// rows keyed `todo` over a bucket counted as `unstarted` and draw every one of
 		// them under no header at all.
-		ViewGroupBy.STATUS -> statuses.bucketOf[detail.ticket.status.wire] ?: detail.ticket.status.wire
+		ViewGroupBy.STATUS -> statuses.bucketOf[detail.ticket.status] ?: detail.ticket.status
 		ViewGroupBy.PRIORITY -> detail.ticket.priority.wire
 		ViewGroupBy.PROJECT -> detail.ticket.projectId?.toString()
 		ViewGroupBy.ASSIGNEE -> detail.assigneeIds.firstOrNull()?.toString()

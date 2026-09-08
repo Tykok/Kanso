@@ -1,8 +1,11 @@
 package dev.kanso.publik
 
 import dev.kanso.domain.StatusCategory
+import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.TeamRepository
+import dev.kanso.service.Categories
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.NotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -20,16 +23,26 @@ import org.springframework.transaction.annotation.Transactional
 class PublicRoadmapService(
 	private val published: PublicRoadmapRepository,
 	private val teams: TeamRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	@Transactional(readOnly = true)
 	fun roadmap(): Roadmap {
-		val rows = published.findPublished(ROADMAP_STATUSES, LIMIT)
+		val rows = published.findPublished(ROADMAP_CATEGORIES, LIMIT)
 		val votes = published.voteCounts(rows.map { it.id })
-		val entries = rows.map { it.entry(votes[it.id] ?: 0) }
+		// One read of the catalogues for every team on the page, then each row's word
+		// turned into its meaning — `KAN-90`. Not a lookup per row: this is every
+		// published ticket in the instance, up to `LIMIT` of them.
+		val meaning = statusCategories.forTeams(rows.map { it.teamId })
+		val entries = rows.map { row -> meaning[row.teamId, row.status] to row.entry(votes[row.id] ?: 0, meaning) }
 		return Roadmap(
-			ROADMAP_STATUSES
-				.map { status -> RoadmapGroup(status, entries.filter { it.status == status }.sorted(status)) }
+			ROADMAP_CATEGORIES
+				.map { category ->
+					RoadmapGroup(
+						category,
+						entries.filter { it.first == category }.map { it.second }.sorted(category),
+					)
+				}
 				.filter { it.count > 0 },
 		)
 	}
@@ -86,7 +99,7 @@ class PublicRoadmapService(
 	 * with it gets an empty list, not the fallback: they said there are none.
 	 */
 	private fun firstSteps(): FirstSteps {
-		val unclaimed = published.findPublished(NOT_STARTED_STATUSES, LIMIT)
+		val unclaimed = published.findPublished(NOT_STARTED_CATEGORIES, LIMIT)
 			.filter { it.unclaimed }
 		val narrowing = published.labelDefined(FIRST_STEP_LABEL)
 		val rows = if (narrowing) {
@@ -96,20 +109,23 @@ class PublicRoadmapService(
 			unclaimed
 		}
 		val votes = published.voteCounts(rows.map { it.id })
+		val meaning = statusCategories.forTeams(rows.map { it.teamId })
 		return FirstSteps(
-			entries = rows.map { it.entry(votes[it.id] ?: 0) }.sortedWith(byVotes),
+			entries = rows.map { it.entry(votes[it.id] ?: 0, meaning) }.sortedWith(byVotes),
 			label = FIRST_STEP_LABEL.takeIf { narrowing },
 		)
 	}
 
-	private fun PublishedRow.entry(votes: Int) = RoadmapEntry(
+	private fun PublishedRow.entry(votes: Int, meaning: Categories) = RoadmapEntry(
 		identifier = identifier,
 		title = title,
 		status = status,
 		votes = votes,
 		// Only where it means something. A `completed_at` on a ticket that came back out
-		// of `done` would print a delivery date beside work in progress.
-		completedAt = completedAt.takeIf { status.category == StatusCategory.COMPLETED },
+		// of a delivered status would print a delivery date beside work in progress — and
+		// it is the *category* that decides, so a team whose delivered status is called
+		// `Livré` prints its date too.
+		completedAt = completedAt.takeIf { meaning[teamId, status] == StatusCategory.COMPLETED },
 	)
 
 	/**
@@ -118,20 +134,28 @@ class PublicRoadmapService(
 	 * under delivered). Votes rank the work not yet decided; once it has shipped, the
 	 * question a visitor is asking changed from "will you" to "when did you".
 	 */
-	private fun List<RoadmapEntry>.sorted(status: DefaultStatus) =
-		if (status.category == StatusCategory.COMPLETED) sortedWith(byDelivery) else sortedWith(byVotes)
+	private fun List<RoadmapEntry>.sorted(category: StatusCategory) =
+		if (category == StatusCategory.COMPLETED) sortedWith(byDelivery) else sortedWith(byVotes)
 
 	private companion object {
 		/**
 		 * Left to right, and `canceled` is not among them: a roadmap answers "are you
 		 * considering it, have you accepted it, is it moving, has it shipped", and a
-		 * canceled ticket answers none of those. Every other status the application has
-		 * appears, including `in_review` — folding review into progress would print a
-		 * word over a ticket the app calls something else, which is the reformulation
-		 * the drawing rules out. Groups with nothing in them are dropped, so an instance
-		 * whose published work sits in four of these draws four columns.
+		 * canceled ticket answers none of those.
+		 *
+		 * **Categories since `KAN-90`, and that is a column fewer.** This used to be the
+		 * five statuses that are not cancelled, on the argument that folding review into
+		 * progress "would print a word over a ticket the app calls something else, which is
+		 * the reformulation the drawing rules out". That argument was about a closed
+		 * vocabulary. This page has no team scope — it is every published ticket in the
+		 * instance — so the words would give it one column per word per team, with `Done`
+		 * and `Livré` standing side by side meaning the same thing. Four columns, and
+		 * `in_progress` and `in_review` share `started`.
+		 *
+		 * Groups with nothing in them are dropped, so an instance whose published work
+		 * sits in three of these draws three columns.
 		 */
-		val ROADMAP_STATUSES = DefaultStatus.entries.filter { it.category != StatusCategory.CANCELED }
+		val ROADMAP_CATEGORIES = StatusOrder.CATEGORY_ORDER.filter { it != StatusCategory.CANCELED }
 
 		/**
 		 * Nobody has picked these up yet, which is what makes them a first step. Two
@@ -139,9 +163,7 @@ class PublicRoadmapService(
 		 * will", and a newcomer can start on either — what rules a ticket out here is
 		 * somebody having begun it, not how sure the team is that it should happen.
 		 */
-		val NOT_STARTED_STATUSES = DefaultStatus.entries.filter {
-			it.category == StatusCategory.BACKLOG || it.category == StatusCategory.UNSTARTED
-		}
+		val NOT_STARTED_CATEGORIES = listOf(StatusCategory.BACKLOG, StatusCategory.UNSTARTED)
 
 		/**
 		 * The label screen 28 narrows to, in the words the rest of the project already

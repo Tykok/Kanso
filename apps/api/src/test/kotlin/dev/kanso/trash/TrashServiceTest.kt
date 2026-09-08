@@ -80,7 +80,7 @@ class TrashServiceTest : PostgresTest() {
 			teamId = teamId,
 			title = title,
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

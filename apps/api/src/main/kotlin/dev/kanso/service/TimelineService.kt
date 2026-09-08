@@ -32,7 +32,7 @@ data class TimelineTicket(
 	/** Whose work this is — a context row is drawn under its owner's key, not the reader's. */
 	val teamKey: String,
 	val projectId: UUID?,
-	val status: DefaultStatus,
+	val status: String,
 	val start: KansoInstant?,
 	val due: KansoInstant?,
 	/** Null for an unscheduled ticket or one with no dependencies. */

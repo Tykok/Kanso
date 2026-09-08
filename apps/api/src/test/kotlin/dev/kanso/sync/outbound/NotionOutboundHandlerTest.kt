@@ -156,7 +156,7 @@ class NotionOutboundHandlerTest : PostgresTest() {
 		).id.also { teamRows.markSynced(it, "page-team", null) },
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

@@ -154,7 +154,8 @@ data class TicketDetail(
 data class TicketPatch(
 	val title: String? = null,
 	val description: String? = null,
-	val status: DefaultStatus? = null,
+	/** A status key of the ticket's team — a `String` since `KAN-90`, validated on the way in. */
+	val status: String? = null,
 	val priority: TicketPriority? = null,
 	val estimate: Int? = null,
 	val start: KansoInstant? = null,
@@ -398,7 +399,7 @@ class TicketService(
 		teamId: UUID?,
 		title: String,
 		description: String?,
-		status: DefaultStatus,
+		status: String,
 		priority: TicketPriority,
 		start: KansoInstant?,
 		due: KansoInstant?,
@@ -470,7 +471,10 @@ class TicketService(
 			createdBy = actor?.id,
 			title = title,
 			description = description,
-			status = status,
+			// The same guard as `patch`, for the same reason and with the same sentence:
+			// an import, a siphoned request or an agent may name a status the destination
+			// team does not have, and `tickets_status_fk` would answer that with a 500.
+			status = statusCategories.require(effectiveTeamId, status),
 			priority = priority,
 			estimate = points,
 			start = start,
@@ -628,15 +632,26 @@ class TicketService(
 		// Written here rather than in a trigger: the rule belongs next to the status
 		// logic that owns it, and a trigger would be the only part of the transition
 		// invisible from this file.
-		val status = patch.status ?: current.status
+		// **Validated against the team the ticket ends up in, and this is the one guard.**
+		// Every write door reaches a status through here — the controller, the bulk strip,
+		// the three MCP tools, the triage ruling, the GitHub webhook — so one refusal here
+		// is one sentence for all of them, naming the team's own words. Without it the
+		// only thing refusing an unknown key is `tickets_status_fk`, which surfaces as a
+		// 500 from the driver on what is a caller's mistake.
+		//
+		// Only when the patch names one: an untouched status is already in the catalogue,
+		// and re-checking it would refuse a patch of the *title* on a ticket whose team
+		// has meanwhile removed the status it sits in — punishing an edit for a decision
+		// somebody else made. `KAN-90`'s `remove` moves those rows itself.
+		val status = patch.status?.let { statusCategories.require(teamId, it) } ?: current.status
 		// Resolved against the team the ticket *ends up in*, and the old one against the
 		// team it is leaving — `KAN-90`. A move across teams is also a status change, and
 		// asking one catalogue about both words would read the destination's meaning for a
 		// status the source team defined, which is how `completed_at` gets cleared on a
 		// ticket nobody reopened.
-		val completed = statusCategories.categoryOf(teamId, status.wire) == StatusCategory.COMPLETED
+		val completed = statusCategories.categoryOf(teamId, status) == StatusCategory.COMPLETED
 		val wasCompleted =
-			statusCategories.categoryOf(current.teamId, current.status.wire) == StatusCategory.COMPLETED
+			statusCategories.categoryOf(current.teamId, current.status) == StatusCategory.COMPLETED
 		val completedAt = when {
 			completed && !wasCompleted -> OffsetDateTime.now()
 			!completed -> null
@@ -863,7 +878,7 @@ class TicketService(
 			// exception look like the shape.
 			log(
 				ActivityKind.STATUS_CHANGED,
-				mapOf("from" to before.status.wire, "to" to after.status.wire) +
+				mapOf("from" to before.status, "to" to after.status) +
 					(viaPullRequest?.let { mapOf("via_pr" to it) } ?: emptyMap()),
 			)
 		}
@@ -914,7 +929,7 @@ class TicketService(
 			// already takes a nullable actor, and it is what subtracts the actor from the
 			// recipients, so a null simply subtracts nobody.
 			actorId = actor?.id,
-			payload = mapOf("from" to before.status.wire, "to" to after.status.wire),
+			payload = mapOf("from" to before.status, "to" to after.status),
 		)
 	}
 

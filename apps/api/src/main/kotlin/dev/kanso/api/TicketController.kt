@@ -176,7 +176,7 @@ class TicketController(
 			teamId = request.teamId,
 			title = request.title,
 			description = request.description,
-			status = DefaultStatus.from(request.status),
+			status = request.status,
 			priority = TicketPriority.from(request.priority),
 			estimate = request.estimate,
 			start = request.start?.toDomain(),
@@ -193,7 +193,7 @@ class TicketController(
 			TicketPatch(
 				title = it.title,
 				description = it.description,
-				status = it.status?.let(DefaultStatus::from),
+				status = it.status,
 				priority = it.priority?.let(TicketPriority::from),
 				estimate = it.estimate,
 				start = it.start?.toDomain(),

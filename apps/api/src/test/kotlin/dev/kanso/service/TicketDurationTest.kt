@@ -75,7 +75,7 @@ class TicketDurationTest : PostgresTest() {
 		estimate: Int?,
 		assignees: List<UUID>,
 		teamId: UUID? = team.id,
-		state: DefaultStatus = DefaultStatus.TODO,
+		state: String = "todo",
 	) = tickets.create(
 		actor = admin,
 		teamId = teamId,
@@ -276,7 +276,7 @@ class TicketDurationTest : PostgresTest() {
 
 	/** Closed on [on], in [cycleId] — the shape `VelocityService` measures. */
 	private fun delivered(cycleId: UUID, on: LocalDate, estimate: Int, assignee: UUID) {
-		val id = ticket(estimate, listOf(assignee), state = DefaultStatus.DONE).ticket.id
+		val id = ticket(estimate, listOf(assignee), state = "done").ticket.id
 		// Written here rather than left to the insert's `now()`: cycles in August 2026 would
 		// otherwise measure nothing until the clock caught up with them.
 		Tickets.update({ Tickets.id eq id }) {

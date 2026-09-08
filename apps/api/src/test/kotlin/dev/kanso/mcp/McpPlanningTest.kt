@@ -126,7 +126,7 @@ class McpPlanningTest : PostgresTest() {
 		team: Team,
 		owner: User,
 		title: String,
-		status: DefaultStatus = DefaultStatus.TODO,
+		status: String = "todo",
 		priority: TicketPriority = TicketPriority.NONE,
 		estimate: Int? = null,
 		assignees: List<UUID> = emptyList(),
@@ -325,7 +325,7 @@ class McpPlanningTest : PostgresTest() {
 		)
 		assertTrue(children.all { it.ticket.teamId == team.id }, "and lands in the parent's team")
 		assertEquals(
-			setOf(DefaultStatus.TODO, DefaultStatus.TODO, DefaultStatus.IN_PROGRESS).size,
+			setOf("todo", "todo", "in_progress").size,
 			children.map { it.ticket.status }.toSet().size,
 			"the status each part asked for, defaulted to todo",
 		)
@@ -489,12 +489,12 @@ class McpPlanningTest : PostgresTest() {
 	fun `team workload counts the charge and the work in flight as two different numbers`() {
 		val alice = user()
 		val team = teamOf(alice, "Loaded")
-		file(team, alice, "Queued", status = DefaultStatus.TODO, estimate = 5, assignees = listOf(alice.id))
-		file(team, alice, "Moving", status = DefaultStatus.IN_PROGRESS, estimate = 3, assignees = listOf(alice.id))
-		file(team, alice, "Unsized", status = DefaultStatus.TODO, assignees = listOf(alice.id))
-		file(team, alice, "Nobody's", status = DefaultStatus.TODO)
+		file(team, alice, "Queued", status = "todo", estimate = 5, assignees = listOf(alice.id))
+		file(team, alice, "Moving", status = "in_progress", estimate = 3, assignees = listOf(alice.id))
+		file(team, alice, "Unsized", status = "todo", assignees = listOf(alice.id))
+		file(team, alice, "Nobody's", status = "todo")
 		// Settled work is on nobody's plate, so it must not raise either number.
-		file(team, alice, "Finished", status = DefaultStatus.DONE, estimate = 8, assignees = listOf(alice.id))
+		file(team, alice, "Finished", status = "done", estimate = 8, assignees = listOf(alice.id))
 
 		val answer = textOf(call("kanso_team_workload", """{"team":"${team.key}"}""", bearer(alice)))
 		val hers = answer.lines().first { it.contains(alice.email) }.split(Regex("\\s+"))

@@ -3,6 +3,7 @@ package dev.kanso.service
 import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.StatusGrouping
+import dev.kanso.domain.StatusOrder
 import dev.kanso.domain.Ticket
 import dev.kanso.repo.TeamStatusRepository
 import org.springframework.stereotype.Service
@@ -35,12 +36,16 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
 	 *
 	 * A `LinkedHashMap` and not a sort at the call site: `TeamStatusRepository` already
 	 * orders by `(position, key)`, and that order is what a grouped page stacks its
-	 * buckets by. Losing it here would make every caller re-sort, and one of them would
-	 * forget.
+	 * buckets by — and what `PrTransition` ranks progress on. Losing it here would make
+	 * every caller re-sort, and one of them would forget.
+	 *
+	 * [teamId] null answers the six in `StatusOrder.WORKFLOW` order: a draft has no team
+	 * to ask, and this is the one place that fallback is written.
 	 */
 	@Transactional(readOnly = true)
-	fun forTeam(teamId: UUID): Map<String, StatusCategory> =
-		statuses.forTeam(teamId).associate { it.key to it.category }
+	fun forTeam(teamId: UUID?): Map<String, StatusCategory> =
+		if (teamId == null) StatusOrder.WORKFLOW.associate { it.wire to it.category }
+		else statuses.forTeam(teamId).associate { it.key to it.category }
 
 	/**
 	 * What [status] means for [teamId] — the direct replacement for `.status.category`.
@@ -92,6 +97,74 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
 			.distinct()
 
 	/**
+	 * Where work of this meaning starts, for [teamId] — the eight hard-coded writes' rule.
+	 *
+	 * `RequestSiphon`, `TicketImport`, `CreateTicketTool`, `TriageService` (twice),
+	 * `GithubWebhookService` and the two MCP drafts all used to write a status *word*:
+	 * `todo`, `backlog`, `canceled`, `in_review`. None of those is guaranteed to exist in
+	 * the destination team, so each now names the meaning and takes the team's first
+	 * status of it.
+	 *
+	 * Ordered by `position`, because that order is the team's own answer to the question:
+	 * a team that put *Devis* above `backlog` said that is where work it might do arrives.
+	 * It also keeps the seeded behaviour exactly: `in_progress` precedes `in_review`, so
+	 * `STARTED` resolves to progress and a pull request opening does not drop a ticket
+	 * into review on a team that never reordered anything.
+	 *
+	 * **Null rather than a throw**, because the callers disagree about what to do with it.
+	 * Seven refuse with a sentence naming the team's statuses; the GitHub webhook leaves
+	 * the ticket alone, because a pull request opening must not invent a movement nobody
+	 * asked for. Deciding that here would take the choice away from the one caller whose
+	 * answer is different.
+	 *
+	 * A draft answers out of the six, like [categoryOf] — there is no team to ask.
+	 */
+	@Transactional(readOnly = true)
+	fun firstOf(teamId: UUID?, category: StatusCategory): String? =
+		forTeam(teamId).entries.firstOrNull { it.value == category }?.key
+
+	/**
+	 * Where a door files work nobody has classified — the team's own entry point.
+	 *
+	 * `DocBlockService`, `RequestSiphon`, `TicketImport` and the three MCP creators all
+	 * wrote the word `todo`. A team may have renamed that status, which was harmless, or
+	 * removed it, which was not: the write would name a key `tickets_status_fk` refuses
+	 * and the door would answer 500. Each now asks for the meaning and gets the team's
+	 * first `UNSTARTED` status, by the position the team chose.
+	 *
+	 * Throws rather than answering null, unlike [firstOf]: every caller of this one wants
+	 * the same thing done about a team that has no such status, which is to refuse and say
+	 * so. A team can only reach that state by removing every unstarted status on purpose,
+	 * and a ticket arriving from outside is exactly the case it has to be told about.
+	 */
+	@Transactional(readOnly = true)
+	fun intakeOf(teamId: UUID?): String =
+		firstOf(teamId, StatusCategory.UNSTARTED)
+			?: throw BadRequestException(
+				"This team has no status meaning \"unstarted\", so there is nowhere to file new work",
+			)
+
+	/**
+	 * [status] if [teamId] has it, refused by name if not — every write door's guard.
+	 *
+	 * The sentence lists the team's own words, because the caller that got this wrong is
+	 * usually an agent or an import holding Kanso's six, and a refusal that does not name
+	 * the alternatives is a refusal it cannot act on. This is the whole of `KAN-90`'s
+	 * answer to the MCP tools' static schema: the schema says `string` and names the six
+	 * seeded keys, and the team's actual vocabulary arrives in the error.
+	 *
+	 * A draft is checked against the six, which is its vocabulary by definition.
+	 */
+	@Transactional(readOnly = true)
+	fun require(teamId: UUID?, status: String): String {
+		val catalogue = forTeam(teamId)
+		if (status in catalogue) return status
+		throw BadRequestException(
+			"No status \"$status\" here. This team's statuses are: ${catalogue.keys.joinToString(", ")}",
+		)
+	}
+
+	/**
 	 * How a scope buckets and stacks its statuses — `KAN-28`'s rule, read for `KAN-90`.
 	 *
 	 * One team reads its own words in its own order, because that is the list on its
@@ -122,8 +195,19 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
 	 * screens. Distinct team ids, so a hundred rows in two teams is one query for two.
 	 */
 	@Transactional(readOnly = true)
-	fun of(tickets: Collection<Ticket>): Categories =
-		Categories(statuses.forTeams(tickets.mapNotNull { it.teamId }.toSet())
+	fun of(tickets: Collection<Ticket>): Categories = forTeams(tickets.map { it.teamId })
+
+	/**
+	 * The same value, for rows that are not `Ticket`s.
+	 *
+	 * The public roadmap reads `PublishedRow`, which carries a team and a status key and
+	 * nothing else — it comes off `public_tickets`, a separate table. Rather than give
+	 * that shape a `Ticket` it is not, both go through [Categories], which asks the
+	 * question the honest way round: a team and a word, not an object.
+	 */
+	@Transactional(readOnly = true)
+	fun forTeams(teamIds: Collection<UUID?>): Categories =
+		Categories(statuses.forTeams(teamIds.filterNotNull().toSet())
 			.mapValues { (_, rows) -> rows.associate { it.key to it.category } })
 
 	companion object {
@@ -155,6 +239,9 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
  */
 class Categories(private val byTeam: Map<UUID, Map<String, StatusCategory>>) {
 
-	operator fun get(ticket: Ticket): StatusCategory =
-		StatusCategories.resolve(ticket.teamId?.let { byTeam[it] }, ticket.status.wire)
+	operator fun get(ticket: Ticket): StatusCategory = get(ticket.teamId, ticket.status)
+
+	/** For a row that is not a `Ticket` — see `StatusCategories.forTeams`. */
+	operator fun get(teamId: UUID?, status: String): StatusCategory =
+		StatusCategories.resolve(teamId?.let { byTeam[it] }, status)
 }

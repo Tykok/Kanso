@@ -1,7 +1,7 @@
 package dev.kanso.publik
 
 import dev.kanso.domain.MemberRole
-import dev.kanso.domain.DefaultStatus
+import dev.kanso.domain.StatusCategory
 import java.time.OffsetDateTime
 
 /**
@@ -18,7 +18,8 @@ data class RoadmapEntry(
 	/** `KAN-142`. The only identifier a public surface ever prints. */
 	val identifier: String,
 	val title: String,
-	val status: DefaultStatus,
+	/** The team's own key, printed on the card. The *column* is [RoadmapGroup.category]. */
+	val status: String,
 	val votes: Int,
 	/** When it shipped. Null for anything not delivered. */
 	val completedAt: OffsetDateTime?,
@@ -29,7 +30,21 @@ data class RoadmapEntry(
  * the drawing prints a count beside each heading, and a heading that disagrees with the
  * rows under it is worse than no count at all.
  */
-data class RoadmapGroup(val status: DefaultStatus, val tickets: List<RoadmapEntry>) {
+/**
+ * One column of the public roadmap — a **category** since `KAN-90`, not a status.
+ *
+ * `ROADMAP_STATUSES`' docstring used to forbid exactly this: folding review into progress
+ * "would print a word over a ticket the app calls something else, which is the
+ * reformulation the drawing rules out". That held while every team read the same six
+ * words. It cannot now — this page is every published ticket in the instance, so keeping
+ * the words would give it one column per word per team, growing as teams are added, with
+ * `Done` and `Livré` side by side meaning the same thing.
+ *
+ * So four columns instead of five, `in_progress` and `in_review` together under
+ * `started`, which is the same answer `KAN-28` gave for the app's own cross-team lists.
+ * The entry still carries its team's word for whoever reads a single card.
+ */
+data class RoadmapGroup(val category: StatusCategory, val tickets: List<RoadmapEntry>) {
 	val count: Int get() = tickets.size
 }
 
@@ -55,7 +70,8 @@ data class ContributorPage(
 	val title: String,
 	/** The ticket's description — the explanation of the problem. */
 	val explanation: String?,
-	val status: DefaultStatus,
+	/** The owning team's own word for where it is — printed, not grouped on. */
+	val status: String,
 	val votes: Int,
 	/** Nobody is on it. The drawing's last badge, and a fact, not a label. */
 	val unclaimed: Boolean,

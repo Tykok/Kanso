@@ -84,7 +84,7 @@ class TrashControllerTest : PostgresTest() {
 			teamId = team.id,
 			title = "SVG seal",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

@@ -142,7 +142,7 @@ class RequestSiphonTest : PostgresTest() {
 		val ticket = ticketRows.findAllById(triage.queue(team.id).items.map { it.ticket.id }).single()
 		assertEquals(team.id, ticket.teamId, "filed into the team the base was registered against")
 		assertNotNull(ticket.number, "so it has a number, and therefore a name people can say")
-		assertEquals(DefaultStatus.TODO, ticket.status, "Kanso's default, not a status read off somebody's base")
+		assertEquals("todo", ticket.status, "Kanso's default, not a status read off somebody's base")
 		assertEquals(TicketPriority.NONE, ticket.priority, "and no priority a requester could have set for us")
 		assertNull(ticket.createdBy, "nobody in Kanso wrote it, and V20 makes that column nullable for this")
 	}
@@ -208,7 +208,7 @@ class RequestSiphonTest : PostgresTest() {
 
 		assertEquals(emptyList(), queued(), "the edit does not put it back")
 		assertEquals(
-			DefaultStatus.CANCELED,
+			"canceled",
 			ticketRows.findById(ticketId)!!.status,
 			"and does not undo the ruling either",
 		)
@@ -266,7 +266,7 @@ class RequestSiphonTest : PostgresTest() {
 			teamId = team.id,
 			title = "The export is missing VAT",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

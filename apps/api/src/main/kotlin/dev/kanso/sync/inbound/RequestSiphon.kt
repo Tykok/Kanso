@@ -6,6 +6,7 @@ import dev.kanso.repo.ImportOrigin
 import dev.kanso.repo.ImportOriginRepository
 import dev.kanso.repo.OriginKind
 import dev.kanso.repo.RequestBase
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.TicketService
 import dev.kanso.sync.importer.ColumnMapping
 import dev.kanso.sync.importer.MappedPageReader
@@ -47,6 +48,7 @@ import java.util.UUID
 class RequestSiphon(
 	private val tickets: TicketService,
 	private val origins: ImportOriginRepository,
+	private val statusCategories: StatusCategories,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -102,7 +104,9 @@ class RequestSiphon(
 			// closed vocabulary Kanso owns. The columns are not lost, they are in the
 			// description above. Dates and an estimate are refused for the same reason
 			// turned round: a requester is not the person who can say when this is due.
-			status = DefaultStatus.TODO,
+			// The team's first UNSTARTED status rather than the word `todo` — `KAN-90`.
+			// A siphoned request always has a team, so there is always a catalogue to ask.
+			status = statusCategories.intakeOf(base.teamId),
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

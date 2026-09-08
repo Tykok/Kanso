@@ -92,7 +92,7 @@ class VelocityTest : PostgresTest() {
 			teamId = team.id,
 			title = "delivered $estimate",
 			description = null,
-			status = DefaultStatus.DONE,
+			status = "done",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

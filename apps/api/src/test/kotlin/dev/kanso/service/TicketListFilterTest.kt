@@ -61,7 +61,7 @@ class TicketListFilterTest : PostgresTest() {
 
 	private fun ticket(
 		title: String,
-		status: DefaultStatus = DefaultStatus.TODO,
+		status: String = "todo",
 		priority: TicketPriority = TicketPriority.NONE,
 		teamId: UUID = team.id,
 		assignees: List<UUID> = emptyList(),
@@ -121,16 +121,16 @@ class TicketListFilterTest : PostgresTest() {
 
 	@Test
 	fun `the list filters by status, the way it always could`() {
-		val doing = ticket("doing", DefaultStatus.IN_PROGRESS)
-		ticket("waiting", DefaultStatus.TODO)
+		val doing = ticket("doing", "in_progress")
+		ticket("waiting", "todo")
 
 		assertEquals(listOf(doing), list("status" to "in_progress"))
 	}
 
 	@Test
 	fun `the list can ask for not-done, which it could not before`() {
-		val open = ticket("open", DefaultStatus.IN_PROGRESS)
-		ticket("finished", DefaultStatus.DONE)
+		val open = ticket("open", "in_progress")
+		ticket("finished", "done")
 
 		assertEquals(
 			listOf(open),
@@ -239,9 +239,9 @@ class TicketListFilterTest : PostgresTest() {
 
 	@Test
 	fun `two chips on the list narrow together, not separately`() {
-		val both = ticket("urgent and doing", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT)
-		ticket("urgent and done", DefaultStatus.DONE, TicketPriority.URGENT)
-		ticket("low and doing", DefaultStatus.IN_PROGRESS, TicketPriority.LOW)
+		val both = ticket("urgent and doing", "in_progress", TicketPriority.URGENT)
+		ticket("urgent and done", "done", TicketPriority.URGENT)
+		ticket("low and doing", "in_progress", TicketPriority.LOW)
 
 		assertEquals(listOf(both), list("statusNot" to "done", "priority" to "urgent"))
 	}
@@ -256,12 +256,12 @@ class TicketListFilterTest : PostgresTest() {
 	@Test
 	fun `the list and a saved view answer a shared question identically`() {
 		val sync = labels.create(admin, team.id, "sync", "indigo")
-		val wanted = ticket("urgent, labelled, open", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT)
+		val wanted = ticket("urgent, labelled, open", "in_progress", TicketPriority.URGENT)
 		labels.attach(admin, wanted, sync.id)
-		ticket("urgent, labelled, done", DefaultStatus.DONE, TicketPriority.URGENT).also {
+		ticket("urgent, labelled, done", "done", TicketPriority.URGENT).also {
 			labels.attach(admin, it, sync.id)
 		}
-		ticket("urgent, unlabelled, open", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT)
+		ticket("urgent, unlabelled, open", "in_progress", TicketPriority.URGENT)
 
 		val saved = views.create(
 			actor = admin,
@@ -364,7 +364,7 @@ class TicketListFilterTest : PostgresTest() {
 
 	@Test
 	fun `the old status parameter is the new one, spelled the same`() {
-		val doing = ticket("doing", DefaultStatus.IN_PROGRESS)
+		val doing = ticket("doing", "in_progress")
 		ticket("waiting")
 
 		assertEquals(listOf(doing), list("status" to listOf("in_progress")))

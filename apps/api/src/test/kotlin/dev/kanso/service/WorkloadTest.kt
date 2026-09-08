@@ -63,7 +63,7 @@ class WorkloadTest : PostgresTest() {
 
 	private fun ticket(
 		title: String,
-		status: DefaultStatus = DefaultStatus.TODO,
+		status: String = "todo",
 		priority: TicketPriority = TicketPriority.NONE,
 		assignees: List<UUID> = emptyList(),
 	) = tickets.create(
@@ -94,9 +94,9 @@ class WorkloadTest : PostgresTest() {
 	@Test
 	fun `one row per person carrying work, counted and cut by status`() {
 		val rey = person("M. Rey")
-		ticket("a", DefaultStatus.IN_PROGRESS, assignees = listOf(rey.id))
-		ticket("b", DefaultStatus.IN_REVIEW, assignees = listOf(rey.id))
-		ticket("c", DefaultStatus.TODO, assignees = listOf(rey.id))
+		ticket("a", "in_progress", assignees = listOf(rey.id))
+		ticket("b", "in_review", assignees = listOf(rey.id))
+		ticket("c", "todo", assignees = listOf(rey.id))
 
 		val row = workload.forTeam(team.id).rows.single { it.person?.id == rey.id }
 
@@ -116,9 +116,9 @@ class WorkloadTest : PostgresTest() {
 	@Test
 	fun `only open tickets count — the header says "ouverts seulement"`() {
 		val rey = person("M. Rey")
-		ticket("open", DefaultStatus.IN_PROGRESS, assignees = listOf(rey.id))
-		ticket("finished", DefaultStatus.DONE, assignees = listOf(rey.id))
-		ticket("dropped", DefaultStatus.CANCELED, assignees = listOf(rey.id))
+		ticket("open", "in_progress", assignees = listOf(rey.id))
+		ticket("finished", "done", assignees = listOf(rey.id))
+		ticket("dropped", "canceled", assignees = listOf(rey.id))
 
 		assertEquals(1, workload.forTeam(team.id).rows.single { it.person?.id == rey.id }.total)
 	}
@@ -160,9 +160,9 @@ class WorkloadTest : PostgresTest() {
 	@Test
 	fun `an urgent ticket open more than three days is counted, and three days is not more than three`() {
 		val rey = person("M. Rey")
-		val old = ticket("old and urgent", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT, listOf(rey.id))
-		val exactly = ticket("three days old", DefaultStatus.IN_PROGRESS, TicketPriority.URGENT, listOf(rey.id))
-		val calm = ticket("old but not urgent", DefaultStatus.IN_PROGRESS, TicketPriority.LOW, listOf(rey.id))
+		val old = ticket("old and urgent", "in_progress", TicketPriority.URGENT, listOf(rey.id))
+		val exactly = ticket("three days old", "in_progress", TicketPriority.URGENT, listOf(rey.id))
+		val calm = ticket("old but not urgent", "in_progress", TicketPriority.LOW, listOf(rey.id))
 		age(old, 5)
 		age(exactly, 3)
 		age(calm, 9)

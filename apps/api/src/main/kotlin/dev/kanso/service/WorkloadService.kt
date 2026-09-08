@@ -152,7 +152,7 @@ class WorkloadService(
 		points = carried.sumOf { it.estimate ?: 0 },
 		unestimated = carried.count { it.estimate == null },
 		byStatus = carried
-			.groupingBy { grouping.bucketOf[it.status.wire] ?: it.status.wire }
+			.groupingBy { grouping.bucketOf[it.status] ?: it.status }
 			.eachCount(),
 		started = carried.count { categories[it] == StatusCategory.STARTED },
 		urgentOverThreeDays = carried.count {

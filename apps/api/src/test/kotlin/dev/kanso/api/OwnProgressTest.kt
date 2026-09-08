@@ -74,7 +74,7 @@ class OwnProgressTest : MockMvcTest() {
 		teams.create(admin, "Reading", "O${UUID.randomUUID().toString().take(4).uppercase()}", null)
 	}
 
-	private fun ticket(estimate: Int, status: DefaultStatus): UUID = tickets.create(
+	private fun ticket(estimate: Int, status: String): UUID = tickets.create(
 		actor = admin,
 		teamId = team.id,
 		title = "the viewer's $estimate",
@@ -95,13 +95,13 @@ class OwnProgressTest : MockMvcTest() {
 		// which is the shape that makes every field below a real value rather than a null.
 		listOf(LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 10)).forEachIndexed { at, monday ->
 			val cycle = cycles.create(admin, team.id, 60 + at, monday, monday.plusDays(4), CycleState.CLOSED)
-			val done = ticket(5, DefaultStatus.DONE)
+			val done = ticket(5, "done")
 			Tickets.update({ Tickets.id eq done }) {
 				it[completedAt] = monday.plusDays(1).atTime(10, 0).atOffset(ZoneOffset.UTC)
 			}
 			cycles.addTickets(admin, cycle.id, listOf(done))
 		}
-		ticket(8, DefaultStatus.IN_PROGRESS)
+		ticket(8, "in_progress")
 
 		mvc.get("/api/me/progress?teamId=${team.id}") {
 			header(DevAuthenticationFilter.HEADER, viewer.email)

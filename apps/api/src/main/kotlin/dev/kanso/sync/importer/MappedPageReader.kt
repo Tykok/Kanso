@@ -74,10 +74,20 @@ class MappedPageReader(private val mapping: ColumnMapping) {
 		else -> null
 	}
 
-	fun status(page: NotionPage): DefaultStatus? = option(page, ImportField.STATUS)?.let { chosen ->
+	/**
+	 * A status key, or null for a column Kanso was told nothing about.
+	 *
+	 * A `String` since `KAN-90`, and unvalidated on purpose: what the reader mapped is a
+	 * *key*, and whether the destination team has it is a question this reader has no team
+	 * to ask. `TicketService.create` refuses an unknown one by name, which is where every
+	 * other door's refusal lives too — so an import naming `in_review` for a team that
+	 * removed it fails on that row with a sentence, rather than here with a parse error
+	 * that cannot say which team it meant.
+	 */
+	fun status(page: NotionPage): String? = option(page, ImportField.STATUS)?.let { chosen ->
 		// A mapped answer beats a matching label: the reader was shown both and picked.
-		mapping.values[ImportField.STATUS]?.get(chosen)?.let(DefaultStatus::from)
-			?: DefaultStatus.fromLabel(chosen)
+		mapping.values[ImportField.STATUS]?.get(chosen)
+			?: DefaultStatus.fromLabel(chosen)?.wire
 	}
 
 	fun priority(page: NotionPage): TicketPriority? = option(page, ImportField.PRIORITY)?.let { chosen ->

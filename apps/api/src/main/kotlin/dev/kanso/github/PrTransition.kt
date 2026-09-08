@@ -1,6 +1,6 @@
 package dev.kanso.github
 
-import dev.kanso.domain.DefaultStatus
+import dev.kanso.domain.StatusCategory
 import java.time.OffsetDateTime
 
 /**
@@ -10,7 +10,7 @@ import java.time.OffsetDateTime
 sealed interface TransitionDecision {
 
 	/** Move it. */
-	data class Move(val to: DefaultStatus) : TransitionDecision
+	data class Move(val to: String) : TransitionDecision
 
 	/** The link displays but does not act — a bare mention. Guard three. */
 	data object NotAClosingLink : TransitionDecision
@@ -41,36 +41,43 @@ sealed interface TransitionDecision {
 object PrTransition {
 
 	/**
-	 * The ranking guard one compares on. Derived here rather than stored on
-	 * [DefaultStatus], because it is this feature's opinion about progress and not the
-	 * status's own — `StatusCategory` is the enum's answer to a different question, and
-	 * giving `DefaultStatus` a rank would invite everything else to sort by it.
+	 * The ranking guard one compares on — **the team's own order**, since `KAN-90`.
 	 *
-	 * `CANCELED` is deliberately **absent** rather than ranked low or high. It is outside
-	 * the ordering: a cancelled ticket is not "behind" done, it is off the board, and any
-	 * number here would make some automatic move to or from it look reasonable.
+	 * It used to be a map written out here, over `DefaultStatus`, on the argument that
+	 * progress is this feature's opinion and not the status's own. That argument was right
+	 * and its conclusion has moved: `team_statuses.position` is the order the team put its
+	 * statuses in, which is a better answer to "is this forward" than anything this file
+	 * could guess, and it is the same order every grouped page already stacks by. What the
+	 * old docstring was guarding against — inviting everything else to sort by a rank
+	 * bolted onto the enum — is not in play, because nothing is bolted on.
+	 *
+	 * The CANCELED statuses are deliberately **absent** from the ranking rather than
+	 * placed low or high. They are outside the ordering: a cancelled ticket is not
+	 * "behind" done, it is off the board, and any number for them would make some
+	 * automatic move to or from one look reasonable.
 	 */
-	private val RANK = mapOf(
-		DefaultStatus.BACKLOG to 0,
-		DefaultStatus.TODO to 1,
-		DefaultStatus.IN_PROGRESS to 2,
-		DefaultStatus.IN_REVIEW to 3,
-		DefaultStatus.DONE to 4,
-	)
+	private fun rankOf(catalogue: Map<String, StatusCategory>): Map<String, Int> =
+		catalogue.entries
+			.filter { it.value != StatusCategory.CANCELED }
+			.mapIndexed { rank, entry -> entry.key to rank }
+			.toMap()
 
 	/**
 	 * @param closes whether the link says this pull request may move the ticket at all.
 	 * @param current where the ticket is now.
-	 * @param target where the event wants it — `IN_REVIEW` for a pull request ready for
-	 *   review, `DONE` for a merge.
+	 * @param target where the event wants it — the ticket's team's first `STARTED` status
+	 *   for a pull request ready for review, its first `COMPLETED` one for a merge.
+	 * @param catalogue the ticket's team's statuses, in the team's order — the ranking
+	 *   guard one reads, and where the CANCELED ones are named.
 	 * @param lastHumanStatusChangeAt when a *person* last moved this ticket's status, or
 	 *   null if only automation ever has.
 	 * @param eventAt the timestamp on the GitHub event, **not** `now()`.
 	 */
 	fun decide(
 		closes: Boolean,
-		current: DefaultStatus,
-		target: DefaultStatus,
+		current: String,
+		target: String,
+		catalogue: Map<String, StatusCategory>,
 		lastHumanStatusChangeAt: OffsetDateTime?,
 		eventAt: OffsetDateTime,
 	): TransitionDecision {
@@ -82,12 +89,13 @@ object PrTransition {
 		// direction — a merge does not un-cancel a ticket somebody cancelled, and nothing
 		// here ever cancels one. Checked before the ranking because `CANCELED` has no rank
 		// and a lookup would have to invent one.
-		if (current == DefaultStatus.CANCELED) return TransitionDecision.Canceled
+		if (catalogue[current] == StatusCategory.CANCELED) return TransitionDecision.Canceled
 
 		// Guard one. `<=` and not `<`: equal rank means it is already there, and re-moving a
 		// ticket to the status it already holds would write an activity row saying nothing.
-		val from = RANK[current] ?: return TransitionDecision.Canceled
-		val to = RANK[target] ?: return TransitionDecision.NotBackwards
+		val rank = rankOf(catalogue)
+		val from = rank[current] ?: return TransitionDecision.Canceled
+		val to = rank[target] ?: return TransitionDecision.NotBackwards
 		if (to <= from) return TransitionDecision.NotBackwards
 
 		// Guard two, last because it is the only one that needs a query to answer.

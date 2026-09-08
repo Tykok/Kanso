@@ -55,7 +55,7 @@ class NotificationServiceTest : PostgresTest() {
 		teamId = teams.create(admin, "Core ${UUID.randomUUID()}", "K${UUID.randomUUID().toString().take(4).uppercase()}", null).id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

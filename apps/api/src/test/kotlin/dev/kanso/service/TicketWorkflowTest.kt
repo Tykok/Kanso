@@ -57,7 +57,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "First",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -70,7 +70,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "Second",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -91,7 +91,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "Queued",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -101,7 +101,7 @@ class TicketWorkflowTest : PostgresTest() {
 		)
 
 		// Three rapid keystrokes, as a status change would produce.
-		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = "in_progress"))
 		tickets.patch(admin, ticket.ticket.id, TicketPatch(priority = TicketPriority.HIGH))
 		tickets.patch(admin, ticket.ticket.id, TicketPatch(title = "Renamed"))
 
@@ -117,7 +117,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "Keep me",
 			description = "Some context",
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.HIGH,
 			start = null,
 			due = KansoInstant(LocalDate.of(2026, 9, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
@@ -126,7 +126,7 @@ class TicketWorkflowTest : PostgresTest() {
 			docIds = emptyList(),
 		)
 
-		val afterStatus = tickets.patch(admin, created.ticket.id, TicketPatch(status = DefaultStatus.DONE))
+		val afterStatus = tickets.patch(admin, created.ticket.id, TicketPatch(status = "done"))
 		assertEquals("Keep me", afterStatus.ticket.title)
 		assertEquals("Some context", afterStatus.ticket.description)
 		assertEquals(TicketPriority.HIGH, afterStatus.ticket.priority)
@@ -149,7 +149,7 @@ class TicketWorkflowTest : PostgresTest() {
 				teamId = team.id,
 				title = "Backwards",
 				description = null,
-				status = DefaultStatus.TODO,
+				status = "todo",
 				priority = TicketPriority.NONE,
 				start = KansoInstant(LocalDate.of(2026, 9, 10).atStartOfDay().atOffset(ZoneOffset.UTC), false),
 				due = KansoInstant(LocalDate.of(2026, 9, 1).atStartOfDay().atOffset(ZoneOffset.UTC), false),
@@ -170,7 +170,7 @@ class TicketWorkflowTest : PostgresTest() {
 				teamId = team.id,
 				title = "Ghost",
 				description = null,
-				status = DefaultStatus.TODO,
+				status = "todo",
 				priority = TicketPriority.NONE,
 				start = null,
 				due = null,
@@ -192,7 +192,7 @@ class TicketWorkflowTest : PostgresTest() {
 				teamId = team.id,
 				title = "In ${team.name}",
 				description = null,
-				status = DefaultStatus.TODO,
+				status = "todo",
 				priority = TicketPriority.NONE,
 				start = null,
 				due = null,
@@ -228,7 +228,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "Part of the project",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -249,7 +249,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "To archive",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -277,7 +277,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "Finish me",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -287,7 +287,7 @@ class TicketWorkflowTest : PostgresTest() {
 		)
 		assertNull(created.ticket.completedAt, "a new ticket has not been completed")
 
-		val done = tickets.patch(admin, created.ticket.id, TicketPatch(status = DefaultStatus.DONE))
+		val done = tickets.patch(admin, created.ticket.id, TicketPatch(status = "done"))
 		assertNotNull(done.ticket.completedAt, "entering done records when it happened")
 
 		val renamed = tickets.patch(admin, created.ticket.id, TicketPatch(title = "Still done"))
@@ -297,7 +297,7 @@ class TicketWorkflowTest : PostgresTest() {
 			"an unrelated edit must not move the completion date — that is why updatedAt cannot serve",
 		)
 
-		val reopened = tickets.patch(admin, created.ticket.id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
+		val reopened = tickets.patch(admin, created.ticket.id, TicketPatch(status = "in_progress"))
 		assertNull(reopened.ticket.completedAt, "leaving done clears it")
 	}
 
@@ -319,7 +319,7 @@ class TicketWorkflowTest : PostgresTest() {
 			teamId = team.id,
 			title = "Logged after the fact",
 			description = null,
-			status = DefaultStatus.DONE,
+			status = "done",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

@@ -9,6 +9,7 @@ import dev.kanso.realtime.KansoEvent
 import dev.kanso.repo.TicketRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.NotFoundException
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.TicketAccess
 import dev.kanso.service.TicketService
 import org.springframework.stereotype.Service
@@ -38,6 +39,7 @@ class DocBlockService(
 	private val access: TicketAccess,
 	private val locks: DocBlockLockService,
 	private val events: EventPublisher,
+	private val statusCategories: StatusCategories,
 ) {
 
 	/**
@@ -152,7 +154,9 @@ class DocBlockService(
 			teamId = page.teamId,
 			title = title.trim().ifEmpty { throw BadRequestException("A ticket needs a title") },
 			description = null,
-			status = DefaultStatus.TODO,
+			// The page's team's own entry point for work it will do, not the word `todo`
+			// — `KAN-90`. A team that renamed or removed that status still gets a ticket.
+			status = statusCategories.intakeOf(page.teamId),
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

@@ -52,7 +52,7 @@ class LabelServiceTest : PostgresTest() {
 			teamId = core.id,
 			title = "Labelled work",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

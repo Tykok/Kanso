@@ -60,11 +60,12 @@ class StatusBucketOrderTest : PostgresTest() {
 	fun `stacks every status the vocabulary has, in the workflow order`() {
 		// Created in reverse, so a query that returned them in insertion order — or in the
 		// column's alphabetical order, which starts `backlog, canceled` — fails.
-		for (status in DefaultStatus.entries.reversed()) {
+		for (seeded in DefaultStatus.entries.reversed()) {
+			val status = seeded.wire
 			tickets.create(
 				actor = admin,
 				teamId = team.id,
-				title = "A ticket that is ${status.wire}",
+				title = "A ticket that is $status",
 				description = null,
 				status = status,
 				priority = TicketPriority.NONE,

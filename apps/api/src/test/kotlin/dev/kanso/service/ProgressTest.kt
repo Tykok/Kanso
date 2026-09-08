@@ -84,7 +84,7 @@ class ProgressTest : PostgresTest() {
 	 * nothing at all — and would start measuring something the day the clock caught up.
 	 */
 	private fun delivered(cycleId: UUID, on: LocalDate, estimate: Int?, assignees: List<UUID>) {
-		val id = open(estimate, DefaultStatus.DONE, assignees)
+		val id = open(estimate, "done", assignees)
 		Tickets.update({ Tickets.id eq id }) {
 			it[completedAt] = on.atTime(10, 0).atOffset(ZoneOffset.UTC)
 		}
@@ -93,7 +93,7 @@ class ProgressTest : PostgresTest() {
 
 	private fun open(
 		estimate: Int?,
-		status: DefaultStatus = DefaultStatus.TODO,
+		status: String = "todo",
 		assignees: List<UUID>,
 		projectId: UUID? = null,
 	): UUID = tickets.create(
@@ -228,10 +228,10 @@ class ProgressTest : PostgresTest() {
 			delivered(c.id, LocalDate.of(2026, 8, 5), 5, listOf(ana.id))
 			delivered(c.id, LocalDate.of(2026, 8, 6), 5, listOf(ana.id))
 		}
-		open(8, DefaultStatus.IN_PROGRESS, listOf(ana.id))
-		open(5, DefaultStatus.TODO, listOf(ana.id))
-		open(13, DefaultStatus.TODO, listOf(bo.id))
-		open(3, DefaultStatus.DONE, listOf(ana.id))
+		open(8, "in_progress", listOf(ana.id))
+		open(5, "todo", listOf(ana.id))
+		open(13, "todo", listOf(bo.id))
+		open(3, "done", listOf(ana.id))
 
 		val mine = progress.forPerson(ana, team.id)
 
@@ -249,7 +249,7 @@ class ProgressTest : PostgresTest() {
 	@Test
 	fun `the cut holds the buckets the plate has, and nothing settled`() {
 		val ana = person("Ana")
-		open(8, DefaultStatus.IN_PROGRESS, listOf(ana.id))
+		open(8, "in_progress", listOf(ana.id))
 
 		val byStatus = progress.forPerson(ana, team.id).load.byStatus
 
@@ -272,11 +272,11 @@ class ProgressTest : PostgresTest() {
 		val ana = person("Ana")
 		val light = project("Light")
 		val heavy = project("Heavy")
-		open(3, DefaultStatus.TODO, listOf(ana.id), light.id)
-		open(13, DefaultStatus.TODO, listOf(ana.id), heavy.id)
-		open(2, DefaultStatus.TODO, listOf(ana.id))
-		open(2, DefaultStatus.TODO, listOf(ana.id))
-		open(2, DefaultStatus.TODO, listOf(ana.id))
+		open(3, "todo", listOf(ana.id), light.id)
+		open(13, "todo", listOf(ana.id), heavy.id)
+		open(2, "todo", listOf(ana.id))
+		open(2, "todo", listOf(ana.id))
+		open(2, "todo", listOf(ana.id))
 
 		val byProject = progress.forPerson(ana, team.id).load.byProject
 
@@ -293,9 +293,9 @@ class ProgressTest : PostgresTest() {
 	fun `points a plate has no estimate for are counted, never added to the sum as zeroes`() {
 		val ana = person("Ana")
 		preferences.save(ana.id, PreferencesPatch(declaredVelocity = 1.0))
-		open(5, DefaultStatus.TODO, listOf(ana.id))
-		open(null, DefaultStatus.TODO, listOf(ana.id))
-		open(null, DefaultStatus.TODO, listOf(ana.id))
+		open(5, "todo", listOf(ana.id))
+		open(null, "todo", listOf(ana.id))
+		open(null, "todo", listOf(ana.id))
 
 		val load = progress.forPerson(ana, team.id).load
 
@@ -316,7 +316,7 @@ class ProgressTest : PostgresTest() {
 	fun `a person on an instance that has closed no cycle gets an absence, not zeroes`() {
 		val ana = person("Ana")
 		cycle(21, LocalDate.of(2026, 8, 3), state = CycleState.ACTIVE)
-		open(8, DefaultStatus.TODO, listOf(ana.id))
+		open(8, "todo", listOf(ana.id))
 
 		val mine = progress.forPerson(ana, team.id)
 
@@ -390,7 +390,7 @@ class ProgressTest : PostgresTest() {
 		// And the measured half, which is not a validation but an arbitration: a person the
 		// closed cycles saw finish nothing is an absence rather than a rate of zero.
 		cycle(21, LocalDate.of(2026, 8, 3)).also { delivered(it.id, LocalDate.of(2026, 8, 5), 5, listOf(person("Bo").id)) }
-		open(8, DefaultStatus.TODO, listOf(ana.id))
+		open(8, "todo", listOf(ana.id))
 
 		val mine = progress.forPerson(ana, team.id)
 
@@ -425,7 +425,7 @@ class ProgressTest : PostgresTest() {
 			delivered(c.id, LocalDate.of(2026, 8, 5), 5, listOf(ana.id))
 			delivered(c.id, LocalDate.of(2026, 8, 6), 8, listOf(bo.id))
 		}
-		open(8, DefaultStatus.TODO, listOf(bo.id))
+		open(8, "todo", listOf(bo.id))
 
 		// This is the seam the other-person view will use, and it is asserted here so that
 		// ticket finds a service that already answers rather than one it has to widen.

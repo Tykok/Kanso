@@ -70,7 +70,7 @@ class TicketProjectCoherenceTest : PostgresTest() {
 		teamId = teamId,
 		title = "Ticket ${UUID.randomUUID().toString().take(4)}",
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

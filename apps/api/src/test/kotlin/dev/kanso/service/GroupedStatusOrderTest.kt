@@ -40,7 +40,7 @@ class GroupedStatusOrderTest : PostgresTest() {
 		role = InstanceRole.OWNER,
 	)
 
-	private fun ticket(actor: User, teamId: UUID, title: String, status: DefaultStatus) =
+	private fun ticket(actor: User, teamId: UUID, title: String, status: String) =
 		tickets.create(
 			actor = actor,
 			teamId = teamId,
@@ -71,8 +71,8 @@ class GroupedStatusOrderTest : PostgresTest() {
 	fun `one team's page is stacked in that team's own order`() {
 		val actor = owner()
 		val team = teams.create(actor, "Ordered ${UUID.randomUUID()}", null, null)
-		ticket(actor, team.id, "A", DefaultStatus.BACKLOG)
-		ticket(actor, team.id, "B", DefaultStatus.TODO)
+		ticket(actor, team.id, "A", "backlog")
+		ticket(actor, team.id, "B", "todo")
 
 		statuses.reorder(
 			actor,
@@ -91,9 +91,9 @@ class GroupedStatusOrderTest : PostgresTest() {
 		val one = teams.create(actor, "One ${UUID.randomUUID()}", null, null)
 		val other = teams.create(actor, "Other ${UUID.randomUUID()}", null, null)
 		statuses.rename(actor, other.id, "todo", "Qualifié")
-		ticket(actor, one.id, "A", DefaultStatus.TODO)
-		ticket(actor, other.id, "B", DefaultStatus.TODO)
-		ticket(actor, other.id, "C", DefaultStatus.DONE)
+		ticket(actor, one.id, "A", "todo")
+		ticket(actor, other.id, "B", "todo")
+		ticket(actor, other.id, "C", "done")
 
 		val all = buckets(null)
 
@@ -107,8 +107,8 @@ class GroupedStatusOrderTest : PostgresTest() {
 	fun `a team that has not reordered anything reads as it always did`() {
 		val actor = owner()
 		val team = teams.create(actor, "Untouched ${UUID.randomUUID()}", null, null)
-		ticket(actor, team.id, "A", DefaultStatus.DONE)
-		ticket(actor, team.id, "B", DefaultStatus.BACKLOG)
+		ticket(actor, team.id, "A", "done")
+		ticket(actor, team.id, "B", "backlog")
 
 		// The seed is `StatusOrder.WORKFLOW`, so nothing about this answer changed for the
 		// teams that existed before `V41`.

@@ -96,7 +96,7 @@ class NotionInboundTicketTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = day(start),
 		due = day(due),

@@ -95,7 +95,7 @@ class NotionInboundConflictTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

@@ -68,7 +68,7 @@ class NotificationCallSitesTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -115,7 +115,7 @@ class NotificationCallSitesTest : PostgresTest() {
 		val lea = person("Lea")
 		val ticket = newTicket(assignees = listOf(lea.id))
 
-		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.IN_REVIEW))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = "in_review"))
 
 		val rows = notifications.inbox(lea.id).rows
 		assertEquals(listOf("status_moved", "assigned"), rows.map { it.kind })
@@ -141,7 +141,7 @@ class NotificationCallSitesTest : PostgresTest() {
 	fun `the actor is not told about a status they moved themselves`() {
 		val ticket = newTicket(assignees = listOf(admin.id))
 
-		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.DONE))
+		tickets.patch(admin, ticket.ticket.id, TicketPatch(status = "done"))
 
 		assertEquals(0, notifications.inbox(admin.id).rows.size)
 	}

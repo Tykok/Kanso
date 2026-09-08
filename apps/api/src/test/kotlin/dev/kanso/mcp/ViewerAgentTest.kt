@@ -209,7 +209,7 @@ class ViewerAgentTest : PostgresTest() {
 		teamId = team.id,
 		title = READABLE,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

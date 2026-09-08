@@ -41,7 +41,7 @@ class MovedAlongTest : PostgresTest() {
 		)
 	}
 
-	private fun ticketIn(status: DefaultStatus): UUID {
+	private fun ticketIn(status: String): UUID {
 		val team = teams.insert(
 			name = "Moved ${UUID.randomUUID()}",
 			key = "M${UUID.randomUUID().toString().take(4).uppercase()}",
@@ -74,8 +74,8 @@ class MovedAlongTest : PostgresTest() {
 	fun `filing work is not moving it`() {
 		val baseline = tickets.anyMovedAlong()
 
-		ticketIn(DefaultStatus.BACKLOG)
-		ticketIn(DefaultStatus.TODO)
+		ticketIn("backlog")
+		ticketIn("todo")
 
 		assertEquals(
 			baseline,
@@ -86,8 +86,8 @@ class MovedAlongTest : PostgresTest() {
 
 	@Test
 	fun `starting one moves it along`() {
-		val id = ticketIn(DefaultStatus.BACKLOG)
-		service.patch(owner, id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
+		val id = ticketIn("backlog")
+		service.patch(owner, id, TicketPatch(status = "in_progress"))
 
 		assertTrue(tickets.anyMovedAlong(), "a started ticket is work that has moved")
 	}
@@ -100,17 +100,21 @@ class MovedAlongTest : PostgresTest() {
 	 */
 	@Test
 	fun `review, done and canceled all count as moved`() {
+		// The *categories* the probe asks about since `KAN-90`, and the seeded statuses
+		// that fall in them — which is what this test was always really pinning. A list of
+		// statuses could only have named Kanso's own; the pair below still says exactly
+		// which four seeded words count, and now says it for a team's inventions too.
 		val moved = DefaultStatus.entries.filter {
-			it.category != StatusCategory.BACKLOG && it.category != StatusCategory.UNSTARTED
-		}
+			it.category in TicketRepository.MOVED_ALONG_CATEGORIES
+		}.map { it.wire }
 		assertEquals(
-			listOf(DefaultStatus.IN_PROGRESS, DefaultStatus.IN_REVIEW, DefaultStatus.DONE, DefaultStatus.CANCELED),
+			listOf("in_progress", "in_review", "done", "canceled"),
 			moved,
 			"the statuses this asks about are the four the category mapping calls moved",
 		)
 
 		for (status in moved) {
-			val id = ticketIn(DefaultStatus.BACKLOG)
+			val id = ticketIn("backlog")
 			service.patch(owner, id, TicketPatch(status = status))
 			assertTrue(tickets.anyMovedAlong(), "$status is work that has moved")
 		}

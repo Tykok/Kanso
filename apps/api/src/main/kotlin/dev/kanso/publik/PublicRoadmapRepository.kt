@@ -1,5 +1,6 @@
 package dev.kanso.publik
 
+import dev.kanso.db.TeamStatuses
 import dev.kanso.db.Labels
 import dev.kanso.db.PublicTickets
 import dev.kanso.db.Teams
@@ -7,6 +8,7 @@ import dev.kanso.db.TicketAssignees
 import dev.kanso.db.TicketFiles
 import dev.kanso.db.TicketLabels
 import dev.kanso.db.Votes
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.DefaultStatus
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -21,7 +23,8 @@ data class PublishedRow(
 	val teamId: UUID,
 	val title: String,
 	val description: String?,
-	val status: DefaultStatus,
+	/** The owning team's own status key. Its *meaning* is resolved by the service. */
+	val status: String,
 	val completedAt: OffsetDateTime?,
 	val unclaimed: Boolean,
 )
@@ -49,8 +52,16 @@ class PublicRoadmapRepository {
 			.where { TicketAssignees.ticketId eq PublicTickets.id }
 	)
 
-	/** Every published ticket in these statuses, newest work first inside each. */
-	fun findPublished(statuses: Collection<DefaultStatus>, limit: Int): List<PublishedRow> =
+	/**
+	 * Every published ticket whose status *means* one of these, newest work first.
+	 *
+	 * By category and not by a list of keys — `KAN-90`. This page has no team scope at
+	 * all: it is every published ticket in the instance, so no team's vocabulary can
+	 * express "everything except cancelled". The `EXISTS` is the same clause
+	 * `TicketFilters.categories` uses, and the same reasoning applies — a join here would
+	 * multiply a row by its own status.
+	 */
+	fun findPublished(categories: Collection<StatusCategory>, limit: Int): List<PublishedRow> =
 		PublicTickets.join(Teams, JoinType.INNER, PublicTickets.teamId, Teams.id)
 			.select(
 				PublicTickets.id,
@@ -63,7 +74,15 @@ class PublicRoadmapRepository {
 				Teams.key,
 				unclaimed,
 			)
-			.where { published and (PublicTickets.status inList statuses.map { it.wire }) }
+			.where {
+				published and exists(
+					TeamStatuses.selectAll().where {
+						(TeamStatuses.teamId eq PublicTickets.teamId) and
+							(TeamStatuses.key eq PublicTickets.status) and
+							(TeamStatuses.category inList categories.map { it.wire })
+					}
+				)
+			}
 			.limit(limit)
 			.map {
 				PublishedRow(
@@ -72,7 +91,7 @@ class PublicRoadmapRepository {
 					teamId = it[PublicTickets.teamId],
 					title = it[PublicTickets.title],
 					description = it[PublicTickets.description],
-					status = DefaultStatus.from(it[PublicTickets.status]),
+					status = it[PublicTickets.status],
 					completedAt = it[PublicTickets.completedAt],
 					unclaimed = it[unclaimed],
 				)
@@ -105,7 +124,7 @@ class PublicRoadmapRepository {
 					teamId = it[PublicTickets.teamId],
 					title = it[PublicTickets.title],
 					description = it[PublicTickets.description],
-					status = DefaultStatus.from(it[PublicTickets.status]),
+					status = it[PublicTickets.status],
 					completedAt = it[PublicTickets.completedAt],
 					unclaimed = it[unclaimed],
 				)

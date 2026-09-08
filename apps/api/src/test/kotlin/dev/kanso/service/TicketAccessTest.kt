@@ -46,7 +46,7 @@ class TicketAccessTest : PostgresTest() {
 		teamId = teamId,
 		title = "Work",
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,

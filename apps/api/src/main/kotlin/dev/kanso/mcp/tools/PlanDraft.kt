@@ -103,7 +103,11 @@ internal class PlanDraft private constructor(
 				ref = ref,
 				title = ticket.requiredString("title"),
 				description = ticket.string("description"),
-				status = DefaultStatus.from(ticket.string("status") ?: DefaultStatus.TODO.wire),
+				// Kept as the agent said it, and neither parsed nor defaulted here — `KAN-90`.
+				// A draft is parsed with no team in hand, so there is no catalogue to check a
+				// status against and no team whose entry point could be the default. Null means
+				// "nobody said", and `PlanTool` resolves both against the team it files into.
+				status = ticket.string("status"),
 				priority = TicketPriority.from(ticket.string("priority") ?: TicketPriority.NONE.wire),
 				estimate = estimateOf(ref, ticket),
 				assigneeIds = people.resolve(ticket.strings("assignees").orEmpty()),
@@ -278,7 +282,8 @@ internal data class PlannedTicket(
 	val ref: String,
 	val title: String,
 	val description: String?,
-	val status: DefaultStatus,
+	/** As the agent said it, or null for "nobody said". Resolved by `PlanTool`. */
+	val status: String?,
 	val priority: TicketPriority,
 	val estimate: Int?,
 	val assigneeIds: List<UUID>,

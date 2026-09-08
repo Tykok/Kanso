@@ -119,7 +119,7 @@ class GetTicketTool(
 
 		return buildString {
 			appendLine("${detail.identifier}  ${ticket.title}")
-			appendLine("status: ${ticket.status.wire}    priority: ${ticket.priority.wire}")
+			appendLine("status: ${ticket.status}    priority: ${ticket.priority.wire}")
 			appendLine("estimate: ${ticket.estimate?.toString() ?: "not sized"}")
 			appendLine("assignees: ${detail.assigneeIds.mapNotNull { emails[it] }.joinToString().ifEmpty { "nobody" }}")
 			appendLine("team: ${detail.teamKey}    project: ${ticket.projectId?.toString() ?: "none"}")

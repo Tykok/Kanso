@@ -221,7 +221,7 @@ class UpdatedAtIsAnEditTest : PostgresTest() {
 			teamId = team,
 			title = "Files against the counter",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

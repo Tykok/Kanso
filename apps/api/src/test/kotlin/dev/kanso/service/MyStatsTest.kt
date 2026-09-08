@@ -82,7 +82,7 @@ class MyStatsTest : PostgresTest() {
 	private fun open(
 		assignees: List<UUID>,
 		estimate: Int? = null,
-		status: DefaultStatus = DefaultStatus.IN_PROGRESS,
+		status: String = "in_progress",
 		due: KansoInstant? = null,
 	): UUID = tickets.create(
 		actor = admin,
@@ -111,7 +111,7 @@ class MyStatsTest : PostgresTest() {
 			teamId = team.id,
 			title = "finished $estimate",
 			description = null,
-			status = DefaultStatus.DONE,
+			status = "done",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,
@@ -302,7 +302,7 @@ class MyStatsTest : PostgresTest() {
 	fun `a cancelled predecessor blocks nothing, because nobody is waiting for it`() {
 		val ana = person("Ana")
 		val successor = open(listOf(ana.id))
-		val abandoned = open(listOf(ana.id), status = DefaultStatus.CANCELED)
+		val abandoned = open(listOf(ana.id), status = "canceled")
 		dependencies.insert(predecessorId = abandoned, successorId = successor)
 
 		assertEquals(

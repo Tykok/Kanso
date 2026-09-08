@@ -30,7 +30,7 @@ class BranchNameTest {
 			createdBy = null,
 			title = title,
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.MEDIUM,
 			estimate = null,
 			start = null,

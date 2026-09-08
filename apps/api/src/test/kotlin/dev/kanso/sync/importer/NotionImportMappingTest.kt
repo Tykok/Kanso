@@ -89,7 +89,7 @@ class NotionImportMappingTest : ImportTestBase() {
 
 		val ticket = ticketRows.search(includeArchived = false, limit = 50).single()
 		assertEquals("Livrer", ticket.title)
-		assertEquals(DefaultStatus.IN_PROGRESS, ticket.status)
+		assertEquals("in_progress", ticket.status)
 		assertEquals(TicketPriority.HIGH, ticket.priority)
 		assertEquals("Ce qu'il reste", ticket.description?.lines()?.first())
 		// `KansoInstant.at` is the field the domain model carries; the brief's `.value` names

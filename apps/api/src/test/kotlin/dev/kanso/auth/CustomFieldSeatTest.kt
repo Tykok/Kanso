@@ -69,7 +69,7 @@ class CustomFieldSeatTest : PostgresTest() {
 
 	private fun ticketIn(teamId: UUID): Ticket = tickets.create(
 		actor = admin, teamId = teamId, title = "Work", description = null,
-		status = DefaultStatus.TODO, priority = TicketPriority.NONE,
+		status = "todo", priority = TicketPriority.NONE,
 		start = null, due = null, projectId = null,
 		assigneeIds = emptyList(), docIds = emptyList(),
 	).ticket
@@ -180,7 +180,7 @@ class CustomFieldSeatTest : PostgresTest() {
 		val author = user(InstanceRole.MEMBER)
 		val draft = tickets.create(
 			actor = author, teamId = null, title = "Mine", description = null,
-			status = DefaultStatus.TODO, priority = TicketPriority.NONE,
+			status = "todo", priority = TicketPriority.NONE,
 			start = null, due = null, projectId = null,
 			assigneeIds = emptyList(), docIds = emptyList(),
 		).ticket

@@ -1,7 +1,7 @@
 package dev.kanso.service
 
 import dev.kanso.domain.TicketLinkType
-import dev.kanso.domain.DefaultStatus
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.User
 import dev.kanso.domain.Wire
 import dev.kanso.domain.parse
@@ -67,7 +67,25 @@ class TriageService(
 	private val ticketService: TicketService,
 	private val details: TicketDetails,
 	private val links: TicketLinkRepository,
+	private val statusCategories: StatusCategories,
 ) {
+
+	/**
+	 * Where a ruling puts the ticket, in its own team's words — `KAN-90`.
+	 *
+	 * The two rulings that move a ticket used to write `backlog` and `canceled`. Neither
+	 * word is guaranteed to exist in the ticket's team, so each names the *meaning* and
+	 * takes the team's first status of it, by the position the team chose.
+	 *
+	 * Refused rather than skipped, unlike the GitHub webhook: a ruling is somebody's
+	 * deliberate act on a screen built for it, and silently not moving the ticket would
+	 * leave them looking at a decision that did not happen.
+	 */
+	private fun statusFor(ticket: dev.kanso.domain.Ticket, category: StatusCategory): String =
+		statusCategories.firstOf(ticket.teamId, category)
+			?: throw ConflictException(
+				"That ticket's team has no status meaning \"${category.wire}\", so this ruling has nowhere to put it",
+			)
 
 	@Transactional(readOnly = true)
 	fun queue(teamId: UUID, limit: Int = 50): TriageQueue {
@@ -145,12 +163,12 @@ class TriageService(
 				cycles.addTickets(actor, cycle.id, listOf(ticketId))
 			}
 			TriageDecision.BACKLOGGED ->
-				ticketService.patch(actor, ticketId, TicketPatch(status = DefaultStatus.BACKLOG))
+				ticketService.patch(actor, ticketId, TicketPatch(status = statusFor(ticket, StatusCategory.BACKLOG)))
 			// Both end the ticket. They differ in the record, not the outcome: "marked
 			// duplicate" points somewhere, "closed without action" does not, and a reader
 			// six weeks later needs to know which one happened.
 			TriageDecision.DUPLICATE, TriageDecision.CLOSED ->
-				ticketService.patch(actor, ticketId, TicketPatch(status = DefaultStatus.CANCELED))
+				ticketService.patch(actor, ticketId, TicketPatch(status = statusFor(ticket, StatusCategory.CANCELED)))
 		}
 
 		// The ruling also draws the link, so that "what does this duplicate?" has one

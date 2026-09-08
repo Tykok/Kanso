@@ -16,6 +16,7 @@ import dev.kanso.mcp.stringsField
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ProjectDetail
 import dev.kanso.service.ProjectService
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.SubTicketService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketDetail
@@ -71,6 +72,7 @@ class PlanTool(
 	private val teams: TeamService,
 	private val projects: ProjectService,
 	private val people: McpPeople,
+	private val statusCategories: StatusCategories,
 ) : McpTool {
 
 	override val name = "kanso_plan"
@@ -114,7 +116,7 @@ class PlanTool(
 				"ref" to stringField("Your name for this ticket inside this call, e.g. `schema`. Not stored."),
 				"title" to stringField("One line, what the work is."),
 				"description" to stringField("The body. Markdown, optional."),
-				"status" to stringField("Default `todo`.", STATUSES),
+				"status" to stringField("A status key of the team this is filed into. Omit it and the ticket lands in that team's first unstarted status. The six every team starts with are $SEEDED_STATUSES, and a team may rename or replace any of them."),
 				"priority" to stringField("Default `none`.", PRIORITIES),
 				"estimate" to integerField("Points. Omit if this ticket is not sized."),
 				"assignees" to stringsField("Who is doing it, by email or by user id."),
@@ -158,7 +160,7 @@ class PlanTool(
 				teamId = team.id,
 				title = planned.title,
 				description = planned.description,
-				status = planned.status,
+				status = planned.status ?: statusCategories.intakeOf(team.id),
 				priority = planned.priority,
 				// Absent for `CreateTicketTool`'s reason: `KansoInstant` carries whether the time
 				// of day is meaningful, and an agent handing over a date has not answered that.
@@ -255,7 +257,27 @@ class PlanTool(
 	}.trimEnd()
 
 	private companion object {
-		val STATUSES = DefaultStatus.entries.map { it.wire }
+		/**
+		 * The words a team is *seeded* with, named in a description and never as an `enum`
+		 * — `KAN-90`.
+		 *
+		 * A tool schema is built once, at startup, with no actor and no team, so it cannot
+		 * advertise the vocabulary of the team an agent happens to be working in: a team
+		 * that added `devis` or removed `in_review` would be described wrongly to every
+		 * caller. An `enum` here would therefore be a closed list that is not closed, which
+		 * is worse than no list — a client validating against it would refuse a status the
+		 * server accepts.
+		 *
+		 * So the field is a plain string, these six are offered as the likely answer, and a
+		 * key the ticket's team does not have is refused by `StatusCategories.require` with
+		 * the team's own list in the sentence. The agent learns the vocabulary in one
+		 * round-trip, from the side that knows it.
+		 *
+		 * Rejected: a schema of the five categories, which would be genuinely closed and
+		 * validatable but would make `in_review` unreachable — an agent could no longer say
+		 * "put it in review" rather than "in progress", and both are `STARTED`.
+		 */
+		val SEEDED_STATUSES = DefaultStatus.entries.joinToString(", ") { it.wire }
 		val PRIORITIES = TicketPriority.entries.map { it.wire }
 		val TYPES = TicketLinkType.entries.map { it.wire }
 	}

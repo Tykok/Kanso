@@ -52,8 +52,10 @@ fun statusKeyOf(label: String): String {
  * database whose schema was created with the six: the select's options are a seed, not a
  * vocabulary.
  */
-fun mirroredWord(status: DefaultStatus, catalogue: List<TeamStatus>): String =
-	catalogue.firstOrNull { it.key == status.wire }?.label ?: status.label
+fun mirroredWord(status: String, catalogue: List<TeamStatus>): String =
+	catalogue.firstOrNull { it.key == status }?.label
+		?: DefaultStatus.entries.firstOrNull { it.wire == status }?.label
+		?: status
 
 /**
  * The status a word read back off a Notion page means, for the team that owns the page's
@@ -70,9 +72,13 @@ fun mirroredWord(status: DefaultStatus, catalogue: List<TeamStatus>): String =
  * The team's word is tried first and Kanso's second, so a page edited before a rename
  * still reads — and a team that renamed nothing is unaffected either way.
  */
-fun statusFromWord(word: String, catalogue: List<TeamStatus>): DefaultStatus? {
+fun statusFromWord(word: String, catalogue: List<TeamStatus>): String? {
 	val said = word.trim()
-	catalogue.firstOrNull { it.label.equals(said, ignoreCase = true) }
-		?.let { return DefaultStatus.from(it.key) }
-	return DefaultStatus.fromLabel(said)
+	catalogue.firstOrNull { it.label.equals(said, ignoreCase = true) }?.let { return it.key }
+	// Kanso's own word, and only if the team still has the status it names — `KAN-90`.
+	// Without that second half, a page still reading "Done" for a team that removed
+	// `done` would resolve to a key `tickets_status_fk` refuses, and the poller would
+	// fail every cycle on one stale page.
+	val seeded = DefaultStatus.fromLabel(said)?.wire ?: return null
+	return seeded.takeIf { key -> catalogue.any { it.key == key } }
 }

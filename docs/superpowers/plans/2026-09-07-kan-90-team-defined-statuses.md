@@ -46,17 +46,21 @@ added *Devis* and then removes `done` naming *Devis* as the destination writes
 read of them. That is a 500 on data somebody owns, not a red test. The type change has to
 land first, so the order is **1 → 3 → 2 → 4 → 5 → 6**.
 
-**A category filter in SQL is a join, not a list of keys.** Three of the seven
+**A category filter in SQL is an `EXISTS`, not a list of keys.** Three of the seven
 `DefaultStatus.entries.filter { … }` lists feed queries whose scope spans teams —
 `WorkloadService.OPEN_STATUSES` into `tickets.search(teamIds = …)`,
 `PublicRoadmapService.ROADMAP_STATUSES` and `NOT_STARTED_STATUSES` into `findPublished`,
 and `TicketRepository.MOVED_ALONG_STATUSES` into a probe with no team scope at all. No
 single team's keys can serve any of them, so `keysMeaning` is not the answer there:
-`search` and `findPublished` take `categories: List<StatusCategory>` and the repository
-joins `team_statuses` on `(team_id, status)`. Rejected: a denormalised `tickets.category`
-column, because a second copy of the mapping on disk is what `DefaultStatus.category`'s
-docstring exists to refuse; and expanding every team's keys in Kotlin, because the
-unscoped probe would have to read all of `team_statuses` to ask whether anything moved.
+`search` and `findPublished` take `categories: List<StatusCategory>`, and the predicate
+adds an `EXISTS` against `team_statuses` on `(team_id, status)`. An `EXISTS` and not the
+`JOIN` this paragraph first said: a join changes the `FROM` of every query
+`TicketQueryRepository.predicate` serves, and can multiply a row by its own status — a
+count silently too high on the one screen that reports nothing but counts. Rejected too: a
+denormalised `tickets.category` column, because a second copy of the mapping on disk is
+what `DefaultStatus.category`'s docstring exists to refuse; and expanding every team's keys
+in Kotlin, because the unscoped probe would have to read all of `team_statuses` to ask
+whether anything moved.
 
 **The three client bars follow `KAN-28`'s rule rather than a third one.** `burndown.ts`,
 `progress-charts.tsx` and `workload-view.tsx` all segment a `Record<string, number>` by
@@ -66,6 +70,43 @@ A scope of one team reads that team's order out of `Team.statuses`, which alread
 decided for the grouped lists, so there is no third rule to remember — and it retires
 `StatusOrder`'s argument that these two client orders must never come from the server,
 which held only while the vocabulary was closed.
+
+**The public roadmap groups by category, and loses a column.** The plan asked for this
+and `ROADMAP_STATUSES`' own docstring forbade it: folding review into progress "would
+print a word over a ticket the app calls something else, which is the reformulation the
+drawing rules out". That argument held while the vocabulary was closed. `findPublished`
+has no team scope at all, so keeping the words would give an instance-wide page one column
+per word per team; the categories are the only header several vocabularies can share, and
+it is the same reasoning `KAN-28` used for the app's own cross-team lists. Five columns
+become four — `in_progress` and `in_review` are one — and `PublicRoadmapTest`, which pins
+the columns, changes with it.
+
+**The four MCP tools drop their `enum` and refuse by name.** A tool schema is built once,
+with no actor and no team, so it cannot advertise a team's words; `status` becomes a
+`string` whose description names the six seeded keys and says a team may define others,
+and a status the ticket's team does not have is refused with a sentence that lists the
+ones it does. Rejected: a schema of the five categories, which is closed and validatable
+but makes `in_review` unreachable — an agent could no longer say "put it in review"
+rather than "in progress", and both are `STARTED`.
+
+**The eight hard-coded writes name a category and take its first status by position.**
+`RequestSiphon`, `TicketImport` and `CreateTicketTool` wrote `TODO`; `TriageService` wrote
+`BACKLOG` and `CANCELED`; `GithubWebhookService` wrote `IN_REVIEW`. None of those words is
+guaranteed to exist in the destination team. Each now asks for the meaning and takes the
+team's first status of it, ordered by `position` — the team's own choice of where that
+meaning starts. A team with no status of that category is a named refusal.
+
+**Seven of the eight, and the GitHub webhook is the eighth.** Measured by doing it: the
+category rule made three `GithubWebhookTest` cases fail with `expected: <in_review> but
+was: <in_progress>`, and they were right to. `StatusCategory` has no value for review —
+`in_progress` and `in_review` are both `STARTED`, deliberately, because a reviewer is work
+in flight — so a meaning-only rule cannot express what this door means and would retire
+the transition the feature exists for, on every instance, including teams that changed
+nothing. So this door tries the *key* first (`in_review`, `done`) and falls back to the
+category only when the team does not have it. A rename never moves a key, so a team that
+renamed its statuses keeps today's behaviour exactly; a team that removed `in_review` gets
+its first started status; a team with no started status has its ticket left alone, because
+a pull request opening must not invent a movement nobody asked for.
 
 ---
 

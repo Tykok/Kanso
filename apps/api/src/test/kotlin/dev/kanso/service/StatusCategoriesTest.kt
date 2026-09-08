@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * What a status means, asked in one place — `KAN-90`.
@@ -143,6 +144,49 @@ class StatusCategoriesTest : PostgresTest() {
 		assertEquals(emptyList(), categories.keysMeaning(emptyList(), listOf(StatusCategory.BACKLOG)))
 	}
 
+	@Test
+	fun `the first status of a category is the team's own, by the position it chose`() {
+		val actor = owner()
+		val team = team(actor)
+		// Position 0, ahead of the seeded `backlog` — the team put its own word first.
+		add(team.id, "Devis", StatusCategory.BACKLOG, -1)
+
+		// The eight hard-coded writes ask for a meaning and get the team's entry point to
+		// it. Ordered by `position`, because that order *is* the team's answer to "where
+		// does work of this kind start".
+		assertEquals("devis", categories.firstOf(team.id, StatusCategory.BACKLOG))
+		assertEquals("todo", categories.firstOf(team.id, StatusCategory.UNSTARTED))
+	}
+
+	@Test
+	fun `in_progress comes before in_review, so a review is not where started work lands`() {
+		val actor = owner()
+		val team = team(actor)
+
+		// Both are STARTED, and the seed order decides. A pull request opening resolves
+		// STARTED and must not drop the ticket into review on a team that never reordered.
+		assertEquals("in_progress", categories.firstOf(team.id, StatusCategory.STARTED))
+	}
+
+	@Test
+	fun `a category the team has no status for answers null, for the caller to refuse`() {
+		val actor = owner()
+		val team = team(actor)
+		statuses.delete(team.id, "canceled")
+
+		// Null and not a throw: the callers disagree about what to do here. Seven refuse
+		// with a sentence naming the team; `GithubWebhookService` leaves the ticket alone,
+		// because a pull request opening must not invent a movement nobody asked for.
+		assertNull(categories.firstOf(team.id, StatusCategory.CANCELED))
+	}
+
+	@Test
+	fun `a draft has no team to ask, so it answers out of the six`() {
+		// The same fallback `categoryOf` uses, read the other way round.
+		assertEquals("todo", categories.firstOf(null, StatusCategory.UNSTARTED))
+		assertEquals("in_progress", categories.firstOf(null, StatusCategory.STARTED))
+	}
+
 	/**
 	 * What `of` is for: two teams and a draft resolved from one read of the catalogue.
 	 *
@@ -162,9 +206,9 @@ class StatusCategoriesTest : PostgresTest() {
 		statuses.rename(other.id, "todo", "Qualifié")
 
 		val rows = listOf(
-			ticket(one.id, DefaultStatus.IN_PROGRESS),
-			ticket(other.id, DefaultStatus.TODO),
-			ticket(null, DefaultStatus.DONE),
+			ticket(one.id, "in_progress"),
+			ticket(other.id, "todo"),
+			ticket(null, "done"),
 		)
 
 		val resolved = categories.of(rows)
@@ -177,7 +221,7 @@ class StatusCategoriesTest : PostgresTest() {
 		assertEquals(StatusCategory.COMPLETED, resolved[rows[2]])
 	}
 
-	private fun ticket(teamId: UUID?, status: DefaultStatus) = dev.kanso.domain.Ticket(
+	private fun ticket(teamId: UUID?, status: String) = dev.kanso.domain.Ticket(
 		id = UUID.randomUUID(),
 		number = null,
 		teamId = teamId,

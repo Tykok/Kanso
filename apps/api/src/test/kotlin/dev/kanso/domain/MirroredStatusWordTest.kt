@@ -41,34 +41,34 @@ class MirroredStatusWordTest {
 
 	@Test
 	fun `the word written to a page is the team's`() {
-		assertEquals("Résolu", mirroredWord(DefaultStatus.DONE, support))
-		assertEquals("Done", mirroredWord(DefaultStatus.DONE, engineering))
+		assertEquals("Résolu", mirroredWord("done", support))
+		assertEquals("Done", mirroredWord("done", engineering))
 	}
 
 	@Test
 	fun `a ticket with no catalogue to ask writes Kanso's word`() {
 		// A draft is never pushed, but a job queued by some other path must write something
 		// a reader recognises rather than a key.
-		assertEquals("Done", mirroredWord(DefaultStatus.DONE, emptyList()))
+		assertEquals("Done", mirroredWord("done", emptyList()))
 	}
 
 	@Test
 	fun `one word means two statuses, and the team decides which`() {
 		// The whole reason resolution is per team. A union would have to pick one.
-		assertEquals(DefaultStatus.TODO, statusFromWord("En cours", support))
-		assertEquals(DefaultStatus.IN_PROGRESS, statusFromWord("En cours", engineering))
+		assertEquals("todo", statusFromWord("En cours", support))
+		assertEquals("in_progress", statusFromWord("En cours", engineering))
 	}
 
 	@Test
 	fun `case and surrounding space are not a different word`() {
-		assertEquals(DefaultStatus.DONE, statusFromWord("  résolu ", support))
+		assertEquals("done", statusFromWord("  résolu ", support))
 	}
 
 	@Test
 	fun `Kanso's own word still reads, for a team that renamed nothing`() {
 		// The mirror's select was seeded with the six, and a page edited before a rename
 		// still holds one of them.
-		assertEquals(DefaultStatus.DONE, statusFromWord("Done", support))
+		assertEquals("done", statusFromWord("Done", support))
 	}
 
 	@Test
@@ -82,6 +82,6 @@ class MirroredStatusWordTest {
 	fun `the team's word wins over Kanso's when they collide`() {
 		// `support` calls `todo` "En cours"; Kanso calls `in_progress` that. A page holding
 		// "En cours" under a Support ticket means what Support means.
-		assertEquals(DefaultStatus.TODO, statusFromWord("En cours", support))
+		assertEquals("todo", statusFromWord("En cours", support))
 	}
 }

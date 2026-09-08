@@ -1,5 +1,6 @@
 package dev.kanso.github
 
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.DefaultStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -15,29 +16,47 @@ class PrTransitionTest {
 
 	private val noon = OffsetDateTime.of(2026, 9, 3, 12, 0, 0, 0, ZoneOffset.UTC)
 
+	/**
+	 * The seeded six, in the order a new team is given them — `V41`'s `seed_team_statuses`.
+	 *
+	 * A catalogue rather than a rank map since `KAN-90`: progress is `team_statuses.position`
+	 * now, so the fixture that exercises the guards has to be a team's list. Written out
+	 * here rather than read from `StatusOrder`, for the reason that file gives about its own
+	 * constant — a table of states is only a test if the table is in the test.
+	 */
+	private val seeded = linkedMapOf(
+		"backlog" to StatusCategory.BACKLOG,
+		"todo" to StatusCategory.UNSTARTED,
+		"in_progress" to StatusCategory.STARTED,
+		"in_review" to StatusCategory.STARTED,
+		"done" to StatusCategory.COMPLETED,
+		"canceled" to StatusCategory.CANCELED,
+	)
+
 	private fun decide(
 		closes: Boolean = true,
-		current: DefaultStatus,
-		target: DefaultStatus = DefaultStatus.DONE,
+		current: String,
+		target: String = "done",
+		catalogue: Map<String, StatusCategory> = seeded,
 		human: OffsetDateTime? = null,
 		eventAt: OffsetDateTime = noon,
-	) = PrTransition.decide(closes, current, target, human, eventAt)
+	) = PrTransition.decide(closes, current, target, catalogue, human, eventAt)
 
 	// ------------------------------------------------------------------ the two moves
 
 	@Test
 	fun `a merge moves a closing ticket to done`() {
 		assertEquals(
-			TransitionDecision.Move(DefaultStatus.DONE),
-			decide(current = DefaultStatus.IN_PROGRESS),
+			TransitionDecision.Move("done"),
+			decide(current = "in_progress"),
 		)
 	}
 
 	@Test
 	fun `ready for review moves it to in review`() {
 		assertEquals(
-			TransitionDecision.Move(DefaultStatus.IN_REVIEW),
-			decide(current = DefaultStatus.IN_PROGRESS, target = DefaultStatus.IN_REVIEW),
+			TransitionDecision.Move("in_review"),
+			decide(current = "in_progress", target = "in_review"),
 		)
 	}
 
@@ -47,7 +66,7 @@ class PrTransitionTest {
 	fun `a bare mention displays and does not act`() {
 		assertEquals(
 			TransitionDecision.NotAClosingLink,
-			decide(closes = false, current = DefaultStatus.TODO),
+			decide(closes = false, current = "todo"),
 			"a link that only mentions the ticket must never move it, whatever the event",
 		)
 	}
@@ -57,7 +76,7 @@ class PrTransitionTest {
 	fun `closes false is refused before any other question is asked`() {
 		assertEquals(
 			TransitionDecision.NotAClosingLink,
-			decide(closes = false, current = DefaultStatus.CANCELED),
+			decide(closes = false, current = "canceled"),
 		)
 	}
 
@@ -67,7 +86,7 @@ class PrTransitionTest {
 	fun `a lower rank is never reached backwards`() {
 		assertEquals(
 			TransitionDecision.NotBackwards,
-			decide(current = DefaultStatus.DONE, target = DefaultStatus.IN_REVIEW),
+			decide(current = "done", target = "in_review"),
 			"a pull request reopened must not pull a finished ticket back into review",
 		)
 	}
@@ -79,17 +98,17 @@ class PrTransitionTest {
 	 */
 	@Test
 	fun `a ticket already there does not move again`() {
-		assertEquals(TransitionDecision.NotBackwards, decide(current = DefaultStatus.DONE))
+		assertEquals(TransitionDecision.NotBackwards, decide(current = "done"))
 	}
 
 	@Test
 	fun `the whole ranking, forwards and backwards`() {
 		val order = listOf(
-			DefaultStatus.BACKLOG,
-			DefaultStatus.TODO,
-			DefaultStatus.IN_PROGRESS,
-			DefaultStatus.IN_REVIEW,
-			DefaultStatus.DONE,
+			"backlog",
+			"todo",
+			"in_progress",
+			"in_review",
+			"done",
 		)
 		for ((i, from) in order.withIndex()) {
 			for ((j, to) in order.withIndex()) {
@@ -105,12 +124,12 @@ class PrTransitionTest {
 	fun `canceled is outside the ranking and untouched in either direction`() {
 		assertEquals(
 			TransitionDecision.Canceled,
-			decide(current = DefaultStatus.CANCELED, target = DefaultStatus.DONE),
+			decide(current = "canceled", target = "done"),
 			"cancelling is a decision and a merge is not evidence against it",
 		)
 		assertEquals(
 			TransitionDecision.Canceled,
-			decide(current = DefaultStatus.CANCELED, target = DefaultStatus.IN_REVIEW),
+			decide(current = "canceled", target = "in_review"),
 		)
 	}
 
@@ -120,7 +139,7 @@ class PrTransitionTest {
 	fun `a person who moved it after the event keeps their answer`() {
 		assertEquals(
 			TransitionDecision.NotOverAPerson,
-			decide(current = DefaultStatus.TODO, human = noon.plusMinutes(5)),
+			decide(current = "todo", human = noon.plusMinutes(5)),
 			"you moved it by hand while the pull request sat open; the merge does not overrule you",
 		)
 	}
@@ -128,8 +147,8 @@ class PrTransitionTest {
 	@Test
 	fun `a person who moved it before the event does not block it`() {
 		assertEquals(
-			TransitionDecision.Move(DefaultStatus.DONE),
-			decide(current = DefaultStatus.TODO, human = noon.minusMinutes(5)),
+			TransitionDecision.Move("done"),
+			decide(current = "todo", human = noon.minusMinutes(5)),
 		)
 	}
 
@@ -142,7 +161,7 @@ class PrTransitionTest {
 	fun `a hand move in the same instant as the event resolves for the person`() {
 		assertEquals(
 			TransitionDecision.NotOverAPerson,
-			decide(current = DefaultStatus.TODO, human = noon),
+			decide(current = "todo", human = noon),
 		)
 	}
 
@@ -157,8 +176,8 @@ class PrTransitionTest {
 		assertEquals(
 			TransitionDecision.NotOverAPerson,
 			decide(
-				current = DefaultStatus.IN_PROGRESS,
-				target = DefaultStatus.IN_REVIEW,
+				current = "in_progress",
+				target = "in_review",
 				human = noon.minusMinutes(30),
 				eventAt = noon.minusHours(1),
 			),
@@ -168,8 +187,8 @@ class PrTransitionTest {
 	@Test
 	fun `only automation has ever touched it, so nothing is in the way`() {
 		assertEquals(
-			TransitionDecision.Move(DefaultStatus.DONE),
-			decide(current = DefaultStatus.IN_REVIEW, human = null),
+			TransitionDecision.Move("done"),
+			decide(current = "in_review", human = null),
 		)
 	}
 }

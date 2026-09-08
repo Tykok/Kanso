@@ -78,7 +78,7 @@ class TeamlessTicketTest : PostgresTest() {
 		teamId = null,
 		title = "A thought typed in a meeting",
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -203,7 +203,7 @@ class TeamlessTicketTest : PostgresTest() {
 		val team = newTeam("Core")
 		val theirs = tickets.create(
 			actor = admin, teamId = team.id, title = "Team work", description = null,
-			status = DefaultStatus.TODO, priority = TicketPriority.NONE, start = null, due = null,
+			status = "todo", priority = TicketPriority.NONE, start = null, due = null,
 			projectId = null, assigneeIds = emptyList(), docIds = emptyList(),
 		)
 		val mine = draft()
@@ -247,7 +247,7 @@ class TeamlessTicketTest : PostgresTest() {
 		val team = newTeam("Core")
 		val squatter = tickets.create(
 			actor = admin, teamId = team.id, title = "Already here", description = null,
-			status = DefaultStatus.TODO, priority = TicketPriority.NONE, start = null, due = null,
+			status = "todo", priority = TicketPriority.NONE, start = null, due = null,
 			projectId = null, assigneeIds = emptyList(), docIds = emptyList(),
 		)
 		assertEquals("${team.key}-1", squatter.identifier)

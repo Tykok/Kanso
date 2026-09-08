@@ -243,7 +243,7 @@ class CycleService(
 		val counted = inCycle.filter { categories[it] != StatusCategory.CANCELED }
 		val loaded = details.of(counted)
 
-		val byStatus = counted.groupingBy { it.status.wire }.eachCount()
+		val byStatus = counted.groupingBy { it.status }.eachCount()
 		val total = counted.size
 		val done = counted.count { categories[it] == StatusCategory.COMPLETED }
 		val open = loaded.filter { categories[it.ticket] != StatusCategory.COMPLETED }

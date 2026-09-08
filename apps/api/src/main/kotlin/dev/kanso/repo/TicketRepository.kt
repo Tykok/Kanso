@@ -161,7 +161,7 @@ class TicketRepository(
 		createdBy: UUID?,
 		title: String,
 		description: String?,
-		status: DefaultStatus,
+		status: String,
 		priority: TicketPriority,
 		estimate: Int?,
 		start: KansoInstant?,
@@ -176,7 +176,7 @@ class TicketRepository(
 			it[Tickets.createdBy] = createdBy
 			it[Tickets.title] = title
 			it[Tickets.description] = description
-			it[Tickets.status] = status.wire
+			it[Tickets.status] = status
 			it[Tickets.priority] = priority.wire
 			// No default and no zero: a ticket arrives unsized unless somebody said a
 			// number, and that absence is what every later average has to be able to see.
@@ -209,7 +209,7 @@ class TicketRepository(
 		teamId: UUID?,
 		title: String,
 		description: String?,
-		status: DefaultStatus,
+		status: String,
 		priority: TicketPriority,
 		estimate: Int?,
 		start: KansoInstant?,
@@ -222,7 +222,7 @@ class TicketRepository(
 			it[Tickets.teamId] = teamId
 			it[Tickets.title] = title
 			it[Tickets.description] = description
-			it[Tickets.status] = status.wire
+			it[Tickets.status] = status
 			it[Tickets.priority] = priority.wire
 			it[Tickets.estimate] = estimate?.toShort()
 			it[Tickets.startAt] = start?.at
@@ -567,13 +567,18 @@ class TicketRepository(
 	 * One query, and only on a write: [insert] is a single row, so the N+1 that
 	 * `StatusCategories.of` exists to prevent cannot arise here.
 	 */
-	private fun categoryOf(teamId: UUID?, status: DefaultStatus): StatusCategory =
+	private fun categoryOf(teamId: UUID?, status: String): StatusCategory =
 		dev.kanso.service.StatusCategories.resolve(
 			teamId?.let { id -> teamStatuses.forTeam(id).associate { it.key to it.category } },
-			status.wire,
+			status,
 		)
 
-	private companion object {
+	/**
+	 * `internal` rather than private: `MovedAlongTest` pins which categories count as
+	 * movement, and that assertion is the point of the constant — a test that copied the
+	 * list instead would pass while the probe drifted.
+	 */
+	internal companion object {
 		/**
 		 * Neither "we might" nor "we will" — the two categories
 		 * `PublicRoadmapService.NOT_STARTED_STATUSES` calls a first step, read the other

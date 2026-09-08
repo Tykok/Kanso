@@ -62,7 +62,7 @@ class PublicLeakTest : PostgresTest() {
 		parentTeamId = null,
 	)
 
-	private fun ticket(teamId: UUID, title: String, status: DefaultStatus = DefaultStatus.TODO) =
+	private fun ticket(teamId: UUID, title: String, status: String = "todo") =
 		tickets.create(
 			actor = owner,
 			teamId = teamId,

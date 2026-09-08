@@ -82,7 +82,7 @@ class GithubWebhookTest : MockMvcTest() {
 			teamId = team.id,
 			title = "Warn when two cycles overlap",
 			description = null,
-			status = DefaultStatus.TODO,
+			status = "todo",
 			priority = TicketPriority.MEDIUM,
 			start = null,
 			due = null,
@@ -144,8 +144,8 @@ class GithubWebhookTest : MockMvcTest() {
 	 * for a transition that happened. Worth the helper: it is the shape of assertion that
 	 * would pass for the wrong reason on the next payload somebody adds a key to.
 	 */
-	private fun movedTo(status: DefaultStatus) = activityOf(ActivityKind.STATUS_CHANGED)
-		.filter { objectMapper.readTree(it.payload).path("to").asText(null) == status.wire }
+	private fun movedTo(status: String) = activityOf(ActivityKind.STATUS_CHANGED)
+		.filter { objectMapper.readTree(it.payload).path("to").asText(null) == status }
 
 	private fun pullRequest(number: Int = 418) = github.findByRepoAndNumber("tykok/kanso", number)
 
@@ -165,7 +165,7 @@ class GithubWebhookTest : MockMvcTest() {
 		assertEquals(401, response.status, "an unsigned delivery is refused")
 		assertEquals("", response.contentAsString, "and it is refused with no body, which tells a stranger nothing")
 		assertNull(pullRequest(), "nothing was written, which is the half that matters")
-		assertEquals(DefaultStatus.TODO, statusOf(), "and the ticket did not move")
+		assertEquals("todo", statusOf(), "and the ticket did not move")
 	}
 
 	/**
@@ -182,7 +182,7 @@ class GithubWebhookTest : MockMvcTest() {
 
 		assertEquals(401, response.status, "a wrong digest is refused")
 		assertNull(pullRequest(), "and wrote nothing")
-		assertEquals(DefaultStatus.TODO, statusOf(), "and moved nothing")
+		assertEquals("todo", statusOf(), "and moved nothing")
 	}
 
 	/**
@@ -244,10 +244,10 @@ class GithubWebhookTest : MockMvcTest() {
 		assertEquals(204, deliver("pull_request", merge, deliveryId = replayed).status)
 		assertEquals(204, deliver("pull_request", merge, deliveryId = replayed).status, "a redelivery is still a 204")
 
-		assertEquals(DefaultStatus.DONE, statusOf(), "the merge moved it once")
+		assertEquals("done", statusOf(), "the merge moved it once")
 		assertEquals(
 			1,
-			movedTo(DefaultStatus.DONE).size,
+			movedTo("done").size,
 			"exactly one status_changed to done, however many times GitHub sends the delivery",
 		)
 		assertEquals(
@@ -319,7 +319,7 @@ class GithubWebhookTest : MockMvcTest() {
 			github.ticketsClosedBy(stored.id),
 			"the branch and the `Fixes` both name it, so the link closes",
 		)
-		assertEquals(DefaultStatus.IN_REVIEW, statusOf(), "and a pull request opened ready is in review")
+		assertEquals("in_review", statusOf(), "and a pull request opened ready is in review")
 		assertEquals(1, activityOf(ActivityKind.PULL_REQUEST_LINKED).size, "the feed can answer why it is there")
 	}
 
@@ -338,9 +338,9 @@ class GithubWebhookTest : MockMvcTest() {
 		deliver("pull_request", payload("pull_request_opened"))
 		deliver("pull_request", payload("pull_request_merged"))
 
-		assertEquals(DefaultStatus.DONE, statusOf(), "a merge finishes the ticket its branch named")
+		assertEquals("done", statusOf(), "a merge finishes the ticket its branch named")
 
-		val moved = movedTo(DefaultStatus.DONE).single()
+		val moved = movedTo("done").single()
 		assertNull(moved.actorId, "nobody consented, so there is nobody to name — the documented fallback")
 		assertEquals(
 			"#418",
@@ -377,10 +377,10 @@ class GithubWebhookTest : MockMvcTest() {
 		deliver("pull_request", payload("pull_request_opened"))
 		deliver("pull_request", payload("pull_request_merged"))
 
-		assertEquals(DefaultStatus.DONE, statusOf())
+		assertEquals("done", statusOf())
 		assertEquals(
 			admin.id,
-			movedTo(DefaultStatus.DONE).single().actorId,
+			movedTo("done").single().actorId,
 			"the sender resolved through github_accounts, so the feed names them",
 		)
 	}
@@ -399,7 +399,7 @@ class GithubWebhookTest : MockMvcTest() {
 		val stored = assertNotNull(pullRequest(419))
 		assertEquals(listOf(ticket.ticket.id), github.linkedTickets(stored.id), "the link exists, so a reader can follow it")
 		assertEquals(emptyList(), github.ticketsClosedBy(stored.id), "and it is inert")
-		assertEquals(DefaultStatus.TODO, statusOf(), "so the ticket did not move")
+		assertEquals("todo", statusOf(), "so the ticket did not move")
 	}
 
 	/**
@@ -418,12 +418,12 @@ class GithubWebhookTest : MockMvcTest() {
 		deliver("pull_request", payload("pull_request_opened"))
 		// By hand, and after the merge instant the fixture carries. `IN_PROGRESS` is *behind*
 		// `IN_REVIEW`, which only a person is allowed to do.
-		ticketService.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
+		ticketService.patch(admin, ticket.ticket.id, TicketPatch(status = "in_progress"))
 
 		deliver("pull_request", payload("pull_request_merged"))
 
-		assertEquals(DefaultStatus.IN_PROGRESS, statusOf(), "the person's decision stands")
-		assertEquals(emptyList(), movedTo(DefaultStatus.DONE), "and no row claims it reached done")
+		assertEquals("in_progress", statusOf(), "the person's decision stands")
+		assertEquals(emptyList(), movedTo("done"), "and no row claims it reached done")
 	}
 
 	/**
@@ -435,12 +435,12 @@ class GithubWebhookTest : MockMvcTest() {
 	@Test
 	fun `a merge on a ticket already done neither reverses nor repeats it`() {
 		deliver("pull_request", payload("pull_request_opened"))
-		ticketService.patch(admin, ticket.ticket.id, TicketPatch(status = DefaultStatus.DONE))
+		ticketService.patch(admin, ticket.ticket.id, TicketPatch(status = "done"))
 		val before = activityOf(ActivityKind.STATUS_CHANGED).size
 
 		deliver("pull_request", payload("pull_request_merged"))
 
-		assertEquals(DefaultStatus.DONE, statusOf())
+		assertEquals("done", statusOf())
 		assertEquals(before, activityOf(ActivityKind.STATUS_CHANGED).size, "equal rank is not a move")
 	}
 
@@ -462,7 +462,7 @@ class GithubWebhookTest : MockMvcTest() {
 		deliver("pull_request_review", commented)
 
 		assertEquals(PrReviewState.APPROVED, pullRequest()?.reviewState, "and a comment is not a withdrawal")
-		assertEquals(DefaultStatus.IN_REVIEW, statusOf(), "a review transitions nothing either way")
+		assertEquals("in_review", statusOf(), "a review transitions nothing either way")
 	}
 
 	/**
@@ -492,7 +492,7 @@ class GithubWebhookTest : MockMvcTest() {
 	@Test
 	fun `a patch by nobody may only change the status`() {
 		val refused = runCatching {
-			ticketService.patch(null, ticket.ticket.id, TicketPatch(status = DefaultStatus.DONE, title = "Renamed"))
+			ticketService.patch(null, ticket.ticket.id, TicketPatch(status = "done", title = "Renamed"))
 		}.exceptionOrNull()
 
 		assertNotNull(refused, "an actorless patch carrying a title is refused")
@@ -500,11 +500,11 @@ class GithubWebhookTest : MockMvcTest() {
 			refused.message?.contains("title") == true,
 			"and the refusal names the field, so the next caller knows what to drop: ${refused.message}",
 		)
-		assertEquals(DefaultStatus.TODO, statusOf(), "and nothing was written")
+		assertEquals("todo", statusOf(), "and nothing was written")
 
 		// The permitted half, or the refusal above would be a removal dressed as a guard.
-		ticketService.patch(null, ticket.ticket.id, TicketPatch(status = DefaultStatus.IN_PROGRESS))
-		assertEquals(DefaultStatus.IN_PROGRESS, statusOf(), "the status alone still goes through")
+		ticketService.patch(null, ticket.ticket.id, TicketPatch(status = "in_progress"))
+		assertEquals("in_progress", statusOf(), "the status alone still goes through")
 		assertNull(
 			activityOf(ActivityKind.STATUS_CHANGED).last().actorId,
 			"recorded with nobody to credit, which is what `activity.actor_id` being nullable is for",
@@ -544,7 +544,7 @@ class GithubWebhookTest : MockMvcTest() {
 
 		val stored = assertNotNull(pullRequest(), "the pull request is still stored")
 		assertEquals(emptyList(), github.linkedTickets(stored.id), "and it links nothing")
-		assertEquals(DefaultStatus.TODO, statusOf())
+		assertEquals("todo", statusOf())
 	}
 
 	/**

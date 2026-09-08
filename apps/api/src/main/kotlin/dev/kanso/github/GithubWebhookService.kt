@@ -4,12 +4,14 @@ import dev.kanso.domain.ActivityEntity
 import dev.kanso.domain.ActivityKind
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.DefaultStatus
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.User
 import dev.kanso.repo.ActivityRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.ActivityService
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.TicketAccess
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
@@ -46,6 +48,7 @@ class GithubWebhookService(
 	private val activity: ActivityService,
 	private val activityLog: ActivityRepository,
 	private val objectMapper: ObjectMapper,
+	private val statusCategories: StatusCategories,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -143,12 +146,32 @@ class GithubWebhookService(
 	 * to leave out: `ready_for_review` fires only when a draft is *promoted*, so a pull
 	 * request opened ready would otherwise move nothing at all — which is most pull requests.
 	 */
-	private fun targetFor(event: GithubWebhookPayload.PullRequestEvent): DefaultStatus? = when {
-		event.merged -> DefaultStatus.DONE
-		event.action == READY_FOR_REVIEW -> DefaultStatus.IN_REVIEW
-		event.action == OPENED && !event.draft -> DefaultStatus.IN_REVIEW
+	private fun targetFor(event: GithubWebhookPayload.PullRequestEvent): Target? = when {
+		event.merged -> Target(DefaultStatus.DONE.wire, StatusCategory.COMPLETED)
+		event.action == READY_FOR_REVIEW -> Target(DefaultStatus.IN_REVIEW.wire, StatusCategory.STARTED)
+		event.action == OPENED && !event.draft -> Target(DefaultStatus.IN_REVIEW.wire, StatusCategory.STARTED)
 		else -> null
 	}
+
+	/**
+	 * Where an event wants the ticket: a preferred word, and the meaning it settles for.
+	 *
+	 * **This door is the exception to `KAN-90`'s rule for the eight hard-coded writes**,
+	 * and the reason is that the category vocabulary cannot express what it means. The
+	 * seven others name a meaning and take the team's first status of it. This one wants
+	 * *in review*, and `StatusCategory` has no value for review — `in_progress` and
+	 * `in_review` are both `STARTED`, deliberately, because a reviewer is work in flight.
+	 * So a meaning-only rule would resolve every opened pull request to *in progress* and
+	 * quietly retire the transition this feature exists for, on every instance, including
+	 * ones whose teams changed nothing. `V36` documents the sentence it writes.
+	 *
+	 * Hence [key] first and [category] only as the fallback: a team that renamed its
+	 * statuses keeps today's behaviour exactly, because a rename never moves a key; a team
+	 * that *removed* `in_review` gets its first started status instead; and a team with no
+	 * started status at all is left alone, which is the other half of this door's
+	 * exception — a pull request opening must not invent a movement nobody asked for.
+	 */
+	private data class Target(val key: String, val category: StatusCategory)
 
 	/**
 	 * The links this pull request's text currently justifies, and only those.
@@ -233,7 +256,7 @@ class GithubWebhookService(
 	private fun move(
 		pullRequestId: UUID,
 		event: GithubWebhookPayload.PullRequestEvent,
-		target: DefaultStatus,
+		target: Target,
 	) {
 		// **The sender, and the author only as a fallback.** The sender is by definition
 		// whoever performed the action this transition is caused by, which is the case the
@@ -255,10 +278,29 @@ class GithubWebhookService(
 
 		for (ticketId in github.ticketsClosedBy(pullRequestId)) {
 			val ticket = tickets.findById(ticketId) ?: continue
+			// **Per ticket, not per event** — `KAN-90`. One pull request can close tickets
+			// in several teams, and each team names the destination itself: its first
+			// status of the target category, by the position it chose. Resolving once for
+			// the event would write one team's word onto another team's ticket, which
+			// `tickets_status_fk` would refuse — as a 500 on a webhook delivery GitHub then
+			// retries.
+			val catalogue = statusCategories.forTeam(ticket.teamId)
+			// The word this event prefers, then the meaning it settles for — see [Target].
+			val to = target.key.takeIf { it in catalogue }
+				?: catalogue.entries.firstOrNull { it.value == target.category }?.key
+			if (to == null) {
+				// The ticket is left alone, and this is the one door that does not refuse.
+				// A team with no status of this meaning has said something by not having
+				// one, and a pull request opening must not invent a movement nobody asked
+				// for — the alternative is automation picking a status the team removed.
+				log.debug("{} does not move {}: team has no {} status", via, ticketId, target.category.wire)
+				continue
+			}
 			val decision = PrTransition.decide(
 				closes = true,
 				current = ticket.status,
-				target = target,
+				target = to,
+				catalogue = catalogue,
 				lastHumanStatusChangeAt = activityLog.lastHumanStatusChangeAt(ticketId),
 				eventAt = event.eventAt,
 			)

@@ -68,7 +68,7 @@ class EstimateTest : PostgresTest() {
 	private fun ticket(
 		title: String,
 		estimate: Int? = null,
-		status: DefaultStatus = DefaultStatus.TODO,
+		status: String = "todo",
 		assignees: List<UUID> = emptyList(),
 	) = tickets.create(
 		actor = admin,
@@ -184,8 +184,8 @@ class EstimateTest : PostgresTest() {
 			admin,
 			cycle.id,
 			listOf(
-				ticket("shipped", estimate = 5, status = DefaultStatus.DONE),
-				ticket("also shipped", estimate = 3, status = DefaultStatus.DONE),
+				ticket("shipped", estimate = 5, status = "done"),
+				ticket("also shipped", estimate = 3, status = "done"),
 				ticket("in flight", estimate = 8),
 				ticket("nobody sized this"),
 			),
@@ -213,7 +213,7 @@ class EstimateTest : PostgresTest() {
 	@Test
 	fun `the burn-down carries both units so a day's bar can be drawn in either`() {
 		val cycle = cycle()
-		val shipped = ticket("shipped", estimate = 5, status = DefaultStatus.DONE)
+		val shipped = ticket("shipped", estimate = 5, status = "done")
 		cycles.addTickets(
 			admin,
 			cycle.id,
@@ -261,7 +261,7 @@ class EstimateTest : PostgresTest() {
 	@Test
 	fun `a person's load is the sum of their points, with the unsized counted beside it`() {
 		val rey = person("M. Rey")
-		ticket("a", estimate = 5, status = DefaultStatus.IN_PROGRESS, assignees = listOf(rey.id))
+		ticket("a", estimate = 5, status = "in_progress", assignees = listOf(rey.id))
 		ticket("b", estimate = 8, assignees = listOf(rey.id))
 		ticket("c", assignees = listOf(rey.id))
 
@@ -276,7 +276,7 @@ class EstimateTest : PostgresTest() {
 	fun `a done ticket's points leave the load, like its row does`() {
 		val rey = person("M. Rey")
 		ticket("open", estimate = 3, assignees = listOf(rey.id))
-		ticket("finished", estimate = 13, status = DefaultStatus.DONE, assignees = listOf(rey.id))
+		ticket("finished", estimate = 13, status = "done", assignees = listOf(rey.id))
 
 		assertEquals(3, workload.forTeam(team.id).rows.single { it.person?.id == rey.id }.points)
 	}

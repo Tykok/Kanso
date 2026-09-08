@@ -239,7 +239,7 @@ class SavedViewController(
 			actor = currentUser.require(),
 			edit = BulkEdit(
 				ticketIds = request.ticketIds,
-				status = request.status?.let(DefaultStatus::from),
+				status = request.status,
 				priority = request.priority?.let(TicketPriority::from),
 				assigneeIds = request.assigneeIds,
 				cycleId = request.cycleId,

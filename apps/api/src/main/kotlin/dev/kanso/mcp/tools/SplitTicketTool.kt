@@ -11,6 +11,7 @@ import dev.kanso.mcp.objectsField
 import dev.kanso.mcp.stringField
 import dev.kanso.mcp.stringsField
 import dev.kanso.service.BadRequestException
+import dev.kanso.service.StatusCategories
 import dev.kanso.service.SubTicketService
 import dev.kanso.service.TicketService
 import org.springframework.stereotype.Service
@@ -46,6 +47,7 @@ class SplitTicketTool(
 	private val tickets: TicketService,
 	private val subTickets: SubTicketService,
 	private val people: McpPeople,
+	private val statusCategories: StatusCategories,
 ) : McpTool {
 
 	override val name = "kanso_split_ticket"
@@ -78,7 +80,7 @@ class SplitTicketTool(
 			objectSchema(
 				"title" to stringField("One line, what this part is."),
 				"description" to stringField("The body. Markdown, optional."),
-				"status" to stringField("Default `todo`.", STATUSES),
+				"status" to stringField("A status key of the team this is filed into. Omit it and the ticket lands in that team's first unstarted status. The six every team starts with are $SEEDED_STATUSES, and a team may rename or replace any of them."),
 				"estimate" to integerField("Points. Omit if this part is not sized."),
 				"assignees" to stringsField("Who is doing this part, by email or by user id."),
 				required = listOf("title"),
@@ -126,7 +128,8 @@ class SplitTicketTool(
 			Part(
 				title = part.requiredString("title"),
 				description = part.string("description"),
-				status = DefaultStatus.from(part.string("status") ?: DefaultStatus.TODO.wire),
+				// As the agent said it — see `PlanDraft` for why a part is not parsed here.
+				status = part.string("status"),
 				estimate = part.integer("estimate"),
 				assigneeIds = people.resolve(part.strings("assignees").orEmpty()),
 			)
@@ -138,7 +141,7 @@ class SplitTicketTool(
 				teamId = teamId,
 				title = part.title,
 				description = part.description,
-				status = part.status,
+				status = part.status ?: statusCategories.intakeOf(teamId),
 				// Inherited, not asked for — see this file's header. A part of an urgent ticket
 				// is urgent until somebody says otherwise.
 				priority = parent.ticket.priority,
@@ -172,13 +175,34 @@ class SplitTicketTool(
 	private data class Part(
 		val title: String,
 		val description: String?,
-		val status: DefaultStatus,
+		/** As the agent said it, or null. Resolved against the destination team below. */
+		val status: String?,
 		val estimate: Int?,
 		val assigneeIds: List<UUID>,
 	)
 
 	private companion object {
-		val STATUSES = DefaultStatus.entries.map { it.wire }
+		/**
+		 * The words a team is *seeded* with, named in a description and never as an `enum`
+		 * — `KAN-90`.
+		 *
+		 * A tool schema is built once, at startup, with no actor and no team, so it cannot
+		 * advertise the vocabulary of the team an agent happens to be working in: a team
+		 * that added `devis` or removed `in_review` would be described wrongly to every
+		 * caller. An `enum` here would therefore be a closed list that is not closed, which
+		 * is worse than no list — a client validating against it would refuse a status the
+		 * server accepts.
+		 *
+		 * So the field is a plain string, these six are offered as the likely answer, and a
+		 * key the ticket's team does not have is refused by `StatusCategories.require` with
+		 * the team's own list in the sentence. The agent learns the vocabulary in one
+		 * round-trip, from the side that knows it.
+		 *
+		 * Rejected: a schema of the five categories, which would be genuinely closed and
+		 * validatable but would make `in_review` unreachable — an agent could no longer say
+		 * "put it in review" rather than "in progress", and both are `STARTED`.
+		 */
+		val SEEDED_STATUSES = DefaultStatus.entries.joinToString(", ") { it.wire }
 
 		const val MAX_PARTS = 20
 	}

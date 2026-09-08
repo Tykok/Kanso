@@ -123,7 +123,7 @@ class McpTriageTest : PostgresTest() {
 		teamId = team.id,
 		title = title,
 		description = null,
-		status = DefaultStatus.TODO,
+		status = "todo",
 		priority = TicketPriority.NONE,
 		start = null,
 		due = null,
@@ -199,7 +199,7 @@ class McpTriageTest : PostgresTest() {
 		// mirror, the activity and the dependency cascade behave. Asserted on the status
 		// because that is the consequence this decision carries.
 		assertEquals(
-			DefaultStatus.BACKLOG,
+			"backlog",
 			tickets.get(asSessionOf(member), waiting.ticket.id).ticket.status,
 		)
 	}

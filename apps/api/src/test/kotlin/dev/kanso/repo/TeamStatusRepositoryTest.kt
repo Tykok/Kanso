@@ -35,7 +35,7 @@ class TeamStatusRepositoryTest : PostgresTest() {
 
 	private fun team() = teams.insert("Statuses ${UUID.randomUUID()}", "S${keys++}${(100..999).random()}", null)
 
-	private fun ticket(teamId: UUID?, status: DefaultStatus) = tickets.insert(
+	private fun ticket(teamId: UUID?, status: String) = tickets.insert(
 		id = UUID.randomUUID(),
 		number = null,
 		teamId = teamId,
@@ -114,13 +114,13 @@ class TeamStatusRepositoryTest : PostgresTest() {
 		statuses.delete(team.id, "in_review")
 
 		// The database's answer, not a service's.
-		assertFailsWith<ExposedSQLException> { ticket(team.id, DefaultStatus.IN_REVIEW) }
+		assertFailsWith<ExposedSQLException> { ticket(team.id, "in_review") }
 	}
 
 	@Test
 	fun `a draft passes with no team to ask`() {
 		// MATCH SIMPLE: a NULL in the referencing tuple satisfies the constraint without a
 		// lookup, so `KAN-9`'s drafts need no exception written anywhere.
-		assertEquals(DefaultStatus.IN_REVIEW, ticket(null, DefaultStatus.IN_REVIEW).status)
+		assertEquals("in_review", ticket(null, "in_review").status)
 	}
 }

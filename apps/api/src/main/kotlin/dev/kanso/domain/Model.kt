@@ -564,7 +564,20 @@ data class Ticket(
 	val createdBy: UUID?,
 	val title: String,
 	val description: String?,
-	val status: DefaultStatus,
+	/**
+	 * The key of one of its team's statuses — a `String` since `KAN-90`, not an enum.
+	 *
+	 * The type is the point. As `DefaultStatus` this field could hold six values, so every
+	 * screen that asked what a ticket's work *meant* asked the ticket, and got an answer
+	 * out of a vocabulary that is no longer the vocabulary. A team can define a seventh
+	 * word and remove one of the six, and neither is expressible here as an enum.
+	 *
+	 * What it means is `StatusCategories`, never this string. `tickets_status_fk` is what
+	 * keeps the string honest — a composite foreign key onto `(team_id, key)`, so a status
+	 * no team declared cannot be written and a status still in use cannot be deleted. A
+	 * draft has no team and no such row, and its vocabulary is the six by definition.
+	 */
+	val status: String,
 	val priority: TicketPriority,
 	/** Points, off [EffortPoints.SCALE]. Null means nobody has sized it — never zero. */
 	val estimate: Int?,

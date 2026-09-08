@@ -131,7 +131,7 @@ class RequestBaseServiceTest : PostgresTest() {
 				teamId = null,
 				title = "A request from nowhere",
 				description = null,
-				status = DefaultStatus.TODO,
+				status = "todo",
 				priority = TicketPriority.NONE,
 				start = null,
 				due = null,

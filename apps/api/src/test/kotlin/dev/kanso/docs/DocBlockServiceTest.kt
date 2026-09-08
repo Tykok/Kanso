@@ -119,17 +119,17 @@ class DocBlockServiceTest : PostgresTest() {
 		val team = newTeam()
 		val page = newPage(team.id)
 		val ticket = tickets.create(
-			admin, team.id, "Echo suppression", null, DefaultStatus.TODO,
+			admin, team.id, "Echo suppression", null, "todo",
 			dev.kanso.domain.TicketPriority.NONE, null, null, null, emptyList(), emptyList(),
 		)
 
 		val block = blocks.linkTicket(admin, page.id, ticket.ticket.id, null)
-		tickets.patch(admin, ticket.ticket.id, dev.kanso.service.TicketPatch(status = DefaultStatus.IN_PROGRESS))
+		tickets.patch(admin, ticket.ticket.id, dev.kanso.service.TicketPatch(status = "in_progress"))
 
 		val detail = documents.page(page.id)
 		assertEquals(DocBlockKind.TICKET_LINK, block.kind)
 		assertEquals(listOf(ticket.ticket.id), block.ticketIds)
-		assertEquals(DefaultStatus.IN_PROGRESS, detail.tickets.single().ticket.status)
+		assertEquals("in_progress", detail.tickets.single().ticket.status)
 	}
 
 	/** `c` inside a document. Not the generic composer: the link is the point. */

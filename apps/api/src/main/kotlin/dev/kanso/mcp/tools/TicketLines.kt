@@ -88,7 +88,7 @@ internal object TicketLines {
 		// cost of an address that is a UUID.
 		append((detail.identifier ?: detail.ticket.id.toString()).padEnd(12))
 		append("  ")
-		append(detail.ticket.status.wire.padEnd(12))
+		append(detail.ticket.status.padEnd(12))
 		append(detail.ticket.priority.wire.padEnd(7))
 		append(detail.ticket.title)
 		// The emails bare, with no `@` sigil in front of them. The spec's sketch of this line

@@ -83,7 +83,7 @@ class TimeEntryTest : MockMvcTest() {
 			teamId = team.id,
 			title = "Client onboarding call",
 			description = null,
-			status = DefaultStatus.IN_PROGRESS,
+			status = "in_progress",
 			priority = TicketPriority.NONE,
 			start = null,
 			due = null,

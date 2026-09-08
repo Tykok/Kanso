@@ -270,7 +270,7 @@ class ProgressService(
 			// `Team.statuses` for one team, `CATEGORY_ORDER` for a wider scope, which is
 			// `KAN-28`'s rule and the same `StatusGrouping` that bucketed these keys.
 			byStatus = open
-				.groupBy { grouping.bucketOf[it.status.wire] ?: it.status.wire }
+				.groupBy { grouping.bucketOf[it.status] ?: it.status }
 				.mapValues { (_, rows) -> slice(rows) },
 			byProject = byProject(open),
 			// Zero is not a pace anything can be divided by — it is what somebody who has
