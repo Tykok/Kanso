@@ -259,6 +259,39 @@ categories.
 
 ---
 
+## What this branch left open, and why
+
+Two questions surfaced while executing that are real and are **not** `KAN-90`'s. Both are
+written into the code where somebody will find them rather than only here.
+
+- **A board whose scope spans teams has no coherent set of columns.** It draws Kanso's six,
+  which is what it drew before this branch and is right for every team that has invented
+  nothing — but a card in a team with its own words then has no column, and dragging onto
+  `done` writes a key that team may not have. The five categories are not the answer
+  either: dropping a card on `unstarted` has no status to write. The two honest answers are
+  to rebase on drop, or to offer columns only for a single team. `boardColumns`' docstring
+  says so.
+- **There is no `Meaning` filter chip.** "Show me all started work across two teams" is a
+  question only a category can express, and the endpoint serves it —
+  `TicketFilterVocabulary.SERVED` has `category`, and `use-my-work.ts` sends it. It is
+  deliberately absent from `ViewFilters`, because that type is the *chip* vocabulary and
+  every key in it is required by `satisfies Record<keyof ViewFilters, …>` to have a label, a
+  control and a filter-text spelling. Adding those is a feature, not a fix.
+
+## What the numbers were, at the end
+
+- **API: 1422 tests, 0 failures** (1391 at the branch point, +31).
+- **Web: 1189 tests, 0 failures, `tsc --noEmit` clean** (1161 at the branch point, +28).
+- **e2e: 69 passed, 4 skipped, 0 failures** (67 / 4 at the branch point, +2 — scenario 29's
+  seventh word and its rebase), run against a stack built from this branch on its own port
+  triplet under `-p kanso_kan90`, then torn down.
+
+The one number the plan said to re-check was "none — this ticket adds no migration", and
+that held: `team_statuses` and `tickets_status_fk` allowed everything, and the latest
+migration is still `V41`.
+
+---
+
 ## Self-review notes
 
 - **Spec coverage:** add/remove → Tasks 2 and 5; the domain change → Task 3; the rebase →
