@@ -1368,6 +1368,32 @@ export const api = {
       body: JSON.stringify({ label }),
     }),
 
+  /**
+   * A word and what it means — `KAN-90`. No key: the server derives it from the label.
+   *
+   * `category` is required by the request shape because `TeamStatusService.add` will not
+   * let it change afterwards. Defaulting it here would answer, silently, the one question
+   * this control exists to ask.
+   */
+  addStatus: (teamId: string, label: string, category: StatusCategory) =>
+    request<TeamStatus>(`/api/teams/${teamId}/statuses`, {
+      method: "POST",
+      body: JSON.stringify({ label, category }),
+    }),
+
+  /**
+   * `into` names where the status's tickets go, and is omitted when it holds none.
+   *
+   * A query parameter rather than a body, because a DELETE with a body is dropped by
+   * enough proxies not to rely on — `TeamStatusController` says the same thing from the
+   * other side.
+   */
+  removeStatus: (teamId: string, key: string, into?: string) =>
+    request<void>(
+      `/api/teams/${teamId}/statuses/${key}${into ? `?into=${encodeURIComponent(into)}` : ""}`,
+      { method: "DELETE" },
+    ),
+
   /** The whole order, because the server refuses a partial one — see `TeamStatusService`. */
   reorderStatuses: (teamId: string, keys: readonly string[]) =>
     request<TeamStatus[]>(`/api/teams/${teamId}/statuses/order`, {

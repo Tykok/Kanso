@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { StatusCategory } from "@/lib/api";
 import { useMemo } from "react";
 import { heldWrite, settlementOf } from "@/lib/offline-write";
 import { patchedTicket, removedTicket, ticketGuesses } from "@/lib/optimistic";
@@ -694,6 +695,36 @@ export function useRenameStatus(teamId: string) {
     mutationFn: ({ key, label }: { key: string; label: string }) =>
       api.renameStatus(teamId, key, label),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useAddStatus(teamId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ label, category }: { label: string; category: StatusCategory }) =>
+      api.addStatus(teamId, label, category),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+/**
+ * A removal invalidates the tickets as well as the teams, because it *moved* some.
+ *
+ * `TeamStatusService.remove` writes a new status onto every ticket the removed one held,
+ * so a board or a list left in the cache would keep drawing a column whose key no longer
+ * exists — with rows under it that have moved.
+ */
+export function useRemoveStatus(teamId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ key, into }: { key: string; into?: string }) =>
+      api.removeStatus(teamId, key, into),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
   });
 }
 
