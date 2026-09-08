@@ -5,7 +5,7 @@ import { GroupLabel } from "@/components/ui/group-label";
 import { Row } from "@/components/ui/row";
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { colourOf, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
-import type { Cycle, CycleReport, Ticket, TicketStatus } from "@/lib/api";
+import type { Cycle, CycleReport, DefaultStatus, Ticket, TicketStatus } from "@/lib/api";
 import { ShellAside, TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { useCycleReport, useCycles, usePlaceInCycle } from "@/lib/queries";
 import { barOrder, bars, progressSegments } from "./burndown";
@@ -305,7 +305,10 @@ function StatusGroups({ tickets }: { tickets: Ticket[] }) {
 
 /** The rail: every cycle this team has had, in progress first. */
 function CycleRail({ cycles, current }: { cycles: Cycle[]; current?: number }) {
-  const STATE_COLOR: Record<Cycle["state"], TicketStatus> = {
+  // `DefaultStatus` and not `TicketStatus`: these three are Kanso's own tokens borrowed
+  // as decoration for a *cycle's* state, which has nothing to do with a team's
+  // vocabulary. Narrowed since `KAN-90` so the borrowing is visible and typed.
+  const STATE_COLOR: Record<Cycle["state"], DefaultStatus> = {
     active: "in_progress",
     upcoming: "backlog",
     closed: "done",

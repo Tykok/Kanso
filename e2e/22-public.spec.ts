@@ -176,12 +176,19 @@ test("scenario 22 — the roadmap and the contributor page answer without a sess
     await expect(visitor.getByRole("link", { name: shown.title })).toBeVisible();
     await expect(visitor.getByText(hidden.title)).toHaveCount(0);
     /**
-     * The column heading is the application's own label, not a word invented for the shop
-     * window — `STATUS_LABELS.todo`, because `seedTicket` creates a ticket in `todo` and
-     * the roadmap draws one column per *non-empty* status. This asserted `/Backlog/` when
-     * it was written, which no seeded ticket could ever have put on the page.
+     * The column heading is a **category** since `KAN-90` — `CATEGORY_LABELS.unstarted`,
+     * which reads `Not started`. `seedTicket` files into `todo`, and the roadmap draws one
+     * column per non-empty category.
+     *
+     * It asserted `/Todo/` before, on the rule that "the statuses are the application's
+     * own; nothing is reworded for the shop window". That rule held while every team read
+     * the same six words. This page is every published ticket in the instance, so the
+     * words would give it one column per word per team — `Done` beside `Livré`, meaning
+     * the same thing. `RoadmapGroup` on the server is where the argument is written. Each
+     * *card* still carries its own team's word, so nothing is reworded where a reader is
+     * looking at one ticket.
      */
-    await expect(visitor.getByRole("heading", { level: 2, name: /Todo/ })).toBeVisible();
+    await expect(visitor.getByRole("heading", { level: 2, name: /Not started/ })).toBeVisible();
 
     // The app's own chrome is not here. A stranger has no scope to pick and no palette.
     await expect(visitor.getByTestId("nav-item")).toHaveCount(0);

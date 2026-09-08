@@ -1,3 +1,4 @@
+import { labelOfKey } from "@/lib/statuses";
 import { facetByKey } from "@/components/organise/facets";
 import { EFFORT_POINTS, TICKET_PRIORITIES, DEFAULT_STATUSES, type ViewFilters } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../status";
@@ -106,7 +107,7 @@ export const KEYS: Record<FilterKey, KeyDef> = {
     answers: (_catalog, negated) =>
       STATUSES.map((status) => ({
         token: status,
-        label: STATUS_LABELS[status],
+        label: labelOfKey(status),
         filters: negated ? { statusNot: [status] } : { status: [status] },
       })),
     detail: (negated) => facetByKey(negated ? "statusNot" : "status").label,

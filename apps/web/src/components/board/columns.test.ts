@@ -1,3 +1,4 @@
+import type { Vocabulary } from "@/lib/statuses";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_STATUSES, type Ticket, type TicketPriority, type TicketStatus } from "@/lib/api";
 import { boardColumns, boardMove, cardLabel, deltaTo, locateCard } from "./columns";
@@ -30,7 +31,64 @@ function ticket(
   };
 }
 
+/**
+ * The vocabulary a board is drawn from — the team's catalogue, since `KAN-90`.
+ *
+ * Written out rather than taken from `DEFAULT_STATUSES`, because that constant is no
+ * longer what a board draws: it is what a team is *seeded* with. This fixture is that
+ * seed, so every case below says what it always said; `invented` adds a seventh, which is
+ * the case none of them could express before.
+ */
+const seeded: Vocabulary[] = [
+  { key: "backlog", label: "Backlog", category: "backlog" },
+  { key: "todo", label: "Todo", category: "unstarted" },
+  { key: "in_progress", label: "In progress", category: "started" },
+  { key: "in_review", label: "In review", category: "started" },
+  { key: "done", label: "Done", category: "completed" },
+  { key: "canceled", label: "Canceled", category: "canceled" },
+];
+
+/** A team that put a word of its own between the backlog and the queue. */
+const invented: Vocabulary[] = [
+  { key: "boite", label: "Boîte", category: "backlog" },
+  { key: "devis", label: "Devis", category: "backlog" },
+  { key: "en_cours", label: "En cours", category: "started" },
+  { key: "livre", label: "Livré", category: "completed" },
+];
+
 describe("boardColumns", () => {
+  /**
+   * The whole of `KAN-90` on this file: the columns are the team's, not Kanso's.
+   *
+   * Four of them, in the order the team chose, with a word Kanso has never shipped among
+   * them — and `1`–`4` therefore moves a card into exactly those four. Under the old
+   * derivation this team would have seen six columns it does not use, none of which its
+   * cards could be in.
+   */
+  it("draws the team's own columns, in the team's own order", () => {
+    const columns = boardColumns(invented, [ticket("KAN-1", "devis")]);
+
+    expect(columns.map((column) => column.status)).toEqual(["boite", "devis", "en_cours", "livre"]);
+    expect(columns.map((column) => column.label)).toEqual(["Boîte", "Devis", "En cours", "Livré"]);
+    expect(columns.map((column) => column.tickets.length)).toEqual([0, 1, 0, 0]);
+  });
+
+  // The header's word and its colour both come from the column, so a component never has
+  // to look a team's word up in a table of Kanso's six and get nothing.
+  it("carries the word and the meaning with each column", () => {
+    const devis = boardColumns(invented, [])[1];
+    expect(devis.label).toBe("Devis");
+    expect(devis.category).toBe("backlog");
+  });
+
+  // A card whose status is in no column is not silently dropped from the count: it has
+  // nowhere to go, and the board says so by the numbers not adding up rather than by
+  // pretending the ticket does not exist.
+  it("leaves a card whose status this vocabulary does not have out of every column", () => {
+    const columns = boardColumns(invented, [ticket("KAN-9", "done")]);
+    expect(columns.reduce((total, column) => total + column.tickets.length, 0)).toBe(0);
+  });
+
   /**
    * All six, always, in `DEFAULT_STATUSES` order — which is also the order `1`–`6` moves
    * a card into. A board that drops its empty columns has no `Done` to drag onto until
@@ -38,13 +96,13 @@ describe("boardColumns", () => {
    * columns the moment one emptied.
    */
   it("draws one column per status, in the order the number keys move a card", () => {
-    const columns = boardColumns([ticket("KAN-1", "done")]);
+    const columns = boardColumns(seeded, [ticket("KAN-1", "done")]);
     expect(columns.map((column) => column.status)).toEqual([...DEFAULT_STATUSES]);
     expect(columns.map((column) => column.tickets.length)).toEqual([0, 0, 0, 0, 1, 0]);
   });
 
   it("keeps the order the server sent inside a column", () => {
-    const columns = boardColumns([
+    const columns = boardColumns(seeded, [
       ticket("KAN-3", "todo"),
       ticket("KAN-1", "todo"),
       ticket("KAN-2", "todo"),
@@ -57,7 +115,7 @@ describe("boardColumns", () => {
 describe("boardMove", () => {
   // Two columns with different depths, and one empty between them, which is where every
   // interesting case lives.
-  const columns = boardColumns([
+  const columns = boardColumns(seeded, [
     ticket("KAN-1", "backlog"),
     ticket("KAN-2", "backlog"),
     ticket("KAN-3", "backlog"),
@@ -139,7 +197,7 @@ describe("cardLabel", () => {
 });
 
 describe("locateCard", () => {
-  const columns = boardColumns([
+  const columns = boardColumns(seeded, [
     ticket("KAN-1", "backlog"),
     ticket("KAN-2", "backlog"),
     ticket("KAN-3", "in_progress"),
@@ -158,7 +216,7 @@ describe("locateCard", () => {
   });
 
   it("still answers for a card far past the bottom of its column", () => {
-    const many = boardColumns(
+    const many = boardColumns(seeded, 
       Array.from({ length: 400 }, (_, at) => ticket(`KAN-${at + 1}`, "todo")),
     );
     expect(locateCard(many, "kan-400")).toEqual({ column: 1, row: 399 });

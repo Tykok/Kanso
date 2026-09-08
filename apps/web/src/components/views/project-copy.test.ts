@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { KansoInstant, Ticket, TicketStatus } from "@/lib/api";
+import type { KansoInstant, Team, Ticket, TicketStatus } from "@/lib/api";
 import { donePercent, healthLabel, periodLabel, statusCounts } from "./project-copy";
 
 const day = (value: string): KansoInstant => ({ at: `${value}T00:00:00Z`, hasTime: false });
@@ -28,6 +28,29 @@ function ticket(status: TicketStatus): Ticket {
 
 const rows = (...statuses: TicketStatus[]) => statuses.map(ticket);
 
+/**
+ * The one team these rows are in, with its own words — `KAN-90`.
+ *
+ * `statusCounts` groups by *category* now, and a category is a fact only a team's
+ * catalogue knows. This fixture renames two of the six and invents a seventh, so the
+ * assertions below say something a version keyed on the words could not: the bar counts
+ * `Devis` under `backlog` without ever having heard of it.
+ */
+const teams = [
+  {
+    id: "team",
+    statuses: [
+      { key: "backlog", label: "Boîte", category: "backlog", position: 0 },
+      { key: "devis", label: "Devis", category: "backlog", position: 1 },
+      { key: "todo", label: "Qualifié", category: "unstarted", position: 2 },
+      { key: "in_progress", label: "En cours", category: "started", position: 3 },
+      { key: "in_review", label: "Relecture", category: "started", position: 4 },
+      { key: "done", label: "Livré", category: "completed", position: 5 },
+      { key: "canceled", label: "Sans suite", category: "canceled", position: 6 },
+    ],
+  },
+] as unknown as Team[];
+
 describe("statusCounts", () => {
   /**
    * The drawing's bar runs done → review → progress → todo → backlog, which is finished
@@ -35,20 +58,36 @@ describe("statusCounts", () => {
    * asked a question in — how much of this is done — so it is the order here.
    */
   it("counts in the order the bar is drawn, finished first", () => {
-    const counts = statusCounts(rows("todo", "done", "done", "in_review", "backlog"));
+    const counts = statusCounts(teams, rows("todo", "done", "done", "in_review", "backlog"));
     expect(counts).toEqual([
-      { status: "done", count: 2 },
-      { status: "in_review", count: 1 },
-      { status: "in_progress", count: 0 },
-      { status: "todo", count: 1 },
+      { status: "completed", count: 2 },
+      { status: "started", count: 1 },
+      { status: "unstarted", count: 1 },
       { status: "backlog", count: 1 },
       { status: "canceled", count: 0 },
     ]);
   });
 
-  it("counts nothing as nothing rather than as an absent status", () => {
-    expect(statusCounts([]).every((entry) => entry.count === 0)).toBe(true);
-    expect(statusCounts([])).toHaveLength(6);
+  it("counts nothing as nothing rather than as an absent segment", () => {
+    expect(statusCounts(teams, []).every((entry) => entry.count === 0)).toBe(true);
+    // Five and not six since `KAN-90`: the bar's segments are the five meanings, so a
+    // project holding nothing still draws every one of them at zero — a gap where a
+    // segment emptied, rather than a bar that reorders itself as work moves.
+    expect(statusCounts(teams, [])).toHaveLength(5);
+  });
+
+  // The whole of `KAN-90` on this file: a word the bar has never heard of is counted, by
+  // its meaning, in the segment its team put it in.
+  it("counts a word a team invented, under what that team said it means", () => {
+    const counts = statusCounts(teams, rows("devis", "devis", "done"));
+
+    expect(counts).toEqual([
+      { status: "completed", count: 1 },
+      { status: "started", count: 0 },
+      { status: "unstarted", count: 0 },
+      { status: "backlog", count: 2 },
+      { status: "canceled", count: 0 },
+    ]);
   });
 });
 
@@ -59,18 +98,18 @@ describe("donePercent", () => {
    * falling behind — and counting it in the numerator would make it look like progress.
    */
   it("is what is finished out of what has not been abandoned", () => {
-    expect(donePercent(statusCounts(rows("done", "done", "todo", "todo")))).toBe(50);
-    expect(donePercent(statusCounts(rows("done", "done", "canceled", "canceled")))).toBe(100);
+    expect(donePercent(statusCounts(teams, rows("done", "done", "todo", "todo")))).toBe(50);
+    expect(donePercent(statusCounts(teams, rows("done", "done", "canceled", "canceled")))).toBe(100);
   });
 
   it("rounds rather than truncating, and answers zero for an empty project", () => {
     // 1 of 3 is 33.33…
-    expect(donePercent(statusCounts(rows("done", "todo", "todo")))).toBe(33);
+    expect(donePercent(statusCounts(teams, rows("done", "todo", "todo")))).toBe(33);
     // 2 of 3 is 66.66…, which truncation would report as 66.
-    expect(donePercent(statusCounts(rows("done", "done", "todo")))).toBe(67);
-    expect(donePercent(statusCounts([]))).toBe(0);
+    expect(donePercent(statusCounts(teams, rows("done", "done", "todo")))).toBe(67);
+    expect(donePercent(statusCounts(teams, []))).toBe(0);
     // Every ticket canceled: nothing was delivered, and there is nothing left to deliver.
-    expect(donePercent(statusCounts(rows("canceled")))).toBe(0);
+    expect(donePercent(statusCounts(teams, rows("canceled")))).toBe(0);
   });
 });
 

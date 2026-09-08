@@ -1,3 +1,4 @@
+import { labelOfKey } from "@/lib/statuses";
 import type { Notification, TicketStatus } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
 
@@ -44,7 +45,7 @@ function statusLabel(raw: unknown): string | undefined {
   // Not a lookup that throws: this value came off a payload written by an older
   // build, and a row that renders "moved to triaged" is better than one that crashes
   // the list it is in.
-  return STATUS_LABELS[raw as TicketStatus] ?? raw;
+  return labelOfKey(raw);
 }
 
 export function rowCopy(notification: Notification): RowCopy {

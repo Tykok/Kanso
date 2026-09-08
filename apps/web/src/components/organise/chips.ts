@@ -1,4 +1,4 @@
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS, seededLabel, STATUS_LABELS } from "@/lib/status";
 import type { TicketStatus, ViewFilters } from "@/lib/api";
 import { FACET_ORDER } from "./facets";
 
@@ -121,7 +121,7 @@ function valueOf(
   }
 }
 
-const statusLabel = (status: TicketStatus) => STATUS_LABELS[status] ?? titleCase(status);
+const statusLabel = (status: TicketStatus) => seededLabel(status) ?? titleCase(status);
 
 const joined = (values: string[] | undefined) =>
   values === undefined || values.length === 0 ? undefined : values.join(", ");

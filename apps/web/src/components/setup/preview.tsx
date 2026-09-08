@@ -1,5 +1,6 @@
 "use client";
 
+import { labelOfKey } from "@/lib/statuses";
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { Row } from "@/components/ui/row";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -126,7 +127,7 @@ export function PreferencePreview({ preferences }: { preferences: Preferences })
                 <PriorityMark priority={row.priority} />
                 <span className="flex items-center gap-1.5">
                   <StatusDot status={row.status} />
-                  <span className="text-12 text-muted-foreground">{STATUS_LABELS[row.status]}</span>
+                  <span className="text-12 text-muted-foreground">{labelOfKey(row.status)}</span>
                 </span>
                 <span className="min-w-0 truncate text-13">{row.title}</span>
                 <span className="text-right">

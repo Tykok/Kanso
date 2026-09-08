@@ -65,6 +65,9 @@ class PublicRoadmapService(
 			title = row.title,
 			explanation = row.description,
 			status = row.status,
+			// One read for one page, and against this ticket's own team — the card's rule
+			// down the left edge is drawn from the meaning, not the word.
+			category = statusCategories.forTeams(listOf(row.teamId))[row.teamId, row.status],
 			votes = votes,
 			unclaimed = row.unclaimed,
 			labels = published.labelNames(row.id),
@@ -120,6 +123,7 @@ class PublicRoadmapService(
 		identifier = identifier,
 		title = title,
 		status = status,
+		category = meaning[teamId, status],
 		votes = votes,
 		// Only where it means something. A `completed_at` on a ticket that came back out
 		// of a delivered status would print a delivery date beside work in progress — and

@@ -1,5 +1,6 @@
 "use client";
 
+import { labelOfKey } from "@/lib/statuses";
 import { useState } from "react";
 import type { Ticket, User } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
@@ -84,7 +85,7 @@ export function MentionPicker({
                   <StatusDot status={ticket.status} />
                   <span className="font-mono text-11 text-faint">{ticket.identifier}</span>
                   <span className="min-w-0 flex-1 truncate text-13">{ticket.title}</span>
-                  <span className="text-11 text-faint">{STATUS_LABELS[ticket.status]}</span>
+                  <span className="text-11 text-faint">{labelOfKey(ticket.status)}</span>
                 </button>
               ))
             : matchingPeople.map((person) => (

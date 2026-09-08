@@ -245,10 +245,16 @@ test("05 — a project reads as a summary rather than as a second list", async (
   // two names this page publishes.
   await expect(page.getByTestId("breadcrumb-crumb")).toHaveText([teamName, projectName]);
 
-  // One done out of six, canceled excluded from the denominator — see `donePercent`.
+  // One done out of six, cancelled excluded from the denominator — see `donePercent`.
+  //
+  // The legend reads **categories** since `KAN-90`: `KAN-9` gives a project no team in
+  // particular, so its tickets can be in several teams with several vocabularies, and the
+  // segments are the five meanings. `5 todo` was five tickets in the `todo` *status*; it
+  // is `5 not started` now, and the number is the same because a seeded team's `todo` is
+  // the only unstarted word it has.
   await expect(page.getByText(/· 17%/)).toBeVisible();
   await expect(page.getByText("1 done", { exact: true })).toBeVisible();
-  await expect(page.getByText("5 todo", { exact: true })).toBeVisible();
+  await expect(page.getByText("5 not started", { exact: true })).toBeVisible();
 
   // Five and no more; the sixth is behind "See all", which lands on the list scoped to
   // this project rather than on a second copy of it here.

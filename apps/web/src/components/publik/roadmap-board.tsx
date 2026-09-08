@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRoadmap } from "@/lib/queries/publik";
-import { categoryOf, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { CATEGORY_COLORS, colourOf } from "@/lib/status";
+import { CATEGORY_LABELS } from "@/lib/statuses";
 import type { RoadmapEntry, RoadmapGroup } from "@/lib/api/publik";
 import { deliveredOn } from "./delivered";
 import { VoteButton } from "./vote-button";
@@ -10,15 +11,21 @@ import { VoteButton } from "./vote-button";
 /**
  * Screen 27: what is being worked on, in columns, votable, no account.
  *
- * The column headings are `STATUS_LABELS` — the same module the ticket list and the
- * timeline read. That is the drawing's own instruction ("the statuses are the
- * application's own; nothing is reworded for the shop window") taken literally: there is
- * no second vocabulary here to drift from the first, and renaming a status renames it
- * everywhere at once, including on the page strangers read.
+ * The column headings are the five **categories**, since `KAN-90` — `CATEGORY_LABELS`,
+ * the same module the app's own cross-team lists read. They were `STATUS_LABELS` on the
+ * drawing's instruction that "the statuses are the application's own; nothing is reworded
+ * for the shop window", and that instruction held while every team read the same six
+ * words. This page has no team scope at all — it is every published ticket in the
+ * instance — so the words would give it one column per word per team, with `Done` and
+ * `Livré` side by side meaning the same thing. `RoadmapGroup` on the server is where the
+ * argument is written out.
+ *
+ * Each *card* still prints its own team's word, so nothing is reworded for the shop
+ * window where a reader is looking at one ticket.
  *
  * The server sends only the groups that hold something, so an instance whose published
- * work sits in four statuses draws the four the drawing draws, and the grid takes
- * however many arrive.
+ * work sits in three categories draws three columns, and the grid takes however many
+ * arrive.
  */
 export function RoadmapBoard() {
   const roadmap = useRoadmap();
@@ -51,7 +58,7 @@ export function RoadmapBoard() {
   return (
     <div className="grid gap-5 grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))]">
       {groups.map((group) => (
-        <Column key={group.status} group={group} now={now} />
+        <Column key={group.category} group={group} now={now} />
       ))}
     </div>
   );
@@ -62,9 +69,9 @@ function Column({ group, now }: { group: RoadmapGroup; now: Date }) {
     <div className="flex min-w-0 flex-col gap-2.5">
       <h2
         className="flex items-center gap-2 border-b-2 pb-2 text-12 font-medium"
-        style={{ borderColor: STATUS_COLORS[group.status] }}
+        style={{ borderColor: CATEGORY_COLORS[group.category] }}
       >
-        <span className="flex-1">{STATUS_LABELS[group.status]}</span>
+        <span className="flex-1">{CATEGORY_LABELS[group.category]}</span>
         <span className="font-mono text-11 text-faint">{group.count}</span>
       </h2>
       {group.tickets.map((entry) => (
@@ -80,13 +87,19 @@ function Column({ group, now }: { group: RoadmapGroup; now: Date }) {
  * progress" findable without a legend.
  */
 function RoadmapCard({ entry, now }: { entry: RoadmapEntry; now: Date }) {
-  const moving = categoryOf(entry.status) === "started";
+  // The row's own category, off the payload — `categoryOf` is a map over Kanso's six and
+  // would answer `undefined` for a word a team invented, drawing no rule and saying nothing.
+  const moving = entry.category === "started";
   const delivered = entry.deliveredAt ? deliveredOn(entry.deliveredAt, now) : "";
 
   return (
     <article
       className="flex flex-col gap-2 rounded-lg bg-card px-3.5 py-3 shadow-flat"
-      style={moving ? { boxShadow: `inset 2px 0 0 ${STATUS_COLORS[entry.status]}` } : undefined}
+      style={
+        moving
+          ? { boxShadow: `inset 2px 0 0 ${colourOf(entry.status, entry.category)}` }
+          : undefined
+      }
     >
       <Link
         href={`/roadmap/${entry.key}`}

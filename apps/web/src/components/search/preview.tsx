@@ -1,5 +1,6 @@
 "use client";
 
+import { labelOfKey } from "@/lib/statuses";
 import { dayValue, type Project } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
 import { SyncBadge, TicketIdentifier } from "../pills";
@@ -40,7 +41,7 @@ export function SearchPreview({ row, projects }: { row?: SearchRow; projects: Pr
           <span className="text-15 font-medium tracking-tight text-pretty">{row.ticket.title}</span>
           <dl className="m-0 grid grid-cols-[64px_1fr] gap-2 text-11 text-muted-foreground">
             <dt className="text-faint">Status</dt>
-            <dd className="m-0">{STATUS_LABELS[row.ticket.status]}</dd>
+            <dd className="m-0">{labelOfKey(row.ticket.status)}</dd>
             <dt className="text-faint">Project</dt>
             <dd className="m-0">
               {projects.find((project) => project.id === row.ticket.projectId)?.name ?? "—"}

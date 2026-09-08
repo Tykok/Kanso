@@ -333,11 +333,34 @@ export const organiseApi = {
       sort?: ViewSortBy;
       limit?: number;
       offset?: number;
+      /**
+       * "Whatever these teams call work in this state" — `KAN-90`, and here rather than in
+       * `ViewFilters` on purpose.
+       *
+       * It is the only way a question spanning teams can ask for open work: a person's own
+       * plate reaches every team they are in, and each may spell "open" differently, so no
+       * list of keys expresses it. The server serves it through the same gate as a chip —
+       * `TicketFilterVocabulary.SERVED` — and this side keeps it out of `ViewFilters`
+       * because that type is the *chip* vocabulary: every key in it is required by
+       * `satisfies Record<keyof ViewFilters, …>` to have a label, a control and a
+       * filter-text spelling, which would make this a facet in the sidebar. A `Meaning`
+       * chip is a reasonable thing to want and it is not this ticket.
+       *
+       * Repeated rather than joined, like the `status` a chip sends.
+       */
+      categories?: readonly StatusCategory[];
     } = {},
   ) => {
     const search = filterParams(filters);
     for (const [key, value] of Object.entries(scope)) {
-      if (value !== undefined) search.set(key, String(value));
+      if (value === undefined) continue;
+      if (key === "categories") {
+        for (const category of value as readonly StatusCategory[]) {
+          search.append("category", category);
+        }
+        continue;
+      }
+      search.set(key, String(value));
     }
     const encoded = search.toString();
     return request<Ticket[]>(`/api/tickets${encoded ? `?${encoded}` : ""}`);

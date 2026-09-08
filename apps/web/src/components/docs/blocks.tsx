@@ -1,5 +1,6 @@
 "use client";
 
+import { labelOfKey } from "@/lib/statuses";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { DocBlock, DocBlockContent, Ticket } from "@/lib/api";
@@ -129,7 +130,7 @@ function TicketChip({ ticket }: { ticket: Ticket }) {
       href={`/t/${ticket.identifier}`}
       data-testid="doc-ticket-chip"
       className="inline-flex h-5 items-center gap-1.5 rounded-sm bg-accent-soft px-[7px] font-mono text-12 text-accent-ink"
-      title={`${ticket.title} — ${STATUS_LABELS[ticket.status]}`}
+      title={`${ticket.title} — ${labelOfKey(ticket.status)}`}
     >
       <StatusDot status={ticket.status} />
       {ticket.identifier}
@@ -357,7 +358,7 @@ export function BlockBody({
                     </span>
                   </td>
                   <td className="px-3.5 py-2.5 text-muted-foreground">
-                    {STATUS_LABELS[ticket.status]}
+                    {labelOfKey(ticket.status)}
                   </td>
                 </tr>
               ))}

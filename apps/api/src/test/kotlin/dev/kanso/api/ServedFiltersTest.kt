@@ -86,6 +86,10 @@ class ServedFiltersTest {
 	 */
 	private fun valueFor(name: String): String = when (name) {
 		"status", "statusNot" -> "todo"
+		// A category and not a status: `category` is the one facet whose vocabulary is the
+		// five meanings — `KAN-90` — and this test exists to catch a name the endpoint
+		// refuses, which is exactly what a UUID here looked like.
+		"category" -> "started"
 		"priority" -> "urgent"
 		"unassigned", "unestimated" -> "true"
 		"openedForDays", "estimateMin", "estimateMax" -> "3"

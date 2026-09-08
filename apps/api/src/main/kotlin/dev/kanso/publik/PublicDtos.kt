@@ -22,6 +22,8 @@ data class RoadmapEntryResponse(
 	val title: String,
 	/** The owning team's own status key — `backlog`, `todo`, or a word it invented. */
 	val status: String,
+	/** What that key means, because a public page has no catalogue to ask — `KAN-90`. */
+	val category: String,
 	val votes: Int,
 	val deliveredAt: OffsetDateTime?,
 ) {
@@ -30,6 +32,7 @@ data class RoadmapEntryResponse(
 			key = entry.identifier,
 			title = entry.title,
 			status = entry.status,
+			category = entry.category.wire,
 			votes = entry.votes,
 			deliveredAt = entry.completedAt,
 		)
@@ -40,15 +43,22 @@ data class RoadmapEntryResponse(
  * A column, named by the **category** it groups — `KAN-90`. `backlog`, `unstarted`,
  * `started`, `completed`.
  *
- * The field is still called `status` on the wire and its values changed underneath it,
- * which is the honest trade: a public page holding several teams' vocabularies has no
- * other header available, and `RoadmapGroup`'s docstring is where the argument lives.
- * Each ticket under the column still carries its own team's word.
+ * The field is called `category` and not `status`, and the rename is the point: leaving it
+ * `status` with a category inside would be a name that lies, and the first reader to look
+ * a value up in a table of statuses gets `undefined` and no error — which is exactly the
+ * failure this rename was made after. Measured: `22-public.spec.ts` drew a column with no
+ * heading at all.
+ *
+ * Each ticket under the column still carries its own team's word, in its own `status`.
  */
-data class RoadmapGroupResponse(val status: String, val count: Int, val tickets: List<RoadmapEntryResponse>) {
+data class RoadmapGroupResponse(
+	val category: String,
+	val count: Int,
+	val tickets: List<RoadmapEntryResponse>,
+) {
 	companion object {
 		fun of(group: RoadmapGroup) = RoadmapGroupResponse(
-			status = group.category.wire,
+			category = group.category.wire,
 			count = group.count,
 			tickets = group.tickets.map(RoadmapEntryResponse::of),
 		)

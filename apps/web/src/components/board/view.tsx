@@ -1,5 +1,6 @@
 "use client";
 
+import { optionsFor } from "@/lib/statuses";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -68,7 +69,14 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
     );
   }, [tickets.data, query]);
 
-  const columns = useMemo(() => boardColumns(visible), [visible]);
+  // The scope's own words — `optionsFor` answers Kanso's six for a scope with no single
+  // team, which is what this board drew before `KAN-90` and what `boardColumns` documents
+  // as the open question.
+  const vocabulary = useMemo(
+    () => optionsFor(teams.data ?? [], scope.kind === "team" ? scope.id : undefined),
+    [teams.data, scope],
+  );
+  const columns = useMemo(() => boardColumns(vocabulary, visible), [vocabulary, visible]);
 
   const nameOf = useMemo(() => {
     const byId = new Map((users.data ?? []).map((person) => [person.id, person.displayName]));

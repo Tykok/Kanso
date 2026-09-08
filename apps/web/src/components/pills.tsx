@@ -1,3 +1,4 @@
+import { labelOfKey } from "@/lib/statuses";
 import type { Mirror, TicketPriority, TicketStatus } from "@/lib/api";
 import { PRIORITY_ACTIONS, type ActionContext } from "@/lib/actions";
 import { cn } from "@/lib/utils";
@@ -49,7 +50,7 @@ export function StatusPill({
   const body = (
     <>
       <StatusDot status={status} />
-      <span className="text-muted-foreground">{label ?? STATUS_LABELS[status]}</span>
+      <span className="text-muted-foreground">{label ?? labelOfKey(status)}</span>
     </>
   );
 
@@ -63,7 +64,7 @@ export function StatusPill({
 
   return (
     <Menu
-      label={`Status: ${label ?? STATUS_LABELS[status]}`}
+      label={`Status: ${label ?? labelOfKey(status)}`}
       // The pill IS the trigger, rather than a box with an invisible button laid over
       // it: one element, so there is nothing left to keep aligned. A `<button>` and not
       // the `<span>` above, because Radix hands the child the trigger's props and only
@@ -84,7 +85,7 @@ export function StatusPill({
   );
 }
 
-export const statusLabel = (status: TicketStatus) => STATUS_LABELS[status];
+export const statusLabel = (status: TicketStatus) => labelOfKey(status);
 
 /** The interactive twin of `ui/priority-mark.tsx`'s glyph: same drawing, plus a menu
  *  when there is a `ctx` to run its actions against. */

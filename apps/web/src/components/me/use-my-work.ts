@@ -5,6 +5,8 @@ import {
   api,
   organiseApi,
   filterParams,
+  STATUS_CATEGORIES,
+  type StatusCategory,
   type Ticket,
   type TimelineView,
   type ViewFilters,
@@ -28,13 +30,17 @@ import { isOpen, statusesWhere } from "@/lib/status-order";
 /**
  * Still open, read off the category rather than named.
  *
- * The client half of `WorkloadService.OPEN_STATUSES`, which is what `MyStatsService`
- * counts `strip.open` over — so the list under the strip is the same set of rows the
- * strip counted. Naming the four statuses here instead would make the day a seventh open
- * status arrives the day this screen quietly stops listing part of somebody's plate,
- * which is the whole argument `lib/status-order.ts` exists to settle.
+ * The client half of `WorkloadService.OPEN_CATEGORIES`, which is what `MyStatsService`
+ * counts `strip.open` over — so the list under the strip is the same set of rows the strip
+ * counted.
+ *
+ * The *categories* since `KAN-90`, and not a list of statuses derived from them. This
+ * question has no team in it — a person's plate reaches every team they are in — so no
+ * team's keys can express it, and the four keys Kanso ships would have listed part of
+ * somebody's plate under a number that counted all of it: the exact disagreement the
+ * paragraph below refuses to leave silent, arriving silently.
  */
-const OPEN_STATUSES = statusesWhere(isOpen);
+const OPEN_CATEGORIES = STATUS_CATEGORIES.filter(isOpen);
 
 /**
  * How many rows one ask carries. `api.tickets`' own number, deliberately: the key below
@@ -66,8 +72,11 @@ export function useMyOpenTickets(): UseQueryResult<Ticket[]> {
   // Written in this order and not the store's, because `filterParams` walks the object's
   // own keys: the string is the cache key, so the field order here is what makes two asks
   // of the same question one entry.
-  const filters: ViewFilters = { status: OPEN_STATUSES, assignee: myId ? [myId] : [] };
-  const asked = filterParams(filters).toString();
+  const filters: ViewFilters = { assignee: myId ? [myId] : [] };
+  // The categories are in the cache key too, spelled the way the request spells them:
+  // the key is what makes two asks of the same question one entry, and a key that left
+  // out half the question would serve one screen's answer to another's.
+  const asked = `${filterParams(filters)}&${OPEN_CATEGORIES.map((category: StatusCategory) => `category=${category}`).join("&")}`;
 
   return useQuery({
     queryKey: keys.tickets({ kind: "all" }, false, asked),
@@ -76,6 +85,7 @@ export function useMyOpenTickets(): UseQueryResult<Ticket[]> {
         // Every team, and no `teamId`: counts and lists add across teams, which is the
         // same reason `/api/me/stats` takes no team either.
         includeArchived: false,
+        categories: OPEN_CATEGORIES,
         limit: MY_OPEN_LIMIT,
       }),
     enabled: myId !== undefined,

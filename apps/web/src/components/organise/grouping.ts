@@ -1,3 +1,4 @@
+import { labelOfKey } from "@/lib/statuses";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import { WORKFLOW_ORDER } from "@/lib/status-order";
 import type {
@@ -203,7 +204,7 @@ function labelOf(
       // names a category, which is what a scope spanning teams buckets by.
       // `STATUS_LABELS` stays the fallback: Kanso's own word, right for every team that
       // has not renamed anything and for a screen with no teams loaded.
-      return names?.status?.(key) ?? STATUS_LABELS[key as TicketStatus] ?? key;
+      return names?.status?.(key) ?? labelOfKey(key);
     case "priority":
       return PRIORITY_LABELS[key as TicketPriority] ?? key;
     case "assignee":

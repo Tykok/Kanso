@@ -1,9 +1,10 @@
 "use client";
 
+import { labelOfKey } from "@/lib/statuses";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCreateTicket } from "@/lib/queries";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { colourOf, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { ticketAddress, type Ticket, type TicketStatus } from "@/lib/api";
 import { StatusDot } from "../ui/status-dot";
 import { BoardCard } from "./card";
@@ -109,7 +110,7 @@ export function BoardColumnView({
       ref={section}
       data-testid="board-column"
       data-status={column.status}
-      aria-label={`${STATUS_LABELS[column.status]}, ${column.tickets.length}`}
+      aria-label={`${labelOfKey(column.status)}, ${column.tickets.length}`}
       className="flex min-h-0 min-w-0 flex-col gap-2"
       onDragOver={(event) => {
         // Without this the browser refuses the drop and the card springs back with no
@@ -130,11 +131,11 @@ export function BoardColumnView({
         // six new tokens — and `--status-backlog` and `--status-canceled` are already
         // neutral, which is why those two headers come out plain, exactly as the drawing
         // has them.
-        style={{ background: `color-mix(in oklch, ${STATUS_COLORS[column.status]} 12%, transparent)` }}
+        style={{ background: `color-mix(in oklch, ${colourOf(column.status, column.category)} 12%, transparent)` }}
       >
         <StatusDot status={column.status} />
         <span className="min-w-0 flex-1 truncate text-12 font-medium">
-          {STATUS_LABELS[column.status]}
+          {labelOfKey(column.status)}
         </span>
         <span className="font-mono text-11 text-faint">{column.tickets.length}</span>
       </header>
@@ -230,7 +231,7 @@ function ColumnComposer({
   return (
     <input
       autoFocus
-      aria-label={`New ticket in ${STATUS_LABELS[status]}`}
+      aria-label={`New ticket in ${labelOfKey(status)}`}
       className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-12"
       value={title}
       onChange={(event) => setTitle(event.target.value)}

@@ -20,6 +20,15 @@ data class RoadmapEntry(
 	val title: String,
 	/** The team's own key, printed on the card. The *column* is [RoadmapGroup.category]. */
 	val status: String,
+	/**
+	 * What [status] means — carried, not derivable — `KAN-90`.
+	 *
+	 * The card draws a rule down its left edge for work in progress, and it used to ask
+	 * `categoryOf(entry.status)`: a map over Kanso's six, which answers `undefined` for a
+	 * word a team invented and does it silently. The owning team's catalogue is the only
+	 * thing that knows, and a public page has no team to fetch it from.
+	 */
+	val category: StatusCategory,
 	val votes: Int,
 	/** When it shipped. Null for anything not delivered. */
 	val completedAt: OffsetDateTime?,
@@ -72,6 +81,8 @@ data class ContributorPage(
 	val explanation: String?,
 	/** The owning team's own word for where it is — printed, not grouped on. */
 	val status: String,
+	/** What that word means — the same reason [RoadmapEntry.category] carries it. */
+	val category: StatusCategory,
 	val votes: Int,
 	/** Nobody is on it. The drawing's last badge, and a fact, not a label. */
 	val unclaimed: Boolean,

@@ -6,6 +6,7 @@
  * this file computes a position or a width in days, which is what that module is
  * for and what this task does not touch.
  */
+import { colourOfKey, labelOfKey } from "@/lib/statuses";
 import type { CSSProperties } from "react";
 import type { TicketStatus } from "@/lib/api";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
@@ -48,7 +49,7 @@ export function ticketTint(
   status: TicketStatus | undefined,
   violated: boolean | undefined,
 ): CSSProperties {
-  const color = violated ? "var(--urgent)" : status ? STATUS_COLORS[status] : "var(--faint)";
+  const color = violated ? "var(--urgent)" : status ? colourOfKey(status) : "var(--faint)";
   return {
     backgroundColor: `color-mix(in oklch, ${color} 14%, var(--background))`,
     boxShadow: `inset 2px 0 0 ${color}`,
@@ -93,7 +94,7 @@ export function barAccessibleName({
 }): string {
   return [
     name,
-    status && STATUS_LABELS[status],
+    status && labelOfKey(status),
     state === "late" ? "overdue" : state === "critical" ? "critical path" : null,
     violated && state !== "late" ? "dependency not respected" : null,
     slackMinutes && slackMinutes > 0 ? slackTitle(slackMinutes) : null,

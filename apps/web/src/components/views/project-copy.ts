@@ -1,13 +1,12 @@
 import {
   dayValue,
-  DEFAULT_STATUSES,
   type KansoInstant,
   type ProjectHealth,
+  type Team,
   type Ticket,
-  type TicketStatus,
 } from "@/lib/api";
-import { categoryOf, PROJECT_HEALTH_LABELS, type StatusCategory } from "@/lib/status";
-import { inOrder, PROGRESS_ORDER } from "@/lib/status-order";
+import { PROJECT_HEALTH_LABELS, type StatusCategory } from "@/lib/status";
+import { categoryOfTicket } from "@/lib/statuses";
 
 /**
  * Everything screen 05 says in words, with no React in it.
@@ -24,28 +23,44 @@ import { inOrder, PROGRESS_ORDER } from "@/lib/status-order";
 
 // --- the proportion bar ------------------------------------------------------
 
-export type StatusCount = { status: TicketStatus; count: number };
+/**
+ * One segment of a project's bar — keyed by **category** since `KAN-90`.
+ *
+ * The field is still called `status` because every reader of this type calls it that and
+ * the value is what the segment is *about*; what changed is that it holds one of the five
+ * meanings rather than one of six words. `KAN-9` gives a project no team in particular, so
+ * its tickets can come from several teams with several vocabularies — the same reason the
+ * app's other cross-team lists group this way.
+ */
+export type StatusCount = { status: StatusCategory; count: number };
 
 /**
  * The order the bar is drawn in: finished, then in review, then under way, then not
  * started, then abandoned.
  *
- * Not `DEFAULT_STATUSES` order, which runs the other way. The bar answers one question —
- * how much of this is done — and the reader reads it left to right, so the answer has to
- * start at the left. The drawing does exactly this.
+ * Not `CATEGORY_ORDER`, which runs the other way. The bar answers one question — how much
+ * of this is done — and the reader reads it left to right, so the answer has to start at
+ * the left. The drawing does exactly this.
  *
- * Every status there is, and not a membership question at all: a project's bar is the
- * whole of its work, `canceled` included, which is exactly what makes [donePercent] below
- * a different sum from this list. The cycle's bar on screen 19 reads the same
- * [PROGRESS_ORDER] over a narrower set, and that is the only difference between them.
+ * Every category there is, and not a membership question at all: a project's bar is the
+ * whole of its work, cancelled included, which is exactly what makes [donePercent] below a
+ * different sum from this list.
  */
-const BAR_ORDER = inOrder(DEFAULT_STATUSES, PROGRESS_ORDER);
+const BAR_ORDER: readonly StatusCategory[] = [
+  "completed",
+  "started",
+  "unstarted",
+  "backlog",
+  "canceled",
+];
 
-/** All six, always, so a segment that empties leaves a gap rather than reordering the bar. */
-export function statusCounts(tickets: Ticket[]): StatusCount[] {
-  return BAR_ORDER.map((status) => ({
-    status,
-    count: tickets.filter((ticket) => ticket.status === status).length,
+/** All five, always, so a segment that empties leaves a gap rather than reordering the bar. */
+export function statusCounts(teams: readonly Team[], tickets: Ticket[]): StatusCount[] {
+  return BAR_ORDER.map((category) => ({
+    status: category,
+    count: tickets.filter(
+      (ticket) => categoryOfTicket(teams, ticket.teamId, ticket.status) === category,
+    ).length,
   }));
 }
 
@@ -63,10 +78,10 @@ export function statusCounts(tickets: Ticket[]): StatusCount[] {
 export function donePercent(counts: StatusCount[]): number {
   const inCategory = (category: StatusCategory) =>
     counts
-      .filter((entry) => categoryOf(entry.status) === category)
+      .filter((entry) => entry.status === category)
       .reduce((total, entry) => total + entry.count, 0);
   const counting = counts
-    .filter((entry) => categoryOf(entry.status) !== "canceled")
+    .filter((entry) => entry.status !== "canceled")
     .reduce((total, entry) => total + entry.count, 0);
   // Rounded rather than truncated: 2 of 3 is two thirds done and printing 66 would be
   // the one place in the interface that rounds work *down*.

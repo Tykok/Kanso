@@ -1,5 +1,12 @@
 import { DEFAULT_STATUSES, type Team, type TicketStatus } from "./api";
-import { categoryOf, STATUS_LABELS, type StatusCategory } from "./status";
+import {
+  categoryOf,
+  seededColour,
+  seededLabel,
+  STATUS_CATEGORY,
+  STATUS_LABELS,
+  type StatusCategory,
+} from "./status";
 import { CATEGORY_ORDER } from "./status-order";
 import type { Scope } from "@/store/ui";
 
@@ -51,7 +58,55 @@ export function labelOf(
   const own = teams.find((team) => team.id === teamId)?.statuses.find((row) => row.key === status);
   // The key itself, last: a status no catalogue can name is a saved view older than a
   // rename or a team still loading, and a blank pill reads as one that failed to load.
-  return own?.label ?? STATUS_LABELS[status] ?? status;
+  return own?.label ?? seededLabel(status) ?? status;
+}
+
+/**
+ * A readable word for a status key, with no team to ask — the public pages' fallback.
+ *
+ * Kanso's own label when it ships the key, and the key itself otherwise: a public page
+ * has no catalogue to fetch, and a team's `devis` printed as `devis` is worse than
+ * nothing only in the sense that nothing would have been blank. The roadmap's *cards*
+ * are the only readers, and the column above them is a category with a proper word.
+ */
+export function labelOfKey(status: TicketStatus): string {
+  return seededLabel(status) ?? status;
+}
+
+/**
+ * A colour for a status key with no team to ask — the read for a row drawn outside a
+ * team-scoped screen.
+ *
+ * Kanso's own token when it ships the key, and a neutral rule otherwise. Deliberately not
+ * a guess at the meaning: without the owning team's catalogue there is nothing to guess
+ * from, and a word drawn in `done` green because it happened to hash there would be worse
+ * than one drawn in grey. Where the category *is* in hand — the charts, the board's own
+ * columns — `colourOf` uses it.
+ */
+export function colourOfKey(status: TicketStatus): string {
+  return seededColour(status) ?? "var(--faint)";
+}
+
+/**
+ * What [status] means for [teamId] — the client half of `StatusCategories.categoryOf`.
+ *
+ * The row's team and not the scope's, for the same reason [labelOf] reads that way: a
+ * cross-team list draws rows from several vocabularies at once, and two teams may declare
+ * one key in two categories.
+ *
+ * The same fallback chain as the server's, in the same order and for the same reasons: the
+ * team's catalogue, then Kanso's six for a draft with no team to ask, then `unstarted` —
+ * unreachable rather than lenient. A row whose category cannot be resolved is a team still
+ * loading or a saved view older than a removal, and counting it as unstarted work leaves a
+ * chart one row short rather than throwing inside a render.
+ */
+export function categoryOfTicket(
+  teams: readonly Team[],
+  teamId: string | undefined,
+  status: TicketStatus,
+): StatusCategory {
+  const own = teams.find((team) => team.id === teamId)?.statuses.find((row) => row.key === status);
+  return own?.category ?? STATUS_CATEGORY[status] ?? "unstarted";
 }
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 
+import { colourOfKey } from "@/lib/statuses";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import type { KansoInstant, TicketStatus } from "@/lib/api";
 import { STATUS_COLORS } from "@/lib/status";
@@ -395,7 +396,7 @@ export function TimelineBar({
           aria-hidden="true"
           data-status={status}
           className="pointer-events-none absolute top-1/2 z-[2] -ml-1 -mt-1 size-2 rounded-full border border-background"
-          style={{ left, background: STATUS_COLORS[status] }}
+          style={{ left, background: colourOfKey(status) }}
         />
       )}
 

@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.StatusCategory
 import dev.kanso.domain.TicketPriority
 import dev.kanso.domain.DefaultStatus
 import dev.kanso.repo.TicketFilters
@@ -39,6 +40,17 @@ object TicketFilterVocabulary {
 	val SERVED = setOf(
 		"status",
 		"statusNot",
+		/**
+		 * "Whatever these teams call work in this state" — `KAN-90`.
+		 *
+		 * Beside `status` and not replacing it: a reader who picked a word off a chip asked
+		 * for that status and no other. This is what a question spanning teams has to ask
+		 * instead, because no single team's keys can express it — a person's own open work
+		 * reaches every team they are in, and each may spell "open" differently. Without
+		 * it, `use-my-work.ts` lists Kanso's four open keys and silently omits every
+		 * ticket sitting in a word its team invented, under a count that includes them.
+		 */
+		"category",
 		"priority",
 		"project",
 		"assignee",
@@ -97,6 +109,7 @@ object TicketFilterVocabulary {
 	fun parse(filters: Map<String, Any?>): TicketFilters = TicketFilters(
 		statuses = strings(filters["status"]).map(DefaultStatus::from),
 		statusesExcluded = strings(filters["statusNot"]).map(DefaultStatus::from),
+		categories = strings(filters["category"]).map(StatusCategory::from),
 		priorities = strings(filters["priority"]).map(TicketPriority::from),
 		projectIds = uuids("project", filters["project"]),
 		assigneeIds = uuids("assignee", filters["assignee"]),

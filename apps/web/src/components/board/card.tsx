@@ -1,5 +1,6 @@
 "use client";
 
+import { colourOfKey } from "@/lib/statuses";
 import { dayValue, ticketAddress, type Ticket } from "@/lib/api";
 import { categoryOf, STATUS_COLORS } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -80,7 +81,7 @@ export function BoardCard({
         "flex w-full cursor-pointer flex-col gap-2 rounded-md border-t-2 bg-card p-2.5 text-left shadow-flat",
         selected && "ring-1 ring-primary",
       )}
-      style={{ borderTopColor: STATUS_COLORS[ticket.status] }}
+      style={{ borderTopColor: colourOfKey(ticket.status) }}
     >
       <span
         className={cn(

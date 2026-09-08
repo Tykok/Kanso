@@ -1,3 +1,4 @@
+import { colourOfKey } from "@/lib/statuses";
 import type { TicketStatus } from "@/lib/api";
 import { STATUS_COLORS } from "@/lib/status";
 
@@ -44,7 +45,7 @@ export function StatusDot({ status }: { status: TicketStatus }) {
     <span
       aria-hidden
       className="size-2 shrink-0 rounded-full border-[1.5px] border-current"
-      style={{ color: STATUS_COLORS[status], background: FILL[status] }}
+      style={{ color: colourOfKey(status), background: FILL[status] }}
     />
   );
 }

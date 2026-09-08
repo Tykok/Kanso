@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useContributorPage } from "@/lib/queries/publik";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+// `STATUS_COLORS.done` for the checklist's ticks, which name one of the six as
+// decoration rather than reading a team's status — `colourOf` is for the ticket.
+import { colourOf, STATUS_COLORS } from "@/lib/status";
+import { labelOfKey } from "@/lib/statuses";
 import type { ContributorPage } from "@/lib/api/publik";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,9 +69,9 @@ function Explanation({ page }: { page: ContributorPage }) {
             <span
               aria-hidden
               className="size-2 rounded-full border-[1.5px]"
-              style={{ borderColor: STATUS_COLORS[page.status] }}
+              style={{ borderColor: colourOf(page.status, page.category) }}
             />
-            {STATUS_LABELS[page.status]}
+            {labelOfKey(page.status)}
           </Badge>
           {/* The drawing's middle badges: `bon premier pas`, `design system`. The labels'
               own words, in the server's order (by name), and no colour — neither this

@@ -1,4 +1,5 @@
-import { DEFAULT_STATUSES, type Ticket, type TicketStatus } from "@/lib/api";
+import { labelOfKey, type Vocabulary } from "@/lib/statuses";
+import type { StatusCategory, Ticket, TicketStatus } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 
 /**
@@ -9,21 +10,55 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
  * called when it is read rather than looked at. `view.tsx` above it only draws.
  */
 
-export type BoardColumn = { status: TicketStatus; tickets: Ticket[] };
+/**
+ * One column of the board — with the word above it and what it means, since `KAN-90`.
+ *
+ * [label] and [category] are carried rather than looked up: the columns *are* the team's
+ * catalogue now, so the answers arrive with them, and a component that went back to a
+ * table of Kanso's six would draw a blank header over a team's own column.
+ */
+export type BoardColumn = {
+  status: TicketStatus;
+  label: string;
+  category: StatusCategory;
+  tickets: Ticket[];
+};
 
 /** Which way a key moves the cursor. Named rather than `±1` twice over: `down` and */
 /** `right` are not the same step, and a signed number cannot say which axis it is on. */
 export type BoardDirection = "up" | "down" | "left" | "right";
 
 /**
- * The six columns, always all six and always in `DEFAULT_STATUSES` order.
+ * **The team's own columns, all of them, in the team's own order** — `KAN-90`.
  *
- * That order is not cosmetic: it is the order `1`–`6` moves a card into, so a board that
- * dropped its empty columns would stop lining up with the six keys the moment one
- * emptied — and there would be no `Done` to drag onto until something was already done.
+ * It was Kanso's six in `DEFAULT_STATUSES` order, which is what a board could be while
+ * every team read the same words. A team that adds a seventh status would have had a
+ * column missing and a key `7` that moved a card nowhere; one that removed a status would
+ * have had a column no ticket can ever be in.
+ *
+ * Every column and not only the occupied ones, which is unchanged and still not cosmetic:
+ * the order is the order `1`–`n` moves a card into, so a board that dropped its empty
+ * columns would stop lining up with its own keys the moment one emptied — and there would
+ * be no `Done` to drag onto until something was already done.
+ *
+ * [vocabulary] is the team's catalogue — `statuses.optionsFor`, which answers Kanso's six
+ * for a scope with no team to ask, so a draft board still draws.
+ *
+ * **A board spanning teams is an open question.** `optionsFor` gives it the six, which
+ * is what it drew before this change and is right for every team that has invented
+ * nothing — but a card in a team with its own words then has no column, and dragging
+ * onto `done` writes a key that team may not have. The columns cannot be the five
+ * categories either: dropping a card on `unstarted` has no status to write. The two
+ * honest answers are to rebase on drop, or to offer columns only for a single team,
+ * and neither is `KAN-90`'s to pick — the ticket is about a team defining its own list.
  */
-export function boardColumns(tickets: Ticket[]): BoardColumn[] {
-  const columns: BoardColumn[] = DEFAULT_STATUSES.map((status) => ({ status, tickets: [] }));
+export function boardColumns(vocabulary: readonly Vocabulary[], tickets: Ticket[]): BoardColumn[] {
+  const columns: BoardColumn[] = vocabulary.map((row) => ({
+    status: row.key,
+    label: row.label,
+    category: row.category,
+    tickets: [],
+  }));
   const byStatus = new Map(columns.map((column) => [column.status, column]));
   for (const ticket of tickets) {
     // Order inside a column is the order the response arrived in — the server's own
@@ -117,5 +152,5 @@ export function cardLabel(ticket: Ticket): string {
   // A ticket with no team has no identifier to read out, and "null" is worse than
   // silence — so the sentence opens with the fact instead of with a name.
   const named = ticket.identifier ?? "No team";
-  return `${named}, ${STATUS_LABELS[ticket.status]}${priority}: ${ticket.title}`;
+  return `${named}, ${labelOfKey(ticket.status)}${priority}: ${ticket.title}`;
 }

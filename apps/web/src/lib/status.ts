@@ -1,3 +1,4 @@
+import type { DefaultStatus } from "./api";
 import type { ProjectHealth, ProjectStatus, StatusCategory, TicketPriority, TicketStatus } from "./api";
 
 /**
@@ -7,7 +8,22 @@ import type { ProjectHealth, ProjectStatus, StatusCategory, TicketPriority, Tick
  * from a component of the list view, which is a dependency in the wrong direction for
  * two screens that are siblings.
  */
-export const STATUS_LABELS: Record<TicketStatus, string> = {
+/**
+ * Kanso's own word for each of the six it seeds — `Record<DefaultStatus, …>` since
+ * `KAN-90`, and the narrowing is the point.
+ *
+ * It was keyed by `TicketStatus`, which widened to `string`, so
+ * `STATUS_LABELS[ticket.status]` type-checked for every status and answered `undefined`
+ * for any word a team invented: a pill with no text, a title with a blank in it, and in
+ * one case a `.toLowerCase()` on undefined that took a whole page down. None of it visible
+ * to the compiler, and the page crash is what found it.
+ *
+ * Keyed by the six, every one of those sites is a type error instead. What each of them
+ * should say depends on what it has: `statuses.labelOf` when the row's team is in hand,
+ * `CATEGORY_LABELS` when the key is a bucket, `statuses.labelOfKey` when there is no team
+ * to ask at all.
+ */
+export const STATUS_LABELS: Record<DefaultStatus, string> = {
   backlog: "Backlog",
   todo: "Todo",
   in_progress: "In progress",
@@ -16,7 +32,8 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
   canceled: "Canceled",
 };
 
-export const STATUS_COLORS: Record<TicketStatus, string> = {
+/** The same narrowing, for the same reason — see [STATUS_LABELS]. `colourOf` is the safe read. */
+export const STATUS_COLORS: Record<DefaultStatus, string> = {
   backlog: "var(--status-backlog)",
   todo: "var(--status-todo)",
   in_progress: "var(--status-progress)",
@@ -80,7 +97,24 @@ export const CATEGORY_COLORS: Record<StatusCategory, string> = {
  * what it means rather than as a hole.
  */
 export const colourOf = (key: string, category: StatusCategory): string =>
-  STATUS_COLORS[key] ?? CATEGORY_COLORS[category];
+  seededColour(key) ?? CATEGORY_COLORS[category];
+
+/**
+ * Kanso's own word for [key], or `undefined` — the only way to read [STATUS_LABELS] with
+ * a status in hand.
+ *
+ * The `| undefined` is the whole design. Both tables are keyed by the six, so indexing
+ * them with a `string` is a type error since `KAN-90`; these two accessors are the
+ * sanctioned way through, and their return type makes every caller answer the question
+ * "and what if this team invented the word" — which is the question twenty call sites
+ * were silently answering with a blank.
+ */
+export const seededLabel = (key: string): string | undefined =>
+  (STATUS_LABELS as Record<string, string | undefined>)[key];
+
+/** The same, for the colour. See [seededLabel]. */
+export const seededColour = (key: string): string | undefined =>
+  (STATUS_COLORS as Record<string, string | undefined>)[key];
 
 /**
  * The glyphs a priority already reads as at the keyboard — unchanged, so nothing

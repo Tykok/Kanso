@@ -1,3 +1,4 @@
+import { labelOfKey } from "@/lib/statuses";
 import {
   ACTIVITY_KINDS,
   type ActivityRow,
@@ -110,7 +111,7 @@ const viaPr = (payload: Record<string, unknown>): string | undefined => {
 const statusOf = (payload: Record<string, unknown>, key: "from" | "to"): string | undefined => {
   const value = payload[key];
   return typeof value === "string" && value in STATUS_LABELS
-    ? STATUS_LABELS[value as TicketStatus]
+    ? labelOfKey(value)
     : undefined;
 };
 

@@ -1,4 +1,4 @@
-import { API_URL, ApiError, type TicketStatus } from "./core";
+import { API_URL, ApiError, type StatusCategory, type TicketStatus } from "./core";
 
 /**
  * The client for the three routes that answer without a session — and the one client
@@ -30,13 +30,28 @@ export type RoadmapEntry = {
   key: string;
   title: string;
   status: TicketStatus;
+  /**
+   * What that key means — carried, not derivable — `KAN-90`.
+   *
+   * `categoryOf` is a map over Kanso's six and answers `undefined` for a word a team
+   * invented, silently. A public page has no team to fetch a catalogue from, so the
+   * meaning travels with the row.
+   */
+  category: StatusCategory;
   votes: number;
   /** Set only on a delivered ticket. */
   deliveredAt?: string;
 };
 
 export type RoadmapGroup = {
-  status: TicketStatus;
+  /**
+   * The column's **category** — `KAN-90`. `backlog`, `unstarted`, `started`, `completed`.
+   *
+   * Named `category` and not `status`, because the value is one: this field held a status
+   * key and a table of statuses was looked up in it, which answered `undefined` and drew a
+   * column with no heading at all. Measured by `22-public.spec.ts`.
+   */
+  category: StatusCategory;
   count: number;
   tickets: RoadmapEntry[];
 };
@@ -53,6 +68,14 @@ export type ContributorPage = {
   title: string;
   explanation?: string;
   status: TicketStatus;
+  /**
+   * What that key means — carried, not derivable — `KAN-90`.
+   *
+   * `categoryOf` is a map over Kanso's six and answers `undefined` for a word a team
+   * invented, silently. A public page has no team to fetch a catalogue from, so the
+   * meaning travels with the row.
+   */
+  category: StatusCategory;
   votes: number;
   unclaimed: boolean;
   /** The ticket's own labels, by name. No id and no colour — see `PublicDtos.kt`. */

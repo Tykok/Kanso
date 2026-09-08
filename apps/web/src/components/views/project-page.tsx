@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo } from "react";
 import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import { dayValue, ticketAddress, ticketHref, type Project, type Ticket } from "@/lib/api";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { CATEGORY_COLORS, STATUS_COLORS } from "@/lib/status";
 import {
   useDocs,
   useMe,
@@ -23,6 +23,11 @@ import { PriorityMark } from "../ui/priority-mark";
 import { Row } from "../ui/row";
 import { ActivityFeed } from "./activity-feed";
 import { Avatar } from "./avatar";
+// `CATEGORY_LABELS` and not `STATUS_LABELS`: since `KAN-90` a `StatusCount` is keyed by
+// a category, and the status table answered `undefined` for one — which `.toLowerCase()`
+// then threw on, taking the whole page down. The compiler could not see it, because
+// `TicketStatus` widened to `string` and `Record<string, string>` indexes anything.
+import { CATEGORY_LABELS } from "@/lib/statuses";
 import { donePercent, periodLabel, statusCounts } from "./project-copy";
 import { HealthPill, ProjectHealthPanel } from "./project-health";
 
@@ -129,7 +134,9 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
 
   const team = teams.data?.find((candidate) => candidate.id === project.teamId);
   const lead = users.data?.find((candidate) => candidate.id === project.leadUserId);
-  const counts = useMemo(() => statusCounts(tickets), [tickets]);
+  // The teams, because a project's tickets can be in several of them — `KAN-9` gives a
+  // project no team in particular — and each row's meaning is its own team's to say.
+  const counts = useMemo(() => statusCounts(teams.data ?? [], tickets), [teams.data, tickets]);
   const counting = counts.reduce((total, entry) => total + entry.count, 0);
 
   /**
@@ -234,7 +241,7 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
               // the segments have no text and each is only a few pixels wide.
               aria-label={counts
                 .filter((entry) => entry.count > 0)
-                .map((entry) => `${entry.count} ${STATUS_LABELS[entry.status].toLowerCase()}`)
+                .map((entry) => `${entry.count} ${CATEGORY_LABELS[entry.status].toLowerCase()}`)
                 .join(", ")}
             >
               {counts
@@ -244,7 +251,7 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
                     key={entry.status}
                     style={{
                       width: `${(entry.count / counting) * 100}%`,
-                      background: STATUS_COLORS[entry.status],
+                      background: CATEGORY_COLORS[entry.status],
                     }}
                   />
                 ))}
@@ -257,9 +264,9 @@ function ProjectBody({ project, tickets }: { project: Project; tickets: Ticket[]
                     <span
                       aria-hidden
                       className="size-2 rounded-sm"
-                      style={{ background: STATUS_COLORS[entry.status] }}
+                      style={{ background: CATEGORY_COLORS[entry.status] }}
                     />
-                    {entry.count} {STATUS_LABELS[entry.status].toLowerCase()}
+                    {entry.count} {CATEGORY_LABELS[entry.status].toLowerCase()}
                   </span>
                 ))}
             </div>
