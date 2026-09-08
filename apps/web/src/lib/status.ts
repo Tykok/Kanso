@@ -53,6 +53,36 @@ export const STATUS_CATEGORY: Record<TicketStatus, StatusCategory> = {
 export const categoryOf = (status: TicketStatus): StatusCategory => STATUS_CATEGORY[status];
 
 /**
+ * A colour for the five meanings — what a status Kanso never shipped is drawn in.
+ *
+ * [STATUS_COLORS] is keyed by the six, and since `KAN-90` a status is a `string`: asking
+ * it for a team's invented word yields `undefined`, silently, with no type error and no
+ * failing test. So a chart resolves its colour through [colourOf], and every bucket the
+ * server sends carries the category that answers it.
+ *
+ * The same tokens the six use, mapped by meaning rather than by name — a team's `Revue`
+ * is drawn as started work because that is what it is.
+ */
+export const CATEGORY_COLORS: Record<StatusCategory, string> = {
+  backlog: "var(--status-backlog)",
+  unstarted: "var(--status-todo)",
+  started: "var(--status-progress)",
+  completed: "var(--status-done)",
+  canceled: "var(--status-canceled)",
+};
+
+/**
+ * The colour a status or a bucket is drawn in: its own if Kanso ships it, its meaning's
+ * otherwise.
+ *
+ * The seeded six keep the colours they had — `in_review` stays distinct from
+ * `in_progress`, which the category alone could not say — and anything else is drawn as
+ * what it means rather than as a hole.
+ */
+export const colourOf = (key: string, category: StatusCategory): string =>
+  STATUS_COLORS[key] ?? CATEGORY_COLORS[category];
+
+/**
  * The glyphs a priority already reads as at the keyboard — unchanged, so nothing
  * has to be relearned. Only their colours move to the token layer below.
  */

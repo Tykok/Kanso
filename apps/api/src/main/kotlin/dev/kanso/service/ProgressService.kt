@@ -70,6 +70,8 @@ data class OpenLoad(
 	val byStatus: Map<String, LoadSlice>,
 	val byProject: List<ProjectLoad>,
 	val workingDays: Double?,
+	/** What [byStatus] is keyed by, in order — `StatusCategories.bucketsFor`. */
+	val buckets: List<StatusBucket>,
 )
 
 /**
@@ -278,6 +280,10 @@ class ProgressService(
 			// infinity to the client. `EffectiveVelocityService` already refuses a measured
 			// zero; this guards the declared one, which nothing stops being written as 0.
 			workingDays = perWorkingDay?.takeIf { it > 0 }?.let { whole.points / it },
+			// Filtered to the open ones: this bar plots a plate, and a `done` segment would
+			// be a width over a denominator that never counted it.
+			buckets = statusCategories.bucketsFor(scope)
+				.filter { statusCategories.categoryOf(scope.singleOrNull(), it.key) in WorkloadService.OPEN_CATEGORIES },
 		)
 	}
 

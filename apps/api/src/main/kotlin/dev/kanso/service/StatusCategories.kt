@@ -165,6 +165,30 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
 	}
 
 	/**
+	 * The buckets [teamIds] stacks by, in order and with the words a reader sees.
+	 *
+	 * **Sent on the payload rather than derived by the client, and that is the point.**
+	 * Both sides can apply `KAN-28`'s rule — one team's own words, the five categories
+	 * across teams — but they cannot both decide *which case they are in*: the workload
+	 * chart and the progress bar scope themselves to a team **and every descendant**, so a
+	 * parent team is the cross-team case while its screen looks like a single team's. A
+	 * client reading `scope.kind === "team"` would draw its own words over buckets the
+	 * server keyed by category, and every segment would be empty. Re-deriving the team
+	 * tree in the client to guess would be a second copy of `descendantIds`.
+	 *
+	 * So the server says what it grouped by. `StatusOrder`'s argument that an ordering is
+	 * a rendering decision the client already owns held while the vocabulary was closed;
+	 * for these two payloads it no longer does, and this is the smallest honest
+	 * replacement — the keys the numbers are under, in the order they stack.
+	 */
+	@Transactional(readOnly = true)
+	fun bucketsFor(teamIds: Collection<UUID>?): List<StatusBucket> {
+		val single = teamIds?.singleOrNull()
+			?: return StatusOrder.CATEGORY_ORDER.map { StatusBucket(it.wire, it.label, it) }
+		return statuses.forTeam(single).map { StatusBucket(it.key, it.label, it.category) }
+	}
+
+	/**
 	 * How a scope buckets and stacks its statuses — `KAN-28`'s rule, read for `KAN-90`.
 	 *
 	 * One team reads its own words in its own order, because that is the list on its
@@ -230,6 +254,19 @@ class StatusCategories(private val statuses: TeamStatusRepository) {
 				?: StatusCategory.UNSTARTED
 	}
 }
+
+/**
+ * One bucket a screen stacks by: the key its numbers are under, and the word above them.
+ *
+ * A status key and the team's label for it, or a category and the word a reader would say
+ * — see `StatusCategories.bucketsFor`, which is also the only thing that knows which.
+ *
+ * [category] is carried even when [key] already is one, and it is what a client draws the
+ * bucket *in*: `STATUS_COLORS` on the web is keyed by Kanso's six, so a team's invented
+ * word has no colour there and — now that a status is a `string` on both sides — asking
+ * for one yields `undefined` with no type error. The category always has one.
+ */
+data class StatusBucket(val key: String, val label: String, val category: StatusCategory)
 
 /**
  * The categories of a set of rows, already read — `StatusCategories.of`.

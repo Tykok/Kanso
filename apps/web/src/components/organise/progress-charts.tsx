@@ -3,9 +3,9 @@
 import { GroupLabel } from "@/components/ui/group-label";
 import type { DeliveredCycle, OpenLoad } from "@/lib/api";
 import { trend } from "@/lib/progress";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { colourOf, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import { formatRate } from "@/lib/velocity";
-import { heights, LOAD_BAR_ORDER, progressSegments } from "./burndown";
+import { heights, loadBarOrder, progressSegments } from "./burndown";
 
 /**
  * The three drawings screens 40 and 41 share, moved here unchanged.
@@ -157,7 +157,7 @@ export function StatusBar({ load }: { load: OpenLoad }) {
   const counts = Object.fromEntries(
     Object.entries(load.byStatus).map(([status, slice]) => [status, slice.tickets]),
   );
-  const segments = progressSegments(counts, load.load.tickets, LOAD_BAR_ORDER);
+  const segments = progressSegments(counts, load.load.tickets, loadBarOrder(load.buckets));
 
   return (
     <div className="flex flex-col gap-2">
@@ -165,13 +165,13 @@ export function StatusBar({ load }: { load: OpenLoad }) {
         className="flex h-2 overflow-hidden rounded-[4px] bg-accent"
         role="img"
         aria-label={segments
-          .map((segment) => `${STATUS_LABELS[segment.status]}: ${segment.count}`)
+          .map((segment) => `${segment.label}: ${segment.count}`)
           .join(", ")}
       >
         {segments.map((segment) => (
           <span
             key={segment.status}
-            style={{ width: `${segment.width}%`, background: STATUS_COLORS[segment.status] }}
+            style={{ width: `${segment.width}%`, background: colourOf(segment.status, segment.category) }}
           />
         ))}
       </div>
@@ -181,9 +181,9 @@ export function StatusBar({ load }: { load: OpenLoad }) {
             <span
               aria-hidden
               className="size-[7px] rounded-sm"
-              style={{ background: STATUS_COLORS[segment.status] }}
+              style={{ background: colourOf(segment.status, segment.category) }}
             />
-            {STATUS_LABELS[segment.status]} {segment.count}
+            {segment.label} {segment.count}
             <span className="text-faint">
               {load.byStatus[segment.status]?.points ? ` · ${load.byStatus[segment.status].points} pts` : ""}
             </span>

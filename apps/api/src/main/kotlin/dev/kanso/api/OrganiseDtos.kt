@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.domain.User
+import dev.kanso.service.StatusBucket
 import dev.kanso.service.Cycle
 import dev.kanso.service.CycleReport
 import dev.kanso.service.CycleSummary
@@ -78,6 +79,8 @@ data class CycleReportResponse(
 	val percent: Int,
 	val points: CyclePointsResponse,
 	val byStatus: Map<String, Int>,
+	/** The bar's segments, in order — `WorkloadResponse.buckets`. */
+	val buckets: List<StatusBucketResponse>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDayResponse>,
 	val slipping: List<TicketResponse>,
@@ -96,6 +99,7 @@ data class CycleReportResponse(
 				unestimated = report.points.unestimated,
 			),
 			byStatus = report.byStatus,
+			buckets = report.buckets.map(StatusBucketResponse::of),
 			daysLeft = report.daysLeft,
 			remaining = report.remaining.map {
 				RemainingDayResponse(it.day, it.open, it.openPoints, it.projected)
@@ -240,6 +244,14 @@ data class BulkEditResponse(val changed: Int)
 
 // --- workload -------------------------------------------------------------
 
+/** One column of the chart: the key the numbers are under, and its heading. */
+data class StatusBucketResponse(val key: String, val label: String, val category: String) {
+	companion object {
+		fun of(bucket: StatusBucket) =
+			StatusBucketResponse(bucket.key, bucket.label, bucket.category.wire)
+	}
+}
+
 data class WorkloadRowResponse(
 	val person: PersonResponse?,
 	val total: Int,
@@ -262,9 +274,23 @@ data class WorkloadRowResponse(
 	}
 }
 
-data class WorkloadResponse(val cycleId: UUID?, val rows: List<WorkloadRowResponse>) {
+data class WorkloadResponse(
+	val cycleId: UUID?,
+	val rows: List<WorkloadRowResponse>,
+	/**
+	 * The chart's columns, in order, as the server grouped them — `KAN-90`.
+	 *
+	 * The client cannot derive these: this screen scopes itself to a team *and every
+	 * descendant*, so a parent team is grouped by category while its page looks like one
+	 * team's. `StatusCategories.bucketsFor` is where that argument is written.
+	 */
+	val buckets: List<StatusBucketResponse>,
+) {
 	companion object {
-		fun of(workload: Workload) =
-			WorkloadResponse(workload.cycleId, workload.rows.map(WorkloadRowResponse::of))
+		fun of(workload: Workload) = WorkloadResponse(
+			workload.cycleId,
+			workload.rows.map(WorkloadRowResponse::of),
+			workload.buckets.map(StatusBucketResponse::of),
+		)
 	}
 }

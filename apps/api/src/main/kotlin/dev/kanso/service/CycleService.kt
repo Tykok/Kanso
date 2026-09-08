@@ -88,6 +88,15 @@ data class CycleReport(
 	 * `CATEGORY_ORDER` across teams.
 	 */
 	val byStatus: Map<String, Int>,
+	/**
+	 * What [byStatus] is keyed by, in the team's order — `StatusCategories.bucketsFor`.
+	 *
+	 * A cycle belongs to one team, so this client *could* have read it off `Team.statuses`
+	 * and been right. It is sent anyway, so that all three charts get their vocabulary the
+	 * same way and no screen has to remember which of them may derive it — the workload
+	 * chart and the progress bar cannot, because their scope reaches a team's descendants.
+	 */
+	val buckets: List<StatusBucket>,
 	val daysLeft: Int,
 	val remaining: List<RemainingDay>,
 	val slipping: List<TicketDetail>,
@@ -272,6 +281,7 @@ class CycleService(
 			total = total,
 			done = done,
 			percent = if (total == 0) 0 else (done * 100.0 / total).roundToInt(),
+			buckets = statusCategories.bucketsFor(listOf(cycle.teamId)),
 			points = CyclePoints(
 				total = totalPoints,
 				done = donePoints,

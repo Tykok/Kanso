@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
-import type { RemainingDay } from "@/lib/api";
-import { bars, heights, LOAD_BAR_ORDER, progressSegments } from "./burndown";
+import type { RemainingDay, StatusBucket } from "@/lib/api";
+import { barOrder, bars, heights, loadBarOrder, progressSegments } from "./burndown";
+
+/**
+ * The six a team is seeded with, as the buckets a payload would carry — `StatusBucket`.
+ *
+ * Written out rather than imported from a constant, because since `KAN-90` there is no
+ * constant to import: the buckets belong to the scope on screen and arrive on the payload,
+ * so a test of the geometry has to state which ones it is drawing. That is the point —
+ * `progressSegments` no longer has a default order it could be wrong about.
+ */
+const seeded: StatusBucket[] = [
+  { key: "backlog", label: "Backlog", category: "backlog" },
+  { key: "todo", label: "Todo", category: "unstarted" },
+  { key: "in_progress", label: "In progress", category: "started" },
+  { key: "in_review", label: "In review", category: "started" },
+  { key: "done", label: "Done", category: "completed" },
+  { key: "canceled", label: "Canceled", category: "canceled" },
+];
+
+/** A word `DefaultStatus` has never heard of, for the cases that are the whole ticket. */
+const devis: StatusBucket = { key: "devis", label: "Devis", category: "backlog" };
 
 /**
  * Screen 19's two charts, as geometry.
@@ -69,7 +89,11 @@ describe("bars, in points", () => {
 
 describe("progressSegments", () => {
   it("gives each status a width in proportion to its share of the cycle", () => {
-    const segments = progressSegments({ done: 9, in_review: 3, in_progress: 5, todo: 7 }, 24);
+    const segments = progressSegments(
+      { done: 9, in_review: 3, in_progress: 5, todo: 7 },
+      24,
+      barOrder(seeded),
+    );
 
     expect(segments.map((segment) => segment.status)).toEqual([
       "done",
@@ -85,7 +109,8 @@ describe("progressSegments", () => {
   // The bar is one row of colour: the widths have to add to 100 or there is a gap at the
   // end that reads as work nobody accounted for.
   it("adds up to the whole bar", () => {
-    const total = progressSegments({ done: 1, todo: 2 }, 3).reduce((sum, s) => sum + s.width, 0);
+    const total = progressSegments({ done: 1, todo: 2 }, 3, barOrder(seeded))
+      .reduce((sum, s) => sum + s.width, 0);
     expect(total).toBeCloseTo(100, 8);
   });
 
@@ -93,16 +118,17 @@ describe("progressSegments", () => {
   // Sorting by the status order the *list* uses would put the backlog on the left and read
   // as though the cycle ran backwards.
   it("puts what is finished on the left, whatever order the server sent", () => {
-    const segments = progressSegments({ todo: 1, done: 1, backlog: 1 }, 3);
+    const segments = progressSegments({ todo: 1, done: 1, backlog: 1 }, 3, barOrder(seeded));
     expect(segments.map((segment) => segment.status)).toEqual(["done", "todo", "backlog"]);
   });
 
   it("leaves out a status nothing is in, so the legend has no dead entries", () => {
-    expect(progressSegments({ done: 2, todo: 0 }, 2).map((s) => s.status)).toEqual(["done"]);
+    expect(progressSegments({ done: 2, todo: 0 }, 2, barOrder(seeded)).map((s) => s.status))
+      .toEqual(["done"]);
   });
 
   it("draws no bar for an empty cycle", () => {
-    expect(progressSegments({}, 0)).toEqual([]);
+    expect(progressSegments({}, 0, barOrder(seeded))).toEqual([]);
   });
 });
 
@@ -140,31 +166,41 @@ describe("progressSegments, over the load vocabulary", () => {
   it("puts what is in hand first, not what is furthest along", () => {
     const load = { in_review: 1, in_progress: 2, todo: 3, backlog: 4 };
 
-    expect(progressSegments(load, 10, LOAD_BAR_ORDER).map((segment) => segment.status)).toEqual([
-      "in_progress",
-      "in_review",
-      "todo",
-      "backlog",
-    ]);
-    expect(progressSegments(load, 10).map((segment) => segment.status)).toEqual([
-      "in_review",
-      "in_progress",
-      "todo",
-      "backlog",
-    ]);
+    expect(progressSegments(load, 10, loadBarOrder(seeded)).map((segment) => segment.status))
+      .toEqual(["in_progress", "in_review", "todo", "backlog"]);
+    expect(progressSegments(load, 10, barOrder(seeded)).map((segment) => segment.status))
+      .toEqual(["in_review", "in_progress", "todo", "backlog"]);
   });
 
   // The load map arrives keyed by the open statuses only, so a settled ticket cannot be in
   // it — and the order must not invent a segment for one either.
+  // The load map arrives keyed by the open buckets only, so a settled ticket cannot be in
+  // it — and the order must not invent a segment for one either.
   it("has no place for a settled status", () => {
-    expect(LOAD_BAR_ORDER).not.toContain("done");
-    expect(LOAD_BAR_ORDER).not.toContain("canceled");
+    const keys = loadBarOrder(seeded).map((bucket) => bucket.key);
+    expect(keys).not.toContain("done");
+    expect(keys).not.toContain("canceled");
   });
 
-  it("still defaults to the cycle bar, so screen 19 reads as it always did", () => {
-    expect(progressSegments({ done: 1, todo: 1 }, 2).map((segment) => segment.status)).toEqual([
-      "done",
-      "todo",
-    ]);
+  // The whole of `KAN-90` on this file: a word the client has never heard of draws itself,
+  // at the end, because nothing here filters by a vocabulary it knows.
+  it("draws a word a team invented, last, rather than dropping it", () => {
+    const segments = progressSegments(
+      { done: 1, devis: 2 },
+      3,
+      barOrder([...seeded, devis]),
+    );
+
+    expect(segments.map((segment) => segment.status)).toEqual(["done", "devis"]);
+    // Its own label, from the bucket — not a lookup in a table of six that has no entry.
+    expect(segments[1].label).toBe("Devis");
+    // And its meaning, which is what the bar is coloured by.
+    expect(segments[1].category).toBe("backlog");
+  });
+
+  it("keeps an invented word out of the load bar when it is settled work", () => {
+    const shipped: StatusBucket = { key: "livre", label: "Livré", category: "completed" };
+    expect(loadBarOrder([...seeded, shipped]).map((bucket) => bucket.key)).not.toContain("livre");
+    expect(barOrder([...seeded, shipped]).map((bucket) => bucket.key)).toContain("livre");
   });
 });

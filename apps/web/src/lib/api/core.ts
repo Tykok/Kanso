@@ -676,6 +676,8 @@ export type OpenLoad = {
   load: LoadSlice;
   /** Keyed by the status wire value, and every open status is present, including zeros. */
   byStatus: Record<string, LoadSlice>;
+  /** The bar's segments, in order, as the server grouped them — `StatusBucket`. */
+  buckets: { key: string; label: string; category: StatusCategory }[];
   /** Heaviest first, and the unfiled pile last however big it is. */
   byProject: ProjectLoad[];
   /**

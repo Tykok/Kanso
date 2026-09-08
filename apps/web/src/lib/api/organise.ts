@@ -1,3 +1,4 @@
+import type { StatusCategory } from "./core";
 import { API_URL, ApiError, getDevUser, type Ticket, type TicketPriority, type TicketStatus } from "./core";
 
 /**
@@ -91,8 +92,13 @@ export type CycleReport = {
   percent: number;
   /** The same three questions in points. The counts stay: not every team estimates. */
   points: CyclePoints;
-  /** Keyed by the status wire value, and every counted status is present, including zeros. */
+  /**
+   * Keyed by the team's own status keys, and holding only the ones the cycle has —
+   * `KAN-90`. The empty segments are drawn from `buckets`, which names the vocabulary.
+   */
   byStatus: Record<string, number>;
+  /** The bar's segments, in order, as the server grouped them — `StatusBucket`. */
+  buckets: StatusBucket[];
   daysLeft: number;
   remaining: RemainingDay[];
   /** What does not fit in the days left at the observed rate, worst-last. */
@@ -258,7 +264,22 @@ export type WorkloadRow = {
   oldestOpenDays: number;
 };
 
-export type Workload = { cycleId?: string; rows: WorkloadRow[] };
+/**
+ * One column or segment a chart stacks by, as the server grouped it — `KAN-90`.
+ *
+ * `key` addresses a number in `byStatus`; `label` is the heading above it. Sent rather
+ * than derived, and the reason is specific: the workload chart and the progress bar scope
+ * themselves to a team **and every descendant**, so a parent team is the cross-team case —
+ * grouped by category — while its page looks like a single team's. This client cannot tell
+ * those apart without a second copy of `descendantIds`, and guessing draws its own words
+ * over buckets keyed by category, leaving every segment empty.
+ *
+ * `lib/statuses.ts`'s `vocabularyOf` still answers the same question for the screens that
+ * *can* decide it — a grouped list knows whether it asked for descendants.
+ */
+export type StatusBucket = { key: string; label: string; category: StatusCategory };
+
+export type Workload = { cycleId?: string; rows: WorkloadRow[]; buckets: StatusBucket[] };
 
 export const organiseApi = {
   cycles: (teamId: string) => request<Cycle[]>(`/api/teams/${teamId}/cycles`),

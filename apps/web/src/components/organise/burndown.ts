@@ -1,12 +1,5 @@
-import type { RemainingDay, TicketStatus } from "@/lib/api";
-import {
-  inOrder,
-  isCounted,
-  isOpen,
-  LOAD_ORDER,
-  PROGRESS_ORDER,
-  statusesWhere,
-} from "@/lib/status-order";
+import type { RemainingDay, StatusBucket, StatusCategory, TicketStatus } from "@/lib/api";
+import { inOrder, isCounted, isOpen, LOAD_ORDER, PROGRESS_ORDER } from "@/lib/status-order";
 
 /**
  * The bar geometry these screens share, rather than as markup.
@@ -84,7 +77,14 @@ export function heights(values: readonly number[]): number[] {
   return values.map((value) => (tallest === 0 ? 0 : (value / tallest) * 100));
 }
 
-export type ProgressSegment = { status: TicketStatus; count: number; width: number };
+export type ProgressSegment = {
+  status: TicketStatus;
+  /** The word above the segment, from the bucket — never looked up in a table of six. */
+  label: string;
+  category: StatusCategory;
+  count: number;
+  width: number;
+};
 
 /**
  * The stacked progress bar, done-first.
@@ -94,40 +94,70 @@ export type ProgressSegment = { status: TicketStatus; count: number; width: numb
  * a history and the other is a queue. The same [PROGRESS_ORDER] the project page's bar
  * reads, because it is the same question asked of a different set of tickets.
  *
- * Which set is not this file's opinion. `CycleReport.byStatus` arrives keyed by
- * `CycleService.COUNTED_STATUSES` and `total` is counted over the same tickets, so a
- * `canceled` segment here would be a width over a denominator that never included it. The
- * membership is therefore read off the category, as the server reads it, rather than
- * spelled as five names that were right in 2026.
+ * Which set is not this file's opinion, and since `KAN-90` it is not this file's *guess*
+ * either. It used to filter Kanso's six by category, which silently omitted any word a
+ * team invented; the buckets now arrive on the payload, in the order the server grouped
+ * them, and this only resequences them — `CycleReport.byStatus` is keyed by exactly those
+ * and `total` is counted over the same tickets, so a `canceled` segment would be a width
+ * over a denominator that never included it.
  */
-export const BAR_ORDER = inOrder(statusesWhere(isCounted), PROGRESS_ORDER);
+export const barOrder = (buckets: readonly StatusBucket[]): StatusBucket[] =>
+  bucketsInOrder(buckets.filter((bucket) => isCounted(bucket.category)), PROGRESS_ORDER);
 
 /**
  * The same bar over the statuses a plate can be in, in the order a plate is read.
  *
- * Not a restriction of [BAR_ORDER] and not derivable from it — `LOAD_ORDER` puts
+ * Not a restriction of [barOrder] and not derivable from it — `LOAD_ORDER` puts
  * `in_progress` before `in_review`, which `PROGRESS_ORDER` over the same four statuses
  * reverses. Screen 40's load bar has no `done` at its left for a reader to measure a
  * descent against, so "furthest along first" answers nothing there and the leftmost
- * segment is the work actually in somebody's hands. The membership is read off the
- * category, so a seventh open status draws itself.
+ * segment is the work actually in somebody's hands.
  */
-export const LOAD_BAR_ORDER = inOrder(statusesWhere(isOpen), LOAD_ORDER);
+export const loadBarOrder = (buckets: readonly StatusBucket[]): StatusBucket[] =>
+  bucketsInOrder(buckets.filter((bucket) => isOpen(bucket.category)), LOAD_ORDER);
 
 /**
- * [order] is the caller's, because two screens ask this of two different vocabularies —
- * see [LOAD_BAR_ORDER]. It defaults to the cycle bar's, so the screen this file was
- * written for reads as it always did.
+ * [buckets], resequenced by [order] — `inOrder` over a bucket rather than a bare key.
+ *
+ * A bucket the order does not place sorts last rather than being dropped, which is the
+ * whole payoff and now the common case: a team's invented word is in no constant here, so
+ * it draws itself at the end of the bar, where it is visible and slightly wrong-looking
+ * rather than absent. `inOrder`'s own docstring made that argument when the seventh status
+ * was hypothetical.
+ */
+function bucketsInOrder(
+  buckets: readonly StatusBucket[],
+  order: readonly TicketStatus[],
+): StatusBucket[] {
+  const placed = inOrder(buckets.map((bucket) => bucket.key), order);
+  return placed.map((key) => buckets.find((bucket) => bucket.key === key)!);
+}
+
+/**
+ * [order] is the caller's and no longer defaulted, because since `KAN-90` there is no
+ * order this file can supply: the buckets belong to the scope on screen, and the caller is
+ * the only one holding it. Two screens ask this of two different vocabularies anyway —
+ * see [loadBarOrder].
  */
 export function progressSegments(
   byStatus: Record<string, number>,
   total: number,
-  order: readonly TicketStatus[] = BAR_ORDER,
+  order: readonly StatusBucket[],
 ): ProgressSegment[] {
   if (total <= 0) return [];
-  return order.flatMap((status) => {
-    const count = byStatus[status] ?? 0;
-    // A status nothing is in gets no segment, so the legend beneath has no dead entries.
-    return count === 0 ? [] : [{ status, count, width: (count / total) * 100 }];
+  return order.flatMap((bucket) => {
+    const count = byStatus[bucket.key] ?? 0;
+    // A bucket nothing is in gets no segment, so the legend beneath has no dead entries.
+    return count === 0
+      ? []
+      : [
+          {
+            status: bucket.key,
+            label: bucket.label,
+            category: bucket.category,
+            count,
+            width: (count / total) * 100,
+          },
+        ];
   });
 }

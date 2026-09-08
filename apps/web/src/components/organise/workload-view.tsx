@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
-import { inOrder, isOpen, LOAD_ORDER, statusesWhere } from "@/lib/status-order";
-import type { WorkloadRow } from "@/lib/api";
+// `STATUS_COLORS` for the note's dot only, which deliberately names one of the six as
+// decoration rather than reading a team's status — `colourOf` is for the bar.
+import { colourOf, STATUS_COLORS } from "@/lib/status";
+
+import type { StatusBucket, WorkloadRow } from "@/lib/api";
+import { loadBarOrder } from "./burndown";
 import { TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { useCycles, useWorkload } from "@/lib/queries";
 import { workloadNote } from "./grouping";
@@ -23,17 +26,21 @@ import { useOrganiseTeam } from "./team";
  * Every row that shows a total in points also shows how many of its tickets are not in it.
  */
 
-/**
+/*
  * The segments of one person's bar: everything still open, in the order it is moving.
  *
- * This used to be four names spelled out, and it was the clearest case in the app of two
- * questions wearing one answer. The membership *is* the open statuses — `WorkloadRow`
- * arrives keyed by `WorkloadService.OPEN_STATUSES` and nothing else can appear in it — so
- * it is read off the category now, and a seventh open status draws itself. The sequence is
- * not derivable from anything: [LOAD_ORDER] puts `in_progress` before `in_review`, which
- * no filter over the category and no other order in the app reproduces.
+ * This used to be four names spelled out, then a filter over Kanso's six by category —
+ * and both were the same mistake at different distances: neither could name a word a
+ * *team* invented. Since `KAN-90` the buckets arrive on the payload, in the order the
+ * server grouped them, and `loadBarOrder` only resequences them: [LOAD_ORDER] puts
+ * `in_progress` before `in_review`, which no filter over the category and no other order
+ * in the app reproduces.
+ *
+ * There is no module constant any more, because there is no order this module can know —
+ * this screen's scope is a team and every descendant, so a parent team's chart is keyed by
+ * category while the page looks like one team's. `StatusCategories.bucketsFor` is where
+ * that argument lives.
  */
-const PLOTTED = inOrder(statusesWhere(isOpen), LOAD_ORDER);
 
 export function WorkloadView() {
   const { team } = useOrganiseTeam();
@@ -42,6 +49,8 @@ export function WorkloadView() {
   const workload = useWorkload(team?.id, cycleId);
 
   const rows = workload.data?.rows ?? [];
+  // The buckets the server actually grouped by, resequenced into the order a plate reads.
+  const plotted = loadBarOrder(workload.data?.buckets ?? []);
   const heaviest = Math.max(1, ...rows.map((row) => row.total));
   const note = workloadNote(rows);
   const active = cycles.data?.find((cycle) => cycle.state === "active");
@@ -91,7 +100,12 @@ export function WorkloadView() {
 
         <div className="flex flex-col gap-3.5">
           {rows.map((row) => (
-            <PersonRow key={row.person?.id ?? "unassigned"} row={row} heaviest={heaviest} />
+            <PersonRow
+              key={row.person?.id ?? "unassigned"}
+              row={row}
+              heaviest={heaviest}
+              plotted={plotted}
+            />
           ))}
         </div>
 
@@ -110,7 +124,21 @@ export function WorkloadView() {
   );
 }
 
-function PersonRow({ row, heaviest }: { row: WorkloadRow; heaviest: number }) {
+function PersonRow({
+  row,
+  heaviest,
+  plotted,
+}: {
+  row: WorkloadRow;
+  heaviest: number;
+  /**
+   * The scope's buckets, resequenced — handed down rather than read here.
+   *
+   * A row cannot know them: they belong to the whole chart's scope, which reaches the
+   * team's descendants, and computing them per row would be the same answer N times.
+   */
+  plotted: readonly StatusBucket[];
+}) {
   const name = row.person?.displayName ?? "Unassigned";
 
   return (
@@ -142,17 +170,17 @@ function PersonRow({ row, heaviest }: { row: WorkloadRow; heaviest: number }) {
                 className="bg-[repeating-linear-gradient(135deg,var(--rule)_0_3px,transparent_3px_6px)]"
               />,
             ]
-          : PLOTTED.flatMap((status) => {
-              const count = row.byStatus[status] ?? 0;
+          : plotted.flatMap((bucket) => {
+              const count = row.byStatus[bucket.key] ?? 0;
               return count === 0
                 ? []
                 : [
                     <span
-                      key={status}
-                      title={`${STATUS_LABELS[status]}: ${count}`}
+                      key={bucket.key}
+                      title={`${bucket.label}: ${count}`}
                       style={{
                         width: `${(count / heaviest) * 100}%`,
-                        background: STATUS_COLORS[status],
+                        background: colourOf(bucket.key, bucket.category),
                       }}
                     />,
                   ];

@@ -41,6 +41,7 @@ const plate = (tickets: number, points: number, unestimated = 0, workingDays?: n
   byStatus: {},
   byProject: [],
   workingDays,
+  buckets: [],
 });
 
 describe("trend", () => {

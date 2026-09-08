@@ -68,7 +68,12 @@ data class WorkloadRow(
 	val oldestOpenDays: Int,
 )
 
-data class Workload(val cycleId: UUID?, val rows: List<WorkloadRow>)
+data class Workload(
+	val cycleId: UUID?,
+	val rows: List<WorkloadRow>,
+	/** What [WorkloadRow.byStatus] is keyed by, in order — `StatusCategories.bucketsFor`. */
+	val buckets: List<StatusBucket>,
+)
 
 /**
  * Screen 23. Open tickets per person, counted and weighed.
@@ -105,7 +110,11 @@ class WorkloadService(
 				inCycle.filter { categories[it] in OPEN_CATEGORIES && !it.archived }
 			}
 		}
-		if (open.isEmpty()) return Workload(cycleId, emptyList())
+		// Before the early return, so an empty chart still draws its axis: a screen with
+		// no open work has a legend, and a client that had to invent one would draw the
+		// wrong vocabulary on exactly the screen with nothing to correct it.
+		val buckets = statusCategories.bucketsFor(teamIds)
+		if (open.isEmpty()) return Workload(cycleId, emptyList(), buckets)
 
 		val assignees = tickets.assigneeIdsFor(open.map { it.id })
 		// One list per person, plus one for the tickets nobody owns. Built as a map of
@@ -130,6 +139,7 @@ class WorkloadService(
 
 		return Workload(
 			cycleId = cycleId,
+			buckets = buckets,
 			// Heaviest first, and the unassigned pile last however big it is: a person's load
 			// is the subject of this screen, and the orphan column is the footnote.
 			rows = rows.sortedWith(

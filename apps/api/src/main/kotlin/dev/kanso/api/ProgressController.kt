@@ -87,6 +87,8 @@ data class OpenLoadResponse(
 	val byProject: List<ProjectLoadResponse>,
 	/** Points divided by the pace in force. Null — never `0` — when there is no pace. */
 	val workingDays: Double?,
+	/** The bar's segments, in order, as the server grouped them — `WorkloadResponse`. */
+	val buckets: List<StatusBucketResponse>,
 ) {
 	companion object {
 		fun of(load: OpenLoad) = OpenLoadResponse(
@@ -94,6 +96,7 @@ data class OpenLoadResponse(
 			byStatus = load.byStatus.mapValues { LoadSliceResponse.of(it.value) },
 			byProject = load.byProject.map(ProjectLoadResponse::of),
 			workingDays = load.workingDays,
+			buckets = load.buckets.map(StatusBucketResponse::of),
 		)
 	}
 }

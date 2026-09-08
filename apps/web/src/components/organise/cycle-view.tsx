@@ -4,11 +4,11 @@ import Link from "next/link";
 import { GroupLabel } from "@/components/ui/group-label";
 import { Row } from "@/components/ui/row";
 import { PriorityMark } from "@/components/ui/priority-mark";
-import { PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { colourOf, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 import type { Cycle, CycleReport, Ticket, TicketStatus } from "@/lib/api";
 import { ShellAside, TopbarSlot, usePageShell } from "@/components/shell/topbar-slot";
 import { useCycleReport, useCycles, usePlaceInCycle } from "@/lib/queries";
-import { bars, progressSegments } from "./burndown";
+import { barOrder, bars, progressSegments } from "./burndown";
 import { groupTickets } from "./grouping";
 import { useOrganiseTeam } from "./team";
 
@@ -103,7 +103,10 @@ function unestimatedNote(report: CycleReport) {
 }
 
 function Progress({ report }: { report: CycleReport }) {
-  const segments = progressSegments(report.byStatus, report.total);
+  // The buckets the server grouped by, resequenced done-first. `barOrder` drops the
+  // cancelled one, which `CycleReport.byStatus` never counts anyway — a segment there
+  // would be a width over a denominator that never included it.
+  const segments = progressSegments(report.byStatus, report.total, barOrder(report.buckets));
   // The status bar underneath stays a bar of *rows*: it is a breakdown of the list, every
   // ticket in the cycle has a status and only some have points, and a segmented bar that
   // silently omitted the unestimated would not add up to the list beside it.
@@ -131,7 +134,7 @@ function Progress({ report }: { report: CycleReport }) {
         {segments.map((segment) => (
           <span
             key={segment.status}
-            style={{ width: `${segment.width}%`, background: STATUS_COLORS[segment.status] }}
+            style={{ width: `${segment.width}%`, background: colourOf(segment.status, segment.category) }}
           />
         ))}
       </div>
@@ -142,9 +145,9 @@ function Progress({ report }: { report: CycleReport }) {
             <span
               aria-hidden
               className="size-[7px] rounded-sm"
-              style={{ background: STATUS_COLORS[segment.status] }}
+              style={{ background: colourOf(segment.status, segment.category) }}
             />
-            {STATUS_LABELS[segment.status]} {segment.count}
+            {segment.label} {segment.count}
           </span>
         ))}
       </div>
