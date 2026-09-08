@@ -5,7 +5,7 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import type { Label } from "@/lib/api/social";
 import {
   TICKET_PRIORITIES,
-  TICKET_STATUSES,
+  DEFAULT_STATUSES,
   type Cycle,
   type Person,
   type TicketPriority,
@@ -73,7 +73,7 @@ export function BulkStrip({
         label="Set status"
         asChild
         trigger={<button type="button" className={itemClass} disabled={busy}>Status</button>}
-        items={TICKET_STATUSES.map((status) => ({
+        items={DEFAULT_STATUSES.map((status) => ({
           id: `bulk.status.${status}`,
           label: STATUS_LABELS[status],
           onSelect: () => onStatus(status),

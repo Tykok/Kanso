@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TICKET_STATUSES, type Ticket, type TicketPriority, type TicketStatus } from "@/lib/api";
+import { DEFAULT_STATUSES, type Ticket, type TicketPriority, type TicketStatus } from "@/lib/api";
 import { boardColumns, boardMove, cardLabel, deltaTo, locateCard } from "./columns";
 
 /** Only the fields the board reads; the rest of `Ticket` is noise in these assertions. */
@@ -32,14 +32,14 @@ function ticket(
 
 describe("boardColumns", () => {
   /**
-   * All six, always, in `TICKET_STATUSES` order — which is also the order `1`–`6` moves
+   * All six, always, in `DEFAULT_STATUSES` order — which is also the order `1`–`6` moves
    * a card into. A board that drops its empty columns has no `Done` to drag onto until
    * something is already done, and the six keys would stop lining up with the six
    * columns the moment one emptied.
    */
   it("draws one column per status, in the order the number keys move a card", () => {
     const columns = boardColumns([ticket("KAN-1", "done")]);
-    expect(columns.map((column) => column.status)).toEqual([...TICKET_STATUSES]);
+    expect(columns.map((column) => column.status)).toEqual([...DEFAULT_STATUSES]);
     expect(columns.map((column) => column.tickets.length)).toEqual([0, 0, 0, 0, 1, 0]);
   });
 

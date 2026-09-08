@@ -1,4 +1,4 @@
-import { TICKET_STATUSES, type Ticket, type TicketStatus } from "@/lib/api";
+import { DEFAULT_STATUSES, type Ticket, type TicketStatus } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 
 /**
@@ -16,14 +16,14 @@ export type BoardColumn = { status: TicketStatus; tickets: Ticket[] };
 export type BoardDirection = "up" | "down" | "left" | "right";
 
 /**
- * The six columns, always all six and always in `TICKET_STATUSES` order.
+ * The six columns, always all six and always in `DEFAULT_STATUSES` order.
  *
  * That order is not cosmetic: it is the order `1`–`6` moves a card into, so a board that
  * dropped its empty columns would stop lining up with the six keys the moment one
  * emptied — and there would be no `Done` to drag onto until something was already done.
  */
 export function boardColumns(tickets: Ticket[]): BoardColumn[] {
-  const columns: BoardColumn[] = TICKET_STATUSES.map((status) => ({ status, tickets: [] }));
+  const columns: BoardColumn[] = DEFAULT_STATUSES.map((status) => ({ status, tickets: [] }));
   const byStatus = new Map(columns.map((column) => [column.status, column]));
   for (const ticket of tickets) {
     // Order inside a column is the order the response arrived in — the server's own

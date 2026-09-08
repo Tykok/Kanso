@@ -1,6 +1,6 @@
 import {
   dayValue,
-  TICKET_STATUSES,
+  DEFAULT_STATUSES,
   type KansoInstant,
   type ProjectHealth,
   type Ticket,
@@ -30,7 +30,7 @@ export type StatusCount = { status: TicketStatus; count: number };
  * The order the bar is drawn in: finished, then in review, then under way, then not
  * started, then abandoned.
  *
- * Not `TICKET_STATUSES` order, which runs the other way. The bar answers one question —
+ * Not `DEFAULT_STATUSES` order, which runs the other way. The bar answers one question —
  * how much of this is done — and the reader reads it left to right, so the answer has to
  * start at the left. The drawing does exactly this.
  *
@@ -39,7 +39,7 @@ export type StatusCount = { status: TicketStatus; count: number };
  * a different sum from this list. The cycle's bar on screen 19 reads the same
  * [PROGRESS_ORDER] over a narrower set, and that is the only difference between them.
  */
-const BAR_ORDER = inOrder(TICKET_STATUSES, PROGRESS_ORDER);
+const BAR_ORDER = inOrder(DEFAULT_STATUSES, PROGRESS_ORDER);
 
 /** All six, always, so a segment that empties leaves a gap rather than reordering the bar. */
 export function statusCounts(tickets: Ticket[]): StatusCount[] {

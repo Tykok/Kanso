@@ -5,7 +5,20 @@ import type { Scope } from "@/store/ui";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
-export const TICKET_STATUSES = [
+/**
+ * The six a team is *seeded* with — and no longer "the statuses" — `KAN-90`.
+ *
+ * Renamed from `DEFAULT_STATUSES`, and the rename is the point, exactly as
+ * `DefaultStatus` is on the server. A team defines its own list now: it may add a
+ * seventh word and remove one of these, so a screen that read this constant as the
+ * vocabulary would draw a column nobody has and miss the one they do. `lib/statuses.ts`
+ * resolves the real list from `Team.statuses`.
+ *
+ * What is still true of these six, and what this constant is for: they are what a *draft*
+ * can hold — a ticket with no team has no catalogue to read, so its vocabulary is this —
+ * and they are what the composer offers before a team has been chosen.
+ */
+export const DEFAULT_STATUSES = [
   "backlog",
   "todo",
   "in_progress",
@@ -13,6 +26,9 @@ export const TICKET_STATUSES = [
   "done",
   "canceled",
 ] as const;
+
+/** One of the six, for the two places that genuinely mean only those. */
+export type DefaultStatus = (typeof DEFAULT_STATUSES)[number];
 
 /**
  * What a status *means*, as opposed to what it is called — `dev.kanso.domain.StatusCategory`.
@@ -54,7 +70,7 @@ export const PROJECT_HEALTHS = ["on_track", "at_risk", "off_track"] as const;
  * The effort scale, and the whole of it: a truncated Fibonacci sequence the server
  * refuses anything outside of, in Kotlin and again by `tickets_estimate_chk`. Restated
  * here rather than fetched because it is a vocabulary, not data — the same reason
- * `TICKET_STATUSES` is a literal — and because a `<select>` has to be built from it
+ * `DEFAULT_STATUSES` is a literal — and because a `<select>` has to be built from it
  * before any ticket has been loaded.
  *
  * Absent is not zero anywhere in this app: `estimate` is `undefined` for a ticket nobody
@@ -63,7 +79,21 @@ export const PROJECT_HEALTHS = ["on_track", "at_risk", "off_track"] as const;
 export const EFFORT_POINTS = [1, 2, 3, 5, 8, 13] as const;
 export type EffortPoints = (typeof EFFORT_POINTS)[number];
 
-export type TicketStatus = (typeof TICKET_STATUSES)[number];
+/**
+ * A status key — a `string` since `KAN-90`, not a union of six.
+ *
+ * The union had to widen for the same reason the Kotlin enum did: a team's seventh word
+ * is a value no closed type here can name, and a client that refused it would refuse a
+ * ticket the server accepted. What a key *means* is `StatusCategory`, resolved through
+ * `Team.statuses` — never read off the string.
+ *
+ * The trade is real and it is the one the server already made: the compiler no longer
+ * catches a typo'd status literal. What catches it instead is `tickets_status_fk` and the
+ * refusal `StatusCategories.require` writes, which names the team's own words — and the
+ * screens that offer a status build their list from the team's catalogue rather than
+ * typing one.
+ */
+export type TicketStatus = string;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type ProjectHealth = (typeof PROJECT_HEALTHS)[number];

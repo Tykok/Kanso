@@ -1,4 +1,4 @@
-import { TICKET_STATUSES, type TicketStatus } from "./api";
+import { DEFAULT_STATUSES, type TicketStatus } from "./api";
 import { categoryOf, type StatusCategory } from "./status";
 
 /**
@@ -31,7 +31,7 @@ import { categoryOf, type StatusCategory } from "./status";
  * page boundary is cut against it, so this side may not restack what arrives; it has to
  * agree instead. See the note on agreement at the foot of this file.
  *
- * Written out rather than aliased to `TICKET_STATUSES`, which today happens to be spelled
+ * Written out rather than aliased to `DEFAULT_STATUSES`, which today happens to be spelled
  * the same way. The vocabulary is the set of statuses that exist; this is the sequence a
  * reader reads them in. Making the second the first would mean that reordering a literal
  * in `lib/api/core.ts` — an edit nobody would think twice about — restacks every grouped
@@ -109,7 +109,7 @@ export const LOAD_ORDER: readonly TicketStatus[] = [
  * name a status here and re-create the problem this module exists to remove.
  */
 export const statusesWhere = (keep: (category: StatusCategory) => boolean): TicketStatus[] =>
-  TICKET_STATUSES.filter((status) => keep(categoryOf(status)));
+  DEFAULT_STATUSES.filter((status) => keep(categoryOf(status)));
 
 /**
  * Not settled: neither category that ends a ticket. The client half of
@@ -143,6 +143,6 @@ export function inOrder(
     return at === -1 ? order.length : at;
   };
   // `sort` on the copy is stable, which is what keeps two unplaced statuses in the order
-  // the caller handed them over — `TICKET_STATUSES` order, wherever the caller derived them.
+  // the caller handed them over — `DEFAULT_STATUSES` order, wherever the caller derived them.
   return [...statuses].sort((left, right) => rank(left) - rank(right));
 }

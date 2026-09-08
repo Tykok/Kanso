@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TICKET_STATUSES, type TicketStatus } from "@/lib/api";
+import { DEFAULT_STATUSES, type TicketStatus } from "@/lib/api";
 import { categoryOf, type StatusCategory } from "@/lib/status";
 import {
   inOrder,
@@ -58,14 +58,14 @@ describe("the orders themselves", () => {
   });
 
   /**
-   * `TICKET_STATUSES` happens to be spelled in the same sequence as [WORKFLOW_ORDER], and
+   * `DEFAULT_STATUSES` happens to be spelled in the same sequence as [WORKFLOW_ORDER], and
    * that coincidence is not allowed to become the definition: the vocabulary is a set the
    * server also holds, the order is a product decision the page boundary of every grouped
    * view is cut against. Reordering the one must not restack the other.
    */
   it("is a separate list from the vocabulary, over exactly the same statuses", () => {
-    expect([...WORKFLOW_ORDER].sort()).toEqual([...TICKET_STATUSES].sort());
-    expect([...PROGRESS_ORDER].sort()).toEqual([...TICKET_STATUSES].sort());
+    expect([...WORKFLOW_ORDER].sort()).toEqual([...DEFAULT_STATUSES].sort());
+    expect([...PROGRESS_ORDER].sort()).toEqual([...DEFAULT_STATUSES].sort());
   });
 });
 
@@ -87,7 +87,7 @@ describe("membership, read off the category", () => {
   });
 
   it("asks the category and never a literal, so the two can never disagree", () => {
-    for (const status of TICKET_STATUSES) {
+    for (const status of DEFAULT_STATUSES) {
       expect(statusesWhere(isOpen).includes(status)).toBe(isOpen(categoryOf(status)));
       expect(statusesWhere(isCounted).includes(status)).toBe(isCounted(categoryOf(status)));
     }
@@ -129,7 +129,7 @@ describe("membership, read off the category", () => {
  */
 describe("the sites, unchanged", () => {
   it("stacks the grouped list and the server's buckets the same way", () => {
-    expect(inOrder(TICKET_STATUSES, WORKFLOW_ORDER)).toEqual([
+    expect(inOrder(DEFAULT_STATUSES, WORKFLOW_ORDER)).toEqual([
       "backlog",
       "todo",
       "in_progress",
@@ -150,7 +150,7 @@ describe("the sites, unchanged", () => {
   });
 
   it("draws the project's proportion bar over all six, abandoned last", () => {
-    expect(inOrder(TICKET_STATUSES, PROGRESS_ORDER)).toEqual([
+    expect(inOrder(DEFAULT_STATUSES, PROGRESS_ORDER)).toEqual([
       "done",
       "in_review",
       "in_progress",
@@ -190,7 +190,7 @@ describe("agreement with the server", () => {
   it("places every status the server can rank, so no bucket falls off the end", () => {
     // The SQL's `Else` is a real branch: a status the `CASE` does not name sorts after all
     // of them. Both sides name all six, and this is what says so.
-    const unplaced = TICKET_STATUSES.filter((status) => !WORKFLOW_ORDER.includes(status));
+    const unplaced = DEFAULT_STATUSES.filter((status) => !WORKFLOW_ORDER.includes(status));
     expect(unplaced).toEqual([]);
   });
 });
@@ -199,7 +199,7 @@ describe("categories", () => {
   // Guards the two predicates against the day a sixth category is added: they are written
   // as exclusions, so a new category is open and counted unless somebody says otherwise.
   it("reads the same five meanings the server does", () => {
-    const categories = new Set<StatusCategory>(TICKET_STATUSES.map(categoryOf));
+    const categories = new Set<StatusCategory>(DEFAULT_STATUSES.map(categoryOf));
     expect([...categories].sort()).toEqual([
       "backlog",
       "canceled",

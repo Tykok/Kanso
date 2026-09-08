@@ -22,7 +22,7 @@ import {
 import { PriorityMark } from "@/components/ui/priority-mark";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Segmented } from "@/components/settings/panel";
-import { ACCENTS, TICKET_PRIORITIES, TICKET_STATUSES, type TicketPriority, type TicketStatus } from "@/lib/api";
+import { ACCENTS, TICKET_PRIORITIES, DEFAULT_STATUSES, type TicketPriority, type TicketStatus } from "@/lib/api";
 import { ACCENT_LABELS } from "@/lib/preferences-copy";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -149,7 +149,7 @@ export function ContrastMatrix() {
           Status hues on --background
         </span>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
-          {TICKET_STATUSES.map((status) => (
+          {DEFAULT_STATUSES.map((status) => (
             <div
               key={status}
               className={cn("flex items-center gap-1.5 text-13", STATUS_TEXT_CLASS[status])}

@@ -31,7 +31,7 @@ const rows = (...statuses: TicketStatus[]) => statuses.map(ticket);
 describe("statusCounts", () => {
   /**
    * The drawing's bar runs done → review → progress → todo → backlog, which is finished
-   * to not-started and not `TICKET_STATUSES` order. It is the order the reader is being
+   * to not-started and not `DEFAULT_STATUSES` order. It is the order the reader is being
    * asked a question in — how much of this is done — so it is the order here.
    */
   it("counts in the order the bar is drawn, finished first", () => {

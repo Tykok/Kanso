@@ -34,7 +34,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 /**
  * The six sentences the inbox is drawn to say, plus the seventh the chooser opens on.
- * Closed here and again by a `CHECK` in `V13`, the pattern `TICKET_STATUSES` follows.
+ * Closed here and again by a `CHECK` in `V13`, the pattern `DEFAULT_STATUSES` follows.
  */
 export const NOTIFICATION_KINDS = [
   "assigned",

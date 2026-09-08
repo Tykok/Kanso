@@ -1,4 +1,4 @@
-import { TICKET_STATUSES, type Team, type TicketStatus } from "./api";
+import { DEFAULT_STATUSES, type Team, type TicketStatus } from "./api";
 import { categoryOf, STATUS_LABELS, type StatusCategory } from "./status";
 import { CATEGORY_ORDER } from "./status-order";
 import type { Scope } from "@/store/ui";
@@ -6,7 +6,7 @@ import type { Scope } from "@/store/ui";
 /**
  * Which words a screen prints for a status, and in what order — `KAN-28`.
  *
- * The keys never move: `TICKET_STATUSES` is still the vocabulary on the wire, still a
+ * The keys never move: `DEFAULT_STATUSES` is still the vocabulary on the wire, still a
  * literal, and a saved view built last month still addresses `in_progress`. What a team
  * owns is the *word* and the *order*, and both arrive on `Team.statuses` — so everything
  * here is a lookup into that, with Kanso's own six as the answer when there is nothing to
@@ -66,7 +66,7 @@ export function labelOf(
 export function optionsFor(teams: readonly Team[], teamId: string | undefined): Vocabulary[] {
   const own = teams.find((team) => team.id === teamId)?.statuses;
   if (own) return own.map((row) => ({ key: row.key, label: row.label, category: row.category }));
-  return TICKET_STATUSES.map((key) => ({
+  return DEFAULT_STATUSES.map((key) => ({
     key,
     label: STATUS_LABELS[key],
     category: categoryOf(key),

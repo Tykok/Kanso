@@ -1,5 +1,5 @@
 import { facetByKey } from "@/components/organise/facets";
-import { EFFORT_POINTS, TICKET_PRIORITIES, TICKET_STATUSES, type ViewFilters } from "@/lib/api";
+import { EFFORT_POINTS, TICKET_PRIORITIES, DEFAULT_STATUSES, type ViewFilters } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../status";
 import { inOrder, WORKFLOW_ORDER } from "../status-order";
 import {
@@ -25,7 +25,7 @@ import {
  *
  * ## Why the vocabulary is not written down here
  *
- * The statuses come from `TICKET_STATUSES` and their sequence from `WORKFLOW_ORDER`; the
+ * The statuses come from `DEFAULT_STATUSES` and their sequence from `WORKFLOW_ORDER`; the
  * priorities from `TICKET_PRIORITIES`; the offered bounds from `facets.ts`' own
  * `suggested`. Every word this file could have typed out itself is read from the file that
  * already owns it. That is not tidiness — `facets.ts` sets out at length what happens when
@@ -65,12 +65,12 @@ export type KeyDef = {
 /**
  * The statuses, sequenced as the work flows.
  *
- * Membership from `TICKET_STATUSES`, sequence from `WORKFLOW_ORDER`, joined by `inOrder` —
+ * Membership from `DEFAULT_STATUSES`, sequence from `WORKFLOW_ORDER`, joined by `inOrder` —
  * which is `status-order.ts`' whole doctrine and not a flourish. The two lists are spelled
  * identically today, and the day they are not, a seventh status appears in the completion
  * list at the end rather than being unspellable.
  */
-const STATUSES = inOrder(TICKET_STATUSES, WORKFLOW_ORDER);
+const STATUSES = inOrder(DEFAULT_STATUSES, WORKFLOW_ORDER);
 
 const named = (
   catalog: FilterCatalog,

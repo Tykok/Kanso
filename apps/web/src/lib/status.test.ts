@@ -8,11 +8,11 @@ import {
   STATUS_COLORS,
   STATUS_LABELS,
 } from "./status";
-import { TICKET_PRIORITIES, TICKET_STATUSES } from "./api";
+import { TICKET_PRIORITIES, DEFAULT_STATUSES } from "./api";
 
 describe("status and priority tables", () => {
   it("covers every status", () => {
-    for (const status of TICKET_STATUSES) {
+    for (const status of DEFAULT_STATUSES) {
       expect(STATUS_LABELS[status]).toBeTruthy();
       expect(STATUS_COLORS[status]).toMatch(/^var\(--status-/);
     }
@@ -44,6 +44,6 @@ describe("status categories", () => {
   });
 
   it("leaves no category nothing can be in", () => {
-    expect(new Set(TICKET_STATUSES.map(categoryOf))).toEqual(new Set(STATUS_CATEGORIES));
+    expect(new Set(DEFAULT_STATUSES.map(categoryOf))).toEqual(new Set(STATUS_CATEGORIES));
   });
 });

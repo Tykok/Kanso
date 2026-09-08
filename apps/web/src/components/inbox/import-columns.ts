@@ -1,4 +1,4 @@
-import { TICKET_PRIORITIES, TICKET_STATUSES, PROJECT_STATUSES } from "@/lib/api";
+import { TICKET_PRIORITIES, DEFAULT_STATUSES, PROJECT_STATUSES } from "@/lib/api";
 import { PRIORITY_LABELS, PROJECT_STATUS_LABELS, STATUS_LABELS } from "@/lib/status";
 import type { ImportField, ImportMapping, ImportTarget } from "./import-map";
 
@@ -290,7 +290,7 @@ export function kansoValues(field: ImportField, target: ImportTarget): { value: 
     return TICKET_PRIORITIES.map((value) => ({ value, label: PRIORITY_LABELS[value] }));
   }
   if (field === "status" && target === "tickets") {
-    return TICKET_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
+    return DEFAULT_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
   }
   if (field === "status" && target === "projects") {
     return PROJECT_STATUSES.map((value) => ({ value, label: PROJECT_STATUS_LABELS[value] }));
