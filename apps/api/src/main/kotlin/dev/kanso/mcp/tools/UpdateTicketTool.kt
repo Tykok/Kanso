@@ -12,6 +12,7 @@ import dev.kanso.mcp.stringsField
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.CustomFieldService
 import dev.kanso.service.TicketDetail
+import dev.kanso.service.LabelService
 import dev.kanso.service.TicketFieldService
 import dev.kanso.service.TicketPatch
 import dev.kanso.service.TicketService
@@ -38,6 +39,8 @@ class UpdateTicketTool(
 	private val people: McpPeople,
 	private val definitions: CustomFieldService,
 	private val values: TicketFieldService,
+	/** The team's label vocabulary, for the names `kanso_get_ticket` prints — `KAN-30`. */
+	private val labels: LabelService,
 ) : McpTool {
 
 	override val name = "kanso_update_ticket"
@@ -45,13 +48,19 @@ class UpdateTicketTool(
 	override val writes = true
 
 	override val description = """
-		Move one existing ticket's status, its assignees, or both at once. Address it by
-		identifier, like `KAN-142`. Both changes are applied together or not at all.
+		Move one existing ticket's status, its assignees, its labels, or all of them at once.
+		Address it by identifier, like `KAN-142`. The changes are applied together or not at
+		all.
 
 		`assignees` replaces the list: give every email who should hold it, `[]` to take
 		everybody off, or omit it to leave the assignees alone. Omitting `status` leaves the
 		status alone in the same way. At least one argument that changes something is
 		required — a call that changes nothing is refused rather than reported as done.
+
+		`labels` replaces the set it wears, by the names `kanso_get_ticket` prints — `[]` takes
+		them all off, and a name the team has not defined is refused with the list of the ones
+		it has. Kanso does not invent a label: `kanso_get_ticket` prints the team's whole
+		vocabulary, worn or not, which is where the words come from.
 
 		`fields` sets the team's custom fields, by the names `kanso_get_ticket` prints: only
 		the fields you name are touched, and `null` clears one. A value has to match the
@@ -70,6 +79,7 @@ class UpdateTicketTool(
 		// cannot name them: `properties` here would have to be generated per team, and the
 		// tool list is one static document served to every caller. The refusal on the way in
 		// names the fields that do exist, which is what a schema would have bought.
+		"labels" to stringsField("The labels it should wear, by name. Replaces the current set."),
 		"fields" to objectField("Custom fields to set, keyed by field name. `null` clears one."),
 		required = listOf("ticket"),
 	)
@@ -77,16 +87,18 @@ class UpdateTicketTool(
 	@Transactional
 	override fun call(actor: User, arguments: Map<String, Any?>): String {
 		val args = McpArguments(name, arguments)
-		args.refuseUnknown("ticket", "status", "assignees", "fields")
+		args.refuseUnknown("ticket", "status", "assignees", "labels", "fields")
 
 		val status = args.string("status")?.let(DefaultStatus::from)
 		val assignees = args.strings("assignees")
+		val wornLabels = args.strings("labels")
 		val fields = args.map("fields")
 		// Before the read, so a no-op costs nothing and says why. Reporting success for a
 		// call that changed nothing is how an agent concludes it has done the work.
-		if (status == null && assignees == null && fields.isEmpty()) {
+		if (status == null && assignees == null && wornLabels == null && fields.isEmpty()) {
 			throw BadRequestException(
-				"`$name` needs `status`, `assignees` or `fields` — this call would change nothing",
+				"`$name` needs `status`, `assignees`, `labels` or `fields`" +
+					" — this call would change nothing",
 			)
 		}
 
@@ -97,6 +109,10 @@ class UpdateTicketTool(
 		// before the patch also means their refusal — which is the one that can name a type —
 		// arrives before anything has been written at all.
 		val fieldSummary = setFields(actor, before, fields)
+		// Beside the fields and inside the same transaction, for the reason stated above
+		// them: a label written and a status refused is a ticket half-moved with the agent
+		// told it failed.
+		val labelSummary = setLabels(actor, before, wornLabels)
 		val after = tickets.patch(
 			actor = actor,
 			id = before.ticket.id,
@@ -107,7 +123,41 @@ class UpdateTicketTool(
 		val handed = assignees?.let {
 			"assignees ${people.emailsOf(after.assigneeIds).values.joinToString().ifEmpty { "nobody" }}"
 		}
-		return "Updated ${after.identifier} — ${listOfNotNull(moved, handed, fieldSummary).joinToString(", ")}"
+		return "Updated ${after.identifier} — " +
+			listOfNotNull(moved, handed, labelSummary, fieldSummary).joinToString(", ")
+	}
+
+	/**
+	 * The labels it should wear, addressed by name — `KAN-30`.
+	 *
+	 * By name for the reason the fields below are: it is the only handle an agent reliably
+	 * has, and `kanso_get_ticket` prints the team's whole vocabulary precisely so that the
+	 * words exist to be used. Case-insensitively, because `Bug` and `bug` are the same
+	 * label to everybody except a map lookup.
+	 *
+	 * The refusal lists the labels that do exist. **Nothing here creates one**: an agent
+	 * that could invent a label would grow a team's vocabulary by typo, and a vocabulary is
+	 * one of the few things in Kanso a team curates deliberately.
+	 *
+	 * `LabelService.set` replaces the whole set, like the assignees do, and writes a
+	 * `labelled` activity row per change — so an agent's labelling reads in the feed exactly
+	 * as a person's does.
+	 */
+	private fun setLabels(actor: User, ticket: TicketDetail, wanted: List<String>?): String? {
+		if (wanted == null) return null
+		val teamId = ticket.ticket.teamId ?: throw BadRequestException(
+			"${ticket.ticket.title} belongs to no team yet, and a label is a team's",
+		)
+		val defined = labels.list(teamId)
+		val byName = defined.associateBy { it.name.lowercase() }
+		val chosen = wanted.map { raw ->
+			byName[raw.trim().lowercase()] ?: throw BadRequestException(
+				"No label `$raw` on ${ticket.teamKey}." +
+					" Its labels: ${defined.joinToString { it.name }.ifEmpty { "none yet" }}",
+			)
+		}
+		val worn = labels.set(actor, ticket.ticket.id, chosen.map { it.id })
+		return "labels ${worn.joinToString { it.name }.ifEmpty { "none" }}"
 	}
 
 	/**

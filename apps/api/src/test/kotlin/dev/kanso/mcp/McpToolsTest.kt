@@ -17,6 +17,7 @@ import dev.kanso.repo.TicketFilters
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.ActivityService
 import dev.kanso.service.CustomFieldService
+import dev.kanso.service.LabelService
 import dev.kanso.service.TeamService
 import dev.kanso.service.TicketDetail
 import dev.kanso.service.TicketFieldService
@@ -74,6 +75,7 @@ class McpToolsTest : PostgresTest() {
 	@Autowired lateinit var tickets: TicketService
 	@Autowired lateinit var activity: ActivityService
 	@Autowired lateinit var fields: CustomFieldService
+	@Autowired lateinit var labels: LabelService
 	@Autowired lateinit var values: TicketFieldService
 	@Autowired lateinit var jdbc: JdbcClient
 
@@ -176,12 +178,13 @@ class McpToolsTest : PostgresTest() {
 	fun `tools list answers the real surface, and every entry is callable as declared`() {
 		rpc("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", bearer(user())).andExpect {
 			status { isOk() }
-			jsonPath("$.result.tools.length()") { value(8) }
+			jsonPath("$.result.tools.length()") { value(10) }
 			// By index, because the order is sorted and stable — a client that caches the
 			// list keyed on its content must not see it change between restarts. KAN-20 added
 			// three and KAN-72 a fourth, and every one of them sorts into the middle rather
 			// than onto the end, which is exactly why the assertion is by index and not by
-			// membership: `kanso_plan` landed at 4 and pushed three tools along.
+			// membership: `kanso_plan` landed at 4 and pushed three tools along, and
+			// `KAN-30`'s two landed at 7 and 8 and pushed `kanso_update_ticket` to the end.
 			jsonPath("$.result.tools[0].name") { value("kanso_create_ticket") }
 			jsonPath("$.result.tools[1].name") { value("kanso_get_ticket") }
 			jsonPath("$.result.tools[2].name") { value("kanso_link_tickets") }
@@ -189,13 +192,15 @@ class McpToolsTest : PostgresTest() {
 			jsonPath("$.result.tools[4].name") { value("kanso_plan") }
 			jsonPath("$.result.tools[5].name") { value("kanso_split_ticket") }
 			jsonPath("$.result.tools[6].name") { value("kanso_team_workload") }
-			jsonPath("$.result.tools[7].name") { value("kanso_update_ticket") }
+			jsonPath("$.result.tools[7].name") { value("kanso_triage") }
+			jsonPath("$.result.tools[8].name") { value("kanso_triage_queue") }
+			jsonPath("$.result.tools[9].name") { value("kanso_update_ticket") }
 			// Every tool carries prose and an object schema. A tool with neither is one the
 			// agent has to guess at, and guessing is what the four-tools-not-forty argument in
 			// the spec exists to prevent.
 			jsonPath("$.result.tools[0].description") { exists() }
 			jsonPath("$.result.tools[0].inputSchema.type") { value("object") }
-			jsonPath("$.result.tools[7].inputSchema.type") { value("object") }
+			jsonPath("$.result.tools[9].inputSchema.type") { value("object") }
 			// The ones that write are declared as writing on the schema too, by requiring the
 			// arguments they cannot invent — a `required` list nobody could satisfy would be
 			// a tool an agent calls once and abandons.
@@ -671,6 +676,84 @@ class McpToolsTest : PostgresTest() {
 			.query(String::class.java)
 			.optional()
 		assertTrue(recorded.isEmpty, "a column filled for everybody would say nothing about anybody")
+	}
+
+	// --- labels --------------------------------------------------------------
+
+	/**
+	 * The third thing an agent could decide and not apply — `KAN-30`.
+	 *
+	 * `kanso_team_workload` reports the plates and `kanso_update_ticket` assigns, so
+	 * "suggest an assignee" was already two honest halves. A label had only the first: the
+	 * model can read a ticket and conclude `bug, export`, and until this there was no hand
+	 * to write it with.
+	 *
+	 * By name, and the names are the ones the read prints — the rule the custom fields
+	 * already follow. A refusal names the team's labels, so a wrong guess ends the exchange
+	 * in one more call rather than in a search.
+	 */
+	@Test
+	fun `an agent wears a ticket in the team's own labels, by their names`() {
+		val alice = user()
+		val hers = teamOf(alice, "Labelled")
+		val filed = fileTicket(hers, alice, "Export CSV times out")
+		labels.create(asSessionOf(alice), hers.id, "bug", "rose")
+		labels.create(asSessionOf(alice), hers.id, "export", "amber")
+		SecurityContextHolder.clearContext()
+
+		val answer = textOf(
+			call(
+				"kanso_update_ticket",
+				"""{"ticket":"${filed.identifier}","labels":["bug","export"]}""",
+				bearer(alice),
+			),
+		)
+
+		assertTrue(answer.startsWith("Updated"), "the write was reported: $answer")
+		assertEquals(
+			listOf("bug", "export"),
+			labels.forTicket(filed.ticket.id).map { it.name }.sorted(),
+			"the tool reported a write it did not make",
+		)
+		SecurityContextHolder.clearContext()
+	}
+
+	@Test
+	fun `a label nobody defined is refused, and the refusal names the ones that exist`() {
+		val alice = user()
+		val hers = teamOf(alice, "Labelled")
+		val filed = fileTicket(hers, alice, "Export CSV times out")
+		labels.create(asSessionOf(alice), hers.id, "bug", "rose")
+		SecurityContextHolder.clearContext()
+
+		val refused = textOf(
+			call(
+				"kanso_update_ticket",
+				"""{"ticket":"${filed.identifier}","labels":["regression"]}""",
+				bearer(alice),
+			),
+		)
+
+		assertTrue(refused.contains("regression"), "the refusal names what was asked for: $refused")
+		assertTrue(refused.contains("bug"), "and the vocabulary that exists: $refused")
+	}
+
+	@Test
+	fun `the expensive read prints the team's labels, worn or not`() {
+		val alice = user()
+		val hers = teamOf(alice, "Labelled")
+		val filed = fileTicket(hers, alice, "Export CSV times out")
+		labels.create(asSessionOf(alice), hers.id, "bug", "rose")
+		labels.create(asSessionOf(alice), hers.id, "export", "amber")
+		labels.set(asSessionOf(alice), filed.ticket.id, labels.list(hers.id).filter { it.name == "bug" }.map { it.id })
+		SecurityContextHolder.clearContext()
+
+		val answer = textOf(call("kanso_get_ticket", """{"ticket":"${filed.identifier}"}""", bearer(alice)))
+
+		// Both, and the unworn one is the point: it is how an agent learns the word to
+		// write, exactly as `severity: not set` teaches a field's name.
+		assertTrue(answer.contains("bug"), "the label it wears: $answer")
+		assertTrue(answer.contains("export"), "and the one it could: $answer")
 	}
 
 	private companion object {

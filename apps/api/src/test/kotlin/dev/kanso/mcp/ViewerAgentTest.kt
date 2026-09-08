@@ -248,6 +248,11 @@ class ViewerAgentTest : PostgresTest() {
 				"links" to listOf(mapOf("from" to "one", "to" to "two", "type" to "relates")),
 			)
 
+			// `backlogged` rather than `accepted`: the seat is what this test asks about, and
+			// `accepted` would be refused first for having no cycle in progress — a refusal
+			// that looks identical and says nothing about who may write. `KAN-30`.
+			"kanso_triage" -> mapOf("ticket" to existing, "decision" to "backlogged")
+
 			else -> error("`$name` writes but this test does not know how to call it; teach it here")
 		}
 
