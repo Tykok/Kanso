@@ -15,7 +15,7 @@ import {
   passwordProblem,
 } from "@/components/setup/fields";
 import { FormCard, MessageCard, SetupPage } from "@/components/setup/frame";
-import { API_URL, ApiError, api, type AuthMode } from "@/lib/api";
+import { API_URL, ApiError, api, apiOrigin, type AuthMode } from "@/lib/api";
 import { safeNext } from "@/lib/next-url";
 import { keys, useAuthMode } from "@/lib/queries";
 
@@ -120,7 +120,12 @@ function PasswordSignIn({ mode }: { mode?: AuthMode }) {
     onSuccess: () => {
       // The cookie changed who the cached identity belongs to.
       queryClient.invalidateQueries({ queryKey: keys.me });
-      const target = safeNext(next, API_URL);
+      // `apiOrigin()` and not `API_URL`: nothing is inlined into a published image, and
+      // `safeNext` parses the origin it is given — `new URL("")` throws, is caught, and
+      // returns HOME, so every absolute `next` would be refused and authorising an agent
+      // would silently land on the board instead of the consent screen. Resolved here
+      // rather than at module scope because this runs after a click, in a browser.
+      const target = safeNext(next, apiOrigin());
       // An absolute target is the consent page on the API origin, which is a real
       // navigation rather than a route change.
       if (target.startsWith("http")) window.location.assign(target);

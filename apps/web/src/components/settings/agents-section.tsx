@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ApiError, mcpAddCommand, unrecognisedScopeNote } from "@/lib/api";
 import { useAuthMode, useGrants, useRevokeGrant } from "@/lib/queries";
+import { useApiOrigin } from "@/lib/use-api-origin";
 import { SettingsFormField, SettingsInline, SettingsNote } from "./field";
 
 function message(error: unknown) {
@@ -57,6 +58,9 @@ export function AgentsSection() {
   const grants = useGrants();
   const revoke = useRevokeGrant();
   const connected = grants.data ?? [];
+  // The command is drawn into the HTML, so the origin arrives through the hook rather
+  // than from `mcpAddCommand`'s own default: a prerender and a browser must agree.
+  const origin = useApiOrigin();
 
   return (
     <section className="flex flex-col">
@@ -129,7 +133,7 @@ export function AgentsSection() {
           </SettingsNote>
         ) : (
           <>
-            <CopyableCommand command={mcpAddCommand()} />
+            <CopyableCommand command={mcpAddCommand(origin)} />
             <SettingsNote>
               Run it wherever the agent lives. It opens this instance in a browser to ask
               you what to allow, and nothing is pasted anywhere — no key, no token.

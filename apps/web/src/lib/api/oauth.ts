@@ -7,7 +7,7 @@
  * aftermath.
  */
 
-import { API_URL, request } from "./core";
+import { apiOrigin, request } from "./core";
 
 /**
  * One connected application, shaped by `dev.kanso.oauth.GrantSummary`.
@@ -53,13 +53,17 @@ export const unrecognisedScopeNote = (count: number): string | null => {
 /**
  * The one command that connects an agent, printed so it can be copied rather than typed.
  *
- * Built from `API_URL` and not from `location.origin`: the browser is on the web app,
- * and the door is on the API — an instance where the two are different hosts is the
- * normal one, and a command naming the wrong half fails in a way nobody can debug from
- * the message. `/api/mcp` is `dev.kanso.mcp.McpResource.PATH`, which is also the string
- * every issued token is bound to, so it is not free to differ.
+ * Built from [apiOrigin] and not from `API_URL`: a published image inlines nothing, so
+ * the constant is the empty string and the command would read `kanso /api/mcp` — a line
+ * the shell accepts and the agent cannot resolve, run somewhere Kanso's origin means
+ * nothing. The default is a call rather than a constant so `next build` never reaches
+ * `window` while prerendering this module's importers; `agents-section` passes
+ * `useApiOrigin()` because the value it gets is drawn into the HTML.
+ *
+ * `/api/mcp` is `dev.kanso.mcp.McpResource.PATH`, which is also the string every issued
+ * token is bound to, so it is not free to differ.
  */
-export const mcpAddCommand = (apiUrl: string = API_URL): string =>
+export const mcpAddCommand = (apiUrl: string = apiOrigin()): string =>
   `claude mcp add --transport http kanso ${apiUrl.replace(/\/+$/, "")}/api/mcp`;
 
 export const oauthApi = {

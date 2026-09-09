@@ -20,6 +20,10 @@ tsconfig.tsbuildinfo
 # the API origin arrives as a build arg, everything else is runtime environment.
 .env
 .env.local
+# `next dev`'s address for the API, and `next build` does not read it — so carrying it
+# into a layer could only ever be a file that says `localhost:8080` inside an image
+# reached at something else.
+.env.development
 .git
 .claude
 test-results

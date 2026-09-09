@@ -33,6 +33,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# The exception, and it holds a secret only in the sense that :8080 is one. Development is
+# the only two-origin topology left — a published image serves both halves on one — so this
+# is where `pnpm dev` is told where the API is, and it has to be in the clone for the
+# command to work at all. Next loads it for `dev` and never for `build`.
+!.env.development
+
 # vercel
 .vercel
 

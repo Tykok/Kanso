@@ -4,9 +4,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
-import { API_URL, ApiError, api, type SetupState } from "@/lib/api";
+import { ApiError, api, type SetupState } from "@/lib/api";
 import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
 import { keys, useRetryFailedPushes, useSyncDetail, useSyncStatus } from "@/lib/queries";
+import { useApiOrigin } from "@/lib/use-api-origin";
 import { NotionConnect } from "@/components/setup/notion-connect";
 import { NotionPageField } from "@/components/setup/notion-page-field";
 import { SettingsInline, SettingsNote } from "./field";
@@ -16,7 +17,7 @@ import { SettingsInline, SettingsNote } from "./field";
  * than configurable — and it has to match Google's entry character for character, which
  * is why it is both printed to copy and compared against a pasted client file.
  */
-const GOOGLE_REDIRECT_URI = `${API_URL}/login/oauth2/code/google`;
+const GOOGLE_CALLBACK_PATH = "/login/oauth2/code/google";
 
 function message(error: unknown) {
   return error instanceof ApiError ? error.message : (error as Error)?.message ?? "Something went wrong";
@@ -58,6 +59,10 @@ export function ConnectionsSection({
 }) {
   const queryClient = useQueryClient();
   const refresh = (next: SetupState) => queryClient.setQueryData(keys.setupState, next);
+
+  // Inside the component, because the origin is the page's own and `next build`
+  // prerenders this file: a `window` read at module scope would fail the build.
+  const googleRedirectUri = `${useApiOrigin()}${GOOGLE_CALLBACK_PATH}`;
 
   /**
    * What the consent screen sent back.
@@ -130,7 +135,7 @@ export function ConnectionsSection({
     }
     setClientId(file.clientId);
     if (file.clientSecret) setClientSecret(file.clientSecret);
-    setGoogleFileNote(redirectUriProblem(file, GOOGLE_REDIRECT_URI));
+    setGoogleFileNote(redirectUriProblem(file, googleRedirectUri));
   };
 
   const notionLocked = state.notion.managedByEnvironment || !canConfigure;
@@ -382,7 +387,7 @@ export function ConnectionsSection({
             <SettingsNote>
               Authorised redirect URI to paste into Google Cloud:{" "}
               <code className="rounded-sm bg-accent px-1 py-0.5" style={{ fontFamily: "var(--font-mono)" }}>
-                {GOOGLE_REDIRECT_URI}
+                {googleRedirectUri}
               </code>
             </SettingsNote>
           </>

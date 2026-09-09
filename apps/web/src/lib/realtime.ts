@@ -1,5 +1,5 @@
 import { Client, type IMessage, type StompSubscription } from "@stomp/stompjs";
-import { API_URL, getDevUser } from "./api";
+import { apiOrigin, getDevUser } from "./api";
 import type { KansoEvent } from "./realtime-events";
 
 // The wire format lives beside the code that decides what an event means, and is
@@ -62,8 +62,15 @@ export function connectRealtime({ onEvent, onResume }: RealtimeHandlers): Realti
    * Absent outside dev mode, where `getDevUser()` is null and the cookie is the credential.
    */
   const devUser = getDevUser();
+  /**
+   * [apiOrigin] and not `API_URL`, which is the empty string wherever nothing was inlined:
+   * `"".replace(/^http/, "ws")` is still `""`, so this would dial `/ws`, and that is the
+   * one caller a relative path cannot serve — `new WebSocket` rejects it where `fetch`
+   * resolves it. The guard inside `apiOrigin` is inert here: a socket is dialled from a
+   * browser by construction.
+   */
   const url =
-    API_URL.replace(/^http/, "ws") +
+    apiOrigin().replace(/^http/, "ws") +
     "/ws" +
     (devUser ? `?devUser=${encodeURIComponent(devUser)}` : "");
 

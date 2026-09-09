@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mcpAddCommand, unrecognisedScopeNote } from "./oauth";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("mcpAddCommand", () => {
   it("points the agent at the API's MCP endpoint, not at the web app", () => {
@@ -17,6 +22,21 @@ describe("mcpAddCommand", () => {
     // audience binding compares those literally.
     expect(mcpAddCommand("http://localhost:8080/")).toBe(
       "claude mcp add --transport http kanso http://localhost:8080/api/mcp",
+    );
+  });
+
+  it("stays absolute when nothing was inlined, which is every published image", async () => {
+    // The default argument is `apiOrigin()` and not `API_URL`, which a distributed image
+    // carries as the empty string. `claude mcp add … kanso /api/mcp` is a command the
+    // shell accepts and the agent cannot resolve — it is copied out of Kanso and run
+    // somewhere Kanso's origin means nothing.
+    vi.stubGlobal("window", { location: { origin: "https://kanso.example.com" } });
+    vi.stubEnv("NEXT_PUBLIC_API_URL", undefined);
+    vi.resetModules();
+    const { mcpAddCommand: withoutAnInlinedUrl } = await import("./oauth");
+
+    expect(withoutAnInlinedUrl()).toBe(
+      "claude mcp add --transport http kanso https://kanso.example.com/api/mcp",
     );
   });
 });
