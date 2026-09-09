@@ -37,9 +37,15 @@ export type BoardDirection = "up" | "down" | "left" | "right";
  * have had a column no ticket can ever be in.
  *
  * Every column and not only the occupied ones, which is unchanged and still not cosmetic:
- * the order is the order `1`–`n` moves a card into, so a board that dropped its empty
- * columns would stop lining up with its own keys the moment one emptied — and there would
- * be no `Done` to drag onto until something was already done.
+ * on a board scoped to one team the order is the order `1`–`n` moves a card into, so a
+ * board that dropped its empty columns would stop lining up with its own keys the moment
+ * one emptied — and there would be no `Done` to drag onto until something was already
+ * done.
+ *
+ * That pairing holds again since `KAN-92` and was false in between: the digits carried a
+ * literal each while a status became the team's to invent. It does *not* hold on a board
+ * spanning teams, where the columns are categories and the digits still write a status —
+ * a card in the third column is not necessarily the one `3` would move it to.
  *
  * [vocabulary] and [bucketOf] both come from `statuses.boardShape`, and are taken as two
  * arguments rather than looked up here because they are two answers to one question the

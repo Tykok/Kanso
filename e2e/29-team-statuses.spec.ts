@@ -378,4 +378,76 @@ test.describe("29. a team's words", () => {
     await api.dispose();
     await page.context().close();
   });
+
+  /**
+   * The keyboard against a vocabulary the product has never shipped — `KAN-92`.
+   *
+   * The digits used to carry a literal each: `1` wrote `"backlog"`, and on this team the
+   * server answered 400. They name a position now, and the seventh word — which no digit
+   * reaches, by design — is what `⇧s` is for. Through a browser because the whole claim
+   * is that a keypress reaches a transaction: the unit tests prove which key is resolved
+   * and which status is computed, and neither of them presses anything.
+   */
+  test("a digit writes the team's own word, and the seventh is reached by name", async ({
+    browser,
+  }) => {
+    const api = await apiAs(ADMIN);
+    const team = await seedTeam(api, { name: unique("Clavier"), key: uniqueKey() });
+
+    // Seven words, none of them Kanso's: the six renamed in place, and one added past
+    // where the digits stop.
+    const words = [
+      ["backlog", "Boîte"],
+      ["todo", "Devis"],
+      ["in_progress", "En cours"],
+      ["in_review", "Contrôle"],
+      ["done", "Livré"],
+      ["canceled", "Sans suite"],
+    ];
+    for (const [key, label] of words) {
+      const renamed = await api.patch(`/api/teams/${team.id}/statuses/${key}`, {
+        data: { label },
+      });
+      expect(renamed.status()).toBe(200);
+    }
+    const seventh = await api.post(`/api/teams/${team.id}/statuses`, {
+      data: { label: "Archivé", category: "canceled" },
+    });
+    expect(seventh.status()).toBe(200);
+
+    const ticket = await seedTicket(api, { teamId: team.id, title: unique("Ourlet") });
+    await mirrorQueueDrained();
+
+    const page = await openAs(browser, ADMIN);
+    await page.goto("/");
+    await page.getByRole("button", { name: team.name, exact: true }).first().click();
+
+    const row = ticketRow(page, ticket.title);
+    await row.click();
+
+    // `5` is the fifth word this team has, which is `done` renamed — not the literal the
+    // key used to carry, and the pill proves the round trip rather than the optimism.
+    await page.keyboard.press("5");
+    await expect(row.getByTestId("status-pill")).toHaveText("Livré");
+
+    // `7` is not a key. Nothing happens, and nothing is written — the assertion that
+    // fails the day somebody spends a seventh digit rather than the picker.
+    await page.keyboard.press("7");
+    await expect(row.getByTestId("status-pill")).toHaveText("Livré");
+
+    // `⇧s` names every word, including the one past the digits.
+    await page.keyboard.press("Shift+S");
+    await page.getByTestId("palette").getByRole("button", { name: "Archivé" }).click();
+    await expect(row.getByTestId("status-pill")).toHaveText("Archivé");
+
+    await expect
+      .poll(async () => {
+        const answer = await api.get(`/api/tickets/${ticket.id}`);
+        return ((await answer.json()) as { status: string }).status;
+      })
+      .toBe("archive");
+
+    await api.dispose();
+    await page.context().close();
+  });
 });

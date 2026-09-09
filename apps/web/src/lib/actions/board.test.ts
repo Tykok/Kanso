@@ -122,8 +122,8 @@ describe("the board's keys against the shared registry", () => {
    * the thing this split was meant to prevent.
    */
   it("borrows the six status keys rather than re-registering them", () => {
-    expect(resolve("1", "board")?.id).toBe("ticket.status.backlog");
-    expect(resolve("6", "board")?.id).toBe("ticket.status.canceled");
+    expect(resolve("1", "board")?.id).toBe("ticket.status.1");
+    expect(resolve("6", "board")?.id).toBe("ticket.status.6");
     expect(
       [...boardActions, ...boardKeysAwaitingTheGuard].some((action) =>
         (action.defaultKeys ?? []).some((chord) => /^[1-6]$/.test(chord)),

@@ -6,7 +6,7 @@ import { BoardView } from "@/components/board/view";
 import { EmptyState } from "@/components/inbox/empty-state";
 import { NewMenu } from "@/components/new-menu";
 import { nameGroups } from "@/components/organise/grouping";
-import { bucketLabel } from "@/lib/statuses";
+import { bucketLabel, optionsFor } from "@/lib/statuses";
 import { ListFilters } from "@/components/organise/list-filters";
 import { TopbarSlot, usePageShell, useReportError } from "@/components/shell/topbar-slot";
 import { usePageActions } from "@/components/shell/use-shell-keys";
@@ -123,7 +123,7 @@ export default function ListPage() {
    * it re-labels, and it is this page that publishes the palette's rows.
    */
   const [picker, setPicker] = useState<{
-    kind: "link" | "unlink" | "priority";
+    kind: "link" | "unlink" | "priority" | "status";
     ticketId: string;
   }>();
 
@@ -366,6 +366,11 @@ export default function ListPage() {
       setPicker({ kind: "priority", ticketId: selected.id });
       open("palette");
     },
+    "ticket.status.pick": () => {
+      if (!selected) return;
+      setPicker({ kind: "status", ticketId: selected.id });
+      open("palette");
+    },
     "view.cycleDrawing": () => setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]),
   });
 
@@ -433,6 +438,26 @@ export default function ListPage() {
         const action = actionById(id);
         return { id, label: action.label, run: () => action.run(ctx) };
       });
+    }
+
+    /*
+     * The fourth, and the one the registry cannot answer for itself: `⇧s` asks *which
+     * status*, over the words the selected ticket's own team chose. The five above come
+     * from actions because a priority is one of five values Kanso ships; a status is a
+     * word only a team can name, so the rows are the catalogue and the patch is written
+     * here — which is also what makes a seventh word reachable without a seventh key.
+     */
+    if (asking?.kind === "status") {
+      const ticket = ctx.selected;
+      if (!ticket) return [];
+      return optionsFor(ctx.teams, ticket.teamId).map((status) => ({
+        id: status.key,
+        label: `Set status: ${status.label}`,
+        run: () => {
+          ctx.patchTicket({ id: ticket.id, status: status.key });
+          close();
+        },
+      }));
     }
 
     return undefined;
@@ -616,7 +641,7 @@ export default function ListPage() {
             <>
               <Keys
                 keys={keys}
-                ids={["ticket.status.backlog", "ticket.status.canceled"]}
+                ids={["ticket.status.1", "ticket.status.6"]}
                 join="–"
               >
                 status
