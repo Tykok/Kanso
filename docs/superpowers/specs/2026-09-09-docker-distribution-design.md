@@ -142,7 +142,7 @@ s6-overlay:
 
 | Process | Listens | Exposed |
 |---|---|---|
-| Caddy | `:80` and `:443`, or `:8080` | yes — the only one |
+| Caddy | `:80`, and `:443` under `KANSO_TLS=auto` | yes — the only one |
 | `node server.js` | `127.0.0.1:3000` | no |
 | `java -jar app.jar` | `127.0.0.1:8080` | no |
 
@@ -182,8 +182,10 @@ One optional variable, `KANSO_TLS`:
 
 - `auto` (the default when `KANSO_PUBLIC_URL` is `https:`) — Caddy obtains a Let's
   Encrypt certificate. Requires ports 80 and 443 reachable.
-- `off` — Caddy serves plain HTTP on `:8080` and the operator terminates TLS in their own
-  proxy. `KANSO_PUBLIC_URL` still says `https://…`, because it describes what the
+- `off` — Caddy serves plain HTTP on `:80` and the operator terminates TLS in their own
+  proxy. Port 80 in both modes, and not `:8080`: the JVM already holds `8080` on the
+  loopback, so a second bind there is `EADDRINUSE`. It also leaves an operator's proxy
+  one port to point at whichever mode they chose. `KANSO_PUBLIC_URL` still says `https://…`, because it describes what the
   *browser* sees, and that is what OAuth redirect URIs and the WebSocket origin check
   must agree with.
 
@@ -335,8 +337,11 @@ header_up X-Forwarded-For {remote_host}
 Replacing rather than appending makes the leftmost entry the peer Caddy actually saw.
 `ClientRegistrationController` gets a real per-caller bucket instead of a per-instance
 one, and the two hand-rolled readers stop being forgeable — an improvement their KDocs
-had conceded as permanent. Those two comments are corrected as part of unit 3, since
-unit 3 is what makes them false.
+had conceded as permanent. Three KDocs assert the old behaviour as standing fact —
+`RegistrationRateLimit`, `LocalAuthController:198`, `PublicController:51` — and are
+corrected in unit 4 rather than unit 3, which owns no Kotlin. Whoever takes them must
+keep the nuance: the forgery closes **only under `KANSO_TLS=auto`**. Under `off` the old
+caveat is still true word for word, because the edge is someone else's.
 
 **Except when Caddy is not the edge.** Under `KANSO_TLS=off` the operator's own proxy is,
 and replacing the header would discard the client address it forwarded, collapsing every
@@ -407,13 +412,23 @@ Tags published: the full `v1.2.3`, the minor `1.2`, and `latest`. The repository
 private; the published packages are made public explicitly, once, in the package
 settings — GHCR does not inherit repository visibility.
 
-Two jobs rather than one, and the split is the point. The `bootJar` and the Next
-standalone bundle are architecture-independent — one is bytecode, the other is
-JavaScript. Job one builds both once on native `amd64` and uploads them. Job two runs
-`buildx` for both platforms against a Dockerfile that only *copies* those artefacts; the
-only architecture-dependent bytes are the JRE and Caddy, which their base images resolve
-per platform. Building Gradle under QEMU for `arm64` would cost twenty minutes to produce
-identical bytes.
+Two jobs rather than one. Job one builds the `bootJar` and the Next standalone bundle
+once on native `amd64` and uploads them; job two runs `buildx` for both platforms against
+a Dockerfile whose final stage only *copies* those artefacts, leaving the JRE and Caddy —
+the only architecture-dependent bytes — to be resolved per platform by their base images.
+
+This was specified to keep Gradle out of QEMU, and **that is no longer what it buys.**
+`docker/Dockerfile` pins its build stages to `$BUILDPLATFORM`, so even a plain
+`buildx --platform linux/amd64,linux/arm64` compiles once. What the split still buys is
+custody: the artefacts exist as a job output that can be attested, retained and inspected
+independently of the image that carries them. Worth keeping for that, and the rationale
+in the workflow's comments must say *that* rather than the QEMU story it inherited.
+
+One thing is architecture-dependent and does not look it. Next traces `sharp` into
+`.next/standalone`, and libvips is a per-architecture binary — an amd64 job would ship
+amd64 `.node` files inside the arm64 image. The runtime stage deletes those trees, which
+is safe only because nothing under `apps/web/src` imports `next/image`. **The day
+something does, the delete has to become a per-platform install.**
 
 `KANSO_COMMIT` is stamped from the tagged commit, so `/api/me` and the web bundle report
 the released version rather than `dev`.
