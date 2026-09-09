@@ -120,7 +120,11 @@ export function categoryOfTicket(
  */
 export function optionsFor(teams: readonly Team[], teamId: string | undefined): Vocabulary[] {
   const own = teams.find((team) => team.id === teamId)?.statuses;
-  if (own) return own.map((row) => ({ key: row.key, label: row.label, category: row.category }));
+  // Length and not existence: no team has zero statuses — `TeamStatusService` refuses the
+  // removal that would leave one with none — so an empty list is a row nothing filled in,
+  // and answering it with nothing draws the empty menu the fallback exists to prevent.
+  if (own?.length)
+    return own.map((row) => ({ key: row.key, label: row.label, category: row.category }));
   return DEFAULT_STATUSES.map((key) => ({
     key,
     label: STATUS_LABELS[key],
@@ -139,7 +143,7 @@ export function optionsFor(teams: readonly Team[], teamId: string | undefined): 
 export function vocabularyOf(teams: readonly Team[], scope: Scope): Vocabulary[] {
   if (scope.kind === "team") {
     const own = teams.find((team) => team.id === scope.id)?.statuses;
-    if (own) {
+    if (own?.length) {
       return own.map((row) => ({ key: row.key, label: row.label, category: row.category }));
     }
     // Not fetched yet. Kanso's six rather than nothing: a menu with no items reads as a
