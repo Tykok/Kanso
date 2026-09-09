@@ -6,16 +6,7 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 import { StatusDot } from "./ui/status-dot";
 import { PriorityMark as PriorityGlyph } from "./ui/priority-mark";
 import { Menu } from "./menu";
-import { useMenuItems } from "./menu-items";
-
-const STATUS_ACTIONS = [
-  "ticket.status.backlog",
-  "ticket.status.todo",
-  "ticket.status.in_progress",
-  "ticket.status.in_review",
-  "ticket.status.done",
-  "ticket.status.canceled",
-];
+import { useMenuItems, useStatusMenu } from "./menu-items";
 
 /**
  * With a `ctx`, the pill is the control: clicking what you are already reading is one
@@ -44,9 +35,13 @@ export function StatusPill({
   label?: string;
   ctx?: ActionContext;
 }) {
-  // Above the early return, because it is a hook: `useMenuItems` answers with an empty
+  // Above the early return, because it is a hook: `useStatusMenu` answers with an empty
   // list for the label-only case, which is the same nothing the branch below draws.
-  const items = useMenuItems(ctx, STATUS_ACTIONS);
+  //
+  // Not a list of action ids like every other menu here — `KAN-92` made the digits
+  // positional, so their labels say "the team's 3rd" and a menu of them would name no
+  // status. The words are the row's own team's, and the row is what knows which team.
+  const items = useStatusMenu(ctx);
   const body = (
     <>
       <StatusDot status={status} />

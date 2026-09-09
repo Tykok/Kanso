@@ -175,6 +175,14 @@ describe("the statuses a ticket may be moved to", () => {
   it("are Kanso's six while the team is still loading", () => {
     expect(optionsFor([], "support").map((row) => row.key)).toHaveLength(6);
   });
+
+  it("are Kanso's six for a team whose catalogue came back empty", () => {
+    // No team has zero statuses — `TeamStatusService` refuses the removal that would
+    // make one — so an empty list is a row that has not been filled in, not a team that
+    // chose silence. Answering it with nothing would draw the empty menu `vocabularyOf`
+    // already refuses to draw for a team it has never heard of.
+    expect(optionsFor([team("hollow", { statuses: [] })], "hollow")).toHaveLength(6);
+  });
 });
 /**
  * A team whose words are its own, and which has nothing at all in one category.

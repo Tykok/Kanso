@@ -3,6 +3,8 @@ import {
   ACTIONS,
   actionById,
   availableActions,
+  claim,
+  clearClaims,
   hintOf,
   indexActions,
   predecessorsOf,
@@ -41,6 +43,26 @@ const core: Team = {
 };
 
 const legacy: Team = { ...core, id: "team-legacy", name: "Legacy", key: "LEG", archived: true };
+
+/**
+ * A team that named its own list, and a shorter one — the case `KAN-92` is about.
+ *
+ * Four words where Kanso ships six, one of them (`devis`) a key Kanso has never had, and
+ * `livre` where `done` would be. A digit that wrote a literal would be refused by the
+ * server on every one of these rows.
+ */
+const atelier: Team = {
+  ...core,
+  id: "team-atelier",
+  name: "Atelier",
+  key: "ATL",
+  statuses: [
+    { key: "boite", label: "Boîte", category: "backlog", position: 0 },
+    { key: "devis", label: "Devis", category: "backlog", position: 1 },
+    { key: "en_cours", label: "En cours", category: "started", position: 2 },
+    { key: "livre", label: "Livré", category: "completed", position: 3 },
+  ],
+};
 
 const refonte: Project = {
   id: "project-refonte",
@@ -158,12 +180,13 @@ const REQUIRED_IDS = [
   "ticket.archive",
   "ticket.moveDown",
   "ticket.moveUp",
-  "ticket.status.backlog",
-  "ticket.status.todo",
-  "ticket.status.in_progress",
-  "ticket.status.in_review",
-  "ticket.status.done",
-  "ticket.status.canceled",
+  "ticket.status.1",
+  "ticket.status.2",
+  "ticket.status.3",
+  "ticket.status.4",
+  "ticket.status.5",
+  "ticket.status.6",
+  "ticket.status.pick",
   "team.create",
   "team.rename",
   "team.archive",
@@ -253,12 +276,12 @@ describe("resolveShortcut", () => {
     expect(resolve("c", "list")?.id).toBe("ticket.create");
     expect(resolve("e", "list")?.id).toBe("ticket.rename");
     expect(resolve("x", "list")?.id).toBe("ticket.archive");
-    expect(resolve("1", "list")?.id).toBe("ticket.status.backlog");
-    expect(resolve("2", "list")?.id).toBe("ticket.status.todo");
-    expect(resolve("3", "list")?.id).toBe("ticket.status.in_progress");
-    expect(resolve("4", "list")?.id).toBe("ticket.status.in_review");
-    expect(resolve("5", "list")?.id).toBe("ticket.status.done");
-    expect(resolve("6", "list")?.id).toBe("ticket.status.canceled");
+    expect(resolve("1", "list")?.id).toBe("ticket.status.1");
+    expect(resolve("2", "list")?.id).toBe("ticket.status.2");
+    expect(resolve("3", "list")?.id).toBe("ticket.status.3");
+    expect(resolve("4", "list")?.id).toBe("ticket.status.4");
+    expect(resolve("5", "list")?.id).toBe("ticket.status.5");
+    expect(resolve("6", "list")?.id).toBe("ticket.status.6");
     expect(resolve("/", "list")?.id).toBe("view.filter");
     expect(resolve(",", "list")?.id).toBe("app.settings");
     expect(resolve("?", "list")?.id).toBe("app.help");
@@ -711,7 +734,7 @@ describe("availableActions", () => {
     expect(selected).toContain("ticket.open");
     expect(selected).toContain("ticket.rename");
     expect(selected).toContain("ticket.archive");
-    expect(selected).toContain("ticket.status.done");
+    expect(selected).toContain("ticket.status.5");
   });
 
   it("withholds project actions outside a project scope", () => {
@@ -831,7 +854,7 @@ describe("running an action", () => {
 
   it("closes the palette after a status change, so the list is visible again", () => {
     const ctx = context({ selected: ticket });
-    actionById("ticket.status.in_review").run(ctx);
+    actionById("ticket.status.4").run(ctx);
     expect(ctx.patchTicket).toHaveBeenCalledWith({ id: ticket.id, status: "in_review" });
     expect(ctx.close).toHaveBeenCalled();
   });
@@ -931,5 +954,78 @@ describe("shortcutRows", () => {
     expect(rows.find((row) => row.label === "Rename ticket")?.mode).toBe("list");
     expect(rows.find((row) => row.label === "Select row")?.mode).toBe("savedView");
     expect(rows.find((row) => row.label === "Mark duplicate")?.mode).toBe("triage");
+  });
+});
+
+describe("the digits, over a vocabulary the team owns", () => {
+  const atTicket = (teamId: string | undefined) =>
+    context({
+      teams: [core, atelier],
+      selected: { ...ticket, id: "row", teamId },
+    });
+
+  /**
+   * The whole of `KAN-92`. The digit names a *position*, and the key written is whatever
+   * that team put there — so one keyboard serves every vocabulary without the registry
+   * knowing any of them.
+   */
+  it("writes the word the ticket's own team put in that position", () => {
+    const ctx = atTicket("team-atelier");
+    actionById("ticket.status.1").run(ctx);
+    actionById("ticket.status.4").run(ctx);
+
+    expect(ctx.patchTicket).toHaveBeenNthCalledWith(1, { id: "row", status: "boite" });
+    expect(ctx.patchTicket).toHaveBeenNthCalledWith(2, { id: "row", status: "livre" });
+  });
+
+  it("is what it always was for a team that renamed nothing", () => {
+    // Not a coincidence and not a compatibility shim: Kanso seeds its six at positions
+    // 0–5 in exactly this order, so positional *is* the old behaviour spelled generally.
+    const ctx = atTicket("team-core");
+    actionById("ticket.status.1").run(ctx);
+    actionById("ticket.status.5").run(ctx);
+    actionById("ticket.status.6").run(ctx);
+
+    expect(ctx.patchTicket).toHaveBeenNthCalledWith(1, { id: "row", status: "backlog" });
+    expect(ctx.patchTicket).toHaveBeenNthCalledWith(2, { id: "row", status: "done" });
+    expect(ctx.patchTicket).toHaveBeenNthCalledWith(3, { id: "row", status: "canceled" });
+  });
+
+  it("is not offered past the end of a shorter list", () => {
+    // Inert rather than refused: `5` on a four-word team is a key that means nothing
+    // here, and the server's 400 is not a sentence anybody needed to read.
+    const ctx = atTicket("team-atelier");
+
+    expect(ids(ctx)).toContain("ticket.status.4");
+    expect(ids(ctx)).not.toContain("ticket.status.5");
+    expect(ids(ctx)).not.toContain("ticket.status.6");
+  });
+
+  it("answers Kanso's six for a draft, which is what its composer offered", () => {
+    const ctx = atTicket(undefined);
+    actionById("ticket.status.2").run(ctx);
+
+    expect(ctx.patchTicket).toHaveBeenCalledWith({ id: "row", status: "todo" });
+  });
+
+  it("keeps the digits on the same keys", () => {
+    expect(resolve("1", "list")?.id).toBe("ticket.status.1");
+    expect(resolve("6", "list")?.id).toBe("ticket.status.6");
+  });
+
+  /**
+   * The seventh word, and every word by name. The digits can only say a position — the
+   * shortcuts settings screen lists every action with no ticket in hand, so a label that
+   * named a team's word would be a label that cannot be drawn there.
+   */
+  it("offers a picker for the word itself, claimed by the page that holds the rows", () => {
+    expect(resolve("Shift+s", "list")?.id).toBe("ticket.status.pick");
+
+    const ctx = atTicket("team-atelier");
+    expect(ids(ctx)).not.toContain("ticket.status.pick");
+
+    claim("ticket.status.pick", vi.fn());
+    expect(ids(ctx)).toContain("ticket.status.pick");
+    clearClaims();
   });
 });

@@ -1,12 +1,7 @@
-import type {
-  Project,
-  Team,
-  Ticket,
-  TicketPriority,
-  TicketStatus,
-} from "../api";
+import type { Project, Team, Ticket, TicketPriority, TicketStatus } from "../api";
 import { claimed, runClaim } from "./claims";
 import { creationSeed } from "../creation-seed";
+import { optionsFor } from "../statuses";
 import type { PatchInput } from "../queries";
 import { dayKey, laterBy, today, ZOOMS } from "../timeline-geometry";
 import type { Action, ActionContext } from "./types";
@@ -133,6 +128,19 @@ export const PRIORITY_ACTIONS: readonly string[] = [
   "ticket.priority.urgent",
 ];
 
+/**
+ * The [position]-th status of the selected ticket's own team, or `undefined` when it has
+ * none there — one-based, because the keys a reader presses are.
+ *
+ * Its own team's and not the scope's, the same reading every other status question makes:
+ * `optionsFor` answers the team's catalogue in `team_statuses.position` order, and Kanso's
+ * six for a draft with no team to ask — which is what that draft's composer offered it.
+ */
+function statusAt(ctx: ActionContext, position: number): TicketStatus | undefined {
+  if (!ctx.selected) return undefined;
+  return optionsFor(ctx.teams, ctx.selected.teamId)[position - 1]?.key;
+}
+
 export const coreActions: readonly Action[] = [
   {
     id: "ticket.create",
@@ -218,79 +226,130 @@ export const coreActions: readonly Action[] = [
     run: (ctx) => ctx.move(-1),
   },
 
-  // `PatchInput` now checks the field itself; `satisfies` is kept for the value, which
-  // is a string the wire cares about and the field type alone would not spell out.
+  /**
+   * The digits name a *position*, not a word — `KAN-92`.
+   *
+   * They were six actions each carrying a literal: `1` wrote `"backlog"`, `6` wrote
+   * `"canceled"`. `KAN-90` made a status the team's to invent, and left these alone: a
+   * team that named its first column `Boîte` pressed `1` and got the server's refusal,
+   * and a team with a seventh word had no key for it at all.
+   *
+   * A position is the one thing a static registry can say about a vocabulary it cannot
+   * see. It is also not a compromise: Kanso seeds its six at positions 0–5 in exactly the
+   * order these keys had, so for every team that has renamed nothing this is the old
+   * behaviour spelled generally, key for key.
+   *
+   * The label can only say the position too, and that is a constraint rather than a
+   * choice: the shortcuts settings screen lists every action in the registry with no
+   * ticket and no team in hand, so a label naming a team's word would be a label that
+   * screen cannot draw. `ticket.status.pick` below is where the words themselves live.
+   */
   {
-    id: "ticket.status.backlog",
+    id: "ticket.status.1",
     writes: true,
-    label: "Set status: Backlog",
+    label: "Set status: the team's 1st",
     defaultKeys: ["1"],
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => statusAt(ctx, 1) !== undefined,
     run: onSelected((ctx, ticket) => {
-      ctx.patchTicket({ id: ticket.id, status: "backlog" satisfies TicketStatus });
+      const status = statusAt(ctx, 1);
+      if (!status) return;
+      ctx.patchTicket({ id: ticket.id, status });
       ctx.close();
     }),
   },
   {
-    id: "ticket.status.todo",
+    id: "ticket.status.2",
     writes: true,
-    label: "Set status: Todo",
+    label: "Set status: the team's 2nd",
     defaultKeys: ["2"],
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => statusAt(ctx, 2) !== undefined,
     run: onSelected((ctx, ticket) => {
-      ctx.patchTicket({ id: ticket.id, status: "todo" satisfies TicketStatus });
+      const status = statusAt(ctx, 2);
+      if (!status) return;
+      ctx.patchTicket({ id: ticket.id, status });
       ctx.close();
     }),
   },
   {
-    id: "ticket.status.in_progress",
+    id: "ticket.status.3",
     writes: true,
-    label: "Set status: In progress",
+    label: "Set status: the team's 3rd",
     defaultKeys: ["3"],
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => statusAt(ctx, 3) !== undefined,
     run: onSelected((ctx, ticket) => {
-      ctx.patchTicket({ id: ticket.id, status: "in_progress" satisfies TicketStatus });
+      const status = statusAt(ctx, 3);
+      if (!status) return;
+      ctx.patchTicket({ id: ticket.id, status });
       ctx.close();
     }),
   },
   {
-    id: "ticket.status.in_review",
+    id: "ticket.status.4",
     writes: true,
-    label: "Set status: In review",
+    label: "Set status: the team's 4th",
     defaultKeys: ["4"],
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => statusAt(ctx, 4) !== undefined,
     run: onSelected((ctx, ticket) => {
-      ctx.patchTicket({ id: ticket.id, status: "in_review" satisfies TicketStatus });
+      const status = statusAt(ctx, 4);
+      if (!status) return;
+      ctx.patchTicket({ id: ticket.id, status });
       ctx.close();
     }),
   },
   {
-    id: "ticket.status.done",
+    id: "ticket.status.5",
     writes: true,
-    label: "Set status: Done",
+    label: "Set status: the team's 5th",
     defaultKeys: ["5"],
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => statusAt(ctx, 5) !== undefined,
     run: onSelected((ctx, ticket) => {
-      ctx.patchTicket({ id: ticket.id, status: "done" satisfies TicketStatus });
+      const status = statusAt(ctx, 5);
+      if (!status) return;
+      ctx.patchTicket({ id: ticket.id, status });
       ctx.close();
     }),
   },
   {
-    id: "ticket.status.canceled",
+    id: "ticket.status.6",
     writes: true,
-    label: "Set status: Canceled",
+    label: "Set status: the team's 6th",
     defaultKeys: ["6"],
     group: "ticket",
-    when: hasSelection,
+    when: (ctx) => statusAt(ctx, 6) !== undefined,
     run: onSelected((ctx, ticket) => {
-      ctx.patchTicket({ id: ticket.id, status: "canceled" satisfies TicketStatus });
+      const status = statusAt(ctx, 6);
+      if (!status) return;
+      ctx.patchTicket({ id: ticket.id, status });
       ctx.close();
     }),
+  },
+
+  /**
+   * One key for the word itself — the seventh status, and every status by name.
+   *
+   * The same trick as `⇧p` under it, for a reason that is stronger here: priorities are
+   * five values the registry knows, and a status is a word only the ticket's team can
+   * name. The rows are built by the page from `statuses.optionsFor`, so nothing in here
+   * has to know a vocabulary, and a team that adds an eighth word gets an eighth row
+   * without a line changing.
+   *
+   * Claimed, for the reason the priority picker gives: the rows are the page's to
+   * assemble, and the shell has no business listing statuses for a ticket it does not
+   * hold.
+   */
+  {
+    id: "ticket.status.pick",
+    writes: true,
+    label: "Set status…",
+    defaultKeys: ["Shift+s"],
+    group: "ticket",
+    when: (ctx) => hasSelection(ctx) && claimed("ticket.status.pick"),
+    run: () => runClaim("ticket.status.pick"),
   },
 
   /**
