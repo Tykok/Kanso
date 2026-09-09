@@ -1,8 +1,8 @@
-import { labelOfKey } from "@/lib/statuses";
+import { CATEGORY_LABELS, labelOfKey } from "@/lib/statuses";
 import { facetByKey } from "@/components/organise/facets";
 import { EFFORT_POINTS, TICKET_PRIORITIES, DEFAULT_STATUSES, type ViewFilters } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../status";
-import { inOrder, WORKFLOW_ORDER } from "../status-order";
+import { CATEGORY_ORDER, inOrder, WORKFLOW_ORDER } from "../status-order";
 import {
   FILTER_KEYS,
   NEGATED_FACET,
@@ -111,6 +111,20 @@ export const KEYS: Record<FilterKey, KeyDef> = {
         filters: negated ? { statusNot: [status] } : { status: [status] },
       })),
     detail: (negated) => facetByKey(negated ? "statusNot" : "status").label,
+  },
+
+  meaning: {
+    noun: "meaning",
+    // The wire's word as the token, exactly as `status` above spells `in_progress` — a
+    // closed vocabulary is typed by its key and read by its label. `CATEGORY_ORDER` and
+    // not `Object.keys`, so the suggestion list is offered in the order every other
+    // surface stacks them in.
+    answers: () =>
+      CATEGORY_ORDER.map((category) => ({
+        token: category,
+        label: CATEGORY_LABELS[category],
+        filters: { category: [category] },
+      })),
   },
 
   priority: {

@@ -25,6 +25,7 @@ import {
 const SERVED = [
   "status",
   "statusNot",
+  "category",
   "priority",
   "project",
   "assignee",

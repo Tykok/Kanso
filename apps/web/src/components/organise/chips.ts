@@ -1,4 +1,5 @@
 import { PRIORITY_LABELS, seededLabel, STATUS_LABELS } from "@/lib/status";
+import { CATEGORY_LABELS } from "@/lib/statuses";
 import type { TicketStatus, ViewFilters } from "@/lib/api";
 import { FACET_ORDER } from "./facets";
 
@@ -21,6 +22,7 @@ export type Chip = {
 const LABELS: Record<keyof ViewFilters, string> = {
   status: "Status",
   statusNot: "Status",
+  category: "Meaning",
   priority: "Priority",
   project: "Project",
   assignee: "Assignee",
@@ -102,6 +104,10 @@ function valueOf(
       return filters.estimateMax === undefined ? undefined : `≤ ${filters.estimateMax}`;
     case "status":
       return joined(filters.status?.map(statusLabel));
+    // `CATEGORY_LABELS` and not the key: `unstarted` is the wire's spelling of a reading
+    // Kanso does internally, and a chip is read by somebody who never chose it.
+    case "category":
+      return joined(filters.category?.map((category) => CATEGORY_LABELS[category]));
     case "statusNot": {
       // The drawing writes this chip `Statut ≠ Done`, and the sign is the whole point: a
       // chip reading `Status Done` over a list of everything that is not done is backwards.

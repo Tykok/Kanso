@@ -12,7 +12,7 @@ import { FILTER_KEYS, suggest, type FilterCatalog } from ".";
  */
 
 describe("suggest", () => {
-  it("offers the eight keys on an empty line, in the strip's order", () => {
+  it("offers the nine keys on an empty line, in the strip's order", () => {
     const at = suggest("", 0, CATALOG);
 
     expect(at).toMatchObject({ kind: "key", start: 0, end: 0 });
@@ -20,6 +20,9 @@ describe("suggest", () => {
     expect(FILTER_KEYS).toEqual([
       "project",
       "status",
+      // Between `status` and `priority`, because `FACET_ORDER` puts `Meaning is` beside
+      // the two status facets — the strip's order is the order a question is offered in.
+      "meaning",
       "priority",
       "assignee",
       "cycle",
@@ -125,7 +128,7 @@ describe("suggest", () => {
     const at = suggest(text, 12, CATALOG);
 
     expect(at).toMatchObject({ kind: "key", start: 12, end: 12 });
-    expect(at.items).toHaveLength(8);
+    expect(at.items).toHaveLength(9);
   });
 
   /**

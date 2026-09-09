@@ -180,6 +180,7 @@ describe("withoutFacet, on the line", () => {
     const probe: Record<keyof ViewFilters, ViewFilters> = {
       status: { status: ["todo"] },
       statusNot: { statusNot: ["done"] },
+      category: { category: ["started"] },
       priority: { priority: ["high"] },
       project: { project: ["p-1"] },
       assignee: { assignee: ["u-1"] },

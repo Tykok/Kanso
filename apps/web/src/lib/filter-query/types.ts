@@ -22,6 +22,7 @@ import type { ViewFilters } from "@/lib/api";
 export type FilterKey =
   | "project"
   | "status"
+  | "meaning"
   | "priority"
   | "assignee"
   | "cycle"
@@ -175,6 +176,9 @@ const FACET_KEY = {
   project: "project",
   status: "status",
   statusNot: "status",
+  // `meaning` and not `category`: the type's key mirrors the server's column, and the
+  // word a reader types is the one the chip asks with.
+  category: "meaning",
   priority: "priority",
   assignee: "assignee",
   unassigned: "assignee",
