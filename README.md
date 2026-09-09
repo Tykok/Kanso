@@ -138,6 +138,33 @@ Dev mode has no door at all, and says so instead of failing quietly:
 > header. Connecting an agent is disabled: an authorisation server behind that would issue
 > durable tokens to anyone who can reach it. Switch to oidc to enable it.
 
+### Connecting a service
+
+An agent is a person at a laptop; a service is not, and it takes a different door. Settings
+→ Tokens mints an API token — `kanso_pat_…`, shown once, scoped `kanso:read` and
+`kanso:write` — and it is presented the ordinary way:
+
+```bash
+curl -H "Authorization: Bearer $KANSO_TOKEN" http://localhost:8080/api/teams
+```
+
+That is the whole of the REST API, not one door onto it: the token carries its owner's
+role, so an integration given an owner's token can do what an owner can. There is no scope
+narrower than a person today, which is worth knowing before handing one to somebody else's
+software.
+
+With it, an integration provisions itself: `POST /api/webhooks` subscribes and returns a
+signing secret, and every delivery afterwards carries `X-Kanso-Event` and an
+`X-Kanso-Signature` of `t=<unix>,v1=<hmac>` over the body. It can declare a custom field on
+a team, write and read its values, and ask `/api/teams/{id}/statuses` and
+`/api/tickets/filters` what words this instance actually uses — a team invents its own, so
+a service that hardcodes `done` is a service that breaks on the team that renamed it.
+
+**The API describes itself** at `GET /v3/api-docs`, behind a session or a token like every
+other read. It is generated from the controllers rather than kept beside them, so it says
+what the code says: 153 paths and the shape of every request body, which is the half a
+route list never gives.
+
 ### Local development (no Docker for the apps)
 
 ```bash
