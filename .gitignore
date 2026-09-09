@@ -54,9 +54,21 @@ Kanso - Mobile.dc.html
 *.dc.html
 Kanso Design System*.zip
 
-# The published site. `node site/build.mjs` rebuilds it from site/ in seconds, and the
+# Two build outputs, one directory name, and neither is ever committed.
+#
+# The published site: `node site/build.mjs` rebuilds it from site/ in seconds, and the
 # workflow that deploys it does exactly that, so a committed copy could only ever be a
 # stale second answer to what the page says.
+#
+# And the release's artefacts: `release.yml` downloads the jar and the Next bundle into
+# `dist/app.jar` and `dist/web`, which is where `docker/Dockerfile`'s `api-prebuilt` and
+# `web-prebuilt` stages read them from. The rule below already covered them — this comment
+# is the change, because a rule whose stated reason is the site is a rule someone narrows
+# to `/dist/*.html` one day and then wonders why a release is committing a 90 MB jar.
+#
+# They share the directory and never the moment: no workflow builds both, and locally
+# `node site/build.mjs` after a `docker build` leaves you a dist/ holding a site and a jar.
+# Delete it between the two rather than trusting either to clean up after the other.
 dist/
 
 # Capture placeholders, on their way to the host that serves them. The reason above

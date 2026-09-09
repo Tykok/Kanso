@@ -1,0 +1,423 @@
+# Publishes `ghcr.io/tykok/kanso` when a `v*` tag is pushed. It is the only thing in this
+# repository that produces an artefact strangers run, which sets the standard it is held
+# to: `ci.yml` argues that a workflow which is slow, flaky or noisy gets switched off, and
+# a release workflow switched off is worse than a red badge — it is a tag with no image
+# behind it, discovered by whoever tried to pull it.
+#
+# So the shape below is deliberately narrow. It builds, it proves the image answers on one
+# origin, and only then does it log in to a registry. Nothing is pushed before the smoke
+# test passes, because an image that starts and routes nothing is indistinguishable from a
+# working one until somebody deploys it.
+#
+# One manual step is required once and no workflow can do it for itself: the repository is
+# private and GHCR does **not** inherit repository visibility, so the package has to be
+# made public by hand in its own settings after the first successful run. Until that is
+# done every `docker pull` from outside asks for credentials.
+
+name: Release
+
+# Tags only, and no `push:` branches. A release is a tag; `docs/self-hosting.md` tells
+# people to pull `latest`, and `latest` moving on every commit to main would make that
+# sentence a lie. No `workflow_dispatch` either: every tag below is computed from
+# `github.ref_name`, so a manual run from a branch would compute nothing and fail in the
+# tag step rather than in an obvious place. Re-pushing the tag is the re-run.
+on:
+  push:
+    tags:
+      - "v*"
+
+# `packages: write` is the push to GHCR and the only write this workflow performs.
+# `contents: read` is the checkout. Nothing here comments, deploys or opens a release.
+permissions:
+  contents: read
+  packages: write
+
+# `cancel-in-progress: false`, the opposite of `ci.yml` and for `pages.yml`'s reason: a
+# cancelled test run costs nothing, a cancelled push can leave a multi-platform manifest
+# half written under a tag people pull. Two tags racing is rare and letting both finish is
+# cheaper than reasoning about what a partial manifest list contains.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Hard-coded rather than `${{ github.repository }}`, which is `Tykok/Kanso` — GHCR
+  # rejects an upper-case path, and the failure arrives at the push, twenty minutes in.
+  IMAGE: ghcr.io/tykok/kanso
+
+jobs:
+  # ---- job one: the artefacts -------------------------------------------------------
+  #
+  # The jar and the Next bundle are built here, once, on the runner's native amd64, and
+  # handed to job two as an uploaded artefact. `docker/Dockerfile` then takes them through
+  # its `api-prebuilt` / `web-prebuilt` stages, which are `FROM scratch` plus a COPY.
+  #
+  # **This split does not exist to keep Gradle out of QEMU.** It was specified for that,
+  # and it is no longer what it buys: the Dockerfile pins `api-build` and `web-build` to
+  # `--platform=$BUILDPLATFORM`, so a plain two-platform `buildx` of that file already
+  # compiles exactly once, on the builder. Deleting these two jobs in favour of one would
+  # not cost a minute of emulation.
+  #
+  # What it buys is **custody**. The jar and the bundle exist as a named job output with a
+  # retention period, downloadable and hashable on their own, rather than only as bytes
+  # inside a manifest — which is what any later attestation, SBOM or "what exactly did
+  # v1.2.3 ship" question has to start from. That is the reason to keep it, and the reason
+  # this comment is here: the next person to read the QEMU story would correctly conclude
+  # the job is redundant and delete it.
+  artefacts:
+    name: Artefacts
+    runs-on: ubuntu-latest
+    # Gradle plus a Next build is ~6 minutes. The cap is the ceiling on a hang, not a
+    # budget — `ci.yml` makes the same argument about its Testcontainers start.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same JDK, distribution and cache as `ci.yml`'s API job, for the same reasons:
+      # `build.gradle.kts` pins the toolchain to 21 and Temurin is what the image runs.
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      # `KANSO_COMMIT` is stamped **here**, where the bytes are produced, and nowhere else.
+      # `build.gradle.kts` reads it from the environment into the project version and
+      # `buildInfo()` writes it into the jar, so `/api/me` reports the released commit
+      # instead of `dev`. Job two builds `api-prebuilt`, which is a COPY — there is no
+      # second chance to stamp it there, and passing the arg there would be a no-op that
+      # reads like it works.
+      #
+      # `github.sha` and not `github.ref_name`: the tag is a name someone can move, the
+      # commit is what was actually compiled, and `/api/me` is asked in order to answer
+      # "which code is this instance running".
+      #
+      # `-x test` because `ci.yml` runs the suite on every push, including the push of the
+      # tagged commit. Running it again here would double a 60-second Postgres suite for a
+      # verdict already on the same SHA.
+      - name: Build the jar
+        working-directory: apps/api
+        env:
+          KANSO_COMMIT: ${{ github.sha }}
+        run: ./gradlew --no-daemon clean bootJar -x test
+
+      # One name for the artefact, matching `docker/Dockerfile`'s own `api-build` stage so
+      # `api-prebuilt`'s `COPY dist/app.jar` is the same line either way. `-plain.jar` is
+      # the library jar the Boot plugin also emits; it has no manifest main class and
+      # starting it is a bare stack trace, which is why it is excluded by name.
+      - name: Collect the jar
+        run: |
+          set -eu
+          mkdir -p dist
+          jar=$(find apps/api/build/libs -name '*.jar' ! -name '*-plain.jar' | head -n 1)
+          test -n "$jar"
+          cp "$jar" dist/app.jar
+
+      # pnpm before Node — `setup-node`'s `cache: pnpm` shells out to pnpm to find the
+      # store path and fails with a message about an unrecognised package manager if it is
+      # not on the PATH yet. No `version:`, because `apps/web/package.json` already says
+      # which pnpm and two places to state it is one place to drift. Both facts are
+      # `ci.yml`'s, written down again because a reader of this file should not have to
+      # find them in another.
+      - uses: pnpm/action-setup@v4
+
+      # Node 22 for `ci.yml`'s floor: Vite 8's rolldown bindings declare
+      # `engines: node ^20.19 || >=22.12`, and pnpm *skips* an optional dependency whose
+      # engines do not match rather than failing — a too-old Node gives a green install and
+      # a build that dies on a missing `@rolldown/binding-*`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      # `NEXT_PUBLIC_API_URL` is deliberately absent, and that absence is the whole design:
+      # Next inlines `NEXT_PUBLIC_*` at build time, so setting it here would weld one
+      # deployment's API origin into every image ever pulled. Unset, `API_URL` is the empty
+      # string, the front end asks for `/api/...`, and the browser resolves it against
+      # whatever host served the page.
+      #
+      # The commit goes in the same way the jar's did, so the footer and `/api/me` report
+      # the same value and can be compared at all.
+      - name: Build the web bundle
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_KANSO_COMMIT: ${{ github.sha }}
+        run: pnpm build
+
+      # `output: "standalone"` leaves three pieces in three places. Assembling them here
+      # rather than in job two keeps the artefact self-contained: what is uploaded is
+      # exactly the directory the image copies, so an operator handed it can see what
+      # shipped without a Dockerfile in hand. Identical to `web-build`'s own last step.
+      - name: Collect the web bundle
+        run: |
+          set -eu
+          mkdir -p dist/web/.next
+          cp -r apps/web/.next/standalone/. dist/web/
+          cp -r apps/web/.next/static dist/web/.next/static
+          cp -r apps/web/public dist/web/public
+
+      # Retention is short on purpose. This is custody for the length of a release and an
+      # investigation afterwards, not an archive: the image in GHCR is the durable copy,
+      # and 90 days of jars for every tag is a storage bill for something nobody opens.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kanso-dist
+          path: dist
+          retention-days: 14
+
+  # ---- job two: the image -----------------------------------------------------------
+  publish:
+    name: Image
+    needs: artefacts
+    runs-on: ubuntu-latest
+    # Two buildx passes plus a JVM booting against a cold Postgres. The smoke test alone
+    # waits up to four minutes for the health check.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # Into `dist/` at the repository root, which is where `docker/Dockerfile`'s
+      # `api-prebuilt` and `web-prebuilt` stages expect them — `COPY dist/app.jar` and
+      # `COPY dist/web`, resolved against the build context, which is the root.
+      - uses: actions/download-artifact@v4
+        with:
+          name: kanso-dist
+          path: dist
+
+      # The tags, computed once so the smoke build and the push cannot disagree about what
+      # is being released.
+      #
+      # The shape is the spec's: the full `v1.2.3`, the minor `1.2` without the `v`, and
+      # `latest`. The asymmetry is inherited rather than chosen, and it is left alone
+      # because tags already published cannot be renamed without breaking a compose file
+      # somebody wrote.
+      #
+      # The prerelease branch is not in the spec and is here because `on: tags: v*` cannot
+      # avoid matching `v1.2.3-rc1`: without it, tagging a release candidate would move
+      # `latest` onto it, and every `docker compose pull` in the world would take it. A
+      # prerelease publishes under its own full tag and moves nothing.
+      #
+      # The tag reaches the script through `env:` rather than as `${{ }}` inside it. A tag
+      # is a name someone chose, and expression interpolation splices it into the shell
+      # before the shell ever sees it — `env:` makes it a variable the shell expands
+      # instead, which is the difference between a value and code.
+      - name: Tags
+        id: tags
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          version="${TAG#v}"
+          # A shape check, because everything below is string surgery on this value and a
+          # tag like `v-broken` would otherwise publish `ghcr.io/tykok/kanso:` quietly.
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "release: tag '$TAG' is not vMAJOR.MINOR.PATCH" >&2; exit 1 ;;
+          esac
+          tags="${IMAGE}:${TAG}"
+          case "$version" in
+            *-*) echo "release: $TAG is a prerelease; not moving 1.x or latest" ;;
+            *) tags="${tags}
+          ${IMAGE}:${version%.*}
+          ${IMAGE}:latest" ;;
+          esac
+          echo "release: publishing —"
+          echo "$tags"
+          {
+            echo "tags<<EOF"
+            echo "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # arm64 emulation. Needed despite the build stages being pinned to `$BUILDPLATFORM`:
+      # the *runtime* stage still runs three `RUN` instructions — `groupadd`, the sharp
+      # prune, `mkdir /data` — and those execute under the target platform. They are
+      # seconds of emulation rather than a Gradle build, which is the point of the pinning.
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built for this runner's architecture only and `load`ed into the local daemon,
+      # because a multi-platform build cannot be loaded — it produces a manifest list, and
+      # `docker run` wants an image. So the artefact that gets smoke-tested is the amd64
+      # one, and the arm64 image is trusted to match on the strength of everything
+      # architecture-dependent in it coming from a base image rather than from this repo.
+      # That is a real gap and it is the honest one to have: the alternative is an arm64
+      # runner, which is a paid line item for a repository with one maintainer.
+      #
+      # `KANSO_COMMIT` is deliberately not passed. The stamp already lives inside the jar
+      # and the bundle that job one produced; the stages that read that arg are not built
+      # on this path, and passing it here would look like it did something.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: kanso:smoke
+          build-args: |
+            API_SOURCE=api-prebuilt
+            WEB_SOURCE=web-prebuilt
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The only step that proves the artefact rather than the source. Everything above
+      # this line is also true of an image whose Caddyfile routes nothing.
+      #
+      # Four requests, on one origin, and they are the routing table's whole claim: the
+      # front end is served, the API is reached under `/api`, `/ws` is handed to the API
+      # and not to Next, and MCP discovery is answered outside `/api` where no user could
+      # have guessed it belongs. A fifth request would test Spring, which `ci.yml` does.
+      #
+      # `KANSO_TLS=off`, so Caddy serves plain HTTP and no ACME challenge is attempted
+      # against a hostname that does not resolve. On **port 80** in that mode and not
+      # 8080 — the JVM holds 8080 on the loopback inside the container, so the design's
+      # process table is wrong about this and `docker/Dockerfile` says so at its `EXPOSE`.
+      - name: Smoke test
+        run: |
+          set -eu
+
+          net=kanso-smoke
+          docker network create "$net"
+          docker run -d --name kanso-smoke-db --network "$net" \
+            -e POSTGRES_DB=kanso -e POSTGRES_USER=kanso -e POSTGRES_PASSWORD=kanso \
+            postgres:16-alpine
+
+          # Not `depends_on` here, so the wait is explicit. The container refuses to start
+          # without a reachable database only at Flyway, two minutes in; waiting a few
+          # seconds now turns that into a fast, obvious failure.
+          for _ in $(seq 1 30); do
+            docker exec kanso-smoke-db pg_isready -U kanso -d kanso >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec kanso-smoke-db pg_isready -U kanso -d kanso
+
+          # `KANSO_PUBLIC_URL` is what the *browser* would see, so it names the published
+          # port on the host. `WebSocketConfig` compares the handshake's `Origin` header
+          # against exactly this string, which is what makes assertion three meaningful.
+          # `KANSO_AUTH_MODE` is left at its `oidc` default on purpose: dev mode is
+          # `@ConditionalOnExpression`-ed out of the authorisation server, and assertion
+          # four would 404 for a reason that has nothing to do with routing.
+          docker run -d --name kanso-smoke --network "$net" -p 8081:80 \
+            -e KANSO_PUBLIC_URL=http://localhost:8081 \
+            -e KANSO_TLS=off \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://kanso-smoke-db:5432/kanso \
+            -e SPRING_DATASOURCE_USERNAME=kanso \
+            -e SPRING_DATASOURCE_PASSWORD=kanso \
+            kanso:smoke
+
+          # The image's own HEALTHCHECK, rather than a curl loop of our own: it asks
+          # `/actuator/health` on 127.0.0.1:8080, which is deliberately not routed, so it
+          # is the only thing that can distinguish "Flyway is still running" from "the API
+          # is up". Its `--start-period` is 120s; four minutes is that plus a cold pull.
+          for _ in $(seq 1 80); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' kanso-smoke)
+            case "$state" in
+              healthy) break ;;
+              unhealthy) docker logs kanso-smoke; exit 1 ;;
+            esac
+            sleep 3
+          done
+          test "$(docker inspect -f '{{.State.Health.Status}}' kanso-smoke)" = healthy
+
+          base=http://localhost:8081
+          fail() { echo "smoke: $1" >&2; docker logs kanso-smoke; exit 1; }
+
+          # 1. `/` is the front end. Asserted on `/_next/`, a path only a Next-rendered
+          #    document contains — a 200 alone would also be satisfied by Caddy answering
+          #    its own error page, and "it returned HTML" by the API's login redirect.
+          #    `-L` because the app root redirects to the wizard or the sign-in screen
+          #    depending on whether the instance has an owner yet.
+          curl -fsSL "$base/" | grep -q '/_next/' || fail "/ did not serve the app"
+
+          # 2. `/api/*` reaches the API. `/api/auth/mode` because it is `permitAll` in
+          #    `SecurityConfig` and answers before anyone can possibly have a session, so
+          #    a 401 here means routing, not authentication.
+          curl -fsS "$base/api/auth/mode" | grep -q '"mode"' \
+            || fail "/api/auth/mode did not serve JSON"
+
+          # 3. `/ws` is the API's, and the proxy upgrades. It cannot be asserted as a 101:
+          #    `/ws` falls under `anyRequest().authenticated()` and this handshake carries
+          #    no session cookie, so Spring refuses it — which is the *right* answer and
+          #    still proves the whole claim. Next, which owns everything not in the table,
+          #    would answer its own 404 document instead. So the assertion is that the
+          #    refusal came from Spring: a 401/403 with no HTML body.
+          code=$(curl -s -o /tmp/ws.out -w '%{http_code}' --http1.1 \
+            -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: c21va2V0ZXN0MTIzNDU2' \
+            -H "Origin: $base" "$base/ws")
+          case "$code" in
+            101|401|403) ;;
+            *) fail "/ws was answered $code, which is Next's and not the API's" ;;
+          esac
+          if grep -q '<html' /tmp/ws.out; then fail "/ws was answered by Next"; fi
+
+          # 4. MCP discovery, and the reason the routing table cannot be guessed: it lives
+          #    outside `/api` and a 404 here is what an agent meets instead of a login.
+          curl -fsS "$base/.well-known/oauth-authorization-server" \
+            | grep -q '"issuer"' || fail "discovery did not serve JSON"
+
+          echo "smoke: four assertions passed"
+
+      # `always()` so a failed assertion still frees the port and the volume for the next
+      # step of a re-run on a self-hosted runner. On a hosted one the runner is discarded
+      # anyway; this costs two seconds and makes the step correct in both worlds.
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f kanso-smoke kanso-smoke-db >/dev/null 2>&1 || true
+          docker network rm kanso-smoke >/dev/null 2>&1 || true
+
+      # Below this line, and not one step above it. The login is the first thing in the
+      # workflow that can affect anyone outside this runner.
+      #
+      # Nothing enforces that beyond step order, and step order is enough: a failed
+      # assertion fails the job, and a step with no `if:` defaults to `success()`, which is
+      # false from then on. Tear down runs anyway because it asks for `always()` — that is
+      # the only exemption in this job, and it is a `docker rm`. **Do not give these two
+      # steps an `if:` of any kind.** One `always()` here would turn a broken image into a
+      # published one.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The second pass. Everything except the runtime stage's three arm64 `RUN`s is a
+      # cache hit from the smoke build, so this is minutes rather than a rebuild.
+      # `provenance: false` because the default attaches an attestation manifest to the
+      # list, which several registries and older Docker clients render as a phantom
+      # `unknown/unknown` platform — a confusing thing to hand someone reading `docker
+      # manifest inspect` to find out whether arm64 is there.
+      - name: Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            API_SOURCE=api-prebuilt
+            WEB_SOURCE=web-prebuilt
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+# What this workflow does not do, so the absences read as decisions:
+#
+# **It does not run Playwright.** `ci.yml`'s closing section is the argument, and it is
+# stronger here: the suite assumes the two-port development stack, and the image is a
+# one-origin deployment. Pointing it at this container would be writing a second suite.
+#
+# **It does not build arm64 for the smoke test.** See the Build step. An arm64 runner is
+# the fix and it is a paid one.
+#
+# **It does not create a GitHub Release.** Tags are releases, and a release body nobody
+# writes is a changelog that says "see commits".

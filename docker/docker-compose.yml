@@ -1,0 +1,120 @@
+# The distribution stack: the published image, and a Postgres beside it for people who do
+# not already have one. Copy this file somewhere of your own, change the four values marked
+# below, and `docker compose up -d`. `docs/self-hosting.md` is the long form.
+#
+# **This is not the repository's `docker-compose.yml`.** That one is the development stack
+# and the Playwright harness: it builds both applications from source, serves them on two
+# ports, and is meant to be run from a clone. This one pulls one image and serves one
+# origin. Neither is a variant of the other and neither should grow towards the other.
+#
+# If you already run Postgres, delete the `db` service, the `depends_on` and the
+# `kanso-pgdata` volume, and point `SPRING_DATASOURCE_URL` at your own — that path is the
+# one this design is for, and it is the one `docs/self-hosting.md` opens with.
+
+# Named explicitly so the volumes below are `kanso_kanso-data` and `kanso_kanso-pgdata`
+# whatever directory this file was copied into. Without it Compose names the project after
+# the directory, and moving the file from `kanso/` to `deploy/` orphans the database.
+#
+# The one place that bites: running this from inside a clone, where the repository's own
+# `docker-compose.yml` already claims the name `kanso`. Two stacks, one project — don't.
+name: kanso
+
+services:
+  kanso:
+    # `latest` follows the newest release tag. Pin `:v1.2.3` instead if you would rather
+    # decide when to move; `docker compose pull` is the upgrade either way.
+    image: ghcr.io/tykok/kanso:latest
+    restart: unless-stopped
+
+    # 80 and 443 on the host, because `KANSO_TLS` defaults to `auto` here — Caddy answers
+    # the ACME challenge on 80 and serves on 443, and both have to be reachable from the
+    # public internet for a certificate to be issued at all.
+    #
+    # Terminating TLS in your own proxy instead? Set `KANSO_TLS: "off"`, drop the 443 line,
+    # and publish 80 wherever that proxy expects — `"8443:80"` and so on. The container
+    # listens on 80 in **both** modes. Read the `X-Forwarded-For` section of
+    # `docs/self-hosting.md` before you do: under `off` sanitising that header becomes
+    # yours, and getting it wrong disables a rate limit on an unauthenticated endpoint.
+    ports:
+      - "80:80"
+      - "443:443"
+
+    environment:
+      # ---- change this ----
+      # The URL a browser reaches this instance at, and the single source of truth for
+      # where it lives. The container derives `KANSO_WEB_ORIGIN` and Caddy's site address
+      # from it, and refuses to start if it is missing or is not an absolute http(s) URL.
+      # Every OAuth redirect URI and the WebSocket origin check are built from it, so a
+      # value that disagrees with what the browser typed fails at sign-in and not at boot.
+      KANSO_PUBLIC_URL: https://kanso.example.com
+
+      # The database. A raw JDBC URL rather than a host/port/sslmode trio, because the URL
+      # already expresses everything a trio would have to grow towards — a client
+      # certificate, a `search_path`, a statement timeout. `db` is the service below.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/kanso
+      SPRING_DATASOURCE_USERNAME: kanso
+      # ---- change this ----
+      # It matches POSTGRES_PASSWORD below and both are `kanso`, which is a password in the
+      # same sense that `changeme` is. The `db` service publishes no port, so it is only
+      # reachable from this Compose network — but anything else you ever attach to that
+      # network can read every ticket in the instance.
+      SPRING_DATASOURCE_PASSWORD: kanso
+
+      # ---- optional, and worth reading before you leave it out ----
+      # 32 base64 bytes (`openssl rand -base64 32`), encrypting the Notion token and the
+      # OAuth client secrets the setup wizard stores. Left unset, the container generates
+      # one into `/data/secret.key` — which is fine, and is why `kanso-data` is a volume
+      # rather than a bind mount you might forget. Set it explicitly and back it up, and
+      # `/data` stops holding anything you cannot lose except Caddy's certificates.
+      # KANSO_SECRET_KEY: ""
+
+    volumes:
+      # The generated encryption key and Caddy's ACME state. Lose it and, unless you set
+      # `KANSO_SECRET_KEY` above, the stored Notion and Google secrets have to be entered
+      # again — and every restart asks Let's Encrypt for a new certificate, whose rate
+      # limit arrives inside a week.
+      - kanso-data:/data
+
+    # `service_healthy` and not the bare form. Flyway runs at boot and connects within a
+    # second or two of the JVM starting, so "the container exists" is not enough: on a cold
+    # `up` the API would reach an initdb still creating the cluster and exit.
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Here for people who have no database, and deliberately not inside the application
+  # image. Postgres does not migrate its on-disk format across major versions, so a bundled
+  # engine would make every upgrade of Kanso a `pg_upgrade` on somebody's production data,
+  # run inside a container that has just crashed. Separate, you choose when to move from 16
+  # to 17, and that day never reaches this repository.
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kanso
+      POSTGRES_USER: kanso
+      # ---- change this ----  and keep it equal to SPRING_DATASOURCE_PASSWORD above.
+      POSTGRES_PASSWORD: kanso
+    # No `ports:`. Unlike the development stack, which publishes 5432 so you can psql it,
+    # nothing outside this network has any business reaching the database. `docker compose
+    # exec db psql -U kanso kanso` when you need a shell.
+    volumes:
+      - kanso-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `-U kanso -d kanso` and not a bare `pg_isready`: during initdb the server comes up
+      # briefly on a Unix socket to create the role and the database, and a check that does
+      # not name them reports healthy in that window, which is the race `depends_on` is
+      # here to prevent.
+      test: ["CMD-SHELL", "pg_isready -U kanso -d kanso"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # `pg_trgm` is not created here. `V10__cycles_and_views.sql` runs
+  # `CREATE EXTENSION IF NOT EXISTS pg_trgm` itself, and the superuser this image gives the
+  # `kanso` role is enough for it. On a managed instance it usually is not — see the SQL
+  # block in `docs/self-hosting.md`, which is the first thing to check when Flyway fails.
+
+volumes:
+  kanso-data:
+  kanso-pgdata:
