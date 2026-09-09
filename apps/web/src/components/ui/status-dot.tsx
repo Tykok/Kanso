@@ -1,6 +1,6 @@
 import { colourOfKey } from "@/lib/statuses";
-import type { TicketStatus } from "@/lib/api";
-import { STATUS_COLORS } from "@/lib/status";
+import type { StatusCategory, TicketStatus } from "@/lib/api";
+import { colourOf, STATUS_COLORS } from "@/lib/status";
 
 /**
  * backlog and todo are rings, in progress is half, in review is three
@@ -40,12 +40,29 @@ const FILL: Record<TicketStatus, string | undefined> = {
   canceled: "currentColor",
 };
 
-export function StatusDot({ status }: { status: TicketStatus }) {
+/**
+ * [category] is what a team's own word is drawn as — `colourOf` rather than `colourOfKey`.
+ *
+ * Optional, because most callers hold a status and nothing else: a card in a cross-team
+ * list has no catalogue to ask, and grey is the honest answer there. The callers that *do*
+ * know — the board's columns, which carry the meaning on them — pass it, and their `Revue`
+ * comes out as started work instead of as a hole.
+ */
+export function StatusDot({
+  status,
+  category,
+}: {
+  status: TicketStatus;
+  category?: StatusCategory;
+}) {
   return (
     <span
       aria-hidden
       className="size-2 shrink-0 rounded-full border-[1.5px] border-current"
-      style={{ color: colourOfKey(status), background: FILL[status] }}
+      style={{
+        color: category ? colourOf(status, category) : colourOfKey(status),
+        background: FILL[status],
+      }}
     />
   );
 }

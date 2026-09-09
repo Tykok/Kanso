@@ -1,6 +1,5 @@
 "use client";
 
-import { labelOfKey } from "@/lib/statuses";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCreateTicket } from "@/lib/queries";
@@ -110,7 +109,7 @@ export function BoardColumnView({
       ref={section}
       data-testid="board-column"
       data-status={column.status}
-      aria-label={`${labelOfKey(column.status)}, ${column.tickets.length}`}
+      aria-label={`${column.label}, ${column.tickets.length}`}
       className="flex min-h-0 min-w-0 flex-col gap-2"
       onDragOver={(event) => {
         // Without this the browser refuses the drop and the card springs back with no
@@ -133,10 +132,14 @@ export function BoardColumnView({
         // has them.
         style={{ background: `color-mix(in oklch, ${colourOf(column.status, column.category)} 12%, transparent)` }}
       >
-        <StatusDot status={column.status} />
-        <span className="min-w-0 flex-1 truncate text-12 font-medium">
-          {labelOfKey(column.status)}
-        </span>
+        <StatusDot status={column.status} category={column.category} />
+        {/*
+         * The column's own word, carried on it since `KAN-90` — not a lookup. Both keys a
+         * board can be stacked by are words Kanso does not ship: a team's own status, and a
+         * category on a board spanning teams. A table of the six answers either with the
+         * raw key, so the header would read `devis` and `started`.
+         */}
+        <span className="min-w-0 flex-1 truncate text-12 font-medium">{column.label}</span>
         <span className="font-mono text-11 text-faint">{column.tickets.length}</span>
       </header>
 
@@ -182,7 +185,12 @@ export function BoardColumnView({
         )}
 
         {seed && (
-          <ColumnComposer status={column.status} teamId={seed.teamId} projectId={seed.projectId} />
+          <ColumnComposer
+            status={column.status}
+            label={column.label}
+            teamId={seed.teamId}
+            projectId={seed.projectId}
+          />
         )}
       </div>
     </section>
@@ -199,10 +207,13 @@ export function BoardColumnView({
  */
 function ColumnComposer({
   status,
+  label,
   teamId,
   projectId,
 }: {
   status: TicketStatus;
+  /** The column's own word, for the same reason its header carries one. */
+  label: string;
   teamId: string;
   projectId: string;
 }) {
@@ -231,7 +242,7 @@ function ColumnComposer({
   return (
     <input
       autoFocus
-      aria-label={`New ticket in ${labelOfKey(status)}`}
+      aria-label={`New ticket in ${label}`}
       className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-12"
       value={title}
       onChange={(event) => setTitle(event.target.value)}
