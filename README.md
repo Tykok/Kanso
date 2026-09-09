@@ -36,6 +36,36 @@ Kanso stays fully usable when Notion is down, and reconciles afterwards.
 
 ## Quick start
 
+### Run it
+
+One image — front end, API and a proxy that routes between them — on one origin, with
+your own Postgres:
+
+```bash
+docker run -d -p 80:80 -p 443:443 -v kanso-data:/data \
+  -e KANSO_PUBLIC_URL=https://kanso.example.com \
+  -e SPRING_DATASOURCE_URL='jdbc:postgresql://db.internal:5432/kanso?sslmode=require' \
+  -e SPRING_DATASOURCE_USERNAME=kanso -e SPRING_DATASOURCE_PASSWORD=… \
+  ghcr.io/tykok/kanso
+```
+
+Those two things — the URL it lives at and the database it writes to — are the whole
+configuration. Caddy obtains a certificate for that host on its own; everything else has
+a defensible default or is derived. `linux/amd64` and `linux/arm64`.
+
+No database yet? [`docker/docker-compose.yml`](docker/docker-compose.yml) ships a
+`postgres:16-alpine` beside the image. Copy it, change `KANSO_PUBLIC_URL` and the
+password, `docker compose up -d`.
+
+**[`docs/self-hosting.md`](docs/self-hosting.md)** is the full version: the SQL to run
+first, terminating TLS in your own proxy, what `/data` holds, and the routing table.
+
+### Develop it
+
+The repository's own `docker-compose.yml` is a different thing: it builds both
+applications from source and serves them on two ports, which is what the Playwright
+suite drives.
+
 ```bash
 cp .env.example .env      # fill in OIDC credentials, or set KANSO_AUTH_MODE=dev
 docker compose up
