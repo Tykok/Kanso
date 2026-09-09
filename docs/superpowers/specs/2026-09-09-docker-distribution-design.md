@@ -267,9 +267,15 @@ that uses them.
 
 Where the value reaches rendered HTML — `connections-section`, `google-step`,
 `notion-connect`, `github-section`, `agents-section` — the prerendered pass produces the
-empty string and the browser produces the origin, which is a hydration mismatch. Each of
-those sites resolves it the same way: a `useApiOrigin()` hook that starts at `API_URL`
-and sets the resolved origin in an effect. One hook, five call sites, no mismatch.
+empty string and the browser produces the origin, which is a hydration mismatch. One
+`useApiOrigin()` hook covers all five.
+
+Not written with `useState` and an effect: `react-hooks/set-state-in-effect` refuses that
+shape as an error, and `use-narrow.ts` already solved the identical problem with
+`useSyncExternalStore`, arguing beside it that "*a value read in an effect is a value the
+first paint did not have*". The server snapshot is `API_URL`, the client snapshot is
+`apiOrigin`, and React hydrates with the first and corrects in the same commit. Two hooks
+solving one problem two ways would have been the worse outcome regardless of the lint.
 
 `realtime.ts:66` builds the WebSocket URL with `API_URL.replace(/^http/, "ws")`, which on
 an empty string yields `"/ws"` — a value `new WebSocket()` rejects. It becomes
