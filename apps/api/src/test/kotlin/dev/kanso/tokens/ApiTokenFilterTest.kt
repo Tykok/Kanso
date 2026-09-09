@@ -30,6 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.web.util.pattern.PathPatternParser
 import java.time.OffsetDateTime
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -440,6 +441,19 @@ class ApiTokenFilterTest : PostgresTest() {
 	 * Coarsened to one write per minute per token, asserted at the level where the clock is
 	 * an argument. A webhook consumer polling at 10 rps would otherwise mean ten `UPDATE`s a
 	 * second on one row, for a screen nobody is looking at.
+	 *
+	 * **The clock is truncated to microseconds, which is the column's own resolution.**
+	 * `timestamptz` keeps microseconds and *rounds* to them — it does not truncate — so a
+	 * `now()` carrying nanoseconds comes back a few hundred nanoseconds away from what went
+	 * in, and `expected: …261426903Z but was: …261427Z` is what that reads like. Whether it
+	 * happens at all is the platform's: the JVM's clock is nanosecond-resolution on Linux
+	 * and microsecond on macOS, so this passed on every developer machine and failed on
+	 * every CI run — which is exactly the shape of failure that gets called a flake and
+	 * left alone.
+	 *
+	 * Truncating here rather than comparing loosely, because the looser comparison would
+	 * weaken the three assertions below, and none of them is about sub-microsecond
+	 * fidelity: what this test is for is the one-minute window.
 	 */
 	@Test
 	fun `the stamp is not rewritten within the resolution window, and is after it`() {
@@ -447,7 +461,7 @@ class ApiTokenFilterTest : PostgresTest() {
 		val secret = issue(owner, OAuthScopes.READ)
 		val presented = requireNotNull(service.authenticate(secret)).token
 
-		val first = OffsetDateTime.now()
+		val first = OffsetDateTime.now().truncatedTo(ChronoUnit.MICROS)
 		service.stamp(presented, first)
 		val stamped = requireNotNull(service.authenticate(secret)).token
 		assertEquals(first.toInstant(), stamped.lastUsedAt?.toInstant(), "the first use is recorded exactly")
