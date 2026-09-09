@@ -55,7 +55,7 @@ class CaddyRoutingTableTest : MockMvcTest() {
 		val outside = mappings.handlerMethods.keys
 			.flatMap { it.pathPatternsCondition?.patternValues.orEmpty() }
 			.filterNot { it.startsWith("/api/") || it == "/api" }
-			.filterNot { it in NOT_ROUTED || it in UNROUTED_DEFECT }
+			.filterNot { it in NOT_ROUTED }
 			.distinct()
 			.sorted()
 
@@ -97,28 +97,6 @@ class CaddyRoutingTableTest : MockMvcTest() {
 			"`docker/Caddyfile` parsed to fewer routes than the routing table has. Every route " +
 				"has to stay one `reverse_proxy <path> <upstream>` line inside the site block; " +
 				"folding them into `handle` blocks still satisfies Caddy and blinds this test.",
-		)
-	}
-
-	/**
-	 * [UNROUTED_DEFECT] is still describing something true, and goes red when it stops.
-	 *
-	 * A known-gap list nobody is forced to revisit becomes an exemption list, and an
-	 * exemption list is how a guard test ends up asserting the opposite of its name. So the
-	 * moment somebody adds the missing route, this fails and asks to be deleted — the entry
-	 * cannot outlive the bug it records.
-	 */
-	@Test
-	fun `the recorded routing defect has not been quietly fixed`() {
-		val routes = caddyRoutes()
-		val fixed = UNROUTED_DEFECT.filter { pattern -> routes.any { it.covers(pattern) } }
-
-		assertTrue(
-			fixed.isEmpty(),
-			"`docker/Caddyfile` now routes ${fixed.joinToString(", ")}, which is the good news. " +
-				"Delete ${fixed.joinToString(", ") { "`$it`" }} from `UNROUTED_DEFECT` — and the " +
-				"whole set once it is empty — so the guard above starts holding those paths " +
-				"itself instead of this note holding them for it.",
 		)
 	}
 
@@ -187,29 +165,11 @@ class CaddyRoutingTableTest : MockMvcTest() {
 		 *
 		 * `/oauth/consent` and `/connect/register` are deliberately absent from this list:
 		 * they are in the Caddyfile, which is where they belong. This set is for paths whose
-		 * absence is a decision — [UNROUTED_DEFECT] is for the ones whose absence is a bug,
-		 * and the two are separate so that adding to the wrong one reads wrong.
+		 * absence is a *decision*, and it is the only escape hatch this guard has — a path
+		 * whose absence is a bug belongs in the Caddyfile, not here. `/v3/api-docs` was the
+		 * first to test that line and went into the Caddyfile, which is the outcome this
+		 * set exists to stay narrow enough to force.
 		 */
 		val NOT_ROUTED = setOf("/error")
-
-		/**
-		 * The gap this guard found the first time it ran, kept red-in-prose because it is
-		 * not this unit's file to fix.
-		 *
-		 * `KAN-95` added springdoc four hours before the routing table was written and the
-		 * table never heard about it, which is precisely the rot this test exists for — the
-		 * document a third party reads instead of the Kotlin would answer Next's 404 page
-		 * through the distribution image's one origin, so the feature would not exist in the
-		 * shipped artefact. It is behind a session (`ApiDescriptionTest` pins that it is in
-		 * no permit list), and being behind a session is an argument for reaching it, not
-		 * against.
-		 *
-		 * The fix is one line — `reverse_proxy /v3/api-docs* 127.0.0.1:8080` in the site
-		 * block — and `docker/` belongs to another unit, so this records the finding instead
-		 * of silently absorbing it. **Delete this set when that line lands**; it is a defect
-		 * with a name, not an exemption, and the day it reads as the latter is the day this
-		 * test starts lying.
-		 */
-		val UNROUTED_DEFECT = setOf("/v3/api-docs", "/v3/api-docs.yaml")
 	}
 }

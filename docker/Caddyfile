@@ -49,6 +49,13 @@
 	reverse_proxy /connect/register 127.0.0.1:8080
 	reverse_proxy /.well-known/oauth-* 127.0.0.1:8080
 
+	# `/v3/api-docs` and `/v3/api-docs.yaml` — springdoc, `KAN-95`. Missing from this table
+	# when it was first written, and found by `CaddyRoutingTableTest` rather than by
+	# anyone reading: springdoc registers its own handler, so the grep of `@GetMapping`
+	# that produced the other seven lines could not see it. The OpenAPI document a third
+	# party integrates against would simply not have existed in the shipped image.
+	reverse_proxy /v3/api-docs* 127.0.0.1:8080
+
 	# Everything else, `/login` included. `/actuator/*` is deliberately not routed to the
 	# API: it lands here, Next answers 404, and it is unreachable from outside. The
 	# container's HEALTHCHECK reaches it on 127.0.0.1:8080 instead.
