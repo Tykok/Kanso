@@ -16,20 +16,31 @@ import java.util.concurrent.ConcurrentHashMap
  * a restart. A lost registration counter costs a handful of extra rows under a cap that
  * refuses anyway — not a table, not a lock, not a migration.
  *
- * **What it does not do.** The bucket is one address, and *which* address changed when
- * `application.yml` set `server.forward-headers-strategy: framework` for the distribution
- * image: Boot's `ForwardedHeaderFilter` overrides `getRemoteAddr` from the **leftmost**
- * `X-Forwarded-For` entry, so behind that image's Caddy this counts a caller again instead
- * of pooling every request behind the proxy into one instance-wide bucket.
+ * **Which address, and therefore how much this is worth.** The bucket is one address, and
+ * *which* address changed when `application.yml` set `server.forward-headers-strategy:
+ * framework` for the distribution image: Boot's `ForwardedHeaderFilter` overrides
+ * `getRemoteAddr` from the **leftmost** `X-Forwarded-For` entry, so behind that image this
+ * counts a caller again instead of pooling every request behind the proxy into one
+ * instance-wide bucket.
  *
- * That fixes the honest case and opens the dishonest one, which is worth stating rather
- * than enjoying. Leftmost is the hop furthest from us and therefore the one the *caller*
- * writes — Caddy appends, it does not replace — so a client rotating the header now gets a
- * fresh bucket per request, where before it could only exhaust the shared one. Both are
- * bad and neither is this file's to fix: closing it needs a count of trusted hops, which is
- * a fact about someone's deployment that a limiter cannot learn from inside the process.
- * `/connect/register` is open, so the cap that still holds is the `addresses` ceiling on
- * the map itself and the refusal at the end of it.
+ * Leftmost is the hop furthest from us and therefore the one the *caller* writes, so on its
+ * own that would trade a weak-but-hard limit for no limit at all — a client rotating the
+ * header would get a fresh bucket per request. What decides it is not this file and not the
+ * strategy, but **who the edge is**, and `KANSO_TLS` is the variable that already says:
+ *
+ * - `auto`, the image's default: Caddy holds the socket, and
+ *   `/etc/s6-overlay/scripts/kanso-init` writes it a `request_header -X-Forwarded-For` that
+ *   drops whatever arrived before Caddy appends the peer it actually saw. The leftmost entry
+ *   is then the real one and this is a genuine per-caller limit.
+ * - `off`: the operator terminates TLS in their own proxy, that proxy is the edge, and Caddy
+ *   preserves the header because replacing it would collapse every visitor into one bucket.
+ *   Every word of the paragraph above is true again, sanitising is the operator's job, and
+ *   `docs/self-hosting.md` says so.
+ *
+ * Neither half is closable from in here: it needs a count of trusted hops, which is a fact
+ * about someone's deployment that a limiter cannot learn from inside the process. So under
+ * `off` the cap that still holds is the `addresses` ceiling on the map itself and the
+ * refusal at the end of it, on an endpoint that is open by design.
  *
  * @param perHour how many one address may create.
  * @param addresses how many addresses are remembered at once. A ceiling and not a

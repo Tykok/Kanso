@@ -123,8 +123,16 @@ class NotionConnectController(
 	/**
 	 * The URI both halves must agree on, built from the request that arrived rather than
 	 * from configuration — so what Notion was told and what Notion is answered are the
-	 * same string by construction, and there is no knob to set wrong. Behind a reverse
-	 * proxy this needs forwarded headers to be honoured, which is the one deployment note.
+	 * same string by construction, and there is no knob to set wrong.
+	 *
+	 * Behind a reverse proxy this needs forwarded headers to be honoured, which was the one
+	 * deployment note and is now `application.yml`'s
+	 * `server.forward-headers-strategy: framework` — set for the distribution image, and
+	 * unconditional, so it holds for every deployment rather than for that one. What is left
+	 * of the note is the trust boundary it rests on: the strategy makes a client-supplied
+	 * header decide this URI, which is only safe because nothing but the proxy can reach the
+	 * JVM. `ConsentController.returnUrl` derives its own origin the same way and carries the
+	 * same dependency.
 	 */
 	private fun callbackUri(): String = ServletUriComponentsBuilder.fromCurrentContextPath()
 		.path("/api/setup/notion/callback")

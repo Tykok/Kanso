@@ -192,8 +192,14 @@ class LocalAuthController(
 
 	/**
 	 * Behind a reverse proxy every request appears to come from the proxy, and one
-	 * bucket would rate-limit the whole instance at once. The header is
-	 * caller-supplied and therefore forgeable — which is why the per-address limit
+	 * bucket would rate-limit the whole instance at once.
+	 *
+	 * How forgeable this is depends on who the edge is, and the answer stopped being
+	 * "always" when the distribution image shipped. Under `KANSO_TLS=auto` Caddy holds
+	 * the socket and drops any inbound `X-Forwarded-For` before appending the peer it
+	 * saw, so what is read here is an address somebody actually connected from. Under
+	 * `KANSO_TLS=off`, and in any deployment that is not that image, the header is
+	 * caller-supplied and this line trusts it — which is why the per-address limit
 	 * exists alongside it and does not depend on this.
 	 */
 	private fun clientIp(http: HttpServletRequest): String? =

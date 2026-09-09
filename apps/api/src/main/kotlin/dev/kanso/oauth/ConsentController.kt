@@ -160,8 +160,10 @@ class ConsentController(
 	 * resolves to another, a path that is not the consent page. The non-circular half of
 	 * the defence is `safeNext` in `apps/web`, which knows the API's origin from
 	 * configuration and refuses a `next` on any other; neither check substitutes for the
-	 * other. Behind a reverse proxy this needs forwarded headers to be honoured, the same
-	 * deployment note `NotionConnectController.callbackUri()` carries.
+	 * other. Behind a reverse proxy this needs forwarded headers to be honoured — since
+	 * `application.yml` set `server.forward-headers-strategy: framework` they are, and what
+	 * remains is the trust boundary that makes honouring them safe:
+	 * `NotionConnectController.callbackUri()` carries the same dependency and states it.
 	 */
 	private fun returnUrl(clientId: String, scope: String, state: String): String {
 		val url = ServletUriComponentsBuilder.fromCurrentContextPath()

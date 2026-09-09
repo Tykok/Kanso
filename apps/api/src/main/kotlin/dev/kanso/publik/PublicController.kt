@@ -38,7 +38,8 @@ class PublicController(
 	): VoteResponse = VoteResponse.of(votes.vote(teamKey, number, voterKeys.keyFor(addressOf(request))))
 
 	/**
-	 * The voter's address as best it can be known, and knowingly forgeable.
+	 * The voter's address as best it can be known, and forgeable wherever Kanso is not
+	 * the edge.
 	 *
 	 * `X-Forwarded-For` is a client-supplied header, so trusting its first hop is
 	 * usually a mistake — but the question here is only "have I seen this visitor
@@ -47,6 +48,12 @@ class PublicController(
 	 * would be worse for the honest case: behind the reverse proxy a self-hosted
 	 * instance actually runs behind, every visitor would share the proxy's address and
 	 * the first vote of the day would be the only one anybody could cast.
+	 *
+	 * The distribution image narrows that concession without removing it. Under
+	 * `KANSO_TLS=auto` Caddy is the edge and strips any inbound `X-Forwarded-For` before
+	 * appending the peer it saw, so the second vote costs a second address again rather
+	 * than a second header. Under `KANSO_TLS=off` the operator's proxy is the edge, and
+	 * the paragraph above still reads word for word.
 	 *
 	 * Since `application.yml` set `server.forward-headers-strategy: framework`,
 	 * `getRemoteAddr` *is* that leftmost forwarded hop, so the read below and the fallback
