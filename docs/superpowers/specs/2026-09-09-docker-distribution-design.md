@@ -296,8 +296,48 @@ That comment ends "*setting the strategy fixes both at once, which is why it bel
 deployment rather than here*". This is that deployment.
 
 Caddy sends `X-Forwarded-Proto` and `X-Forwarded-Host` by default, so nothing else is
-needed. A test asserts that a request carrying `X-Forwarded-Proto: https` produces an
-`https` redirect URI, because the symptom otherwise appears only against a real Google.
+needed for the scheme. A test asserts that a request carrying `X-Forwarded-Proto: https`
+produces an `https` redirect URI, because the symptom otherwise appears only against a
+real Google.
+
+### The address the filter also rewrites
+
+`ForwardedHeaderFilter` does not only rewrite scheme and host. It overrides
+`getRemoteAddr()` from the **leftmost** `X-Forwarded-For` entry, and Caddy *appends*
+rather than replaces — so the leftmost entry is whatever the caller wrote. Three places
+read an address:
+
+| Site | Reads | Posture change |
+|---|---|---|
+| `LocalAuthController:198` | leftmost `X-Forwarded-For`, by hand | none — already forgeable, and its KDoc says so |
+| `PublicController:51` | leftmost `X-Forwarded-For`, by hand | none — same, and it concedes the second vote |
+| `ClientRegistrationController:41` | `remoteAddr` | **yes** — see below |
+
+Only the third changes. `RegistrationRateLimit` buckets on `remoteAddr` for
+`/connect/register`, an unauthenticated POST that writes rows, and its KDoc states the
+old assumption outright: "*this application configures no forwarded-headers strategy, so
+Boot's default of `NONE` applies*". Today every caller shares the proxy's bucket — five
+an hour for the whole instance, a weak limit but a hard one. Honouring a forgeable
+header would turn it into a fresh bucket per request, which is not a limit at all.
+
+The fix belongs in the Caddyfile, not in the limiter, and it closes all three at once:
+
+```
+header_up X-Forwarded-For {remote_host}
+```
+
+Replacing rather than appending makes the leftmost entry the peer Caddy actually saw.
+`ClientRegistrationController` gets a real per-caller bucket instead of a per-instance
+one, and the two hand-rolled readers stop being forgeable — an improvement their KDocs
+had conceded as permanent. Those two comments are corrected as part of unit 3, since
+unit 3 is what makes them false.
+
+**Except when Caddy is not the edge.** Under `KANSO_TLS=off` the operator's own proxy is,
+and replacing the header would discard the client address it forwarded, collapsing every
+visitor into one bucket. So the rule follows the variable that already says who the edge
+is: `KANSO_TLS=auto` replaces, `KANSO_TLS=off` preserves and `docs/self-hosting.md` states
+that sanitising `X-Forwarded-For` is then the operator's job. Fail-closed where Kanso can
+know the answer; documented where it cannot.
 
 ## Distribution
 
