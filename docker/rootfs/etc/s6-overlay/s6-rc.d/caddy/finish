@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# The only exposed listener. A restart loop here is a container that is up and answers
+# nothing, which is precisely the state an operator's monitoring will not report.
+echo "kanso: Caddy exited ($1); stopping the container" >&2
+exec /run/s6/basedir/bin/halt

@@ -1,0 +1,9 @@
+#!/command/with-contenv sh
+# Root, unlike the other two: under `KANSO_TLS=auto` this binds :80 and :443, and Caddy
+# has no way to drop privileges after binding. It is also the only process reachable from
+# outside, so it is the only one whose exposure is worth this.
+#
+# KANSO_SITE_ADDRESS is read by the Caddyfile's `{$KANSO_SITE_ADDRESS}` at parse time and
+# comes from the kanso-init oneshot; `caddy run` fails loudly if it is empty, which is the
+# behaviour we want if that ordering ever breaks.
+exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

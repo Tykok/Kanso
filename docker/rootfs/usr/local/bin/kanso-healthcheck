@@ -1,0 +1,11 @@
+#!/bin/sh
+# `/actuator/*` is not in the Caddyfile, so health is not reachable through the one
+# exposed port by design. This asks the API directly, on the loopback address it binds.
+#
+# Node rather than curl because node is already here for the front end, and an apt layer
+# whose only purpose is one HTTP request in a HEALTHCHECK is a package set to keep patched.
+exec node -e '
+	require("http")
+		.get("http://127.0.0.1:8080/actuator/health", (r) => process.exit(r.statusCode === 200 ? 0 : 1))
+		.on("error", () => process.exit(1));
+'

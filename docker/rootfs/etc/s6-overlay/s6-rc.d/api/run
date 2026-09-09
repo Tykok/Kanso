@@ -1,0 +1,10 @@
+#!/command/with-contenv sh
+# `with-contenv` and not a bare shell: KANSO_WEB_ORIGIN is written by the kanso-init
+# oneshot into the container environment, so it exists only for the services that ran
+# after it — this one, by way of dependencies.d/kanso-init.
+#
+# 127.0.0.1 comes from ENV SERVER_ADDRESS in the Dockerfile. The API is not addressable
+# from outside the container at all, which is what makes the routing table in the
+# Caddyfile the only description of what is reachable.
+cd /app
+exec s6-setuidgid kanso java $JAVA_OPTS -jar /app/app.jar

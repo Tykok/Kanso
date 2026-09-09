@@ -1,0 +1,124 @@
+#!/command/with-contenv sh
+#
+# The entrypoint's two jobs: refuse a configuration that cannot work, and derive the
+# values nothing else can. It runs as a oneshot before the three services, so a refusal
+# here stops the container in about a second — `S6_BEHAVIOUR_IF_STAGE2_FAILS=2` in the
+# Dockerfile is what turns this script's exit code into the container's.
+#
+# The refusals are the point. Without them a missing SPRING_DATASOURCE_URL becomes a
+# Hikari stack trace two minutes in, against `localhost:5432` — `application.yml`'s
+# default, which inside this container is nothing at all — and a missing KANSO_PUBLIC_URL
+# becomes a login that succeeds and then bounces to `http://localhost:3000`.
+
+set -e
+
+refuse() {
+	echo "kanso: $1" >&2
+	exit 1
+}
+
+# --- refusals ------------------------------------------------------------------------
+
+# One sentence each, and each one names its variable. The continuations are `\` inside the
+# quotes, which the shell removes: the operator reads one line, this file stays at 100.
+[ -n "${KANSO_PUBLIC_URL:-}" ] ||
+	refuse "KANSO_PUBLIC_URL is not set; it must be the absolute URL this instance is\
+ reached at, for example https://kanso.example.com"
+
+case "$KANSO_PUBLIC_URL" in
+	http://?*|https://?*) ;;
+	*) refuse "KANSO_PUBLIC_URL must be an absolute http(s) URL, for example\
+ https://kanso.example.com, and not '$KANSO_PUBLIC_URL'" ;;
+esac
+
+[ -n "${SPRING_DATASOURCE_URL:-}" ] ||
+	refuse "SPRING_DATASOURCE_URL is not set; Kanso needs a Postgres of its own, for\
+ example jdbc:postgresql://db:5432/kanso"
+
+# --- derivation ----------------------------------------------------------------------
+
+# Origin means scheme, host and port and nothing else, so a KANSO_PUBLIC_URL carrying a
+# path or a trailing slash still yields something `WebSocketConfig` can compare an Origin
+# header against — that check is an exact string match and a stray slash fails it.
+scheme=${KANSO_PUBLIC_URL%%://*}
+authority=${KANSO_PUBLIC_URL#*://}
+authority=${authority%%/*}
+host=${authority%%:*}
+
+# The default follows the scheme: an operator who wrote https and said nothing wants a
+# certificate, and one who wrote http cannot be given one.
+if [ -z "${KANSO_TLS:-}" ]; then
+	case "$scheme" in
+		https) KANSO_TLS=auto ;;
+		*) KANSO_TLS=off ;;
+	esac
+fi
+
+# KANSO_TLS says who the edge is, so it decides two things: the address Caddy binds, and
+# whether an inbound X-Forwarded-For is believed. The Caddyfile imports the second as a
+# file because its two answers are a directive and nothing at all — see the comment there.
+mkdir -p /run/kanso
+case "$KANSO_TLS" in
+	auto)
+		# The host without the port: Caddy binds :443 and redirects :80, and the name is
+		# what the ACME challenge is answered for. A port in KANSO_PUBLIC_URL would be the
+		# browser's port, which is not necessarily this container's.
+		site="https://$host"
+		# Caddy is the edge, so the only honest client address is the peer it accepted.
+		# Deleting the header lets `reverse_proxy` set it to that peer and nothing else;
+		# `header_up X-Forwarded-For {remote_host}` says the same thing but needs a block
+		# around every route, and the guard test reads the Caddyfile expecting one line
+		# each.
+		{
+			echo "# KANSO_TLS=auto: Caddy is the edge, so an inbound X-Forwarded-For is a forgery."
+			echo "request_header -X-Forwarded-For"
+		} > /run/kanso/forwarded-for.caddy
+		;;
+	off)
+		# Plain HTTP on :80, every host name accepted — the name the browser used was
+		# resolved by whatever terminates TLS in front of this, and is not this container's
+		# to check. Port 80 and not the spec's 8080, which the API already holds on
+		# 127.0.0.1: two listeners on one port is EADDRINUSE, not two listeners. The happy
+		# consequence is that the container's HTTP port is 80 in both modes — under `auto`
+		# it redirects to 443, under `off` it serves — so an operator's proxy has one
+		# address to point at either way.
+		site="http://:80"
+		# The operator's proxy is the edge. Its X-Forwarded-For carries the only client
+		# address anything here will ever see, and replacing it would collapse every
+		# visitor into one rate-limit bucket. Sanitising it is then their job, which
+		# `docs/self-hosting.md` says out loud.
+		echo "# KANSO_TLS=off: the operator's proxy is the edge and owns X-Forwarded-For." \
+			> /run/kanso/forwarded-for.caddy
+		;;
+	*)
+		refuse "KANSO_TLS must be 'auto' or 'off', and not '$KANSO_TLS'"
+		;;
+esac
+
+# `WebConfig`, `WebSocketConfig`, `ReturnUrlSuccessHandler` and every OAuth redirect read
+# this, and the operator is not meant to. If they set it anyway theirs wins and it is said
+# out loud, because a variable that was overridden silently is one they will debug twice.
+derived="$scheme://$authority"
+if [ -n "${KANSO_WEB_ORIGIN:-}" ]; then
+	if [ "$KANSO_WEB_ORIGIN" != "$derived" ]; then
+		echo "kanso: KANSO_WEB_ORIGIN is set to $KANSO_WEB_ORIGIN; keeping it in place\
+ of $derived derived from KANSO_PUBLIC_URL"
+	fi
+else
+	KANSO_WEB_ORIGIN="$derived"
+fi
+
+echo "kanso: web origin $KANSO_WEB_ORIGIN, Caddy on $site (KANSO_TLS=$KANSO_TLS)"
+
+# How a oneshot hands values to the longruns that depend on it: everything under this
+# directory is the environment `with-contenv` composes for them.
+printf '%s' "$KANSO_WEB_ORIGIN" > /run/s6/container_environment/KANSO_WEB_ORIGIN
+printf '%s' "$site" > /run/s6/container_environment/KANSO_SITE_ADDRESS
+
+# --- /data ---------------------------------------------------------------------------
+
+# The encryption key is written by the API, which runs as `kanso`; Caddy's ACME state is
+# written by root beside it. A named volume inherits the image's ownership, but a bind
+# mount does not — it arrives owned by root, and the first symptom is the API failing to
+# write a key it will then be unable to read back on the next boot.
+install -d -o kanso -g kanso -m 0700 /data

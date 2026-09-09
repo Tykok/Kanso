@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+# Same rule as the API: the three processes share one lifecycle, so one of them missing
+# is not a degraded instance, it is a broken one that should be replaced rather than
+# apologised for.
+echo "kanso: the web server exited ($1); stopping the container" >&2
+exec /run/s6/basedir/bin/halt
