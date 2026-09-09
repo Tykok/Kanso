@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { mirrorQueueDrained } from "./settled";
 import {
   ADMIN,
@@ -29,6 +29,30 @@ import {
  * this file asserts the round trip and only what a browser can see.
  */
 
+/**
+ * Point the statuses panel at [team].
+ *
+ * By name and not by `getByRole("combobox").first()`, and after making sure there is a
+ * second team so the control exists at all: `StatusesSection` draws the team select only
+ * when the instance has more than one team, so on a fresh database the first combobox on
+ * that screen is a *status category* select — which is how this scenario failed on the
+ * first run against a new stack and passed on every run after it. Leaning on the twenty
+ * teams earlier scenarios happen to leave behind is a dependency on suite order, and the
+ * comment this replaces admits the same test once reordered another scenario's team.
+ *
+ * `getByRole("combobox", …)` rather than `getByLabel("Team")`, which matches the sidebar's
+ * "New team" button as well and fails on the ambiguity. `exact` because the role's own
+ * name is exactly "Team" and there is no reason to accept a longer one.
+ */
+async function statusesFor(page: Page, api: APIRequestContext, team: { name: string }) {
+  await seedTeam(api, { name: unique("Second"), key: uniqueKey() });
+  await page.goto("/settings?section=statuses");
+  await expect(page.getByTestId("status-row").first()).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Team", exact: true })
+    .selectOption({ label: team.name });
+}
+
 test.describe("29. a team's words", () => {
   test.beforeAll(seedInstance);
 
@@ -39,17 +63,9 @@ test.describe("29. a team's words", () => {
     await mirrorQueueDrained();
 
     const page = await openAs(browser, ADMIN);
-    await page.goto("/settings?section=statuses");
+    await statusesFor(page, api, team);
 
     const rows = page.getByTestId("status-row");
-    await expect(rows.first()).toBeVisible();
-
-    // This team's words and not whichever team the tab opened on — the select is drawn
-    // whenever the instance has more than one, and by the time this suite reaches
-    // scenario 29 it has twenty. Awaited rather than guarded on `isVisible`, which does
-    // not wait: the first draft of this test read it before the panel had rendered, took
-    // the `false` branch, and reordered another scenario's team.
-    await page.getByRole("combobox").first().selectOption({ label: team.name });
 
     // The team's six, in Kanso's words to begin with — asserted *after* the team is
     // chosen, and it was not. It passed anyway while every team had exactly six; the
@@ -105,9 +121,7 @@ test.describe("29. a team's words", () => {
     const headers = page.getByTestId("group-header");
     await expect(headers.first()).toContainText("Todo");
 
-    await page.goto("/settings?section=statuses");
-    await expect(page.getByTestId("status-row").first()).toBeVisible();
-    await page.getByRole("combobox").first().selectOption({ label: team.name });
+    await statusesFor(page, api, team);
 
     // Twice, and awaited apart: `in_progress` starts third, each move sends the whole
     // order, and clicking again before the first has landed would send the same list
@@ -164,9 +178,7 @@ test.describe("29. a team's words", () => {
     await mirrorQueueDrained();
 
     const page = await openAs(browser, ADMIN);
-    await page.goto("/settings?section=statuses");
-    await expect(page.getByTestId("status-row").first()).toBeVisible();
-    await page.getByRole("combobox").first().selectOption({ label: team.name });
+    await statusesFor(page, api, team);
 
     // A word, and what it means. `Devis` is a quote a client has not accepted — work the
     // team might do, which is what `backlog` means.
@@ -203,9 +215,7 @@ test.describe("29. a team's words", () => {
     // Removed, naming where its ticket goes. The row's × asks the question; `Move and
     // remove` answers it — two controls, two names, because one name for both is a fork a
     // screen reader reads as a repeat.
-    await page.goto("/settings?section=statuses");
-    await expect(page.getByTestId("status-row").first()).toBeVisible();
-    await page.getByRole("combobox").first().selectOption({ label: team.name });
+    await statusesFor(page, api, team);
     await page.getByRole("button", { name: "Remove Devis" }).click();
     await page.getByLabel("Where the tickets in Devis go").selectOption("todo");
     await page.getByRole("button", { name: "Move and remove" }).click();
