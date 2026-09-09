@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+# HOSTNAME is Next's bind address in the standalone server, and it is set here rather
+# than in the Dockerfile because exporting HOSTNAME image-wide would also lie to every
+# other process about the container's name.
+cd /app/web
+exec s6-setuidgid kanso env HOSTNAME=127.0.0.1 PORT=3000 node server.js

@@ -1,0 +1,30 @@
+# Read for `docker/Dockerfile` only — BuildKit prefers `<dockerfile>.dockerignore` over the
+# context root's. The two applications keep their own beside their own Dockerfile; this one
+# exists because this build's context is the repository root, which is where everything
+# that is not an input to it also lives.
+
+# The host's own toolchains. The darwin trees are not merely weight: `COPY apps/web/ ./`
+# would lay a darwin-arm64 node_modules over the linux one installed a layer earlier, and
+# `build/` would hand Gradle an answer from another machine.
+**/node_modules
+**/.next
+apps/api/build
+apps/api/.gradle
+apps/api/.kotlin
+
+# The generated AES key. It belongs to a volume, never to an image layer.
+apps/api/data
+
+# Not inputs. `.env` matters most: it is the one file a COPY could bake a secret out of.
+**/.env
+**/.env.local
+.git
+.claude
+docs
+e2e
+site
+test-results
+playwright-report
+
+# `dist/` is deliberately absent: it is where `release.yml` puts the prebuilt jar and Next
+# bundle for the api-prebuilt and web-prebuilt stages, and excluding it would empty them.

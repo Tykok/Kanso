@@ -1,0 +1,56 @@
+# The routing table from `docs/superpowers/specs/2026-09-09-docker-distribution-design.md`,
+# and a test fixture. The guard test enumerates the application's request mappings outside
+# `/api` and fails when one of them is not covered here, so every route below is a single
+# line with a literal path. Folding them into `handle` blocks would still satisfy Caddy and
+# would break the guard, which is the only thing keeping this table honest the day somebody
+# adds a controller outside `/api`.
+{
+	# No admin API. It is a second listener, on :2019, with authority over the only one
+	# that is meant to be reachable — and nothing in this image ever calls it.
+	admin off
+
+	# Under `KANSO_TLS=off` the operator terminates TLS in their own proxy, and the API
+	# runs with `forward-headers-strategy: framework`, so it builds OAuth redirect URIs
+	# from `X-Forwarded-Proto`. Caddy overwrites that header unless the peer is a trusted
+	# proxy, which would turn every `https://…/login/oauth2/code/google` redirect URI into
+	# an `http://` one that Google refuses — the exact failure that strategy exists to fix.
+	# Private ranges only: under `auto` the peer is the public internet, so this is inert.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+# Derived from KANSO_PUBLIC_URL by /etc/s6-overlay/scripts/kanso-init: the bare host under
+# `KANSO_TLS=auto`, which is what makes Caddy obtain a certificate, or `http://:80` under
+# `off`, which accepts every host name because whatever terminates TLS already checked it.
+{$KANSO_SITE_ADDRESS} {
+	# Whether an inbound `X-Forwarded-For` survives, decided by KANSO_TLS and written by
+	# /etc/s6-overlay/scripts/kanso-init — which is where the same variable already decides
+	# who the edge is. A conditional and not a constant, and a file rather than a
+	# `{$PLACEHOLDER}`, because the two answers are a directive and nothing at all.
+	#
+	# It matters because the API now runs with `forward-headers-strategy: framework`, and
+	# `ForwardedHeaderFilter` takes `getRemoteAddr()` from the *leftmost* entry of that
+	# header. Caddy appends rather than replaces, so left of Caddy's own entry sits whatever
+	# the caller wrote — and `RegistrationRateLimit` buckets `/connect/register`, an
+	# unauthenticated POST that writes rows, on exactly that address. A caller rotating the
+	# header would get a fresh bucket per request, which is not a limit.
+	import /run/kanso/forwarded-for.caddy
+
+	# Caddy sorts the routes of one directive by matcher specificity — longest path first,
+	# matcher-less last. That is why `/login/oauth2/*` beats the catch-all below even
+	# though `/login` belongs to the front end, and why this table needs no maintained
+	# order: a new line can go anywhere in it.
+	reverse_proxy /api/* 127.0.0.1:8080
+	reverse_proxy /ws 127.0.0.1:8080
+	reverse_proxy /oauth2/* 127.0.0.1:8080
+	reverse_proxy /login/oauth2/* 127.0.0.1:8080
+	reverse_proxy /oauth/consent 127.0.0.1:8080
+	reverse_proxy /connect/register 127.0.0.1:8080
+	reverse_proxy /.well-known/oauth-* 127.0.0.1:8080
+
+	# Everything else, `/login` included. `/actuator/*` is deliberately not routed to the
+	# API: it lands here, Next answers 404, and it is unreachable from outside. The
+	# container's HEALTHCHECK reaches it on 127.0.0.1:8080 instead.
+	reverse_proxy 127.0.0.1:3000
+}

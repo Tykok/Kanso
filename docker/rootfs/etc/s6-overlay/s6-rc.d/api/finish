@@ -1,0 +1,12 @@
+#!/command/with-contenv sh
+# A dead process must kill the container. Without this s6 would restart the API forever
+# behind a Caddy that keeps answering, or — worse — the container would stay up and keep
+# passing an orchestrator's restart policy while every request 502s.
+#
+# `halt` stops the container with code 0, whatever killed the service, and the exit code
+# is deliberately not forced: the alternative is a finish script that has to tell a crash
+# from the SIGTERM of a `docker stop`, and getting that wrong reports a failure on every
+# clean stop. The line below is what says which it was, and `restart: unless-stopped`
+# — what the distribution compose file uses — does not read the code anyway.
+echo "kanso: the API exited ($1); stopping the container" >&2
+exec /run/s6/basedir/bin/halt
