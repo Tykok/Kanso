@@ -5,6 +5,7 @@ import dev.kanso.service.BlockLockedException
 import dev.kanso.service.ConflictException
 import dev.kanso.service.CountsChangedException
 import dev.kanso.service.NotFoundException
+import dev.kanso.webhooks.WebhooksNotConfigured
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpHeaders
@@ -89,6 +90,24 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
 	@ExceptionHandler(AccessDeniedException::class)
 	fun accessDenied(e: AccessDeniedException): ProblemDetail =
 		problem(HttpStatus.FORBIDDEN, e.message ?: "Forbidden")
+
+	/**
+	 * A refusal about the *instance*, not the request — so 503, and the exception's own
+	 * sentence rather than a rewrite of it.
+	 *
+	 * Without this mapping it fell to the catch-all below, and creating the first webhook
+	 * on an instance with no signing key answered `500 Unexpected server error` with the
+	 * reason visible only in the container log. `WebhooksNotConfigured` already names the
+	 * property to set; this is what lets it reach the person who has to set it.
+	 *
+	 * 503 and not 400: nothing is wrong with the request, and retrying it unchanged once
+	 * somebody has set the key is exactly the right thing to do. `WebhookOutboundHandler`
+	 * makes the same reading on its own side, where the same exception is `Failure.Fatal`
+	 * carrying the same message.
+	 */
+	@ExceptionHandler(WebhooksNotConfigured::class)
+	fun webhooksNotConfigured(e: WebhooksNotConfigured): ProblemDetail =
+		problem(HttpStatus.SERVICE_UNAVAILABLE, e.message)
 
 	@ExceptionHandler(Exception::class)
 	fun unexpected(e: Exception): ProblemDetail {
