@@ -12,6 +12,13 @@ alongside. Everyone who does not open it reads the same data in Notion.
   tickets, many-to-many on both sides — not filed in a second tool.
 - **At the keyboard.** Keyboard-first: `j`/`k`, `1`…`6`, `⌘K`, and list, board and
   timeline are one scoped query drawn three ways.
+- **A team keeps its own words.** Six statuses to start with; a team renames them,
+  reorders them, adds a seventh and removes one it does not use — and the list, the
+  board, the charts and every MCP tool say that team's words back. A ticket moved into a
+  team that has never heard of its status arrives in that team's own word for work in the
+  same state, rather than in a status nobody there can read. And because two teams may
+  share no word at all, `meaning:started` asks the question `status:` cannot — everything
+  under way, in every team, whatever each one calls it.
 - **Nobody else has to learn Kanso.** Connect Notion and Kanso feeds four databases
   that the people following along build their own views on; an existing workspace is
   imported once — with its own columns and its own words, so a base whose status is
@@ -63,7 +70,8 @@ logs a loud warning. Never expose an instance running that way.
 | `Enter` | open |
 | `c` | create |
 | `e` | rename in place |
-| `1`…`6` | status, backlog → canceled |
+| `1`…`6` | your team's first six statuses, in its own order |
+| `⇧s` | pick a status by name — including a seventh |
 | `x` | archive |
 | `/` | filter |
 | `⌘K` / `Ctrl+K` | command palette |
@@ -127,10 +135,17 @@ no session `401` with an empty body, so an agent's link opens on a blank page ra
 on a login screen. It is the one rough edge left in this flow and it is written down
 rather than smoothed over: signing in first makes it invisible.
 
-**This release declares no tools.** The endpoint answers enough of MCP to prove the door
-works — `initialize`, and `tools/list` with an empty list. That is the honest answer from
-a server that has none yet, and a placeholder that claimed a tool would be a placeholder
-somebody trusted. What goes behind the door comes next.
+**Ten tools go through the door.** Reading — `kanso_list_tickets`, `kanso_get_ticket`,
+`kanso_team_workload`. Writing — `kanso_create_ticket`, `kanso_update_ticket`,
+`kanso_split_ticket`, `kanso_link_tickets`, `kanso_plan`. And the triage pair,
+`kanso_triage_queue` and `kanso_triage`, which is the one an agent is actually good at:
+the queue hands it what nobody has ruled on, and the ruling is one of four words —
+`accepted`, `backlogged`, `duplicate`, `closed` — recorded as a decision rather than
+applied as a silent edit.
+
+Each of them speaks the *team's* vocabulary. A status key the ticket's team does not
+have is refused with the list of the ones it does, so an agent that guessed `done` at a
+team that calls it `Livré` is told, not ignored.
 
 Dev mode has no door at all, and says so instead of failing quietly:
 
@@ -231,6 +246,14 @@ docs        architecture notes
 
 v1 in progress. Not yet: per-field merge on conflict, Notion webhooks, attachments,
 sub-tickets.
+
+Two things a reader should know are missing rather than hidden. **A token has no scope
+narrower than a person**: `kanso:read` and `kanso:write` are the whole vocabulary, and a
+token carries its owner's role — so an integration handed an owner's token can do what an
+owner can. And **a board scoped wider than one team stacks by meaning, not by status**:
+the five categories both vocabularies share, with the drop rebased onto each card's own
+team's word. Fine-grained moves between two words that mean the same thing need a
+team-scoped board.
 
 ## License
 

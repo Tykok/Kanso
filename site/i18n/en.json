@@ -11,7 +11,7 @@
   "hero.lead": "Everyone who does not open it reads the same data in Notion.",
   "hero.repo": "The source on GitHub",
   "hero.ports": "Web on :3000, API on :8080.",
-  "hero.statuses": "Six statuses, backlog to canceled, on one keystroke each. The same six in the list, the board and the timeline.",
+  "hero.statuses": "A team names its own statuses — six to begin with, backlog to canceled, and it renames, reorders, adds and removes them. One keystroke each, the same words in the list, the board and the timeline.",
 
   "walk.eyebrow": "The walk-through",
   "walk.title": "Five screens, in the order you meet them",
@@ -22,7 +22,7 @@
   "step.project.alt": "A project in Kanso, with its lead, its status and its dates.",
 
   "step.ticket.title": "Create a ticket",
-  "step.ticket.caption": "<code>c</code> from anywhere, <code>e</code> to rename in place, <code>1</code>–<code>6</code> for the status. The ticket takes a short per-team identifier — KAN-1, then KAN-2 — allocated inside the insert.",
+  "step.ticket.caption": "<code>c</code> from anywhere, <code>e</code> to rename in place, <code>1</code>–<code>6</code> for your team's first six statuses and <code>⇧s</code> to pick any of them by name. The ticket takes a short per-team identifier — KAN-1, then KAN-2 — allocated inside the insert.",
   "step.ticket.alt": "A ticket in Kanso, with its identifier, its status and its assignee.",
 
   "step.timeline.title": "Read it as a timeline",
@@ -30,8 +30,8 @@
   "step.timeline.alt": "The Kanso timeline: bars over weeks, with arrows between dependent tickets.",
 
   "step.board.title": "Read it as a board",
-  "step.board.caption": "The same query, drawn as six columns. Dragging a card changes the status and nothing else.",
-  "step.board.alt": "The Kanso board: six status columns with ticket cards.",
+  "step.board.caption": "The same query, drawn as one column per status the team has. Dragging a card changes the status and nothing else. Scoped wider than one team, the columns become the five meanings both vocabularies share, and a drop writes each card's own team's word.",
+  "step.board.alt": "The Kanso board: one column per status, with ticket cards.",
 
   "step.assigned.title": "Read it as one person's list",
   "step.assigned.caption": "The same query again, filtered to an assignee and kept as a saved view. List, board and timeline are three dispositions of one query, not three features to keep in step — which is also why workload per person is a reading of the same rows and not a report.",
@@ -44,7 +44,7 @@
   "pillar.document.title": "The document sits next to the work.",
   "pillar.document.body": "Notion pages are referenced by projects and tickets, many-to-many on both sides. The page that explains a decision hangs off the work it decided, instead of being filed in a second tool.",
   "pillar.keyboard.title": "At the keyboard.",
-  "pillar.keyboard.body": "<code>j</code>/<code>k</code> to move, <code>1</code>–<code>6</code> for the status, <code>⌘K</code> for the palette, <code>/</code> to filter. The same keys in all three views.",
+  "pillar.keyboard.body": "<code>j</code>/<code>k</code> to move, <code>1</code>–<code>6</code> for your team's own statuses, <code>⌘K</code> for the palette, <code>/</code> to filter. The same keys in all three views.",
   "pillar.readers.title": "Nobody else has to learn Kanso.",
   "pillar.readers.body": "Connect Notion and Kanso feeds four databases. The people who only need to follow along build their own views there and never open Kanso.",
 
