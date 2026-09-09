@@ -77,14 +77,20 @@ class ReturnUrlSuccessHandler(defaultTarget: String) : SimpleUrlAuthenticationSu
 	 * necessity: a handler handed a request should read that request.
 	 *
 	 * These three reflect `X-Forwarded-*` only where forwarded headers are honoured, and
-	 * this application does not configure them: there is no `server.forward-headers-strategy`
-	 * and no `ForwardedHeaderFilter`, so Boot's default of `NONE` applies. Behind a
-	 * TLS-terminating proxy that does not mean the two ends disagree — `ConsentController`
-	 * read the same unwrapped request when it wrote the stash, so both say `http`, the
-	 * comparison passes, and the member is redirected from an `https` page to
-	 * `http://…/oauth/consent`. A scheme downgrade rather than an open redirect, and one
-	 * the `?next=` half of the round trip already has; setting the strategy fixes both at
-	 * once, which is why it belongs in deployment rather than here.
+	 * `application.yml` now honours them: `server.forward-headers-strategy: framework`
+	 * registers Boot's `ForwardedHeaderFilter` at `Ordered.HIGHEST_PRECEDENCE`, ahead even of
+	 * the `-105` above, so the request reaching this method carries the browser's scheme and
+	 * host rather than the proxy hop's. That line arrived with the distribution image, which
+	 * terminates TLS in Caddy and speaks plain http to this process over the loopback — the
+	 * deployment this comment used to argue for and can now describe.
+	 *
+	 * It stays written down because what it prevents is silent. `ConsentController` derives
+	 * the stash from the same request this method derives its origin from, so *unwrapped the
+	 * two agree*: both say `http`, the comparison passes, and the member is redirected from
+	 * an `https` page to `http://…/oauth/consent` with nothing failing to announce it. A
+	 * scheme downgrade rather than an open redirect, and invisible to any test that calls
+	 * either half directly — `ForwardedHeadersTest` therefore asserts it through the filter
+	 * chain, which is the only place the property exists at all.
 	 */
 	private fun originOf(request: HttpServletRequest): String =
 		"${request.scheme}://${request.serverName}:${request.serverPort}"

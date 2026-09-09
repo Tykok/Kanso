@@ -47,6 +47,11 @@ class PublicController(
 	 * would be worse for the honest case: behind the reverse proxy a self-hosted
 	 * instance actually runs behind, every visitor would share the proxy's address and
 	 * the first vote of the day would be the only one anybody could cast.
+	 *
+	 * Since `application.yml` set `server.forward-headers-strategy: framework`,
+	 * `getRemoteAddr` *is* that leftmost forwarded hop, so the read below and the fallback
+	 * under it have converged on one answer. It stays explicit because it is the half that
+	 * does not depend on a property an operator can set back to `none`.
 	 */
 	private fun addressOf(request: HttpServletRequest): String =
 		request.getHeader("X-Forwarded-For")
