@@ -200,18 +200,34 @@ class DocBlockLockTest : PostgresTest() {
 
 	// --- the laptop that closed ----------------------------------------------
 
+	/**
+	 * Two claims, two windows, and deliberately not one.
+	 *
+	 * It was one `take` on 2 ms answering both halves, and the *first* half raced it: a
+	 * round trip to Postgres sits between taking the lock and reading it back, and on a
+	 * loaded runner that is comfortably more than two milliseconds — so "it is a lock while
+	 * the window is open" would fail against a window that had already closed. The test was
+	 * right about the product and wrong about the clock, which is the flake that gets
+	 * re-run rather than read.
+	 *
+	 * Thirty seconds for the half that asserts a lock is alive, because no machine outruns
+	 * it; 2 ms and a 20 ms sleep for the half that asserts one lapses, where the margin
+	 * runs the other way and a slow runner only makes it safer.
+	 */
 	@Test
 	fun `a lock nobody renews stops being a lock, with nothing having run`() {
-		val (_, block) = onePage()
+		val (_, live) = onePage()
+		assertNotNull(lockRows.take(live.id, admin.id, Duration.ofSeconds(30)))
+		assertNotNull(lockRows.liveFor(live.id), "it is a lock while the window is open")
 
-		assertNotNull(lockRows.take(block.id, admin.id, Duration.ofMillis(2)))
-		assertNotNull(lockRows.liveFor(block.id), "it is a lock while the window is open")
+		val (_, lapsing) = onePage()
+		assertNotNull(lockRows.take(lapsing.id, admin.id, Duration.ofMillis(2)))
 
 		Thread.sleep(20)
 
 		// No sweeper ran, no heartbeat was missed, and the row is still there — it simply
 		// is not a lock any more. That is the whole of `V40`'s expiry argument.
-		assertNull(lockRows.liveFor(block.id))
+		assertNull(lockRows.liveFor(lapsing.id))
 	}
 
 	@Test
