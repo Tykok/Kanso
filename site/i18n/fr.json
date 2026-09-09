@@ -11,7 +11,7 @@
   "hero.lead": "Tous ceux qui ne l'ouvrent pas lisent les mêmes données dans Notion.",
   "hero.repo": "Le code sur GitHub",
   "hero.ports": "Web sur :3000, API sur :8080.",
-  "hero.statuses": "Six statuts, de backlog à annulé, une touche chacun. Les mêmes six dans la liste, le tableau et le planning.",
+  "hero.statuses": "Une équipe nomme ses propres statuts — six pour commencer, de backlog à annulé, qu'elle renomme, réordonne, complète et retire. Une touche chacun, les mêmes mots dans la liste, le tableau et le planning.",
 
   "walk.eyebrow": "Le déroulé",
   "walk.title": "Cinq écrans, dans l'ordre où on les rencontre",
@@ -22,7 +22,7 @@
   "step.project.alt": "Un projet dans Kanso, avec son responsable, son statut et ses dates.",
 
   "step.ticket.title": "Créer un ticket",
-  "step.ticket.caption": "<code>c</code> depuis n'importe où, <code>e</code> pour renommer sur place, <code>1</code>–<code>6</code> pour le statut. Le ticket reçoit un identifiant court propre à l'équipe — KAN-1, puis KAN-2 — attribué à l'intérieur de l'insertion.",
+  "step.ticket.caption": "<code>c</code> depuis n'importe où, <code>e</code> pour renommer sur place, <code>1</code>–<code>6</code> pour les six premiers statuts de votre équipe et <code>⇧s</code> pour en choisir un par son nom. Le ticket reçoit un identifiant court propre à l'équipe — KAN-1, puis KAN-2 — attribué à l'intérieur de l'insertion.",
   "step.ticket.alt": "Un ticket dans Kanso, avec son identifiant, son statut et son assigné.",
 
   "step.timeline.title": "Le lire comme un planning",
@@ -30,8 +30,8 @@
   "step.timeline.alt": "Le planning de Kanso : des barres sur les semaines, avec des flèches entre les tickets dépendants.",
 
   "step.board.title": "Le lire comme un tableau",
-  "step.board.caption": "La même requête, dessinée en six colonnes. Déplacer une carte change le statut, et rien d'autre.",
-  "step.board.alt": "Le tableau de Kanso : six colonnes de statut et des cartes de tickets.",
+  "step.board.caption": "La même requête, dessinée en une colonne par statut de l'équipe. Déplacer une carte change le statut, et rien d'autre. Au-delà d'une seule équipe, les colonnes deviennent les cinq sens que les deux vocabulaires partagent, et un dépôt écrit le mot de l'équipe de la carte.",
+  "step.board.alt": "Le tableau de Kanso : une colonne par statut, avec des cartes de tickets.",
 
   "step.assigned.title": "Le lire comme la liste d'une personne",
   "step.assigned.caption": "La même requête encore, filtrée sur un assigné et conservée comme vue enregistrée. Liste, tableau et planning sont trois dispositions d'une même requête, pas trois fonctionnalités à maintenir en phase — c'est aussi pourquoi la charge par personne est une lecture des mêmes lignes et non un rapport.",
@@ -44,7 +44,7 @@
   "pillar.document.title": "Le document est à côté du travail.",
   "pillar.document.body": "Les pages Notion sont référencées par les projets et par les tickets, plusieurs-à-plusieurs des deux côtés. La page qui explique une décision est rattachée au travail qu'elle a décidé, au lieu d'être classée dans un second outil.",
   "pillar.keyboard.title": "Au clavier.",
-  "pillar.keyboard.body": "<code>j</code>/<code>k</code> pour se déplacer, <code>1</code>–<code>6</code> pour le statut, <code>⌘K</code> pour la palette, <code>/</code> pour filtrer. Les mêmes touches dans les trois vues.",
+  "pillar.keyboard.body": "<code>j</code>/<code>k</code> pour se déplacer, <code>1</code>–<code>6</code> pour les statuts de votre équipe, <code>⌘K</code> pour la palette, <code>/</code> pour filtrer. Les mêmes touches dans les trois vues.",
   "pillar.readers.title": "Personne d'autre n'a à apprendre Kanso.",
   "pillar.readers.body": "Connectez Notion et Kanso alimente quatre bases. Ceux qui ont seulement besoin de suivre y construisent leurs propres vues et n'ouvrent jamais Kanso.",
 
