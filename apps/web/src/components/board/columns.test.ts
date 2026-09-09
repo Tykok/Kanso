@@ -1,7 +1,16 @@
-import type { Vocabulary } from "@/lib/statuses";
+import { boardShape, type Vocabulary } from "@/lib/statuses";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_STATUSES, type Ticket, type TicketPriority, type TicketStatus } from "@/lib/api";
-import { boardColumns, boardMove, cardLabel, deltaTo, locateCard } from "./columns";
+import {
+  DEFAULT_STATUSES,
+  type StatusCategory,
+  type Team,
+  type TeamStatus,
+  type Ticket,
+  type TicketPriority,
+  type TicketStatus,
+} from "@/lib/api";
+import { STATUS_CATEGORY, STATUS_LABELS } from "@/lib/status";
+import { boardColumns, boardDrop, boardMove, cardLabel, deltaTo, locateCard } from "./columns";
 
 /** Only the fields the board reads; the rest of `Ticket` is noise in these assertions. */
 function ticket(
@@ -56,6 +65,73 @@ const invented: Vocabulary[] = [
   { key: "livre", label: "Livré", category: "completed" },
 ];
 
+/** Two real teams, for the cases that need a `boardShape` rather than a hand-written bucket. */
+const asTeam = (id: string, statuses: TeamStatus[]): Team =>
+  ({
+    id,
+    name: `Team ${id}`,
+    key: id.toUpperCase(),
+    archived: false,
+    ticketCount: 0,
+    mirror: { state: "pending" },
+    createdAt: "2026-09-01T10:00:00Z",
+    updatedAt: "2026-09-01T10:00:00Z",
+    editable: true,
+    statuses,
+  }) as Team;
+
+const kansoTeam = asTeam(
+  "team",
+  DEFAULT_STATUSES.map((key, position) => ({
+    key,
+    label: STATUS_LABELS[key],
+    category: STATUS_CATEGORY[key],
+    position,
+  })),
+);
+
+const atelierTeam = asTeam("atelier", [
+  { key: "boite", label: "Boîte", category: "backlog", position: 0 },
+  { key: "devis", label: "Devis", category: "backlog", position: 1 },
+  { key: "en_cours", label: "En cours", category: "started", position: 2 },
+  { key: "livre", label: "Livré", category: "completed", position: 3 },
+]);
+
+/** How a board scoped to one team stacks — `boardShape`'s narrow half, spelled out. */
+const byStatus = (row: Ticket) => row.status;
+
+/** The five columns a scope spanning teams draws, in `CATEGORY_ORDER`. */
+const categories: Vocabulary[] = [
+  { key: "backlog", label: "Backlog", category: "backlog" },
+  { key: "unstarted", label: "Not started", category: "unstarted" },
+  { key: "started", label: "In flight", category: "started" },
+  { key: "completed", label: "Done", category: "completed" },
+  { key: "canceled", label: "Canceled", category: "canceled" },
+];
+
+/**
+ * Rows from two teams that share no word — what `boardShape`'s wide half hands over.
+ *
+ * `atelier` reads `devis` as backlog and `en_cours` as started; `kanso` reads its own
+ * six. Spelled as a lookup rather than taken from `boardShape` so this file keeps
+ * proving the arithmetic alone: `statuses.test.ts` proves where the readings come from.
+ */
+const MEANS: Record<string, StatusCategory> = {
+  devis: "backlog",
+  en_cours: "started",
+  todo: "unstarted",
+  in_progress: "started",
+};
+
+const categoryBucket = (row: Pick<Ticket, "teamId" | "status">) => MEANS[row.status];
+
+const crossTeam = [
+  ticket("ATL-1", "devis", { teamId: "atelier" }),
+  ticket("KAN-2", "todo"),
+  ticket("ATL-3", "en_cours", { teamId: "atelier" }),
+  ticket("KAN-4", "in_progress"),
+];
+
 describe("boardColumns", () => {
   /**
    * The whole of `KAN-90` on this file: the columns are the team's, not Kanso's.
@@ -66,7 +142,7 @@ describe("boardColumns", () => {
    * cards could be in.
    */
   it("draws the team's own columns, in the team's own order", () => {
-    const columns = boardColumns(invented, [ticket("KAN-1", "devis")]);
+    const columns = boardColumns(invented, [ticket("KAN-1", "devis")], byStatus);
 
     expect(columns.map((column) => column.status)).toEqual(["boite", "devis", "en_cours", "livre"]);
     expect(columns.map((column) => column.label)).toEqual(["Boîte", "Devis", "En cours", "Livré"]);
@@ -76,7 +152,7 @@ describe("boardColumns", () => {
   // The header's word and its colour both come from the column, so a component never has
   // to look a team's word up in a table of Kanso's six and get nothing.
   it("carries the word and the meaning with each column", () => {
-    const devis = boardColumns(invented, [])[1];
+    const devis = boardColumns(invented, [], byStatus)[1];
     expect(devis.label).toBe("Devis");
     expect(devis.category).toBe("backlog");
   });
@@ -85,7 +161,7 @@ describe("boardColumns", () => {
   // nowhere to go, and the board says so by the numbers not adding up rather than by
   // pretending the ticket does not exist.
   it("leaves a card whose status this vocabulary does not have out of every column", () => {
-    const columns = boardColumns(invented, [ticket("KAN-9", "done")]);
+    const columns = boardColumns(invented, [ticket("KAN-9", "done")], byStatus);
     expect(columns.reduce((total, column) => total + column.tickets.length, 0)).toBe(0);
   });
 
@@ -96,17 +172,54 @@ describe("boardColumns", () => {
    * columns the moment one emptied.
    */
   it("draws one column per status, in the order the number keys move a card", () => {
-    const columns = boardColumns(seeded, [ticket("KAN-1", "done")]);
+    const columns = boardColumns(seeded, [ticket("KAN-1", "done")], byStatus);
     expect(columns.map((column) => column.status)).toEqual([...DEFAULT_STATUSES]);
     expect(columns.map((column) => column.tickets.length)).toEqual([0, 0, 0, 0, 1, 0]);
   });
 
-  it("keeps the order the server sent inside a column", () => {
-    const columns = boardColumns(seeded, [
-      ticket("KAN-3", "todo"),
-      ticket("KAN-1", "todo"),
-      ticket("KAN-2", "todo"),
+  /**
+   * The five columns a scope spanning teams draws, and the reason it can draw any.
+   *
+   * The vocabulary is categories and the rows are two teams' words, so nothing lines up
+   * by key — the card is placed by what [bucketOf] says it means. Under the derivation
+   * this replaces, `devis` and `livre` were in no column and simply were not on the
+   * board.
+   */
+  it("stacks two teams' words into one set of category columns", () => {
+    const columns = boardColumns(categories, crossTeam, categoryBucket);
+
+    expect(columns.map((column) => column.status)).toEqual([
+      "backlog",
+      "unstarted",
+      "started",
+      "completed",
+      "canceled",
     ]);
+    expect(columns.map((column) => column.tickets.map((row) => row.identifier))).toEqual([
+      ["ATL-1"],
+      ["KAN-2"],
+      ["ATL-3", "KAN-4"],
+      [],
+      [],
+    ]);
+  });
+
+  it("leaves no card off a board whose columns are categories", () => {
+    // The count is the whole assertion: every status has a category, so a category board
+    // is the one board on which the sum always matches what was handed to it.
+    const columns = boardColumns(categories, crossTeam, categoryBucket);
+
+    expect(columns.reduce((total, column) => total + column.tickets.length, 0)).toBe(
+      crossTeam.length,
+    );
+  });
+
+  it("keeps the order the server sent inside a column", () => {
+    const columns = boardColumns(
+      seeded,
+      [ticket("KAN-3", "todo"), ticket("KAN-1", "todo"), ticket("KAN-2", "todo")],
+      byStatus,
+    );
     const todo = columns.find((column) => column.status === "todo");
     expect(todo?.tickets.map((row) => row.identifier)).toEqual(["KAN-3", "KAN-1", "KAN-2"]);
   });
@@ -115,12 +228,16 @@ describe("boardColumns", () => {
 describe("boardMove", () => {
   // Two columns with different depths, and one empty between them, which is where every
   // interesting case lives.
-  const columns = boardColumns(seeded, [
-    ticket("KAN-1", "backlog"),
-    ticket("KAN-2", "backlog"),
-    ticket("KAN-3", "backlog"),
-    ticket("KAN-7", "in_progress"),
-  ]);
+  const columns = boardColumns(
+    seeded,
+    [
+      ticket("KAN-1", "backlog"),
+      ticket("KAN-2", "backlog"),
+      ticket("KAN-3", "backlog"),
+      ticket("KAN-7", "in_progress"),
+    ],
+    byStatus,
+  );
 
   it("steps down and up inside one column", () => {
     expect(boardMove(columns, "kan-1", "down")).toBe("kan-2");
@@ -197,11 +314,11 @@ describe("cardLabel", () => {
 });
 
 describe("locateCard", () => {
-  const columns = boardColumns(seeded, [
-    ticket("KAN-1", "backlog"),
-    ticket("KAN-2", "backlog"),
-    ticket("KAN-3", "in_progress"),
-  ]);
+  const columns = boardColumns(
+    seeded,
+    [ticket("KAN-1", "backlog"), ticket("KAN-2", "backlog"), ticket("KAN-3", "in_progress")],
+    byStatus,
+  );
 
   /**
    * Where the board's scroll-into-view starts. A virtualised column has no element for a
@@ -216,8 +333,10 @@ describe("locateCard", () => {
   });
 
   it("still answers for a card far past the bottom of its column", () => {
-    const many = boardColumns(seeded, 
+    const many = boardColumns(
+      seeded,
       Array.from({ length: 400 }, (_, at) => ticket(`KAN-${at + 1}`, "todo")),
+      byStatus,
     );
     expect(locateCard(many, "kan-400")).toEqual({ column: 1, row: 399 });
   });
@@ -243,5 +362,52 @@ describe("cardLabel, for a ticket no team has claimed", () => {
     });
 
     expect(cardLabel(draft)).toBe("No team, Todo: Title of KAN-1");
+  });
+});
+
+describe("boardDrop", () => {
+  /** The wide shape, near enough for this file: two teams, one of them with its own words. */
+  const wide = boardShape([kansoTeam, atelierTeam], { kind: "all" });
+  const narrow = boardShape([kansoTeam, atelierTeam], { kind: "team", id: "atelier" });
+
+  it("writes the card's own team's word for the column it was dropped on", () => {
+    // The gesture is one; the key written is the dropped card's team's. This is what a
+    // category column means, and there is no other way for it to mean anything.
+    expect(boardDrop(wide, ticket("ATL-1", "devis", { teamId: "atelier" }), "completed")).toEqual({
+      status: "livre",
+    });
+    expect(boardDrop(wide, ticket("KAN-2", "todo"), "completed")).toEqual({ status: "done" });
+  });
+
+  it("writes the column's key untouched when the board is one team's", () => {
+    expect(boardDrop(narrow, ticket("ATL-1", "devis", { teamId: "atelier" }), "livre")).toEqual({
+      status: "livre",
+    });
+  });
+
+  it("is nothing at all when the card is already in the column it was dropped on", () => {
+    // A drop back where it came from is not an edit, and sending it would mark the
+    // mirror pending for a change nobody made. On a category board "where it came from"
+    // is the category, not the key — `en_cours` dropped on "In flight" has not moved.
+    expect(
+      boardDrop(wide, ticket("ATL-3", "en_cours", { teamId: "atelier" }), "started"),
+    ).toBeUndefined();
+    expect(
+      boardDrop(narrow, ticket("ATL-3", "en_cours", { teamId: "atelier" }), "en_cours"),
+    ).toBeUndefined();
+  });
+
+  it("refuses in the column's own words when the team has nothing there", () => {
+    // Named by the header the reader is looking at, not by `unstarted`, which is the
+    // wire's word and appears on no screen.
+    expect(boardDrop(wide, ticket("ATL-1", "devis", { teamId: "atelier" }), "unstarted")).toEqual({
+      refusal: "This ticket's team has no status in Not started",
+    });
+  });
+
+  it("refuses for a card whose team it cannot ask", () => {
+    expect(boardDrop(wide, ticket("GON-1", "todo", { teamId: "gone" }), "completed")).toEqual({
+      refusal: "This ticket's team has no status in Done",
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES, type Team, type TicketStatus } from "./api";
+import { DEFAULT_STATUSES, type Team, type Ticket, type TicketStatus } from "./api";
 import {
   categoryOf,
   seededColour,
@@ -162,4 +162,75 @@ export function vocabularyOf(teams: readonly Team[], scope: Scope): Vocabulary[]
  */
 export function bucketLabel(teams: readonly Team[], scope: Scope, key: string): string {
   return vocabularyOf(teams, scope).find((row) => row.key === key)?.label ?? key;
+}
+/** The two fields the board's shape reads off a row — a `Ticket` satisfies it. */
+type Placed = Pick<Ticket, "teamId" | "status">;
+
+/**
+ * Everything a board needs to know about the words it is drawn in.
+ *
+ * The three answers travel together because they are one decision. The board draws the
+ * columns, `actions/board.ts` walks the cursor through them, and the drop writes into
+ * them — three call sites that must agree on what a column *is*, and the comment on the
+ * cursor's own call already says that a set of columns different from the drawn one is
+ * the divergence to prevent. A caller that fetched the vocabulary and then worked out
+ * bucketing for itself is exactly how they would drift apart.
+ */
+export type BoardShape = {
+  /** The columns, left to right. */
+  vocabulary: Vocabulary[];
+  /** Which column [ticket] is in. */
+  bucketOf: (ticket: Placed) => string;
+  /**
+   * The status a drop of [ticket] onto the column [columnKey] writes, or `undefined`
+   * when there is none to write and the card must stay where it is.
+   */
+  rebase: (ticket: Placed, columnKey: string) => TicketStatus | undefined;
+};
+
+/**
+ * How a board stacks and what a drop onto it writes, for one scope.
+ *
+ * **One team** is the straightforward half: the columns are its catalogue, a card is in
+ * the column its status names, and a drop writes that column's key — the key is a status
+ * of the only team on the board, so there is nothing to translate.
+ *
+ * **A scope spanning teams** is the question `KAN-90` left open, answered here. The
+ * columns are the five categories, for the reason [vocabularyOf] already gives: a scope
+ * holding two vocabularies has no single word for a bucket. What makes that a board and
+ * not just a list is the pair below it —
+ *
+ * - a card is placed by what its *own* team means by its status, the same reading
+ *   [categoryOfTicket] does, so every card has a column. Stacking by key instead is what
+ *   made a card in a word only its team knows land in no column at all and vanish, with
+ *   nothing on screen to say a row was missing.
+ * - a drop is rebased onto the first status the *card's own* team has in that category,
+ *   by `position`. One gesture over two teams writes two different keys, which is what
+ *   makes a category column droppable at all — the category itself is not a status and
+ *   `tickets_status_fk` would refuse it.
+ *
+ * `undefined` where the team has nothing in that category, and for a row whose team is
+ * not in [teams] at all. Not the nearest category, and not Kanso's word for it: a team
+ * that removed every unstarted status said something, and a card that has no home in the
+ * column it was dropped on stays where it is with the refusal said out loud.
+ */
+export function boardShape(teams: readonly Team[], scope: Scope): BoardShape {
+  const vocabulary = vocabularyOf(teams, scope);
+  if (scope.kind === "team") {
+    return {
+      vocabulary,
+      bucketOf: (ticket) => ticket.status,
+      rebase: (_ticket, columnKey) => columnKey,
+    };
+  }
+  return {
+    vocabulary,
+    bucketOf: (ticket) => categoryOfTicket(teams, ticket.teamId, ticket.status),
+    rebase: (ticket, columnKey) =>
+      teams
+        .find((team) => team.id === ticket.teamId)
+        // `team_statuses.position` is the order the server sends them in, so the first
+        // match is the first word this team reads in that category.
+        ?.statuses.find((row) => row.category === columnKey)?.key,
+  };
 }

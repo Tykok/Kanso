@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Team } from "./api";
-import { bucketLabel, labelOf, optionsFor, vocabularyOf, CATEGORY_LABELS } from "./statuses";
+import type { Team, Ticket } from "./api";
+import {
+  boardShape,
+  bucketLabel,
+  labelOf,
+  optionsFor,
+  vocabularyOf,
+  CATEGORY_LABELS,
+} from "./statuses";
 
 /**
  * A team's own words, read by the screens that print them — `KAN-28`.
@@ -167,5 +174,101 @@ describe("the statuses a ticket may be moved to", () => {
 
   it("are Kanso's six while the team is still loading", () => {
     expect(optionsFor([], "support").map((row) => row.key)).toHaveLength(6);
+  });
+});
+/**
+ * A team whose words are its own, and which has nothing at all in one category.
+ *
+ * `atelier` is the case the rebase has to refuse: four statuses, none of them
+ * `unstarted`. A card of this team dropped on "Not started" has no key to be given, and
+ * inventing the nearest one would move work somewhere nobody asked for.
+ */
+const atelier = team("atelier", {
+  statuses: [
+    { key: "boite", label: "Boîte", category: "backlog", position: 0 },
+    { key: "devis", label: "Devis", category: "backlog", position: 1 },
+    { key: "en_cours", label: "En cours", category: "started", position: 2 },
+    { key: "livre", label: "Livré", category: "completed", position: 3 },
+  ],
+});
+
+/** Only the two fields the board's shape reads off a row. */
+const row = (teamId: string | undefined, status: string) =>
+  ({ teamId, status }) as Pick<Ticket, "teamId" | "status">;
+
+describe("the shape a board is drawn in", () => {
+  it("stacks by status, and writes the column's own key, when the scope names one team", () => {
+    const shape = boardShape([kanso, atelier], { kind: "team", id: "atelier" });
+
+    expect(shape.vocabulary.map((column) => column.key)).toEqual([
+      "boite",
+      "devis",
+      "en_cours",
+      "livre",
+    ]);
+    expect(shape.bucketOf(row("atelier", "devis"))).toBe("devis");
+    // Nothing to rebase: the column *is* a status of the only team on the board.
+    expect(shape.rebase(row("atelier", "devis"), "livre")).toBe("livre");
+  });
+
+  it("stacks by category when the scope spans teams", () => {
+    const shape = boardShape([kanso, atelier], { kind: "all" });
+
+    expect(shape.vocabulary.map((column) => column.key)).toEqual([
+      "backlog",
+      "unstarted",
+      "started",
+      "completed",
+      "canceled",
+    ]);
+  });
+
+  it("places a row by what its own team means, not by what the scope's other team means", () => {
+    // The whole reason a card can go missing today: `devis` is in no vocabulary but
+    // `atelier`'s, and a board that stacked by key would have nowhere to put it.
+    const shape = boardShape([kanso, atelier], { kind: "all" });
+
+    expect(shape.bucketOf(row("atelier", "devis"))).toBe("backlog");
+    expect(shape.bucketOf(row("kanso", "in_review"))).toBe("started");
+  });
+
+  it("rebases a drop onto the first status the row's team has in that category", () => {
+    // Two teams, one gesture, two different keys written — which is what makes a
+    // category column droppable at all.
+    const shape = boardShape([kanso, atelier], { kind: "all" });
+
+    expect(shape.rebase(row("atelier", "devis"), "completed")).toBe("livre");
+    expect(shape.rebase(row("kanso", "todo"), "completed")).toBe("done");
+  });
+
+  it("rebases to the team's own order and not to Kanso's", () => {
+    // `atelier` put `boite` before `devis`; a team that ordered them the other way round
+    // would get `devis`. The first by `position` is the one the team reads first.
+    const shape = boardShape([kanso, atelier], { kind: "all" });
+
+    expect(shape.rebase(row("atelier", "en_cours"), "backlog")).toBe("boite");
+  });
+
+  it("refuses a drop into a category the row's team has no status in", () => {
+    // `undefined` rather than the nearest key: a team that removed every unstarted
+    // status said something, and the board honours it by not moving the card.
+    const shape = boardShape([kanso, atelier], { kind: "all" });
+
+    expect(shape.rebase(row("atelier", "devis"), "unstarted")).toBeUndefined();
+  });
+
+  it("refuses a drop for a row whose team it cannot ask", () => {
+    // A team still loading, or a draft with no team at all: there is no catalogue to
+    // pick a key out of, and Kanso's six are not this row's to be given.
+    const shape = boardShape([kanso, atelier], { kind: "all" });
+
+    expect(shape.rebase(row("gone", "todo"), "completed")).toBeUndefined();
+    expect(shape.rebase(row(undefined, "todo"), "completed")).toBeUndefined();
+  });
+
+  it("reads a project scope as the wider one", () => {
+    const shape = boardShape([kanso, atelier], { kind: "project", id: "p1" });
+
+    expect(shape.bucketOf(row("atelier", "devis"))).toBe("backlog");
   });
 });

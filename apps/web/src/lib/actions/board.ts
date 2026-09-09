@@ -1,4 +1,4 @@
-import { optionsFor } from "@/lib/statuses";
+import { boardShape } from "@/lib/statuses";
 import { boardColumns, boardMove, deltaTo, type BoardDirection } from "@/components/board/columns";
 import { ticketAddress } from "@/lib/api";
 import { useBoard } from "@/store/board";
@@ -32,13 +32,12 @@ const canStep = (ctx: ActionContext) => hasSelection(ctx) && ctx.tickets.length 
  * answers zero, which is what makes `l` at the right-hand edge inert rather than wrong.
  */
 const step = (direction: BoardDirection) => (ctx: ActionContext) => {
-  // The same columns the board draws, from the same function: a cursor that stepped
-  // through a different set of columns than the one on screen is the divergence
-  // `boardColumns` exists to prevent.
-  const columns = boardColumns(
-    optionsFor(ctx.teams, ctx.scope.kind === "team" ? ctx.scope.id : undefined),
-    ctx.tickets,
-  );
+  // The same columns the board draws, from the same function *and the same shape*: a
+  // cursor that stepped through a different set of columns than the one on screen is the
+  // divergence `boardColumns` exists to prevent, and `boardShape` is what keeps the two
+  // callers from each deciding for themselves what a column is.
+  const shape = boardShape(ctx.teams, ctx.scope);
+  const columns = boardColumns(shape.vocabulary, ctx.tickets, shape.bucketOf);
   const target = boardMove(columns, ctx.selected?.id, direction);
   const delta = deltaTo(ctx.tickets, ctx.selected?.id, target);
   if (delta !== 0) ctx.move(delta);

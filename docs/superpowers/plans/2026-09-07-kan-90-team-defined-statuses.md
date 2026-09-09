@@ -261,22 +261,52 @@ categories.
 
 ## What this branch left open, and why
 
-Two questions surfaced while executing that are real and are **not** `KAN-90`'s. Both are
-written into the code where somebody will find them rather than only here.
+Two questions surfaced while executing that are real and are **not** `KAN-90`'s. Both were
+written into the code where somebody will find them rather than only here. The first has
+since been answered — see below; the second still stands.
 
-- **A board whose scope spans teams has no coherent set of columns.** It draws Kanso's six,
-  which is what it drew before this branch and is right for every team that has invented
-  nothing — but a card in a team with its own words then has no column, and dragging onto
-  `done` writes a key that team may not have. The five categories are not the answer
-  either: dropping a card on `unstarted` has no status to write. The two honest answers are
-  to rebase on drop, or to offer columns only for a single team. `boardColumns`' docstring
-  says so.
+- ~~**A board whose scope spans teams has no coherent set of columns.**~~ **Answered on
+  2026-09-09**, on `feat/cross-team-board-columns`. The columns are the five categories and
+  the drop is rebased: a card is placed by what its *own* team means by its status, and a
+  drop writes the first status that team has in the column's category, by `position`. The
+  objection recorded here — that dropping on `unstarted` has no status to write — is
+  exactly what the rebase answers, and the case it cannot answer (a team with nothing in
+  that category) is a refusal named in the column's own words rather than an invented
+  destination. `statuses.boardShape` holds all three answers together, because the board,
+  the cursor in `actions/board.ts` and the drop are three callers that must agree on what a
+  column is.
+
+  The severity was also not where this section put it. The drop was already safe —
+  `StatusCategories.require` refuses a foreign key with the team's own list — but a card in
+  a word only its team knows was in **no column at all** and was silently not drawn, on a
+  board that prints no total to contradict it.
 - **There is no `Meaning` filter chip.** "Show me all started work across two teams" is a
   question only a category can express, and the endpoint serves it —
   `TicketFilterVocabulary.SERVED` has `category`, and `use-my-work.ts` sends it. It is
   deliberately absent from `ViewFilters`, because that type is the *chip* vocabulary and
   every key in it is required by `satisfies Record<keyof ViewFilters, …>` to have a label, a
   control and a filter-text spelling. Adding those is a feature, not a fix.
+
+## What this branch left behind that the follow-up found
+
+Three things `KAN-90` changed the meaning of and did not finish, all found by the branch
+above while touching the same files. Two are fixed there; the third is not this board's.
+
+- **The board's grid was `repeat(6, …)`, a static class.** Every team had six columns when
+  it was written. A team with four had two empty tracks at the right, and a seventh column
+  would have wrapped into a second row the single `grid-rows` track never shows. Counted at
+  render now, which is why it is a `style` and not a class.
+- **A column header printed `labelOfKey(column.status)`.** `BoardColumn` has carried a
+  `label` since this branch precisely so a header never looks a key up in a table of
+  Kanso's six — and the header did not read it. A team's `devis` came out as the raw key
+  `devis`. Same for the column's `aria-label` and for the `+ Add` input's. The dot beside
+  it went through `colourOfKey` and came out grey, which `statuses.ts` had already said
+  should be `colourOf`.
+- **The keys `1`–`6` still write Kanso's six literal keys.** `ticket.status.*` in
+  `lib/actions/core.ts` was not touched by this branch: a team with `devis` presses `1` and
+  gets the server's refusal. `boardColumns`' own docstring claims "the order is the order
+  `1`–`n` moves a card into", which has not been true since this branch merged. Not fixed —
+  it reaches every screen with a selection, not the board.
 
 ## What the numbers were, at the end
 

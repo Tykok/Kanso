@@ -1,15 +1,9 @@
 "use client";
 
-import { optionsFor } from "@/lib/statuses";
+import { boardShape } from "@/lib/statuses";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  openTicketMode,
-  ticketAddress,
-  ticketHref,
-  type Ticket,
-  type TicketStatus,
-} from "@/lib/api";
+import { openTicketMode, ticketAddress, ticketHref, type Ticket } from "@/lib/api";
 import { creationSeed } from "@/lib/creation-seed";
 import { actionErrorMessage } from "@/lib/errors";
 import {
@@ -23,7 +17,7 @@ import {
 import { useBoard } from "@/store/board";
 import { useUi } from "@/store/ui";
 import { BoardColumnView, type ColumnControl } from "./column";
-import { boardColumns } from "./columns";
+import { boardColumns, boardDrop } from "./columns";
 
 /**
  * Screen 04 — the board.
@@ -69,14 +63,15 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
     );
   }, [tickets.data, query]);
 
-  // The scope's own words — `optionsFor` answers Kanso's six for a scope with no single
-  // team, which is what this board drew before `KAN-90` and what `boardColumns` documents
-  // as the open question.
-  const vocabulary = useMemo(
-    () => optionsFor(teams.data ?? [], scope.kind === "team" ? scope.id : undefined),
-    [teams.data, scope],
+  // The columns, how a card finds one, and what a drop into one writes — one answer from
+  // one place, because `actions/board.ts` walks the same columns and the two must not
+  // drift. A scope naming one team stacks by its catalogue; anything wider stacks by
+  // category and rebases the drop onto the card's own team's word.
+  const shape = useMemo(() => boardShape(teams.data ?? [], scope), [teams.data, scope]);
+  const columns = useMemo(
+    () => boardColumns(shape.vocabulary, visible, shape.bucketOf),
+    [shape, visible],
   );
-  const columns = useMemo(() => boardColumns(vocabulary, visible), [vocabulary, visible]);
 
   const nameOf = useMemo(() => {
     const byId = new Map((users.data ?? []).map((person) => [person.id, person.displayName]));
@@ -111,13 +106,20 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
     if (wanted) openTicket(ticketAddress(wanted), wanted.id);
   }, [requestedOpen, visible, openHandled, openTicket]);
 
-  const moveTo = (status: TicketStatus, ticketId: string) => {
+  const moveTo = (columnKey: string, ticketId: string) => {
     const ticket = visible.find((candidate) => candidate.id === ticketId);
-    // A drop back onto the column a card came from is not an edit, and sending it would
-    // mark the mirror pending for a change nobody made.
-    if (!ticket || ticket.status === status) return;
+    if (!ticket) return;
+    // Three answers, and `boardDrop` picks between them: nothing to do, a status to write,
+    // or a column this card's team has no word for. The last is a refusal the server would
+    // also give, said before the round trip rather than after it.
+    const drop = boardDrop(shape, ticket, columnKey);
+    if (!drop) return;
+    if ("refusal" in drop) {
+      reportError(drop.refusal);
+      return;
+    }
     patch.mutate(
-      { id: ticketId, status },
+      { id: ticketId, status: drop.status },
       {
         // The patch is optimistic, so a refusal already shows as the card snapping back;
         // the strip says *why*, which a snap-back cannot.
@@ -154,16 +156,22 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
     <div
       ref={scroller}
       data-testid="board"
-      // Six equal columns that stop shrinking at 180px and scroll sideways instead:
-      // `grid-cols-6` alone is `minmax(0, 1fr)`, and a 12px title in a 90px column wraps
-      // to five lines. The floor is what makes the board readable on a laptop.
-      //
       // Sideways only, and one row exactly as tall as the board: each column scrolls its
       // own cards now (see `column.tsx` for why), so a vertical scrollbar here as well
       // would be a second one saying something different about the same work. The
       // `minmax(0, 1fr)` row is what lets a column be shorter than its contents at all —
       // an `auto` row grows to the tallest column and nothing ever overflows.
-      className="grid min-h-0 flex-1 grid-cols-[repeat(6,minmax(180px,1fr))] grid-rows-[minmax(0,1fr)] gap-2.5 overflow-x-auto overflow-y-hidden p-4"
+      className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-2.5 overflow-x-auto overflow-y-hidden p-4"
+      // Equal columns that stop shrinking at 180px and scroll sideways instead:
+      // `minmax(0, 1fr)` alone lets a 12px title in a 90px column wrap to five lines, and
+      // the floor is what makes the board readable on a laptop.
+      //
+      // Counted rather than written out, which is why it is a style and not a class — a
+      // Tailwind arbitrary value cannot take a number worked out at render. It was
+      // `repeat(6, …)` while every board had Kanso's six; since `KAN-90` a team can have
+      // four, and four columns in six tracks left two empty ones at the right — a seventh
+      // would have wrapped into a second row the single `grid-rows` track never shows.
+      style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(180px, 1fr))` }}
     >
       {columns.map((column) => (
         <BoardColumnView
@@ -172,9 +180,11 @@ export function BoardView({ reportError }: { reportError: (message: string | nul
           board={scroller}
           control={control}
           // Empty when the scope names no team a ticket could be filed in — which is why
-          // the per-column composer disappears rather than failing.
+          // the per-column composer disappears rather than failing — and empty when the
+          // columns are categories: a composer in one would have to write a status, and
+          // `started` is not one. The `+` comes back the moment the scope names a team.
           seed={
-            seed.ticket.blocked
+            seed.ticket.blocked || scope.kind !== "team"
               ? undefined
               : { teamId: seed.ticket.teamId, projectId: seed.ticket.projectId }
           }
