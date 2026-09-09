@@ -40,6 +40,27 @@ spring:
 server:
   port: 8080
   shutdown: graceful
+  # The distribution image terminates TLS in Caddy and forwards to this process over the
+  # loopback in plain http, so every request Boot sees claims to be `http://127.0.0.1:8080`
+  # and the browser's real scheme and host survive only in the `X-Forwarded-Proto` and
+  # `X-Forwarded-Host` Caddy sets without being asked. `framework` registers Boot's
+  # `ForwardedHeaderFilter` at `Ordered.HIGHEST_PRECEDENCE`, so the request is wrapped ahead
+  # of the whole chain — `OrderedRequestContextFilter` at -105 included, which is what makes
+  # `ServletUriComponentsBuilder.fromCurrentContextPath()` correct too. The default is NONE,
+  # which drops them.
+  #
+  # Two things break without it, and the quieter one is worse. `ConsentController.returnUrl`
+  # and `ReturnUrlSuccessHandler.originOf` both derive this instance's origin from the
+  # request in hand, so unwrapped they *agree* — both say `http`, no comparison fails, and a
+  # member mid-flow is redirected off an `https` page to `http://…/oauth/consent`. The loud
+  # one is `oauth2Login` deriving `redirect_uri` the same way, which Google refuses outright.
+  # `ForwardedHeadersTest` pins the first; only a real provider would show the second.
+  #
+  # Honouring a client-supplied header is only safe because nothing but the proxy can reach
+  # the JVM: the image binds it to 127.0.0.1 and exposes Caddy alone. Publishing this port
+  # would let any caller claim any origin it liked — which is the same trust boundary
+  # `PublicController` and `RegistrationRateLimit` note for `X-Forwarded-For`.
+  forward-headers-strategy: framework
   servlet:
     session:
       cookie:

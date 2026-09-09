@@ -16,14 +16,20 @@ import java.util.concurrent.ConcurrentHashMap
  * a restart. A lost registration counter costs a handful of extra rows under a cap that
  * refuses anyway — not a table, not a lock, not a migration.
  *
- * **What it does not do.** The bucket is one address, and behind a reverse proxy that does
- * not forward the caller's — this application configures no forwarded-headers strategy,
- * so Boot's default of `NONE` applies — every request arrives wearing the proxy's address
- * and shares one bucket. Five an hour is then a limit on the *instance*, not on a caller,
- * and the first legitimate member to connect an agent spends part of it. That is a
- * deployment note rather than a bug to fix here: reading `X-Forwarded-For` without
- * knowing which hop to trust is how a limiter becomes decoration, since the header is the
- * caller's to write.
+ * **What it does not do.** The bucket is one address, and *which* address changed when
+ * `application.yml` set `server.forward-headers-strategy: framework` for the distribution
+ * image: Boot's `ForwardedHeaderFilter` overrides `getRemoteAddr` from the **leftmost**
+ * `X-Forwarded-For` entry, so behind that image's Caddy this counts a caller again instead
+ * of pooling every request behind the proxy into one instance-wide bucket.
+ *
+ * That fixes the honest case and opens the dishonest one, which is worth stating rather
+ * than enjoying. Leftmost is the hop furthest from us and therefore the one the *caller*
+ * writes — Caddy appends, it does not replace — so a client rotating the header now gets a
+ * fresh bucket per request, where before it could only exhaust the shared one. Both are
+ * bad and neither is this file's to fix: closing it needs a count of trusted hops, which is
+ * a fact about someone's deployment that a limiter cannot learn from inside the process.
+ * `/connect/register` is open, so the cap that still holds is the `addresses` ceiling on
+ * the map itself and the refusal at the end of it.
  *
  * @param perHour how many one address may create.
  * @param addresses how many addresses are remembered at once. A ceiling and not a
