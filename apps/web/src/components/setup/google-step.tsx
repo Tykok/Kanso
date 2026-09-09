@@ -2,8 +2,9 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { API_URL, api, type SetupState } from "@/lib/api";
+import { api, type SetupState } from "@/lib/api";
 import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
+import { useApiOrigin } from "@/lib/use-api-origin";
 import { Callout, CopyRow, TextField, messageFor } from "./fields";
 import { FormCard } from "./frame";
 
@@ -12,7 +13,7 @@ import { FormCard } from "./frame";
  * than configurable — and it has to match Google's entry character for character,
  * which is why it is offered to copy instead of described.
  */
-const REDIRECT_URI = `${API_URL}/login/oauth2/code/google`;
+const CALLBACK_PATH = "/login/oauth2/code/google";
 
 type Props = {
   head: ReactNode;
@@ -26,6 +27,10 @@ type Props = {
 export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Props) {
   const stored = state.google;
   const managed = stored.managedByEnvironment;
+
+  // Inside the component, because the origin is the page's own and `next build`
+  // prerenders this file: a `window` read at module scope would fail the build.
+  const redirectUri = `${useApiOrigin()}${CALLBACK_PATH}`;
 
   const [clientId, setClientId] = useState(stored.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
@@ -57,7 +62,7 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
     }
     setClientId(file.clientId);
     if (file.clientSecret) setClientSecret(file.clientSecret);
-    setFileNote(redirectUriProblem(file, REDIRECT_URI));
+    setFileNote(redirectUriProblem(file, redirectUri));
   };
 
   const dirty = clientSecret.trim().length > 0 || clientId.trim() !== (stored.clientId ?? "");
@@ -88,7 +93,7 @@ export function GoogleStep({ head, state, onState, onDone, onSkip, onBack }: Pro
         </Callout>
       )}
 
-      <CopyRow label="Authorised redirect URI" value={REDIRECT_URI} />
+      <CopyRow label="Authorised redirect URI" value={redirectUri} />
       <p className="m-0 text-11 text-faint">
         Paste it into Google Cloud → APIs &amp; Services → Credentials → your OAuth client,
         under Authorised redirect URIs. Google rejects the sign-in if it differs by a

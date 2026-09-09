@@ -2,8 +2,9 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, API_URL, type SetupState } from "@/lib/api";
+import { api, type SetupState } from "@/lib/api";
 import { readNotionAppCredentials, redirectUriProblem } from "@/lib/notion-app-credentials";
+import { useApiOrigin } from "@/lib/use-api-origin";
 import { Callout, CopyRow, TextField, messageFor } from "./fields";
 
 /**
@@ -15,11 +16,11 @@ import { Callout, CopyRow, TextField, messageFor } from "./fields";
  * consent screen is where the person chooses which pages Kanso may see — which is also
  * what retires the step people silently skipped, sharing a page from its `•••` menu.
  *
- * The redirect URI is derived from `API_URL` here and from the incoming request on the
- * server, so what Notion is told and what Notion is answered are the same string. If a
- * reverse proxy rewrites the host, that proxy has to forward it.
+ * The redirect URI is derived from the page's own origin here and from the incoming
+ * request on the server, so what Notion is told and what Notion is answered are the same
+ * string. If a reverse proxy rewrites the host, that proxy has to forward it.
  */
-const REDIRECT_URI = `${API_URL}/api/setup/notion/callback`;
+const CALLBACK_PATH = "/api/setup/notion/callback";
 
 /** Where the integration is created. The same page `.env.example` names for the token. */
 const INTEGRATIONS_URL = "https://www.notion.so/profile/integrations";
@@ -35,6 +36,10 @@ export function NotionConnect({
   const managed = stored.managedByEnvironment;
   /** Pinned in the environment: nothing to type here, and the button is the whole step. */
   const appManaged = stored.appManagedByEnvironment;
+
+  // Inside the component, because the origin is the page's own and `next build`
+  // prerenders this file: a `window` read at module scope would fail the build.
+  const redirectUri = `${useApiOrigin()}${CALLBACK_PATH}`;
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -71,7 +76,7 @@ export function NotionConnect({
     }
     setClientId(credentials.clientId);
     if (credentials.clientSecret) setClientSecret(credentials.clientSecret);
-    setPasteNote(redirectUriProblem(credentials, REDIRECT_URI));
+    setPasteNote(redirectUriProblem(credentials, redirectUri));
   };
 
   const connect = useMutation({
@@ -158,7 +163,7 @@ export function NotionConnect({
             .
           </p>
 
-          <CopyRow label="Redirect URI to register on the integration" value={REDIRECT_URI} />
+          <CopyRow label="Redirect URI to register on the integration" value={redirectUri} />
 
           {pasteNote && <Callout>{pasteNote}</Callout>}
 

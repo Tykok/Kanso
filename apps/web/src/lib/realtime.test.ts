@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectRealtime } from "./realtime";
 
 /**
@@ -116,5 +116,40 @@ describe("a socket that comes back", () => {
       "/topic/teams",
       "/topic/teams/team-a/tickets",
     ]);
+  });
+});
+
+describe("the address the socket dials", () => {
+  /**
+   * The bus is the one caller a relative prefix cannot serve: `new WebSocket("/ws")`
+   * throws where `fetch("/api/…")` resolves. So this is the single place that needs the
+   * origin whether or not a build inlined one, and the only proof of it is the string.
+   *
+   * Reloaded rather than reused, because `API_URL` is captured when the module is first
+   * evaluated and this case is about it being unset.
+   */
+  const inABrowserAt = async (origin: string) => {
+    vi.stubGlobal("window", {
+      location: { origin },
+      // `getDevUser` reads it on the way past; the dev identity rides on the query string.
+      localStorage: { getItem: () => null },
+    });
+    vi.stubEnv("NEXT_PUBLIC_API_URL", undefined);
+    vi.resetModules();
+    return import("./realtime");
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("upgrades the page's own origin rather than dialling a path", async () => {
+    const { connectRealtime: connect } = await inABrowserAt("https://kanso.example.com");
+    connect({ onEvent: () => {}, onResume: () => {} });
+
+    // `wss` and not `ws`, because the replacement is on the scheme: a page served over
+    // TLS dials over TLS, which is also the only thing the browser will let it do.
+    expect(socket().config.brokerURL).toBe("wss://kanso.example.com/ws");
   });
 });

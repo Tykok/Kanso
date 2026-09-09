@@ -11,6 +11,7 @@ import {
   useStartGithubLink,
   useUnlinkGithub,
 } from "@/lib/queries";
+import { useApiOrigin } from "@/lib/use-api-origin";
 import {
   githubLinkAction,
   githubLinkDetail,
@@ -236,14 +237,17 @@ function LinkBadge({ stage }: { stage: ReturnType<typeof githubLinkStage> }) {
 /**
  * The callback URI to register on the App, selectable and copyable.
  *
- * Derived from `NEXT_PUBLIC_API_URL` on this side, which is the same origin the server
+ * Derived from the page's own origin on this side, which is the same origin the server
  * derives it from per request — so what is shown is what the server will send. Read-only
  * input rather than a `<code>`, and selecting from offset 0, the pair of fixes
  * `selectFromTheStart` and `BranchToCopy` both document: a caret left at the end scrolls a
  * long URI past its own scheme and host, which is the part somebody is checking.
+ *
+ * Through `useApiOrigin` and not `window.location` directly: this string is drawn into the
+ * HTML, and `next build` prerenders it with no window at all.
  */
 function CallbackUri() {
-  const value = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/api/github/link/callback`;
+  const value = `${useApiOrigin()}/api/github/link/callback`;
   const [copied, setCopied] = useState(false);
 
   return (

@@ -3,7 +3,36 @@
 // two drift.
 import type { Scope } from "@/store/ui";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+/**
+ * The prefix every request is built on, and empty on purpose.
+ *
+ * Next inlines `NEXT_PUBLIC_*` at build time, so a default of `http://localhost:8080`
+ * welds one deployment's API origin into every published image — the one thing a single
+ * image distributed to strangers cannot carry. Empty makes `${API_URL}${path}` a relative
+ * path, which the browser resolves against the page it came from, and the proxy in front
+ * of both halves decides whether `/api/...` is the API's or the app's.
+ *
+ * `apps/web/.env.development` still sets it for `next dev`, where the two halves really
+ * are on two ports. Next loads that file for `dev` and not for `build`, so nothing it
+ * says can reach a published bundle.
+ */
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+/**
+ * The API's absolute origin, for URLs that are shown, pasted, or parsed.
+ *
+ * A function and not a constant because of the second branch: `next build` prerenders
+ * client components on the server, so a `window` read at module scope is a build failure
+ * rather than a runtime one. Deferring it to call time is what lets the four module-level
+ * constants that used to hold `${API_URL}/...` move inside a component body.
+ *
+ * The empty string it returns there is honest — a prerender has no origin to name — and
+ * `useApiOrigin` is what stops that empty pass from reaching the DOM as a hydration
+ * mismatch. Callers that only ever run in a browser (a click handler, a WebSocket dial)
+ * use this directly.
+ */
+export const apiOrigin = (): string =>
+  API_URL || (typeof window === "undefined" ? "" : window.location.origin);
 
 /**
  * The six a team is *seeded* with — and no longer "the statuses" — `KAN-90`.

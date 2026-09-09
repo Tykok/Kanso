@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from "react";
-import { API_URL, ApiError } from "@/lib/api";
+import { ApiError, apiOrigin } from "@/lib/api";
 
 export const PASSWORD_MIN = 12;
 
@@ -21,10 +21,14 @@ export function passwordProblem(password: string, confirm?: string): string | nu
  * Failures arrive as RFC 7807, so `detail` is already a sentence written for a
  * human and is shown verbatim. The one case worth rewording is no answer at all:
  * "failed to fetch" says nothing, the address that stayed silent says everything.
+ *
+ * `apiOrigin()` and not `API_URL`, which is empty wherever nothing was inlined and would
+ * end this sentence on nothing at all. No hook here: a failed request is not something a
+ * prerender can have, so this is only ever read in a browser.
  */
 export function messageFor(error: unknown): string {
   if (error instanceof ApiError) return error.message;
-  return `No answer from the API at ${API_URL}. Check that it is running.`;
+  return `No answer from the API at ${apiOrigin()}. Check that it is running.`;
 }
 
 /**
