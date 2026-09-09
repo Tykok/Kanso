@@ -185,9 +185,9 @@ One optional variable, `KANSO_TLS`:
 - `off` — Caddy serves plain HTTP on `:80` and the operator terminates TLS in their own
   proxy. Port 80 in both modes, and not `:8080`: the JVM already holds `8080` on the
   loopback, so a second bind there is `EADDRINUSE`. It also leaves an operator's proxy
-  one port to point at whichever mode they chose. `KANSO_PUBLIC_URL` still says `https://…`, because it describes what the
-  *browser* sees, and that is what OAuth redirect URIs and the WebSocket origin check
-  must agree with.
+  one port to point at whichever mode they chose. `KANSO_PUBLIC_URL` still says
+  `https://…`, because it describes what the *browser* sees, and that is what OAuth
+  redirect URIs and the WebSocket origin check must agree with.
 
 The container refuses to start, with a message naming the variable, when
 `KANSO_PUBLIC_URL` is missing or is not an absolute `http(s)` URL, or when
