@@ -68,6 +68,7 @@ from Next where a working OAuth callback should be.
 | `/oauth/consent` | API | `AuthorizationServerConfig.CONSENT_PAGE` |
 | `/connect/register` | API | dynamic client registration, `OAuthRoutes.OPEN_POST` |
 | `/.well-known/oauth-*` | API | MCP discovery, `OAuthRoutes.OPEN_GET` |
+| `/v3/api-docs*` | API | springdoc — **registered by the library, so no annotation grep finds it** |
 | everything else | web | |
 
 `/actuator/*` is deliberately absent: it is not routed, so it is not reachable from
@@ -328,13 +329,21 @@ Boot's default of `NONE` applies*". Today every caller shares the proxy's bucket
 an hour for the whole instance, a weak limit but a hard one. Honouring a forgeable
 header would turn it into a fresh bucket per request, which is not a limit at all.
 
-The fix belongs in the Caddyfile, not in the limiter, and it closes all three at once:
+The fix belongs in the Caddyfile, not in the limiter, and it closes all three at once —
+by deleting the inbound header and letting `reverse_proxy` re-add the peer:
 
 ```
-header_up X-Forwarded-For {remote_host}
+request_header -X-Forwarded-For
 ```
 
-Replacing rather than appending makes the leftmost entry the peer Caddy actually saw.
+Equivalent to `header_up X-Forwarded-For {remote_host}`, which is what this section
+first prescribed, and better on two counts: `header_up` needs a block around *every*
+route, which would destroy the one-line-per-route shape the guard test parses, and this
+does not lean on `{remote_host}` semantics under `trusted_proxies`. The entrypoint writes
+the line to `/run/kanso/forwarded-for.caddy`, which the site block imports, so the mode
+switch is a file rather than a second Caddyfile.
+
+Either way the leftmost entry becomes the peer Caddy actually saw.
 `ClientRegistrationController` gets a real per-caller bucket instead of a per-instance
 one, and the two hand-rolled readers stop being forgeable — an improvement their KDocs
 had conceded as permanent. Three KDocs assert the old behaviour as standing fact —
@@ -433,6 +442,17 @@ something does, the delete has to become a per-platform install.**
 `KANSO_COMMIT` is stamped from the tagged commit, so `/api/me` and the web bundle report
 the released version rather than `dev`.
 
+Two things this section did not anticipate. `v*` matches `v1.2.3-rc1`, and the tag scheme
+above would have moved `latest` onto a prerelease — so a prerelease publishes its own full
+tag and nothing else. And QEMU is still required despite the `$BUILDPLATFORM` pinning: the
+runtime stage's `RUN` instructions execute on the target platform, so `setup-qemu-action`
+stays. The pinning keeps Gradle and Next off it, not everything.
+
+The smoke test covers the amd64 image only. A multi-platform `buildx` produces a manifest
+list, which `docker run` cannot take, so the arm64 image is trusted on the strength of
+every architecture-dependent byte coming from a base image. An arm64 runner is the fix and
+it costs money.
+
 ## Testing
 
 Four levels, and the last one is the only one that proves the artefact.
@@ -449,10 +469,16 @@ route. Adding a controller outside `/api` fails the build rather than the deploy
 
 **Smoke, on the built image.** `release.yml` builds the image, runs it against a
 throwaway Postgres with `KANSO_TLS=off`, waits for the health check, then asserts on one
-origin: `/` serves the app, `/api/auth/mode` serves JSON, `/ws` answers a WebSocket
-upgrade, and `/.well-known/oauth-authorization-server` serves discovery. Those four
-requests are the routing table's whole claim. Nothing is pushed to the registry until
-they pass.
+origin: `/` serves the app, `/api/auth/mode` serves JSON, `/ws` reaches the API, and
+`/.well-known/oauth-authorization-server` serves discovery. Those four requests are the
+routing table's whole claim. Nothing is pushed to the registry until they pass.
+
+`/ws` cannot be asserted as a `101`. It falls under `anyRequest().authenticated()` and
+the smoke handshake carries no session, so Spring answers `401` with an empty body —
+which still proves the point, because Next would answer a 404 **HTML document**. The
+assertion accepts `101|401|403` and fails on an HTML body. Forcing a real `101` would
+need `KANSO_AUTH_MODE=dev`, which conditions the authorization server out and breaks the
+fourth assertion; the two cannot hold in one container run.
 
 Playwright stays out of this. `ci.yml` explains at length why it is absent and that
 reasoning is untouched here.
