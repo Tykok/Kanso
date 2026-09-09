@@ -47,6 +47,18 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
+	/**
+	 * The API described for a machine — `KAN-95`.
+	 *
+	 * Derived from the controllers rather than written beside them, which is the whole
+	 * reason it is a dependency and not a checked-in file: a hand-kept `openapi.yaml` is
+	 * the two-copies-of-one-vocabulary problem this codebase refuses everywhere else, and
+	 * the copy that drifts is the one a third party is reading.
+	 *
+	 * `-api` and not `-ui`: the document is the deliverable, and Swagger UI is a second
+	 * front end with its own static assets to serve and its own CSP to argue with.
+	 */
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.0")
 	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
