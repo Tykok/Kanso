@@ -11,6 +11,7 @@ import {
   ticketRow,
   unique,
   uniqueKey,
+  viewButton,
 } from "./support";
 
 /**
@@ -283,6 +284,96 @@ test.describe("29. a team's words", () => {
     await expect(ticketRow(page, ticket.title).getByTestId("status-pill")).toHaveText(
       "En chantier",
     );
+
+    await api.dispose();
+    await page.context().close();
+  });
+
+  test("a board spanning teams stacks by meaning, and a drop writes each team's own word", async ({
+    browser,
+  }) => {
+    const api = await apiAs(ADMIN);
+    const team = await seedTeam(api, {
+      name: unique("Atelier"),
+      key: uniqueKey(),
+    });
+
+    // Filed before the catalogue is cut down: a new ticket lands in `todo`, and `todo` is
+    // one of the two words about to go.
+    const ticket = await seedTicket(api, {
+      teamId: team.id,
+      title: unique("Ourlet"),
+    });
+    expect(
+      (
+        await api.patch(`/api/tickets/${ticket.id}`, {
+          data: { status: "backlog" },
+        })
+      ).status(),
+    ).toBe(200);
+
+    // A team whose finished work is called something else, and which has no unstarted
+    // status at all. Both halves matter: the first proves a drop is rebased onto this
+    // team's word rather than onto `done`, the second that a column it has nothing in
+    // refuses instead of inventing a destination.
+    const added = await api.post(`/api/teams/${team.id}/statuses`, {
+      data: { label: "Livré", category: "completed" },
+    });
+    expect(added.status()).toBe(200);
+    expect((await api.delete(`/api/teams/${team.id}/statuses/done`)).status()).toBe(204);
+    expect((await api.delete(`/api/teams/${team.id}/statuses/todo`)).status()).toBe(204);
+    await mirrorQueueDrained();
+
+    // No team clicked: the landing scope is every team, which is the one this scenario is
+    // about. Its vocabulary is two teams wide by construction and twenty wide by the time
+    // this suite runs, so the columns can only be the five categories.
+    const page = await openAs(browser, ADMIN);
+    await page.goto("/");
+    await viewButton(page, "Board").click();
+    await expect(page.getByTestId("board")).toBeVisible();
+
+    const categories = await page
+      .getByTestId("board-column")
+      .evaluateAll((columns) => columns.map((element) => element.getAttribute("data-status")));
+    expect(categories).toEqual(["backlog", "unstarted", "started", "completed", "canceled"]);
+
+    // In the words a reader chose, not the wire's: nobody picked `unstarted`.
+    await expect(page.getByTestId("board-column").nth(1)).toContainText("Not started");
+
+    const column = (category: string) =>
+      page.getByTestId("board-column").nth(categories.indexOf(category));
+    const card = page
+      .getByTestId("board-card")
+      .filter({ has: page.getByText(ticket.identifier, { exact: true }) });
+
+    // On the board at all, which is the defect this closes: stacked by key, a card whose
+    // status is a word only its own team knows was in no column and simply not drawn.
+    await expect(card).toHaveCount(1);
+    await expect(
+      column("backlog").getByTestId("board-card").filter({ hasText: ticket.title }),
+    ).toHaveCount(1);
+
+    // One gesture, and the key written is this team's — the assertion is on the server,
+    // because "the card moved column" would pass just as happily on a board that wrote
+    // `done` and drew the card by its category anyway.
+    await card.dragTo(column("completed"));
+    await expect
+      .poll(async () => {
+        const answer = await api.get(`/api/tickets/${ticket.id}`);
+        return ((await answer.json()) as { status: string }).status;
+      })
+      .toBe("livre");
+
+    // And a column this team has nothing in refuses, in the words above the column.
+    await card.dragTo(column("unstarted"));
+    const strip = page.locator(".topbar-error");
+    await expect(strip.locator("span").first()).toHaveText(
+      "This ticket's team has no status in Not started",
+    );
+
+    // Refused means nothing was written: the card is still where the drop before left it.
+    const unmoved = await api.get(`/api/tickets/${ticket.id}`);
+    expect(((await unmoved.json()) as { status: string }).status).toBe("livre");
 
     await api.dispose();
     await page.context().close();

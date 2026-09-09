@@ -1,4 +1,4 @@
-import { labelOfKey, type Vocabulary } from "@/lib/statuses";
+import { labelOfKey, type BoardShape, type Vocabulary } from "@/lib/statuses";
 import type { StatusCategory, Ticket, TicketStatus } from "@/lib/api";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
 
@@ -41,18 +41,25 @@ export type BoardDirection = "up" | "down" | "left" | "right";
  * columns would stop lining up with its own keys the moment one emptied — and there would
  * be no `Done` to drag onto until something was already done.
  *
- * [vocabulary] is the team's catalogue — `statuses.optionsFor`, which answers Kanso's six
- * for a scope with no team to ask, so a draft board still draws.
+ * [vocabulary] and [bucketOf] both come from `statuses.boardShape`, and are taken as two
+ * arguments rather than looked up here because they are two answers to one question the
+ * *scope* settles. One team stacks by status and the columns are its catalogue; a scope
+ * spanning teams stacks by category, because it holds two vocabularies and has no single
+ * word for a bucket. Either way this function is the same arithmetic — it ranges over
+ * whatever columns it was handed and puts each card in whichever one [bucketOf] names.
  *
- * **A board spanning teams is an open question.** `optionsFor` gives it the six, which
- * is what it drew before this change and is right for every team that has invented
- * nothing — but a card in a team with its own words then has no column, and dragging
- * onto `done` writes a key that team may not have. The columns cannot be the five
- * categories either: dropping a card on `unstarted` has no status to write. The two
- * honest answers are to rebase on drop, or to offer columns only for a single team,
- * and neither is `KAN-90`'s to pick — the ticket is about a team defining its own list.
+ * A card [bucketOf] names no column for is left out of every one of them, which is now
+ * only reachable in a team scope: a saved view older than a status being removed, or a
+ * team still loading. It is not silently dropped from a count the board prints, because
+ * the board prints none — the card is simply not there, which is the honest drawing of a
+ * status the columns cannot express, and `boardShape`'s wide half exists so that a
+ * cross-team board never has to make it.
  */
-export function boardColumns(vocabulary: readonly Vocabulary[], tickets: Ticket[]): BoardColumn[] {
+export function boardColumns(
+  vocabulary: readonly Vocabulary[],
+  tickets: Ticket[],
+  bucketOf: (ticket: Ticket) => string,
+): BoardColumn[] {
   const columns: BoardColumn[] = vocabulary.map((row) => ({
     status: row.key,
     label: row.label,
@@ -64,9 +71,37 @@ export function boardColumns(vocabulary: readonly Vocabulary[], tickets: Ticket[
     // Order inside a column is the order the response arrived in — the server's own
     // sort. Re-sorting here would mean the board and the list disagree about which
     // ticket is first, with nothing on either screen to explain the difference.
-    byStatus.get(ticket.status)?.tickets.push(ticket);
+    byStatus.get(bucketOf(ticket))?.tickets.push(ticket);
   }
   return columns;
+}
+
+/**
+ * What dropping [ticket] on the column [columnKey] should do.
+ *
+ * `undefined` for a drop that changes nothing, a status to patch, or a refusal to print
+ * — three answers rather than a boolean, because the caller has a mutation, a status
+ * strip and a no-op to choose between and none of them is the absence of the others.
+ *
+ * "Changes nothing" is asked of the *column* and not of the key: on a board stacked by
+ * category a card dragged from `in_review` onto "In flight" has not left the column it
+ * was in, and rebasing it would silently walk it back to `in_progress` — a move nobody
+ * made, and one the mirror would then push.
+ *
+ * The refusal names the column with the word above it. A reader dropped a card on a
+ * header that says "Not started"; `unstarted` is the wire's spelling of that and appears
+ * on no screen.
+ */
+export function boardDrop(
+  shape: BoardShape,
+  ticket: Ticket,
+  columnKey: string,
+): { status: TicketStatus } | { refusal: string } | undefined {
+  if (shape.bucketOf(ticket) === columnKey) return undefined;
+  const status = shape.rebase(ticket, columnKey);
+  if (status) return { status };
+  const column = shape.vocabulary.find((row) => row.key === columnKey);
+  return { refusal: `This ticket's team has no status in ${column?.label ?? columnKey}` };
 }
 
 /**
