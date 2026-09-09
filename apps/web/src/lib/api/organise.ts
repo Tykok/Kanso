@@ -150,6 +150,20 @@ export type ViewFilters = {
   status?: TicketStatus[];
   /** The drawing's `Statut ≠ Done`. Its own key, because "not done" is the useful shape. */
   statusNot?: TicketStatus[];
+  /**
+   * "Whatever these teams call work in this state" — the chip asks it as `Meaning`.
+   *
+   * Beside `status` and not replacing it, which is `TicketFilterVocabulary.SERVED`'s own
+   * reasoning: a reader who picked a word off a chip asked for that status and no other.
+   * This is the question a scope spanning teams has to ask instead, because no single
+   * team's keys can express it — "everything started, in both these teams" is two
+   * vocabularies and one meaning.
+   *
+   * The server has served it since `KAN-90` and `use-my-work.ts` has sent it since; it
+   * was kept out of this type on purpose until there was a control, a label and a
+   * spelling to go with it, because every key here is required to have all three.
+   */
+  category?: StatusCategory[];
   priority?: TicketPriority[];
   project?: string[];
   assignee?: string[];

@@ -1,5 +1,16 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { ADMIN, apiAs, openAs, seedInstance, seedTeam, seedTicket, unique, uniqueKey } from "./support";
+import {
+  ADMIN,
+  apiAs,
+  openAs,
+  seedInstance,
+  seedTeam,
+  seedTicket,
+  ticketRow,
+  unique,
+  uniqueKey,
+} from "./support";
+import { mirrorQueueDrained } from "./settled";
 
 /**
  * Slice C — screens 19, 20, 21 and 23.
@@ -395,4 +406,70 @@ test("scenario 19e — the question is typed, completed by pointer, and read bac
   await expect(page.getByTestId("palette")).toBeVisible();
 
   await api.dispose();
+});
+
+/**
+ * The question only a category can express — `KAN-93`.
+ *
+ * Two teams, one meaning, and no word in common: `Meaning is` is the chip that asks it,
+ * and `Status is` cannot, because a status is one team's key and this scope holds two.
+ * The server has served `category` since `KAN-90` and `use-my-work.ts` has sent it since;
+ * what this proves is the other half — that a reader can now ask it, off a box, and read
+ * the answer back on a chip in words nobody had to look up.
+ */
+test("scenario 19g — Meaning asks across two teams that share no word", async ({ browser }) => {
+  const api = await apiAs(ADMIN);
+  const atelier = await seedTeam(api, { name: unique("Atelier"), key: uniqueKey() });
+  const studio = await seedTeam(api, { name: unique("Studio"), key: uniqueKey() });
+
+  // Each team renames the word it calls started work, and they disagree.
+  for (const [team, word] of [
+    [atelier, "En cours"],
+    [studio, "Au four"],
+  ] as const) {
+    const renamed = await api.patch(`/api/teams/${team.id}/statuses/in_progress`, {
+      data: { label: word },
+    });
+    expect(renamed.status()).toBe(200);
+  }
+
+  const running = await seedTicket(api, { teamId: atelier.id, title: unique("Ourlet") });
+  const baking = await seedTicket(api, { teamId: studio.id, title: unique("Tirage") });
+  const waiting = await seedTicket(api, { teamId: atelier.id, title: unique("Devis à faire") });
+  for (const ticket of [running, baking]) {
+    await api.patch(`/api/tickets/${ticket.id}`, { data: { status: "in_progress" } });
+  }
+  await mirrorQueueDrained();
+
+  const page = await openAs(browser, ADMIN);
+  await page.goto("/");
+
+  const box = page.getByTestId("filter-query");
+  const suggestions = page.getByTestId("filter-suggestion");
+
+  // Composed with the mouse, like 19e: the key is offered on an empty line, and its
+  // answers are the five meanings in the words a reader would use.
+  await box.click();
+  await suggestions.filter({ hasText: "meaning" }).first().click();
+  await expect(box).toHaveValue("meaning:");
+
+  // `In flight`, not `started` — the wire's spelling is on no screen.
+  await suggestions.filter({ hasText: "In flight" }).first().click();
+  await expect(box).toHaveValue("meaning:started ");
+
+  await expect(page.getByTestId("filter-chip")).toContainText("In flight");
+
+  // Both teams' rows, under two different words, and nothing that is merely open.
+  const rows = page.getByTestId("ticket-row");
+  await expect(rows.filter({ hasText: running.title })).toHaveCount(1);
+  await expect(rows.filter({ hasText: baking.title })).toHaveCount(1);
+  await expect(rows.filter({ hasText: waiting.title })).toHaveCount(0);
+
+  // And each row still reads as its own team reads it, which is what makes the one chip
+  // above them worth having.
+  await expect(ticketRow(page, running.title).getByTestId("status-pill")).toHaveText("En cours");
+  await expect(ticketRow(page, baking.title).getByTestId("status-pill")).toHaveText("Au four");
+
+  await api.dispose();
+  await page.context().close();
 });

@@ -122,3 +122,13 @@ describe("withoutChip", () => {
     expect(filters.project).toEqual(["p1"]);
   });
 });
+
+describe("the meaning chip", () => {
+  // The reader's words, not the wire's: nobody chose `unstarted`, and `CATEGORY_LABELS`
+  // exists for exactly the surfaces a person reads.
+  it("prints the categories as a reader would say them", () => {
+    expect(chipsOf({ category: ["unstarted", "started"] }, names)).toEqual([
+      { key: "category", label: "Meaning", value: "Not started, In flight" },
+    ]);
+  });
+});

@@ -40,7 +40,8 @@ export type FacetKind = "many" | "flag" | "number";
  * four of the six are fetched — the surface drawing the control has the queries, and this
  * module is imported by a test suite with no network.
  */
-export type FacetSource = "status" | "priority" | "project" | "assignee" | "cycle" | "label";
+export type FacetSource =
+  "status" | "category" | "priority" | "project" | "assignee" | "cycle" | "label";
 
 export type Facet = {
   key: keyof ViewFilters;
@@ -69,6 +70,10 @@ const CONTROLS = {
   // Its own facet and not a mode of `status`, because "not done" is the useful question
   // and the drawing writes it `Statut ≠ Done`.
   statusNot: { label: "Status is not", kind: "many", source: "status" },
+  // `Meaning`, not `Category`: the column is called `category` and no reader chose that
+  // word, nor `unstarted` and `completed` under it. The question it asks is the one a
+  // scope spanning teams can ask and `Status is` cannot — two vocabularies, one meaning.
+  category: { label: "Meaning is", kind: "many", source: "category" },
   priority: { label: "Priority is", kind: "many", source: "priority" },
   assignee: { label: "Assignee is", kind: "many", source: "assignee" },
   unassigned: { label: "Unassigned", kind: "flag" },

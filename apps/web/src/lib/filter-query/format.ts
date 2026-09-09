@@ -80,6 +80,8 @@ function tokenFor(
       return prefixed("status", spell(undefined, filters.status));
     case "statusNot":
       return prefixed("-status", spell(undefined, filters.statusNot));
+    case "category":
+      return prefixed("meaning", spell(undefined, filters.category));
     case "priority":
       return prefixed("priority", spell(undefined, filters.priority));
     case "assignee":

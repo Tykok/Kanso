@@ -44,9 +44,10 @@ export const CATALOG: FilterCatalog = {
 export const NAMES = namesFrom(CATALOG);
 
 /**
- * One line carrying all twelve facets, in `FACET_ORDER`, spelled the way `format` writes
+ * One line carrying all thirteen facets, in `FACET_ORDER`, spelled the way `format` writes
  * them. The round trip and the coverage claim are both made against this.
  */
 export const CANONICAL =
-  "project:onboarding status:todo,in_progress -status:done priority:urgent,high " +
-  "assignee:@me assignee:none cycle:24 label:bug open:>7d estimate:none estimate:3..8";
+  "project:onboarding status:todo,in_progress -status:done meaning:started " +
+  "priority:urgent,high assignee:@me assignee:none cycle:24 label:bug open:>7d " +
+  "estimate:none estimate:3..8";

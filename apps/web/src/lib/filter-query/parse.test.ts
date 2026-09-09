@@ -32,6 +32,27 @@ describe("every facet has a spelling", () => {
     expect(filtersOf("-status:done")).toEqual({ statusNot: ["done"] });
   });
 
+  /**
+   * The question no team's keys can express — `KAN-93`.
+   *
+   * The token is the wire's own word, the same way `status:in_progress` is: the language
+   * spells a closed vocabulary by its key and prints the reader's word beside it in the
+   * suggestion list. `meaning` and not `category` as the noun, because `category` is what
+   * the column is called and `Meaning` is what the chip asks.
+   */
+  it("meaning", () => {
+    expect(filtersOf("meaning:started,completed")).toEqual({
+      category: ["started", "completed"],
+    });
+  });
+
+  it("refuses a meaning no category has", () => {
+    expect(errorsOf("meaning:shipped")[0]).toMatchObject({
+      code: "unknown-value",
+      key: "meaning",
+    });
+  });
+
   it("priority", () => {
     expect(filtersOf("priority:urgent,high")).toEqual({ priority: ["urgent", "high"] });
   });
