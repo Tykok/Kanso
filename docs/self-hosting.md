@@ -97,6 +97,25 @@ docker run -d --name kanso \
 Quote the JDBC URL. `?sslmode=require` contains a `?` and `&` separates further
 parameters, both of which a shell will happily eat.
 
+**If Postgres runs on this machine but outside Docker, the host is not `localhost`.**
+Inside the container `localhost` is the container, so a URL naming it reaches nothing and
+the boot ends in `connection refused`. It is the commonest way this step fails, because
+the address that works from your shell is the one address that cannot work from in here.
+Name the host explicitly instead:
+
+```bash
+docker run -d --name kanso \
+  --add-host=host.docker.internal:host-gateway \
+  -e SPRING_DATASOURCE_URL='jdbc:postgresql://host.docker.internal:5432/kanso' \
+  … ghcr.io/tykok/kanso
+```
+
+`--add-host` is what makes that name resolve on Linux, where Docker does not define it on
+its own; on Docker Desktop it already exists and the flag is harmless. Postgres also has
+to be listening on an address the container can reach — `listen_addresses` covering more
+than `localhost`, and a `pg_hba.conf` line admitting the Docker bridge network — which is
+a change to your Postgres, not to Kanso.
+
 ### You do not
 
 Copy [`docker/docker-compose.yml`](../docker/docker-compose.yml) out of the repository —
@@ -292,7 +311,7 @@ the less tested one.
 |---|---|
 | Exits in a second, `kanso: KANSO_PUBLIC_URL is not set…` | It says what to set. |
 | Exits during Flyway, `permission denied to create extension "pg_trgm"` | The role is not a superuser. [Above](#prepare-the-database). |
-| Exits during Flyway, connection refused | `SPRING_DATASOURCE_URL` names a host this container cannot resolve. On Compose that is the service name, not `localhost`. |
+| Exits during Flyway, connection refused | `SPRING_DATASOURCE_URL` names a host this container cannot reach. On Compose that is the service name; for a Postgres on this machine but outside Docker it is `host.docker.internal`, never `localhost`. [Above](#you-already-have-postgres). |
 | Health never goes green, no error in the log | Give it two minutes on a cold database before believing it. |
 | Sign-in with Google returns `redirect_uri_mismatch` | `KANSO_PUBLIC_URL` disagrees with what the browser used, or your proxy is not sending `X-Forwarded-Proto: https`. |
 | Signed in, but the board never updates by itself | The WebSocket handshake was rejected. Same cause: the `Origin` header is compared to `KANSO_PUBLIC_URL` exactly. |
