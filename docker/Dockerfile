@@ -176,6 +176,20 @@ COPY docker/rootfs /
 RUN mkdir -p /data && chown kanso:kanso /data
 VOLUME ["/data"]
 
+# `image.source` is not decoration: it is the one label GHCR reads, and without it a
+# pushed package is attached to the *account* and to no repository. `v0.1.0` shipped
+# without it and the result was an image that had demonstrably been pushed — three
+# manifests, no errors — and appeared nowhere anyone would look for it, because the
+# Packages panel on the repository page lists only packages that name it here. Being
+# private hid the other half. The label also gives the package page its README and its
+# link back, which is the whole reason a stranger trusts the image at all.
+#
+# In the Dockerfile rather than as `labels:` on the push action, so a locally built image
+# answers `docker inspect` the same way the released one does.
+LABEL org.opencontainers.image.source="https://github.com/Tykok/Kanso"
+LABEL org.opencontainers.image.description="Kanso — projects, tickets and the documents that explain them, in one image."
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 ENV NODE_ENV=production
 # Loopback, so the API is unreachable except through Caddy and the routing table.
 ENV SERVER_ADDRESS=127.0.0.1
