@@ -311,7 +311,8 @@ the less tested one.
 |---|---|
 | Exits in a second, `kanso: KANSO_PUBLIC_URL is not set…` | It says what to set. |
 | Exits during Flyway, `permission denied to create extension "pg_trgm"` | The role is not a superuser. [Above](#prepare-the-database). |
-| Exits during Flyway, connection refused | `SPRING_DATASOURCE_URL` names a host this container cannot reach. On Compose that is the service name; for a Postgres on this machine but outside Docker it is `host.docker.internal`, never `localhost`. [Above](#you-already-have-postgres). |
+| Exits in ten seconds, `kanso: cannot reach …` | The entrypoint probed the host in `SPRING_DATASOURCE_URL` before starting the JVM and got nothing. On Compose that host is the service name; for a Postgres on this machine but outside Docker it is `host.docker.internal`, never `localhost`. [Above](#you-already-have-postgres). |
+| Exits during Flyway, `password authentication failed` | The host answered, so the URL is right; `SPRING_DATASOURCE_USERNAME` or `_PASSWORD` is not, or `pg_hba.conf` demands a method the driver did not offer. |
 | Health never goes green, no error in the log | Give it two minutes on a cold database before believing it. |
 | Sign-in with Google returns `redirect_uri_mismatch` | `KANSO_PUBLIC_URL` disagrees with what the browser used, or your proxy is not sending `X-Forwarded-Proto: https`. |
 | Signed in, but the board never updates by itself | The WebSocket handshake was rejected. Same cause: the `Origin` header is compared to `KANSO_PUBLIC_URL` exactly. |

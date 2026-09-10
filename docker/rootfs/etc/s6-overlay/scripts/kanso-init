@@ -122,3 +122,86 @@ printf '%s' "$site" > /run/s6/container_environment/KANSO_SITE_ADDRESS
 # mount does not — it arrives owned by root, and the first symptom is the API failing to
 # write a key it will then be unable to read back on the next boot.
 install -d -o kanso -g kanso -m 0700 /data
+
+# --- can the database be reached? ----------------------------------------------------
+
+# Last, because it is the only check here that costs a network round trip, and because an
+# operator watching the log should see the origin and the TLS mode resolved before this
+# spends fifteen seconds on a host that does not answer.
+#
+# What it buys: a wrong host currently surfaces as a Hikari stack trace about two minutes
+# in, which says `connection refused` and nothing about why — and the why is nearly always
+# the same one. This turns that into a sentence in about three seconds.
+#
+# The parsing is deliberately shallow and **fails open**. `jdbc:postgresql:` has forms this
+# does not read — `jdbc:postgresql:///db?host=…`, a comma-separated list of hosts for
+# failover — and a check that refused a configuration it merely failed to understand would
+# be worse than no check at all. Anything unrecognised is skipped in silence and Hikari
+# gets to be the authority, exactly as it is today.
+db_authority=""
+case "$SPRING_DATASOURCE_URL" in
+	jdbc:postgresql://?*)
+		db_authority=${SPRING_DATASOURCE_URL#jdbc:postgresql://}
+		db_authority=${db_authority%%/*}      # drop /database and anything after it
+		db_authority=${db_authority%%\?*}     # and a ?query on a URL that named no database
+		db_authority=${db_authority%%,*}      # first host of a failover list; one is enough
+		;;
+esac
+
+if [ -n "$db_authority" ]; then
+	case "$db_authority" in
+		# Bracketed IPv6 first, and on its own branch because the address is full of the
+		# colon the branch below splits on: `[::1]:6543` would otherwise read as host `[`
+		# on port `6543`, and `[::1]` with no port as a host ending in a bracket.
+		\[*\]*)
+			db_host=${db_authority%%\]*}; db_host=${db_host#\[}
+			db_rest=${db_authority#*\]}
+			case "$db_rest" in :?*) db_port=${db_rest#:} ;; *) db_port=5432 ;; esac
+			;;
+		*:*) db_host=${db_authority%%:*}; db_port=${db_authority##*:} ;;
+		*) db_host=$db_authority; db_port=5432 ;;
+	esac
+
+	# `localhost` inside this container is this container, so for a Postgres running on the
+	# machine outside Docker it is the one address guaranteed not to work — and it is the
+	# address that works from the operator's own shell, which is why they reach for it.
+	#
+	# A warning and not a refusal: `--network host` makes it correct, and refusing a
+	# configuration that works would be the worse error. The reachability check below is
+	# what decides; this only makes sure the right advice is already on screen when it does.
+	case "$db_host" in
+		localhost|127.0.0.1|::1)
+			echo "kanso: SPRING_DATASOURCE_URL names $db_host, which inside this container is\
+ this container. If Postgres runs on the machine outside Docker, use\
+ host.docker.internal and start with --add-host=host.docker.internal:host-gateway."
+			;;
+	esac
+
+	# Node rather than nc or bash's /dev/tcp: the runtime base is node:20-bookworm-slim, so
+	# this adds nothing to the image, and the s6 shell is not bash.
+	reach() {
+		node -e '
+			const net = require("net");
+			const s = net.connect({ host: process.argv[1], port: Number(process.argv[2]) });
+			s.setTimeout(3000);
+			s.on("connect", () => { s.destroy(); process.exit(0); });
+			s.on("timeout", () => { s.destroy(); process.exit(1); });
+			s.on("error", () => process.exit(1));
+		' "$1" "$2"
+	}
+
+	# Three attempts and not one. A database that is up but whose network is a second slow
+	# to settle is a restart loop if the first refusal is final, and `restart: unless-stopped`
+	# would hide it as flapping rather than report it.
+	db_up=""
+	for _ in 1 2 3; do
+		if reach "$db_host" "$db_port"; then db_up=yes; break; fi
+		sleep 2
+	done
+
+	[ -n "$db_up" ] ||
+		refuse "cannot reach $db_host:$db_port from inside this container, so Flyway would\
+ fail two minutes from now. Check that SPRING_DATASOURCE_URL names a host this container\
+ can reach, that Postgres listens on an address other than localhost, and that pg_hba.conf\
+ admits the Docker network."
+fi
