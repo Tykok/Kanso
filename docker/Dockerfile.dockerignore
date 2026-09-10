@@ -6,8 +6,17 @@
 # The host's own toolchains. The darwin trees are not merely weight: `COPY apps/web/ ./`
 # would lay a darwin-arm64 node_modules over the linux one installed a layer earlier, and
 # `build/` would hand Gradle an answer from another machine.
-**/node_modules
-**/.next
+#
+# Named by path and not as `**/node_modules` and `**/.next`, which is what they were until
+# `v0.1.0` failed on them. Those globs match at every depth, so they also emptied
+# `dist/web/node_modules` and `dist/web/.next` — the prebuilt bundle the release hands to
+# `web-prebuilt` — from the inside, while the note at the foot of this file correctly said
+# `dist/` itself must not be excluded. The image built, because a Dockerfile cannot tell
+# that a `COPY` arrived short, and died on `Cannot find module 'next'` four minutes later
+# inside the smoke test. Anything added here that should not reach `dist/` gets a path too.
+node_modules
+apps/*/node_modules
+apps/web/.next
 apps/api/build
 apps/api/.gradle
 apps/api/.kotlin

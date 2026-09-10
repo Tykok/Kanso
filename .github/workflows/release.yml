@@ -161,13 +161,30 @@ jobs:
           cp -r apps/web/.next/static dist/web/.next/static
           cp -r apps/web/public dist/web/public
 
+      # A tar, and not the directory itself, because `v0.1.0` proved what uploading the
+      # directory costs. `actions/upload-artifact` excludes dotfiles unless
+      # `include-hidden-files` is set, and pnpm puts every real file of the bundle under
+      # `node_modules/.pnpm` — 1792 of its 1797 entries. The other five are `server.js`,
+      # `package.json` and three symlinks *into* that store, so the artefact arrived with
+      # `next` a dangling link and the image died on `Cannot find module 'next'` before
+      # Caddy had finished starting. `.next/static` went the same way, silently, and would
+      # have served the app without its stylesheet even after the first was fixed.
+      #
+      # `include-hidden-files: true` would carry the dotfiles but not fix this: the action
+      # dereferences symlinks, so those three links become three full copies of `next`,
+      # `react` and `react-dom` and the store is uploaded twice over. Tar preserves the
+      # links, the dot-directories and the modes exactly, and uploads one file instead of
+      # eighteen hundred.
+      - name: Pack the artefacts
+        run: tar -czf kanso-dist.tar.gz dist
+
       # Retention is short on purpose. This is custody for the length of a release and an
       # investigation afterwards, not an archive: the image in GHCR is the durable copy,
       # and 90 days of jars for every tag is a storage bill for something nobody opens.
       - uses: actions/upload-artifact@v4
         with:
           name: kanso-dist
-          path: dist
+          path: kanso-dist.tar.gz
           retention-days: 14
 
   # ---- job two: the image -----------------------------------------------------------
@@ -187,7 +204,28 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: kanso-dist
-          path: dist
+
+      # The tar restores `dist/` with its symlinks and its dot-directories intact — see
+      # the packing step in job one for what uploading the bare directory cost.
+      #
+      # The file count is asserted rather than trusted. A bundle that arrives short is
+      # exactly what happened at `v0.1.0`, and it fails four minutes later inside a
+      # container as a Node stack trace, which is a long way from the step that broke it.
+      # The floor is deliberately loose: it catches a truncated unpack, not a dependency
+      # the front end legitimately added or dropped.
+      - name: Unpack the artefacts
+        run: |
+          set -eu
+          tar -xzf kanso-dist.tar.gz
+          test -f dist/app.jar
+          test -d dist/web/.next/static
+          files=$(find dist/web -type f -o -type l | wc -l)
+          echo "release: unpacked $files files into dist/web"
+          if [ "$files" -lt 1000 ]; then
+            echo "release: dist/web unpacked to $files files, which is far short of the" \
+              "bundle pnpm produces — the artefact lost its node_modules/.pnpm store." >&2
+            exit 1
+          fi
 
       # The tags, computed once so the smoke build and the push cannot disagree about what
       # is being released.
@@ -336,6 +374,19 @@ jobs:
           #    depending on whether the instance has an owner yet.
           curl -fsSL "$base/" | grep -q '/_next/' || fail "/ did not serve the app"
 
+          # 1b. And the asset that document asks for actually exists. This is a separate
+          #    assertion because assertion one passes without it: the HTML is generated at
+          #    request time and names `/_next/static/…` whether or not the file was ever
+          #    copied into the image. `v0.1.0` lost `.next/static` to a `**/.next` line in
+          #    `Dockerfile.dockerignore` at the same time it lost `node_modules`, and had
+          #    only the second been fixed this release would have shipped an application
+          #    that renders without a stylesheet and says nothing about it. Reads the
+          #    stylesheet's real URL out of the document rather than pinning a hashed name.
+          asset=$(curl -fsSL "$base/" | grep -oE '/_next/static/[^"]+\.css' | head -1)
+          [ -n "$asset" ] || fail "/ named no stylesheet, so this assertion cannot run"
+          curl -fsS -o /dev/null "$base$asset" \
+            || fail "the app asked for $asset and the image does not have it"
+
           # 2. `/api/*` reaches the API. `/api/auth/mode` because it is `permitAll` in
           #    `SecurityConfig` and answers before anyone can possibly have a session, so
           #    a 401 here means routing, not authentication.
@@ -363,7 +414,7 @@ jobs:
           curl -fsS "$base/.well-known/oauth-authorization-server" \
             | grep -q '"issuer"' || fail "discovery did not serve JSON"
 
-          echo "smoke: four assertions passed"
+          echo "smoke: five assertions passed"
 
       # `always()` so a failed assertion still frees the port and the volume for the next
       # step of a re-run on a self-hosted runner. On a hosted one the runner is discarded
