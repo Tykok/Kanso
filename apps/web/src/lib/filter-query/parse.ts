@@ -1,7 +1,7 @@
 import { CATEGORY_LABELS, labelOfKey } from "@/lib/statuses";
 import { facetByKey } from "@/components/organise/facets";
 import { EFFORT_POINTS, TICKET_PRIORITIES, DEFAULT_STATUSES, type ViewFilters } from "@/lib/api";
-import { PRIORITY_LABELS, STATUS_LABELS } from "../status";
+import { PRIORITY_LABELS } from "../status";
 import { CATEGORY_ORDER, inOrder, WORKFLOW_ORDER } from "../status-order";
 import {
   FILTER_KEYS,

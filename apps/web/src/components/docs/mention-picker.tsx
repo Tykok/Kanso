@@ -3,7 +3,7 @@
 import { labelOfKey } from "@/lib/statuses";
 import { useState } from "react";
 import type { Ticket, User } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+
 import { Backdrop } from "../overlays";
 import { StatusDot } from "../ui/status-dot";
 import type { DocMention } from "@/store/docs";

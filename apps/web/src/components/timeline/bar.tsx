@@ -3,7 +3,7 @@
 import { colourOfKey } from "@/lib/statuses";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import type { KansoInstant, TicketStatus } from "@/lib/api";
-import { STATUS_COLORS } from "@/lib/status";
+
 import {
   barAccessibleName,
   derivedBorderClass,

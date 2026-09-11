@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCreateTicket } from "@/lib/queries";
-import { colourOf, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { colourOf } from "@/lib/status";
 import { ticketAddress, type Ticket, type TicketStatus } from "@/lib/api";
 import { StatusDot } from "../ui/status-dot";
 import { BoardCard } from "./card";

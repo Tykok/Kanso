@@ -3,7 +3,6 @@ import {
   ACTIVITY_KINDS,
   type ActivityRow,
   type ProjectHealth,
-  type TicketStatus,
 } from "@/lib/api";
 import { PROJECT_HEALTH_LABELS, STATUS_LABELS } from "@/lib/status";
 import { MONTHS } from "./project-copy";

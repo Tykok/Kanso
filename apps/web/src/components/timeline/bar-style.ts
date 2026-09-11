@@ -9,7 +9,6 @@
 import { colourOfKey, labelOfKey } from "@/lib/statuses";
 import type { CSSProperties } from "react";
 import type { TicketStatus } from "@/lib/api";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
 
 /**
  * The state a bar is drawn in. `critical` — on the schedule's critical path, no

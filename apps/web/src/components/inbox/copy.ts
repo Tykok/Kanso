@@ -1,6 +1,5 @@
 import { labelOfKey } from "@/lib/statuses";
-import type { Notification, TicketStatus } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+import type { Notification } from "@/lib/api";
 
 /**
  * What an inbox row says, in one place.

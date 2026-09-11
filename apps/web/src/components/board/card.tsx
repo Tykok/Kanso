@@ -2,7 +2,7 @@
 
 import { colourOfKey } from "@/lib/statuses";
 import { dayValue, ticketAddress, type Ticket } from "@/lib/api";
-import { categoryOf, STATUS_COLORS } from "@/lib/status";
+import { categoryOf } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { SyncBadge, TicketIdentifier } from "../pills";
 import { PriorityMark } from "../ui/priority-mark";

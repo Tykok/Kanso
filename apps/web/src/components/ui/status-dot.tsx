@@ -1,6 +1,6 @@
 import { colourOfKey } from "@/lib/statuses";
 import type { StatusCategory, TicketStatus } from "@/lib/api";
-import { colourOf, STATUS_COLORS } from "@/lib/status";
+import { colourOf } from "@/lib/status";
 
 /**
  * backlog and todo are rings, in progress is half, in review is three
