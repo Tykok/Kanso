@@ -100,7 +100,7 @@ class DocService(
 	/**
 	 * Puts the folder in the trash. Nothing is written to the tree at all.
 	 *
-	 * The cascade question `follow-ups.md` left open, answered: the delete reaches the
+	 * The cascade question the wiki's `Follow-ups` left open, answered: the delete reaches the
 	 * **sub-folders** and not the **pages**, which is the line `V9` already drew in the
 	 * schema — `doc_folders.parent_id` is `ON DELETE CASCADE`, `doc_pages.folder_id` is
 	 * `ON DELETE SET NULL`. Structure travels with the branch; writing does not, because

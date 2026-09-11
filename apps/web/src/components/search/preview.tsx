@@ -2,7 +2,7 @@
 
 import { labelOfKey } from "@/lib/statuses";
 import { dayValue, type Project } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+
 import { SyncBadge, TicketIdentifier } from "../pills";
 import { Kbd } from "../ui/kbd";
 import type { SearchRow } from "./results";

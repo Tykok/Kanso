@@ -82,7 +82,7 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
   await viewButton(page, "Timeline").click();
 
   // Bars are named `${identifier}: ${title} — ${statusLabel}` and reached by role — no
-  // class selector anywhere in this file, which is the debt `follow-ups.md` records
+  // class selector anywhere in this file, which is the debt the wiki's `Follow-ups` records
   // against the rest of the suite. Matched by prefix: this scenario never changes either
   // ticket's status, so pinning the suffix would only make the lookup fragile.
   const first = page.getByRole("button", { name: new RegExp(`^${escapeRe(groundwork.identifier)}: `) });

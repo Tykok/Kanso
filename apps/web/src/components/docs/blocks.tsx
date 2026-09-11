@@ -4,7 +4,7 @@ import { labelOfKey } from "@/lib/statuses";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { DocBlock, DocBlockContent, Ticket } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
+
 import { cn } from "@/lib/utils";
 import { StatusDot } from "../ui/status-dot";
 

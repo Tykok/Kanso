@@ -2,7 +2,7 @@ import { labelOfKey } from "@/lib/statuses";
 import type { Mirror, TicketPriority, TicketStatus } from "@/lib/api";
 import { PRIORITY_ACTIONS, type ActionContext } from "@/lib/actions";
 import { cn } from "@/lib/utils";
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS } from "@/lib/status";
 import { StatusDot } from "./ui/status-dot";
 import { PriorityMark as PriorityGlyph } from "./ui/priority-mark";
 import { Menu } from "./menu";

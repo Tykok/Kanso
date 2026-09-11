@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
  *
  * Asserted through the services rather than through events: the suite is
  * `@Transactional` and rolls back, so `EventPublisher`'s `afterCommit` never fires and
- * an event assertion here could only ever pass vacuously — `follow-ups.md` records why.
+ * an event assertion here could only ever pass vacuously — the wiki's `Follow-ups` records why.
  */
 @Transactional
 class TrashServiceTest : PostgresTest() {

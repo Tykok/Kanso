@@ -54,8 +54,8 @@ import java.util.Base64
  * they differ, so a token belonging to one client is worth nothing to another.
  *
  * The half of §4.3.1 that is **not** met is replay detection: reuse of a spent refresh
- * token is refused, and does not revoke the chain. `docs/follow-ups.md` records it, and
- * it stopped being theoretical the moment this file made refresh tokens exist.
+ * token is refused, and does not revoke the chain. The wiki's `Follow-ups` page records
+ * it, and it stopped being theoretical the moment this file made refresh tokens exist.
  */
 
 /**

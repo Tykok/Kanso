@@ -69,7 +69,7 @@ pnpm exec playwright show-report
 
 ## The captures, which are not a scenario
 
-`shots.spec.ts` writes the five PNGs the public site's walk-through shows, into
+`shots.spec.ts` writes the five captures the public site's walk-through shows, into
 `site/media/`. It is tagged `@shots` and `playwright.config.ts` keeps it out of every
 other run, because it writes files and because it needs a database no `Atlas` has been
 created in — ticket identifiers come off a counter on the team row, and a picture
@@ -79,12 +79,20 @@ photographing `KAN-47`.
 ```bash
 docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wait
 pnpm shots
+pnpm shots:pack
 ```
 
-The files are never committed: they are uploaded to the host named in `site/media.json`.
-Its dates are absolute, in September 2026, and the run goes red once they are past —
-deliberately, so the site is never handed a walk-through of missed deadlines. Move
-`PLAN` forward when that happens.
+The second command is what the site actually publishes. Playwright encodes PNG and
+nothing else, and the five come to about 1.1 MB; `shots:pack` re-encodes them as WebP at
+1920 wide into `site/media/v1/`, which is 233 KB for the set and is committed. The PNGs
+beside them are not — `.gitignore` carries the arithmetic. It needs `cwebp`
+(`brew install webp`), the one tool this step wants that the suite does not.
+
+Look at the five before committing them. Every shot asserts its own screen before the
+shutter opens, so what the assertions do not cover is what an eye has to: a half-loaded
+panel, a state nobody meant to photograph. `PLAN` is absolute days in September 2026 —
+what expires is not a bar's colour but the chart's shape, once the today marker has left
+the window and the picture is of finished work. Move `PLAN` forward when it does.
 
 ## The import, which needs a workspace
 
@@ -373,8 +381,9 @@ mean something.
 New files query by role and accessible name. A label whose text is an `sr-only` span is
 invisible to `getByLabel`, which matches a label's *rendered* text — the property chips on
 the ticket page are labelled that way, and `getByRole("combobox", { name: … })` is what
-reaches them, through the same accessibility tree a screen reader reads. `follow-ups.md` holds it against the older
-scenarios that they reach for private CSS classes — `.row`, `.status`, `.shortcuts` —
+reaches them, through the same accessibility tree a screen reader reads. The wiki's
+`Follow-ups` holds it against the older scenarios that they reach for private CSS
+classes — `.row`, `.status`, `.shortcuts` —
 which couples the suite to the stylesheet and breaks on refactors that changed nothing a
 person can see. Timeline bars are `role="button"` named `${identifier}: ${title}`, tray
 chips are named the same way, and a dependency arrow is a focusable path whose `<title>`

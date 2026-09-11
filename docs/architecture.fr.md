@@ -103,7 +103,7 @@ n'a rien à voir avec celle du miroir.
 | 14 | Un rollup ou une formule n'a pas de colonne ici et pas de sens hors de Notion. | Conservé sous sa valeur *affichée* dans une section « imported from Notion » de la description, avec toutes les autres propriétés que rien n'a revendiquées. Volontairement lossy : une ligne lisible là vaut mieux qu'une copie fidèle des rouages de Notion dans une colonne qu'il faudrait ensuite maintenir en phase. |
 | 15 | Une relation ne porte du sens que si ses deux bouts arrivent. Une colonne `Projet` qui pointe vers une base ignorée — ou importée dans le mauvais rôle — n'a rien à résoudre. | La deuxième étape le dit, à côté du décompte de ce que cela coûte, et propose d'importer l'autre base dans le rôle que cette relation demande. Ce n'est jamais bloquant : la ligne atterrit dans le repli donné à sa base, et la relation est comptée comme abandonnée dans le compte rendu. |
 | 16 | Une relation `two_property` est déclarée des deux côtés et les deux peuvent se contredire — un ticket qui nomme le projet B alors que le projet A prétend le contenir. | La réponse de l'enfant gagne, parce que l'enfant est la ligne qu'on écrit, et le désaccord est compté dans le compte rendu plutôt que tranché en silence. La colonne inverse d'un parent (`Tâches` sur une base de projets) est un recours de dernier ressort, lue seulement là où l'enfant n'a rien dit. |
-| 17 | Notion ne répond aucun total de pages pour une data source : un décompte est donc un parcours, à environ 2,5 requêtes par seconde. | Le parcours est borné par `kanso.notion.import.max-pages-per-database`, et une base plus longue rapporte le décompte atteint suivi d'un `+` — à la première étape, à la deuxième et sur le bouton de confirmation. Un nombre nu devant un bouton de confirmation serait un nombre faux. L'import ramène ensuite le préfixe qu'il a lu et rien au-delà de la borne ; `follow-ups.md` le lui reproche. |
+| 17 | Notion ne répond aucun total de pages pour une data source : un décompte est donc un parcours, à environ 2,5 requêtes par seconde. | Le parcours est borné par `kanso.notion.import.max-pages-per-database`, et une base plus longue rapporte le décompte atteint suivi d'un `+` — à la première étape, à la deuxième et sur le bouton de confirmation. Un nombre nu devant un bouton de confirmation serait un nombre faux. L'import ramène ensuite le préfixe qu'il a lu et rien au-delà de la borne ; la page [Follow-ups](https://github.com/Tykok/Kanso/wiki/Follow-ups) du wiki le lui reproche. |
 | 18 | Une colonne `people` ne peut devenir une assignation que si un compte Kanso existe déjà pour cette personne. | La quatrième étape fait correspondre chaque personne Notion rencontrée sur une colonne mappée à un compte et *écrit* `users.notion_person_id`, si bien que la réponse tient pour tous les imports suivants et permet ensuite au miroir de remplir la propriété `people`. Qui reste sans correspondance laisse ses lignes non assignées plutôt que devinées, et créer des comptes reste le travail du flux d'invitation. |
 
 ### Connecter Notion
@@ -190,7 +190,8 @@ Trois choses lisent cette table, et trois seulement :
 `data_source_id` est écrit sur chaque ligne et, aujourd'hui, **lu par rien**. C'est ce dont un
 import ultérieur aurait besoin pour dire « cette base a déjà été ramenée, 396 de ses 400
 pages sont là », et `notion_import_origin_source_idx` est l'index que cette requête
-utiliserait ; aucun écran ne la demande encore, et `follow-ups.md` le dit plutôt que de
+utiliserait ; aucun écran ne la demande encore, et la page
+[Follow-ups](https://github.com/Tykok/Kanso/wiki/Follow-ups) du wiki le dit plutôt que de
 laisser la colonne passer pour porteuse.
 
 Aucun des trois n'est un chemin entrant. Relire Notion dans une ligne existante est ce que
@@ -202,8 +203,9 @@ serait quatre colonnes nullables et un `CHECK` disant qu'une seule est remplie. 
 qu'une entité supprimée laisse une ligne qui ne pointe plus sur rien : la graine que les
 writers résolvent est donc d'abord filtrée sur les lignes vivantes — `ImportOriginRepository.live`,
 une requête d'existence par sorte — et une ligne périmée se comporte alors exactement comme
-une relation vers une base ignorée : elle ne résout rien et retombe sur le repli. Nettoyer
-ces lignes est une entrée de `follow-ups.md`, pas un trigger.
+une relation vers une base ignorée : elle ne résout rien et retombe sur le repli. Nettoyer ces
+lignes est une entrée de la page [Follow-ups](https://github.com/Tykok/Kanso/wiki/Follow-ups)
+du wiki, pas un trigger.
 
 ---
 

@@ -3,7 +3,7 @@
 import { GroupLabel } from "@/components/ui/group-label";
 import type { DeliveredCycle, OpenLoad } from "@/lib/api";
 import { trend } from "@/lib/progress";
-import { colourOf, STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
+import { colourOf } from "@/lib/status";
 import { formatRate } from "@/lib/velocity";
 import { heights, loadBarOrder, progressSegments } from "./burndown";
 

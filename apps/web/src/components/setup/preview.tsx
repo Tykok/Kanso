@@ -5,7 +5,6 @@ import { PriorityMark } from "@/components/ui/priority-mark";
 import { Row } from "@/components/ui/row";
 import { StatusDot } from "@/components/ui/status-dot";
 import type { Mirror, Preferences, TicketPriority, TicketStatus } from "@/lib/api";
-import { STATUS_LABELS } from "@/lib/status";
 
 type PreviewRow = {
   id: string;

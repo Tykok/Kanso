@@ -172,8 +172,8 @@ class ClientRegistrationService(
 					// `OAuth2Authorization.Builder.invalidate`, and a replay followed by a
 					// use of the live token both behaved that way on a running instance.
 					// The code-replay path does cascade, so the asymmetry is real rather
-					// than a reading of the source. `docs/follow-ups.md` records it as the
-					// one MUST of the spec's seven that is unmet.
+					// than a reading of the source. The wiki's `Follow-ups` page records
+					// it as the one MUST of the spec's seven that is unmet.
 					.reuseRefreshTokens(false)
 					.build(),
 			)

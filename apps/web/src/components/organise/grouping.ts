@@ -1,11 +1,10 @@
 import { labelOfKey } from "@/lib/statuses";
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS } from "@/lib/status";
 import { WORKFLOW_ORDER } from "@/lib/status-order";
 import type {
   Ticket,
   TicketGroup as ServerGroup,
   TicketPriority,
-  TicketStatus,
   ViewGroupBy,
   WorkloadRow,
 } from "@/lib/api";

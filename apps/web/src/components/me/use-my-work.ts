@@ -12,7 +12,7 @@ import {
   type ViewFilters,
 } from "@/lib/api";
 import { keys, useMe } from "@/lib/queries";
-import { isOpen, statusesWhere } from "@/lib/status-order";
+import { isOpen } from "@/lib/status-order";
 
 /**
  * The one list three of `/me`'s five tabs are drawn from, and the graph the fourth needs.

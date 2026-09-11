@@ -1,4 +1,4 @@
-import { PRIORITY_LABELS, seededLabel, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS, seededLabel } from "@/lib/status";
 import { CATEGORY_LABELS } from "@/lib/statuses";
 import type { TicketStatus, ViewFilters } from "@/lib/api";
 import { FACET_ORDER } from "./facets";

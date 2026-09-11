@@ -1,6 +1,6 @@
 import { labelOfKey, type BoardShape, type Vocabulary } from "@/lib/statuses";
 import type { StatusCategory, Ticket, TicketStatus } from "@/lib/api";
-import { PRIORITY_LABELS, STATUS_LABELS } from "@/lib/status";
+import { PRIORITY_LABELS } from "@/lib/status";
 
 /**
  * The board's arithmetic, with no React in it.
