@@ -13,21 +13,24 @@
 
 name: Pages
 
-# Manual only, for now, and that is a decision rather than an omission. The repository
-# is private and `has_pages` is false, so every run would fail at `configure-pages` —
-# and a workflow that goes red on every push to `site/` teaches the owner to ignore the
-# only automation in the repository. When Pages is enabled, restore the push trigger
-# commented out below; it is written and only wants uncommenting.
+# Manual only was a decision while the repository was private and `has_pages` was false:
+# every run would have failed at `configure-pages`, and a workflow that goes red on every
+# push to `site/` teaches the owner to ignore the only automation in the repository. Both
+# premises are gone — the repository is public and Pages is enabled, build type
+# `workflow` — so this restores the trigger that comment promised.
 #
-#  push:
-#    branches: [main]
-#    # The site is built from `site/` alone, so nothing else can change its output.
-#    # Narrowing the trigger keeps every push to `apps/` from queueing a deploy that
-#    # would republish byte-identical files.
-#    paths:
-#      - "site/**"
-#      - ".github/workflows/pages.yml"
+# `workflow_dispatch` stays beside it. Re-publishing without a commit is what you want the
+# day a deploy half-lands, and it is the only way to rebuild after changing something that
+# lives outside the repository, which `site/media.json` points at.
 on:
+  push:
+    branches: [main]
+    # The site is built from `site/` alone, so nothing else can change its output.
+    # Narrowing the trigger keeps every push to `apps/` from queueing a deploy that
+    # would republish byte-identical files.
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 # `deploy-pages` mints an OIDC token to claim the Pages deployment, which needs
