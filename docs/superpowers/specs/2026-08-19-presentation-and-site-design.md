@@ -177,20 +177,22 @@ dist/                 # gitignored; what Pages publishes
   style.css
 ```
 
-Two entries join `.gitignore`: `dist/` (a build output) and `site/media/` (local
-placeholders that must never be committed, for the reason the next section gives).
+Two entries join `.gitignore`: `dist/` (a build output) and `site/media/` (the raw PNG
+captures, for the reason the next section gives — `site/media/v1/`, the packed WebP the
+site publishes, is the exception that section's note explains).
 
 ## Media
 
-The five captures in v1 are **placeholders**. Real captures and video clips come later,
-from the author. So the media layer has to be replaceable without touching the template:
+The five captures in v1 were **placeholders**; they are now real, taken from the running
+app by the test below. Video clips still come later, from the author. So the media layer
+has to be replaceable without touching the template:
 
 ```json
 // site/media.json
 {
-  "base": "https://media.example.com/kanso/v1/",   // TO FILL: the author's host
+  "base": "https://tykok.github.io/Kanso/media/v1/",   // filled: the site serves its own
   "steps": [
-    { "key": "step.project",  "type": "image", "src": "01-project.png" },
+    { "key": "step.project",  "type": "image", "src": "01-project.webp" },
     { "key": "step.timeline", "type": "video", "src": "03-timeline.mp4",
       "poster": "03-timeline.png" }
   ]
@@ -203,13 +205,27 @@ dropping a file on the host; turning an image into a video is changing one word.
 
 ### The media is hosted outside the repository
 
+> **Superseded for the five images, September 2026.** The arithmetic below was done on
+> PNG and it was right about PNG: `pnpm shots` writes 1.1 MB of them. `pnpm shots:pack`
+> re-encodes the same five as WebP at 1920 wide and they come to **233 KB for the set** —
+> below the 313 KB of design material this paragraph cites as the thing `.gitignore`
+> refuses, so the comparison it rests on no longer holds. They are committed, in
+> `site/media/v1/`, copied into `dist/` by `build.mjs`, and served from Pages at
+> `https://tykok.github.io/Kanso/media/v1/`. What that buys is not the bytes: it is that
+> the page and its pictures deploy together and cannot drift, and that no live page
+> depends on a host somebody has to remember to keep paying for.
+>
+> **The clips are not superseded.** 5–30 MB per revision is still 5–30 MB per revision,
+> and the section below is the standing decision the day one arrives.
+
 Not committed — at a URL the author hosts. `.gitignore` already made this call for 313 KB
 of design material, on the grounds that *"every clone of an AGPL repository would carry
 them forever"*. Five `@2x` PNGs are 1–2 MB; video clips are 5–30 MB **per revision**, and
 a clip retouched three times is three clips in the history, permanently. Committing them
 would walk in through the front door that file locked, at twenty times the scale.
 
-Three consequences the host must satisfy:
+Three consequences the host must satisfy — all three still hold, and being the host
+ourselves satisfies them rather than excusing them:
 
 - **HTTPS.** An `http://` image on an HTTPS Pages document is blocked, not degraded.
 - **A versioned path** (`…/v1/`). Replace a file at a stable URL and caches keep serving
@@ -222,7 +238,7 @@ workflow. URL verification is a local opt-in, `node site/build.mjs --check`, whi
 every entry. Every media slot renders inside a fixed `aspect-ratio` box and every caption
 reads on its own, so an unreachable host leaves a page that is thinner, not broken.
 
-## The placeholder captures
+## The captures
 
 They are a **test**, not a folder of images: each shot waits for its locators before it
 fires, so a changed screen breaks the script instead of producing a tidy photograph of
@@ -231,7 +247,8 @@ the wrong thing.
 `e2e/shots.spec.ts`, tagged `@shots` and excluded from the default run by `grepInvert` in
 `playwright.config.ts`, run on demand. It reuses `e2e/support.ts` — `apiAs`, `userIdOf` —
 so there is no second install and no duplicated seeding logic. Output goes to
-`site/media/` (gitignored), which the author uploads to the host.
+`site/media/` (gitignored), and `pnpm shots:pack` re-encodes it into `site/media/v1/`,
+which is committed and which `build.mjs` copies into `dist/`.
 
 The seed, over the API: a team `Atlas` → a project → six tickets, two of them joined by a
 dependency and three assigned to the owner → a saved view `Assigned to me`
