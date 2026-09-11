@@ -381,8 +381,9 @@ mean something.
 New files query by role and accessible name. A label whose text is an `sr-only` span is
 invisible to `getByLabel`, which matches a label's *rendered* text — the property chips on
 the ticket page are labelled that way, and `getByRole("combobox", { name: … })` is what
-reaches them, through the same accessibility tree a screen reader reads. `follow-ups.md` holds it against the older
-scenarios that they reach for private CSS classes — `.row`, `.status`, `.shortcuts` —
+reaches them, through the same accessibility tree a screen reader reads. The wiki's
+`Follow-ups` holds it against the older scenarios that they reach for private CSS
+classes — `.row`, `.status`, `.shortcuts` —
 which couples the suite to the stylesheet and breaks on refactors that changed nothing a
 person can see. Timeline bars are `role="button"` named `${identifier}: ${title}`, tray
 chips are named the same way, and a dependency arrow is a focusable path whose `<title>`

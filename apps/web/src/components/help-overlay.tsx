@@ -29,7 +29,7 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
           screen, and it had no element announcing what it is. It is also what the
           keyboard scenario asserts on — `.shortcuts` stopped being unique the moment
           the list grew a section per mode, and keying a test on a private class is
-          what `follow-ups.md` already holds against that suite.
+          what the wiki's `Follow-ups` already holds against that suite.
         */}
         <h2 className="flex-1 text-15 font-medium text-foreground">Keyboard</h2>
         <Button type="button" variant="outline" size="sm" onClick={onClose}>

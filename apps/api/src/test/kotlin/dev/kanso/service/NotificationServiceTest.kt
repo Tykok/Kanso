@@ -26,8 +26,8 @@ import kotlin.test.assertTrue
  * The inbox, asserted through the service.
  *
  * Never through an event: this suite is `@Transactional` and rolls back, so
- * `EventPublisher` defers to an `afterCommit` that never fires — `docs/follow-ups.md`
- * records why. A notification is a row, and a row is what these tests read.
+ * `EventPublisher` defers to an `afterCommit` that never fires — the wiki's `Follow-ups`
+ * page records why. A notification is a row, and a row is what these tests read.
  */
 @Transactional
 class NotificationServiceTest : PostgresTest() {

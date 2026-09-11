@@ -860,7 +860,7 @@ class TicketService(
 	 * changed is a reader doing the log's job.
 	 *
 	 * The cascade the caller runs afterwards is not logged. It moves other tickets' dates,
-	 * and the same argument `follow-ups.md` records for the event applies to the log: two
+	 * and the same argument the wiki's `Follow-ups` records for the event applies to the log: two
 	 * hundred rows nobody reads, for a change every receiver answers by refetching.
 	 */
 	private fun recordScalarChanges(
