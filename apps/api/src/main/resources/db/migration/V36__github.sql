@@ -3,7 +3,7 @@
 -- ticket dragged to Done after a merge — and the second typing is the one that gets
 -- forgotten.
 --
--- This is the schema for the whole of the wiki's `Spec - The repository, on the ticket`,
+-- This is the schema for the whole of `docs/superpowers/specs/2026-09-01-github-pull-requests-design.md`,
 -- and it is **one migration rather than four** because the spec says so and because the
 -- reason it gives is right: parts one, two and three each add a table, and a table whose
 -- argument is three sections away is a table the next reader deletes. The columns arrive

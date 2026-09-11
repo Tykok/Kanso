@@ -97,8 +97,12 @@ The things that bite, each one because it has already bitten.
   restates the line below it is noise, and this codebase does not have any.
 - **Code, comments, commit messages and PR bodies in English.** Conversation may be French;
   the repository is not.
-- `apps/web/AGENTS.md` is generated and re-added by `next dev`. Do not treat it as house
-  rules and do not fight it out of the tree — commit it with your work.
+- `apps/web/AGENTS.md` is generated and re-added by `next dev`, and `apps/web/CLAUDE.md` is
+  the single line `@AGENTS.md`, so it *is* loaded for work under `apps/web`. Follow what it
+  says about this Next version — that is what it is for — but it is Next's guidance and not
+  this repository's, so nothing in it overrides the rules above, and editing it by hand only
+  buys a diff that `next dev` reverts. Commit it with your work rather than fighting it out
+  of the tree.
 
 ## Running things
 
