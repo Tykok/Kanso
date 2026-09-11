@@ -44,9 +44,9 @@ ALTER TABLE tickets ADD CONSTRAINT tickets_not_own_parent_chk
 -- `doc_folders` use for one — and `TicketService` refuses to build one. Three reasons,
 -- in increasing order of how much they cost:
 --
--- 1. **Nothing can draw the third level.** `docs/follow-ups.md` records that the sidebar
---    caps indentation at two levels and a four-level nest renders levels 2, 3 and 4 at
---    the same indent, leaving the rows visually indistinguishable. The main list is
+-- 1. **Nothing can draw the third level.** The wiki's `Follow-ups` page records that the
+--    sidebar caps indentation at two levels and a four-level nest renders levels 2, 3 and
+--    4 at the same indent, leaving the rows visually indistinguishable. The main list is
 --    virtualised over one flattened index, so it has exactly the same ceiling. Storing a
 --    depth the product cannot render is how a nest becomes unreachable rather than deep.
 --

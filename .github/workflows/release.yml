@@ -16,7 +16,7 @@
 
 name: Release
 
-# Tags only, and no `push:` branches. A release is a tag; `docs/self-hosting.md` tells
+# Tags only, and no `push:` branches. A release is a tag; `Self-hosting Kanso` in the wiki
 # people to pull `latest`, and `latest` moving on every commit to main would make that
 # sentence a lie. No `workflow_dispatch` either: every tag below is computed from
 # `github.ref_name`, so a manual run from a branch would compute nothing and fail in the

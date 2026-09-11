@@ -22,7 +22,8 @@ import kotlin.test.assertTrue
  * Folders, pages and templates. Blocks have their own file.
  *
  * `@Transactional`, so nothing here ever reaches `EventPublisher`'s `afterCommit` —
- * every assertion goes through the service, as `docs/follow-ups.md` records it must.
+ * every assertion goes through the service, as the wiki's `Follow-ups` page records
+ * it must.
  */
 @Transactional
 class DocServiceTest : PostgresTest() {

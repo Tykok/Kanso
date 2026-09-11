@@ -1,4 +1,5 @@
-# The routing table from `docs/superpowers/specs/2026-09-09-docker-distribution-design.md`,
+# The routing table from the wiki's `Spec - One image, one domain, your own Postgres`
+# (https://github.com/Tykok/Kanso/wiki/Spec---One-image,-one-domain,-your-own-Postgres),
 # and a test fixture. The guard test enumerates the application's request mappings outside
 # `/api` and fails when one of them is not covered here, so every route below is a single
 # line with a literal path. Folding them into `handle` blocks would still satisfy Caddy and
