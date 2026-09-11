@@ -1,0 +1,153 @@
+# Contributing to Kanso
+
+Kanso was a private repository with one author until recently, and everything about it
+was built for that: the history is merge commits, `main` was pushed to directly, and CI
+ran on every push because there was no one else's push to catch. It is public now, and
+this file is the part of that change that has to be written down rather than inferred.
+
+Read it before opening a pull request. It is short, and the parts that will surprise you
+are the branch you target and the fact that pushing a branch no longer runs anything.
+
+## Two long-lived branches
+
+| Branch | What it is | What lands there |
+|---|---|---|
+| `main` | What is released. Every tag is cut here. | Merges from `develop`, and hotfixes. |
+| `develop` | The next release, integrated. | Everything else. |
+
+**Target `develop`.** Features, fixes, documentation, refactors — all of it. `develop` is
+merged into `main` when a release is cut, and `main` is where the tag goes.
+
+The two exceptions target `main` directly:
+
+- **A hotfix** against something already released, from `hotfix/*`. Merge it into `main`,
+  cut the tag, then merge `main` back into `develop` so the fix is not lost at the next
+  release.
+- **A release branch**, `release/*`, if a release needs stabilising while `develop` moves
+  on. Neither branch is protected, and neither is created until something needs one.
+
+Name topic branches for what they do — `feat/…`, `fix/…`, `docs/…`, `ci/…`. Nothing
+enforces it; it is only so the branch list reads.
+
+Both `main` and `develop` are protected: they take pull requests, not pushes, and a pull
+request cannot be merged until CI is green on it. Force-pushing and deleting them are
+off. Tags are not protected, because a release is a tag and blocking it would block
+releasing.
+
+## What runs, and when
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) triggers on a pull request against
+any base, and on a push to `main` or `develop`. Its comments carry the full argument; the
+part you need is the consequence:
+
+**Pushing a topic branch runs nothing.** Coverage starts when the pull request exists. If
+you want the suite on work that is not ready for review, open the PR as a draft — a draft
+PR triggers CI exactly like a ready one — or run the workflow by hand from the Actions
+tab (`workflow_dispatch`). This is deliberate. Testing the branch push *and* the pull
+request would run the same commit twice, and paying double for a 60-second Postgres suite
+is how a maintainer learns to stop reading the result.
+
+Two jobs run, in parallel, and both are required before a merge:
+
+- **API** — `./gradlew test` in `apps/api`, on JDK 21 (Temurin). The suite starts a real
+  `postgres:16-alpine` through Testcontainers, so it needs the runner's Docker daemon and
+  nothing else: no database, no secret, no service container to configure. On failure the
+  Gradle HTML report is uploaded as `api-test-reports` and kept for seven days — open it
+  rather than scrolling the Spring Boot log.
+- **Web** — `pnpm typecheck`, then `pnpm test`, then `pnpm lint` in `apps/web`, on Node
+  22 with `--frozen-lockfile`. Node 22 is a floor, not a preference: Vite's rolldown
+  bindings declare `engines: node ^20.19 || >=22.12`, and pnpm *skips* an optional
+  dependency whose engines do not match instead of failing, so an older Node gives you a
+  green install and a Vitest run that dies on a missing `@rolldown/binding-*`.
+
+What does not run, so that its absence reads as a decision: Playwright (the suite in
+`e2e/` needs a stack brought up around it, and a green e2e job that is green for the
+wrong reason is worse than none) and `next build`. Both are argued at the foot of
+`ci.yml`.
+
+### Running the same thing locally
+
+There is nothing CI does that you cannot do first, and doing it first is faster than a
+round trip:
+
+```bash
+cd apps/api && ./gradlew test          # needs a Docker daemon for Testcontainers
+cd apps/web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint
+```
+
+`README.md` covers bringing the application itself up (`docker compose up`, the setup
+wizard, `KANSO_AUTH_MODE=dev`).
+
+### If you are contributing from a fork
+
+Fork the repository, push your branch to your fork, open the pull request against
+`develop`. Two things are worth knowing about how that runs here:
+
+- The suite works from a fork. A `pull_request` run from a fork gets a read-only
+  `GITHUB_TOKEN` and none of the repository's secrets, and neither job needs any:
+  `postgres:16-alpine` is pulled anonymously and Testcontainers invents the credentials
+  it hands Spring. You get the same verdict a branch in this repository gets.
+- For a first-time contributor, GitHub holds the run until a maintainer approves it. So
+  the checks may sit as "Expected — waiting for status to be reported" for a while. That
+  is the approval, not a broken workflow.
+
+## Commits and style
+
+**Conventional Commits.** `feat:`, `fix:`, `docs:`, `ci:`, `refactor:`, `test:`,
+`chore:`, with the scope in parentheses where it helps — `fix(docker):`. The subject says
+what changed; the body says *why*, and the why is the half that is worth writing.
+
+**The code is hand-formatted at 100 columns. Do not run a formatter.** There is no
+Prettier configuration in this repository and running one anyway turns a five-line change
+into a two-hundred-line diff that cannot be reviewed and cannot be undone. `pnpm lint`
+checks what is actually enforced; nothing else is.
+
+**Comments explain why.** The workflows in `.github/workflows/` are the house style taken
+to its limit: they say what was considered and rejected, so that the next reader does not
+re-litigate it or delete something load-bearing. Match that register in anything with a
+non-obvious reason behind it, and write nothing where the code already says it.
+
+**English in the code and in the repository**, including commit messages, comments and
+this file. The product is bilingual — `site/i18n/` and `docs/architecture.fr.md` — and
+that is a separate thing from the language the repository is worked in.
+
+A comment that asserts something untrue is worse than no comment. If your change makes a
+nearby comment false, fixing that comment is part of your change, not a follow-up.
+
+## Cutting a release
+
+Releases are tags on `main`, and the tag is the whole ceremony —
+[`.github/workflows/release.yml`](.github/workflows/release.yml) does the rest.
+
+1. Open a pull request from `develop` into `main` and merge it once CI is green.
+2. Tag the merge commit and push the tag:
+
+   ```bash
+   git checkout main && git pull
+   git tag v1.2.3 && git push origin v1.2.3
+   ```
+
+   The tag must be `vMAJOR.MINOR.PATCH`. `release.yml` checks the shape and fails loudly
+   rather than publishing `ghcr.io/tykok/kanso:` with an empty tag.
+3. `release.yml` builds the jar and the Next bundle once on amd64, stamps `KANSO_COMMIT`
+   with the tagged SHA so `/api/me` and the footer report what is actually running,
+   builds the image, **smoke-tests it before logging in to any registry**, and only then
+   pushes `linux/amd64` and `linux/arm64` to `ghcr.io/tykok/kanso`.
+
+The image is tagged `v1.2.3`, `1.2` and `latest`. A prerelease — `v1.2.3-rc1` — publishes
+under its own full tag only and moves neither `1.2` nor `latest`, because
+`docs/self-hosting.md` tells people to pull `latest` and a release candidate arriving
+there would be a lie told to every `docker compose pull` in the world.
+
+The tag does not re-run `ci.yml`. It does not need to: the tagged commit reached `main`
+through a pull request, and the push that merged it was tested. That is also why
+`release.yml` builds with `-x test`.
+
+Branch protection does not touch tags, so pushing one needs nothing special. Re-pushing a
+tag is how you re-run a release.
+
+## Reporting things
+
+Issues are open. A bug report that says which version — the tag, or the commit `/api/me`
+reports — how it was deployed, and what you expected instead, is one that can be acted
+on. Security-sensitive reports belong in a private advisory rather than a public issue.
