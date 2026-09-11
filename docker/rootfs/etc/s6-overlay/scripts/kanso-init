@@ -86,7 +86,7 @@ case "$KANSO_TLS" in
 		# The operator's proxy is the edge. Its X-Forwarded-For carries the only client
 		# address anything here will ever see, and replacing it would collapse every
 		# visitor into one rate-limit bucket. Sanitising it is then their job, which
-		# `Self-hosting Kanso` in the wiki says out loud.
+		# `docs/self-hosting.md` says out loud.
 		echo "# KANSO_TLS=off: the operator's proxy is the edge and owns X-Forwarded-For." \
 			> /run/kanso/forwarded-for.caddy
 		;;

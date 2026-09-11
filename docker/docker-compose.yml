@@ -1,7 +1,6 @@
 # The distribution stack: the published image, and a Postgres beside it for people who do
 # not already have one. Copy this file somewhere of your own, change the four values marked
-# below, and `docker compose up -d`. The long form is `Self-hosting Kanso` in the wiki:
-# https://github.com/Tykok/Kanso/wiki/Self-hosting-Kanso
+# below, and `docker compose up -d`. `docs/self-hosting.md` is the long form.
 #
 # **This is not the repository's `docker-compose.yml`.** That one is the development stack
 # and the Playwright harness: it builds both applications from source, serves them on two
@@ -10,7 +9,7 @@
 #
 # If you already run Postgres, delete the `db` service, the `depends_on` and the
 # `kanso-pgdata` volume, and point `SPRING_DATASOURCE_URL` at your own — that path is the
-# one this design is for, and it is the one `Self-hosting Kanso` in the wiki opens with.
+# one this design is for, and it is the one `docs/self-hosting.md` opens with.
 
 # Named explicitly so the volumes below are `kanso_kanso-data` and `kanso_kanso-pgdata`
 # whatever directory this file was copied into. Without it Compose names the project after
@@ -34,9 +33,8 @@ services:
     # Terminating TLS in your own proxy instead? Set `KANSO_TLS: "off"`, drop the 443 line,
     # and publish 80 wherever that proxy expects — `"8443:80"` and so on. The container
     # listens on 80 in **both** modes. Read the `X-Forwarded-For` section of
-    # `Self-hosting Kanso` in the wiki before you do: under `off` sanitising that header
-    # becomes yours, and getting it wrong disables a rate limit on an unauthenticated
-    # endpoint.
+    # `docs/self-hosting.md` before you do: under `off` sanitising that header becomes
+    # yours, and getting it wrong disables a rate limit on an unauthenticated endpoint.
     ports:
       - "80:80"
       - "443:443"
@@ -115,8 +113,7 @@ services:
   # `pg_trgm` is not created here. `V10__cycles_and_views.sql` runs
   # `CREATE EXTENSION IF NOT EXISTS pg_trgm` itself, and the superuser this image gives the
   # `kanso` role is enough for it. On a managed instance it usually is not — see the SQL
-  # block in `Self-hosting Kanso` in the wiki, which is the first thing to check when
-  # Flyway fails.
+  # block in `docs/self-hosting.md`, which is the first thing to check when Flyway fails.
 
 volumes:
   kanso-data:

@@ -6,22 +6,30 @@ work next to the work itself. Kotlin/Spring API (`apps/api`), Next front end (`a
 Playwright suite (`e2e`), one distribution image (`docker/`). **Postgres is the operational
 source of truth and Notion is an asynchronous mirror.**
 
-## The design record is not in this repository
+## Where a document goes
 
-Every feature was written twice before it shipped — a spec arguing what it should do, then
-a plan for how it was built — and all of it lives in the wiki:
+One question decides it: **does this document describe something that changes?**
 
-**https://github.com/Tykok/Kanso/wiki**
+**A document about a moving artefact lives beside it, in `docs/`, and is reviewed in the
+pull request that moves it.** `docs/self-hosting.md` describes `docker/` — the routing
+table, `KANSO_TLS`, the variables, the SQL to run first — and every line of it can be
+falsified by the next commit to that directory. `docs/architecture.md` and its French twin
+describe the shape the system has today and drift the same way. So they sit in the diff:
+change what one of them describes and you change it in the same commit, where a reviewer
+sees both halves at once. Otherwise the staleness is paid by a stranger trying to install
+the product, who is the last person in a position to notice it. Those three files are all
+of `docs/`; a fourth needs the argument that it is this kind of document.
 
-Self-hosting, the architecture and its lossy edges, `Follow-ups` (the gaps found in review
-and left deliberately), 17 specs and 14 plans. Comments throughout the code cite those
-pages by title — `` `Follow-ups` ``, `` `Spec - One image, one domain, your own Postgres` ``
-— and that is the only handle they have. Be honest about the cost: the wiki is not built by
-CI, not reviewed in a pull request and has no guard test, so a page describing this code can
-go stale without anything noticing. When you change something a page describes, the page is
-yours to fix too.
+**A dated decision lives in the wiki.** A spec arguing what a feature should do on
+2026-08-09, and the plan it was built from, say nothing about the present. The code moving
+on does not make them wrong — it makes them the record of what was decided before it moved.
+`Follow-ups`, the debts found in review and left deliberately, reads the same way.
 
-Prose that explains a decision belongs there. Do not re-create a `docs/` directory here.
+**https://github.com/Tykok/Kanso/wiki** — 17 specs, 14 plans, `Follow-ups`. Comments
+throughout the code cite those pages by title — `` `Follow-ups` ``, `` `Spec - One image,
+one domain, your own Postgres` `` — and a title is the only handle they have. Nothing in CI
+builds the wiki or resolves a link into it, so renaming a page breaks those citations
+silently; grep before you rename one.
 
 ## Invariants
 

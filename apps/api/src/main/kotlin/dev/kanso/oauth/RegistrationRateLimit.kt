@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - `off`: the operator terminates TLS in their own proxy, that proxy is the edge, and Caddy
  *   preserves the header because replacing it would collapse every visitor into one bucket.
  *   Every word of the paragraph above is true again, sanitising is the operator's job, and
- *   `Self-hosting Kanso` in the wiki says so.
+ *   `docs/self-hosting.md` says so.
  *
  * Neither half is closable from in here: it needs a count of trusted hops, which is a fact
  * about someone's deployment that a limiter cannot learn from inside the process. So under

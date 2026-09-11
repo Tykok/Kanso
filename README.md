@@ -57,9 +57,8 @@ No database yet? [`docker/docker-compose.yml`](docker/docker-compose.yml) ships 
 `postgres:16-alpine` beside the image. Copy it, change `KANSO_PUBLIC_URL` and the
 password, `docker compose up -d`.
 
-**[Self-hosting Kanso](https://github.com/Tykok/Kanso/wiki/Self-hosting-Kanso)** in the
-wiki is the full version: the SQL to run first, terminating TLS in your own proxy, what
-`/data` holds, and the routing table.
+**[`docs/self-hosting.md`](docs/self-hosting.md)** is the full version: the SQL to run
+first, terminating TLS in your own proxy, what `/data` holds, and the routing table.
 
 ### Develop it
 
@@ -245,10 +244,8 @@ cd apps/web && pnpm install && pnpm dev      # http://localhost:3000
 | Conflicts | Kanso wins | If the Postgres row moved after the last successful push, the Notion edit is rejected and a corrective push is enqueued. Notion converges back on its own. |
 | Auth | OIDC (Google / GitHub), session cookie | The same cookie authenticates the WebSocket handshake, so realtime auth is free. |
 
-See [Architecture and the limits of the Notion
-mirror](https://github.com/Tykok/Kanso/wiki/Architecture-and-the-limits-of-the-Notion-mirror)
-in the wiki for the decisions in full, and for the places where the Notion mapping is
-lossy.
+See [`docs/architecture.md`](docs/architecture.md) for the decisions in full, and for
+the places where the Notion mapping is lossy.
 
 ---
 
