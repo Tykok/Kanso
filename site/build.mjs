@@ -13,14 +13,15 @@
  * They are ours and no reader input reaches them; there is nothing here to escape.
  *
  * No network access, ever — a media host being down must not be able to redden the
- * workflow. The captures live at `media.json`'s `base`, which is a placeholder the owner
- * replaces with the host he serves them from: HTTPS (an http:// image on an HTTPS Pages
- * document is blocked, not degraded), a versioned path so replacing a file cannot serve
- * a stale cache, publicly readable with no signed URL to expire. `--check` HEADs every
- * one of them and is run by hand, never by CI.
+ * workflow. The captures are `site/media/v1/`, copied into `dist/` below and served from
+ * `media.json`'s `base`, which is this site's own Pages URL: HTTPS (an http:// image on
+ * an HTTPS Pages document is blocked, not degraded), a versioned path so replacing a file
+ * cannot serve a stale cache, publicly readable with no signed URL to expire. That the
+ * host is now us changes none of those four, and `--check` still HEADs every one of them
+ * by hand, never in CI — it is the deployed page it asks about, not the local `dist/`.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const at = (p) => new URL(p, import.meta.url);
 const read = (p) => readFileSync(at(p), "utf8");
@@ -95,7 +96,15 @@ mkdirSync(at("../dist/fr"), { recursive: true });
 write("tokens.css", read("../apps/web/src/styles/tokens.css"));
 write("style.css", read("style.css"));
 for (const [p, body] of Object.entries(pages)) write(p, body);
-console.log("dist/index.html, dist/fr/index.html, dist/tokens.css, dist/style.css");
+
+/* The captures, byte for byte. Copied rather than read and rewritten because they are
+   binary, and copied as a whole directory rather than per `media.steps` entry: a `poster`
+   a future video adds would otherwise have to be remembered here too, and the directory
+   holds nothing else. It is not optional — `base` points inside `dist/`, so a run that
+   skipped this would publish five URLs that 404 on our own domain rather than on
+   somebody's. Recursive, so `v1/` survives as `v1/`; `force` so a second run overwrites. */
+cpSync(at("media/v1"), at("../dist/media/v1"), { recursive: true, force: true });
+console.log("dist/index.html, dist/fr/index.html, dist/tokens.css, dist/style.css, dist/media/v1/");
 
 if (process.argv.includes("--check")) {
   for (const step of media.steps) {
