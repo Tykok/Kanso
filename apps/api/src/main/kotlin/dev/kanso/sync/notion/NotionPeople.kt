@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
 
 /**
@@ -52,7 +53,11 @@ data class MyNotionIdentity(
  * but has never had anything to put in it.
  */
 @Service
-class NotionPeople(private val client: NotionClient, private val users: UserRepository) {
+class NotionPeople(
+	private val client: NotionClient,
+	private val users: UserRepository,
+	private val tx: TransactionTemplate,
+) {
 
 	/**
 	 * The workspace's members and what Kanso already knows about each.
@@ -185,7 +190,17 @@ class NotionPeople(private val client: NotionClient, private val users: UserRepo
 	 * twice sees the same order: `GET /users` promises no ordering of its own.
 	 */
 	private fun match(members: List<NotionMember>): List<PeopleMatch> {
-		val accounts = users.findAll()
+		/*
+		 * A transaction of its own, opened here and not around [view], because the call
+		 * above it is an HTTP request to Notion: annotating the caller would hold a pooled
+		 * connection for the whole of a round trip this service is rate-limited on. Opened
+		 * at all because neither of this method's two callers is in one — `view` is read
+		 * straight off the controller, and the `view` that follows a `link` runs after that
+		 * write has committed. Exposed needs one, so both answered 500 while writing the
+		 * rows they were asked to. `SetupController.currentState` carries the same note for
+		 * the same reason.
+		 */
+		val accounts = tx.execute { users.findAll() }.orEmpty()
 		val byNotionId = accounts.filter { it.notionPersonId != null }.associateBy { it.notionPersonId }
 		val byEmail = accounts.associateBy { it.email.lowercase() }
 		val byName = accounts.associateBy { it.displayName }
