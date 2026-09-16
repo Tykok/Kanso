@@ -102,6 +102,13 @@ dialog's first step prints a sentence and there is nothing to walk — so the su
 its own workspace: `notion-workspace.ts` answers Notion's own HTTP API on port 8099, with
 three related bases, a status column called `Etat` and options called `En cours`.
 
+`30-setup-import.spec.ts` (scenario 30) needs the same workspace for the same reason. It
+opens the *other* door onto those five steps — the setup wizard's Notion step, which offers
+the people table and the import once Notion is connected — and checks the two things that
+mount point can break on its own: `/setup` is outside `(app)`, so nothing the shell provides
+is there, and `FormCard` is a `<form>`, in which the dialog's own buttons would otherwise
+submit the wizard out from under a half-finished import.
+
 The seam is `NOTION_BASE_URL`, which `application.yml` already reads. Pointing the API at
 the suite's workspace puts the real `HttpNotionClient` under test — its search-filter
 fallback, its cursors, its property parsing — rather than a fake bound inside the
@@ -113,7 +120,7 @@ KANSO_AUTH_MODE=dev NOTION_TOKEN=e2e-stub-token \
   NOTION_BASE_URL=http://host.docker.internal:8099/v1 \
   docker compose up -d --build --wait
 
-KANSO_NOTION_STUB=1 pnpm exec playwright test e2e/import.spec.ts
+KANSO_NOTION_STUB=1 pnpm exec playwright test e2e/import.spec.ts e2e/30-setup-import.spec.ts
 ```
 
 Two variables on the stack, one on the runner, and they are not interchangeable: the first
@@ -125,8 +132,8 @@ Desktop. The port is fixed because `NOTION_BASE_URL` is read when the container 
 the server starts when the spec does — override both together with
 `KANSO_NOTION_STUB_PORT`.
 
-Without `KANSO_NOTION_STUB=1` the scenario **skips**, with the command above in the skip's
-message, so a default `pnpm test:e2e` stays green and says plainly that one scenario did not
+Without `KANSO_NOTION_STUB=1` both scenarios **skip**, with the command above in the skip's
+message, so a default `pnpm test:e2e` stays green and says plainly which scenarios did not
 run. That flag is the *whole* decision, on purpose. The tempting guard — ask the API whether
 the three bases are there and skip if they are not — makes the precondition the feature under
 test: break discovery and the scenario would skip on a correctly configured stack, and a
