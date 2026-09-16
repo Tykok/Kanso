@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.OffsetDateTime
 import java.util.UUID
 import kotlin.test.Test
@@ -30,6 +31,7 @@ class NotionPeopleTest : PostgresTest() {
 
 	@Autowired lateinit var users: UserRepository
 	@Autowired lateinit var encoder: PasswordEncoder
+	@Autowired lateinit var tx: TransactionTemplate
 
 	private fun admin(): User =
 		users.createLocalUser("admin-${UUID.randomUUID()}@kanso.test", "Admin", encoder.hash("correct-horse-battery"), InstanceRole.ADMIN)
@@ -39,7 +41,7 @@ class NotionPeopleTest : PostgresTest() {
 		// `NoopNotionClient` is final and answers no members; the refusal is the thing under
 		// test, so the fake is one `NotionClient` method and `TODO()` for the rest — see
 		// `clientReturning` below, which both tests share.
-		val people = NotionPeople(client = clientRefusing("API token does not have access to user information"), users = users)
+		val people = NotionPeople(client = clientRefusing("API token does not have access to user information"), users = users, tx = tx)
 
 		val view = people.view()
 		assertFalse(view.available)
@@ -50,7 +52,7 @@ class NotionPeopleTest : PostgresTest() {
 	@Test
 	fun `an email that matches a Kanso account is suggested but not applied`() {
 		val kanso = users.createLocalUser("m.rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
-		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", "m.rey@kanso.test")), users = users)
+		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", "m.rey@kanso.test")), users = users, tx = tx)
 
 		val match = people.view().people.single()
 		assertEquals(kanso.id, match.suggestedUserId)
@@ -61,7 +63,7 @@ class NotionPeopleTest : PostgresTest() {
 	fun `linking writes notion_person_id, and unlinking clears it`() {
 		val configurator = admin()
 		val kanso = users.createLocalUser("m.rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
-		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", null)), users = users)
+		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", null)), users = users, tx = tx)
 
 		people.link(configurator, mapOf("u-1" to kanso.id))
 		assertEquals("u-1", users.findById(kanso.id)!!.notionPersonId)
@@ -75,7 +77,7 @@ class NotionPeopleTest : PostgresTest() {
 		val configurator = admin()
 		val a = users.createLocalUser("account-a@kanso.test", "Account A", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
 		val b = users.createLocalUser("account-b@kanso.test", "Account B", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
-		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "Shared Name", null)), users = users)
+		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "Shared Name", null)), users = users, tx = tx)
 
 		people.link(configurator, mapOf("u-1" to a.id))
 		people.link(configurator, mapOf("u-1" to b.id))
@@ -96,6 +98,7 @@ class NotionPeopleTest : PostgresTest() {
 		val people = NotionPeople(
 			client = clientReturning(NotionMember("u-1", "New", null), NotionMember("u-2", "Old", null)),
 			users = users,
+			tx = tx,
 		)
 		people.link(configurator, mapOf("u-2" to a.id))
 
@@ -112,6 +115,7 @@ class NotionPeopleTest : PostgresTest() {
 		val people = NotionPeople(
 			client = clientReturning(NotionMember("u-1", "One", null), NotionMember("u-2", "Two", null)),
 			users = users,
+			tx = tx,
 		)
 		people.link(configurator, mapOf("u-1" to a.id))
 		people.link(configurator, mapOf("u-2" to b.id))
@@ -126,13 +130,40 @@ class NotionPeopleTest : PostgresTest() {
 	fun `a non-configurator is refused the write`() {
 		val member = users.createLocalUser("just-a-member@kanso.test", "Just A Member", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
 		val kanso = users.createLocalUser("m.rey@kanso.test", "M. Rey", encoder.hash("correct-horse-battery"), InstanceRole.MEMBER)
-		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", null)), users = users)
+		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", null)), users = users, tx = tx)
 
 		// One call, not the guard and the write called separately: `link` must refuse
 		// on its own, so this still fails if the check is ever removed from inside it.
 		assertFailsWith<AccessDeniedException> { people.link(member, mapOf("u-1" to kanso.id)) }
 
 		assertNull(users.findById(kanso.id)!!.notionPersonId, "the refusal happened before any write")
+	}
+}
+
+/**
+ * The same read, with no transaction around it — which is how the application actually
+ * calls it, and the one arrangement the class above cannot produce.
+ *
+ * `NotionPeopleTest` is `@Transactional`, so every `view()` in it runs inside one that the
+ * test framework opened. Production has none: `NotionPeopleController.view` is not
+ * annotated, and the `view` that follows a `link` runs after that write has committed. So
+ * `users.findAll()` had nothing to run in and Exposed threw `No transaction in context` —
+ * a 500 on both the read and, after writing the rows it was asked for, the write. Shipped,
+ * and invisible to a suite whose every test brought its own transaction.
+ */
+class NotionPeopleOutsideATransactionTest : PostgresTest() {
+
+	@Autowired lateinit var users: UserRepository
+	@Autowired lateinit var tx: TransactionTemplate
+
+	@Test
+	fun `the members list is read without an ambient transaction`() {
+		val people = NotionPeople(client = clientReturning(NotionMember("u-1", "M. Rey", null)), users = users, tx = tx)
+
+		val view = people.view()
+
+		assertTrue(view.available, view.reason ?: "")
+		assertEquals(listOf("u-1"), view.people.map { it.notion.id })
 	}
 }
 
