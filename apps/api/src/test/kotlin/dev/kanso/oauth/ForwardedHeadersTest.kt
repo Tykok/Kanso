@@ -103,4 +103,49 @@ class ForwardedHeadersTest : MockMvcTest() {
 			"an http way back sends a member off an https page — and is what Google refuses",
 		)
 	}
+
+	/**
+	 * The same probe, asked the question the filter's *default* answers wrongly.
+	 *
+	 * Boot's own `ForwardedHeaderFilter()` believes both header families and reads RFC 7239
+	 * `Forwarded` first: `adaptFromForwardedHeaders` returns on it and never opens the
+	 * `X-Forwarded-*` block at all. Caddy writes `X-Forwarded-Proto` and `X-Forwarded-Host`
+	 * and never writes `Forwarded`, so under that default one header from the caller beat
+	 * everything the edge had set — and this instance's own derived origin, which is what
+	 * `McpResource.fromCurrentRequest` compares an RFC 8707 audience against and what the
+	 * authorization server publishes as its issuer, was the caller's to choose.
+	 *
+	 * `WebConfig.forwardedHeaderFilter` registers `XForwardedOnly` instead, which takes the
+	 * header away before the filter reads it. Sent here *alongside* the headers Caddy sends,
+	 * because
+	 * the failure was never "`Forwarded` is honoured" — it was "`Forwarded` wins", and a test
+	 * that sent it alone could not tell the two apart.
+	 */
+	@Test
+	fun `a Forwarded header from the caller does not outrank what the proxy set`() {
+		val response = mvc.get(CONSENT_PAGE) {
+			param("client_id", clientId)
+			param("scope", OAuthScopes.READ)
+			param("state", "s")
+			header("X-Forwarded-Proto", "https")
+			header("X-Forwarded-Host", "kanso.example.com")
+			header("Forwarded", "for=203.0.113.7;proto=https;host=evil.example")
+			with(anonymous())
+		}.andReturn().response
+
+		assertEquals(302, response.status, "the anonymous branch is the one that writes a way back")
+
+		val next = UriComponentsBuilder.fromUriString(response.getHeader("Location").orEmpty())
+			.build()
+			.queryParams
+			.getFirst("next")
+			?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
+
+		assertEquals(
+			"https://kanso.example.com$CONSENT_PAGE",
+			next?.substringBefore('?'),
+			"a caller that names this instance's origin in a `Forwarded` header is choosing " +
+				"the issuer it publishes and the audience its own tokens are checked against",
+		)
+	}
 }
