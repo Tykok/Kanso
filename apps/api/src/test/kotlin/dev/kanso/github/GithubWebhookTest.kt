@@ -237,6 +237,7 @@ class GithubWebhookTest : MockMvcTest() {
 	 */
 	@Test
 	fun `a replayed delivery writes nothing twice`() {
+		linkGithub("maintainer", 5150)
 		deliver("pull_request", payload("pull_request_opened"))
 		val replayed = UUID.randomUUID()
 		val merge = payload("pull_request_merged")
@@ -306,6 +307,7 @@ class GithubWebhookTest : MockMvcTest() {
 	 */
 	@Test
 	fun `an opened pull request stores itself, links its ticket and moves it to in review`() {
+		linkGithub("elie", 4021)
 		assertEquals(204, deliver("pull_request", payload("pull_request_opened")).status)
 
 		val stored = assertNotNull(pullRequest(), "the row exists, which it could not before this ticket")
@@ -324,33 +326,73 @@ class GithubWebhookTest : MockMvcTest() {
 	}
 
 	/**
-	 * **The sentence `V36` documented and nothing had ever executed.**
+	 * Links `admin` to a GitHub login, which is what makes a transition possible at all.
 	 *
-	 * The merge fixture's sender is `maintainer` and its author is `elie`, and neither has a
-	 * `github_accounts` row — which is the *normal* state of an instance, not a degradation.
-	 * The ticket still moves, and the feed says so with nobody named.
+	 * Called by the tests that are about *something else* — storage, replay, review state —
+	 * because a delivery whose sender resolves to nobody now moves no ticket, and a fixture
+	 * that left them unlinked would have them asserting the refusal instead of their subject.
+	 * `elie` is the sender of the opened fixture and `maintainer` of the merged one, so a
+	 * test that delivers both links both.
+	 */
+	private fun linkGithub(login: String, githubUserId: Long) = accounts.link(
+		userId = admin.id,
+		githubUserId = githubUserId,
+		githubLogin = login,
+		token = GithubToken("gho-not-a-real-token", null, null),
+	)
+
+	/**
+	 * **The transition's authorisation, at the one door that is not a Kanso request.**
 	 *
-	 * Red without the nullable actor on `TicketService.patch`: there is no status-write path
-	 * at all for this case, which is exactly where KAN-74 stopped.
+	 * What arrives here is text the pull request's *author* wrote — `PrLinkParser` reads the
+	 * branch name, the title and the body — and `opened` requires no relationship with the
+	 * repository. So on a public repository this is a stranger typing `Fixes KAN-142` into a
+	 * pull request title and moving a ticket in a team they are not in, on an instance where
+	 * they have no account. `actorFor` already answered null for them; `TicketService.patch`
+	 * skipped `access.require` entirely on a null actor, so that null was a way past the
+	 * check rather than a note about attribution.
+	 *
+	 * The link and its `PULL_REQUEST_LINKED` row are still written, and that is the half
+	 * `V36`'s nameless sentence was always about: a reader can still follow the pull request
+	 * from the ticket. Only the *move* is refused.
 	 */
 	@Test
-	fun `a merge by an author nobody has linked still moves the ticket, with no actor`() {
+	fun `a pull request from nobody Kanso knows links the ticket and moves nothing`() {
+		deliver("pull_request", payload("pull_request_opened"))
+		deliver("pull_request", payload("pull_request_merged"))
+
+		assertEquals("todo", statusOf(), "neither delivery names a member Kanso may act as")
+		assertEquals(0, movedTo("done").size, "and nothing moved it, with or without a name")
+		assertEquals(
+			1,
+			activityOf(ActivityKind.PULL_REQUEST_LINKED).size,
+			"the link is still drawn — following the pull request never needed an actor",
+		)
+	}
+
+	/**
+	 * `via_pr` on both rows, which is what the feed reads to say *why* a ticket moved.
+	 *
+	 * The sender is linked here because the assertion is about the **string**, and a delivery
+	 * that moves nothing has no `status_changed` row to carry it. `#418` and not
+	 * `tykok/kanso#418`: `project-copy.ts`'s `viaPr` prepends a `#` to anything that does not
+	 * start with one, so the qualified form prints *via #tykok/kanso#418*. This producer and
+	 * that consumer were built by different tickets and only meet here.
+	 */
+	@Test
+	fun `both rows name the pull request the way the feed prints it`() {
+		linkGithub("maintainer", 5150)
 		deliver("pull_request", payload("pull_request_opened"))
 		deliver("pull_request", payload("pull_request_merged"))
 
 		assertEquals("done", statusOf(), "a merge finishes the ticket its branch named")
 
 		val moved = movedTo("done").single()
-		assertNull(moved.actorId, "nobody consented, so there is nobody to name — the documented fallback")
 		assertEquals(
 			"#418",
 			objectMapper.readTree(moved.payload).path("via_pr").asText(null),
-			"and the row says why it moved, which is what `via_pr` is for: ${moved.payload}",
+			"the row says why it moved, which is what `via_pr` is for: ${moved.payload}",
 		)
-
-		// The value is the one `project-copy.ts`'s `viaPr` was written and tested against, so
-		// the sentence reads *Moved … to Done via #418* and not *via #tykok/kanso#418*. This
-		// producer and that consumer were built by different tickets and only meet here.
 		assertEquals(
 			"#418",
 			objectMapper.readTree(activityOf(ActivityKind.PULL_REQUEST_LINKED).single().payload)
@@ -453,6 +495,7 @@ class GithubWebhookTest : MockMvcTest() {
 	 */
 	@Test
 	fun `an approval is stored and a later comment does not clear it`() {
+		linkGithub("elie", 4021)
 		deliver("pull_request", payload("pull_request_opened"))
 		deliver("pull_request_review", payload("pull_request_review"))
 
