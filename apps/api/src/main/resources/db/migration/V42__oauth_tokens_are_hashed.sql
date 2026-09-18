@@ -1,0 +1,33 @@
+-- The MCP grants, emptied once so the column stops holding live credentials.
+--
+-- `oauth2_authorization` was the one table in this schema a `pg_dump` turned into a set of
+-- working bearer tokens. `access_token_value` and `refresh_token_value` held the strings
+-- themselves, and `McpBearerFilter` resolved a presented bearer by SQL equality against
+-- them — so read access to Postgres, a copied backup, a restored snapshot or a replica was
+-- MCP access as any member who had ever consented. `V27__api_tokens.sql` had already
+-- written the rule this table was the exception to: *a stolen database dump is not a set of
+-- live credentials.*
+--
+-- `HashedOAuthTokens` now keys those values on the way in and hashes a presented bearer on
+-- the way out, storing `sha256$<hex>` where the token used to be. The schema is unchanged
+-- and deliberately so: `V18__oauth_server.sql` is the library's DDL copied verbatim and
+-- stays comparable to it across upgrades, and the wrapper only decides what goes in the
+-- columns it already has.
+--
+-- **Which leaves the rows written before it.** They hold plaintext, and they cannot be
+-- hashed in place and still work: the value in the column is the value the *client* holds,
+-- so hashing it here would be correct and hashing it is also what a lookup now does — the
+-- two would agree, and a leaked pre-migration dump would still carry the plaintext that
+-- matched. Migrating them forward would preserve exactly the credentials this exists to
+-- invalidate.
+--
+-- So they go. The cost is one reconsent per connected agent: an MCP client finds its token
+-- refused, runs the authorization flow again, and the member approves it on the consent
+-- screen as they did the first time. Nothing else in Kanso reads this table — no ticket, no
+-- document, no membership hangs off it — and `oauth2_registered_client` is untouched, so a
+-- client keeps its registration and its redirect URIs and only loses its grant.
+--
+-- `DELETE` and not `TRUNCATE`: `oauth2_authorization_consent` holds the remembered consent
+-- rather than a foreign key, so nothing cascades, and a delete is the statement that says
+-- "these rows" rather than "this table" to whoever reads the migration later.
+DELETE FROM oauth2_authorization;
