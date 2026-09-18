@@ -85,9 +85,14 @@ function Realtime() {
    * be one who never left.
    */
   const openDocPageId = useDocsUi((state) => state.openDocPageId);
+  /**
+   * Only the id, and only for the drafts topic — a draft is announced to its author rather
+   * than to the instance, so this is the reader telling the bus which author they are.
+   */
+  const meId = useMe().data?.user.id;
   const topics = useMemo(
-    () => topicsFor(scope, view, teams ?? [], openDocPageId),
-    [scope, view, teams, openDocPageId],
+    () => topicsFor(scope, view, teams ?? [], openDocPageId, meId),
+    [scope, view, teams, openDocPageId, meId],
   );
 
   // Hoisted out of the applier because the resume needs the same one: a sweep and a patch
