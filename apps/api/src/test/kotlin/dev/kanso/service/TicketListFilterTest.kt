@@ -278,7 +278,7 @@ class TicketListFilterTest : PostgresTest() {
 		)
 
 		assertEquals(
-			views.rows(saved.id).map { it.ticket.id },
+			views.rows(admin, saved.id).map { it.ticket.id },
 			list(
 				"statusNot" to "done",
 				"priority" to "urgent",
@@ -288,7 +288,7 @@ class TicketListFilterTest : PostgresTest() {
 			),
 			"one predicate or two is exactly the difference this ticket exists to remove",
 		)
-		assertEquals(listOf(wanted), views.rows(saved.id).map { it.ticket.id })
+		assertEquals(listOf(wanted), views.rows(admin, saved.id).map { it.ticket.id })
 	}
 
 	// --- the gate --------------------------------------------------------------
@@ -444,10 +444,10 @@ class TicketListFilterTest : PostgresTest() {
 		assertEquals(listOf(kept), list())
 		assertEquals(
 			listOf(kept),
-			views.rows(saved.id).map { it.ticket.id },
+			views.rows(admin, saved.id).map { it.ticket.id },
 			"the trash is not a filter either side may forget: a deleted ticket is not work",
 		)
-		assertEquals(1, views.list(team.id).single { it.view.id == saved.id }.count)
+		assertEquals(1, views.list(admin, team.id).single { it.view.id == saved.id }.count)
 	}
 
 	@Test

@@ -298,7 +298,7 @@ class EstimateTest : PostgresTest() {
 		val unsized = ticket("nobody sized this")
 		ticket("sized", estimate = 3)
 
-		assertEquals(listOf(unsized), views.rows(view(mapOf("unestimated" to true)).id).map { it.ticket.id })
+		assertEquals(listOf(unsized), views.rows(admin, view(mapOf("unestimated" to true)).id).map { it.ticket.id })
 	}
 
 	@Test
@@ -310,16 +310,16 @@ class EstimateTest : PostgresTest() {
 
 		assertEquals(
 			setOf(middling, large),
-			views.rows(view(mapOf("estimateMin" to 5)).id).map { it.ticket.id }.toSet(),
+			views.rows(admin, view(mapOf("estimateMin" to 5)).id).map { it.ticket.id }.toSet(),
 		)
 		assertEquals(
 			setOf(small, middling),
-			views.rows(view(mapOf("estimateMax" to 5)).id).map { it.ticket.id }.toSet(),
+			views.rows(admin, view(mapOf("estimateMax" to 5)).id).map { it.ticket.id }.toSet(),
 			"an unsized ticket is not known to be small; a bound cannot claim it either way",
 		)
 		assertEquals(
 			listOf(middling),
-			views.rows(view(mapOf("estimateMin" to 2, "estimateMax" to 8)).id).map { it.ticket.id },
+			views.rows(admin, view(mapOf("estimateMin" to 2, "estimateMax" to 8)).id).map { it.ticket.id },
 		)
 	}
 
