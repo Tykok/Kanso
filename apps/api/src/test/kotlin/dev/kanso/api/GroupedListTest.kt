@@ -1,6 +1,7 @@
 package dev.kanso.api
 
 import dev.kanso.PostgresTest
+import dev.kanso.auth.KansoLocalUser
 import dev.kanso.auth.hash
 import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.TicketPriority
@@ -13,7 +14,10 @@ import dev.kanso.service.TeamService
 import dev.kanso.service.TicketService
 import dev.kanso.service.ViewGroupBy
 import dev.kanso.service.ViewSortBy
+import org.junit.jupiter.api.AfterEach
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.util.LinkedMultiValueMap
@@ -69,6 +73,24 @@ class GroupedListTest : PostgresTest() {
 		assigneeIds = emptyList(),
 		docIds = emptyList(),
 	)
+
+	/**
+	 * Stands in for the auth filter, which has no servlet request here to run inside.
+	 *
+	 * Only [SavedViewController] needs it: a saved view is read against the caller now that
+	 * `shared = false` means what `V10` always said it did, so the route asks who is calling.
+	 * [TicketController]'s grouped door takes no actor and the tests around it are unchanged.
+	 */
+	private fun actAs(actor: User) {
+		val principal = KansoLocalUser(actor.id, actor.email, actor.displayName)
+		SecurityContextHolder.getContext().authentication =
+			UsernamePasswordAuthenticationToken(principal, null, principal.authorities)
+	}
+
+	@AfterEach
+	fun clearSecurityContext() {
+		SecurityContextHolder.clearContext()
+	}
 
 	private fun params(vararg pairs: Pair<String, String>): MultiValueMap<String, String> =
 		LinkedMultiValueMap<String, String>().apply { pairs.forEach { (k, v) -> add(k, v) } }
@@ -177,6 +199,8 @@ class GroupedListTest : PostgresTest() {
 			groupBy = ViewGroupBy.STATUS,
 			sortBy = ViewSortBy.PRIORITY,
 		)
+
+		actAs(admin)
 
 		val answer = viewController.grouped(view.id, limit = 200, offset = 0)
 

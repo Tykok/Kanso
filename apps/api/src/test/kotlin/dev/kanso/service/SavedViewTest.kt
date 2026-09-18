@@ -82,16 +82,74 @@ class SavedViewTest : PostgresTest() {
 			sortBy = ViewSortBy.PRIORITY,
 		)
 
+	/**
+	 * A private view is its author's, which is what `V10` says `shared` means and what
+	 * nothing enforced until now: *"False means it is the author's own, which is why
+	 * `created_by` is not nullable-by-accident."* The column was stored, returned and drawn,
+	 * and appeared in no predicate anywhere — so a colleague on the same team could list it,
+	 * read its rows, publish it by patching `shared` to true, rewrite the question it asked,
+	 * and bin it. Team write access was the only check, and on a fresh instance every member
+	 * has that.
+	 *
+	 * Asserted through a second member of the *same team*, because a stranger was never the
+	 * threat: the point of the flag is a boundary inside a team someone already belongs to.
+	 *
+	 * `NotFoundException` rather than a refusal, deliberately — the same answer
+	 * `TicketAccess.requireReadable` gives a private draft, because a 403 tells somebody
+	 * walking ids that the row is there, and that it exists is the fact being kept.
+	 */
+	@Test
+	fun `an unshared view is invisible to a colleague on the same team`() {
+		val mine = views.create(
+			actor = admin,
+			teamId = team.id,
+			name = "Mine-${UUID.randomUUID()}",
+			shared = false,
+			filters = emptyMap(),
+			groupBy = ViewGroupBy.STATUS,
+			sortBy = ViewSortBy.PRIORITY,
+		)
+		val colleague = user(InstanceRole.MEMBER)
+
+		assertTrue(
+			views.list(colleague, team.id).none { it.view.id == mine.id },
+			"the rail listed every live row of the team, shared or not",
+		)
+		assertFailsWith<NotFoundException> { views.get(colleague, mine.id) }
+		assertFailsWith<NotFoundException> { views.grouped(colleague, mine.id) }
+		assertFailsWith<NotFoundException> { views.count(colleague, mine.id) }
+		assertFailsWith<NotFoundException> {
+			views.update(actor = colleague, id = mine.id, shared = true)
+		}
+		assertFailsWith<NotFoundException> { views.delete(colleague, mine.id) }
+
+		assertEquals(mine.id, views.get(admin, mine.id).id, "its author still has it")
+	}
+
+	/**
+	 * The other half, and the one a too-eager fix breaks: sharing a view is what makes it
+	 * the team's, so a colleague reads it, edits it and can delete it. The rule is about the
+	 * views that were *not* shared.
+	 */
+	@Test
+	fun `a shared view stays the team's to read and to change`() {
+		val ours = view(emptyMap())
+		val colleague = user(InstanceRole.MEMBER)
+
+		assertEquals(ours.id, views.get(colleague, ours.id).id)
+		assertEquals("Renamed", views.update(colleague, ours.id, name = "Renamed").name)
+	}
+
 	@Test
 	fun `a view stores the question and answers it fresh every time`() {
 		val open = view(mapOf("statusNot" to listOf("done")))
 		val moving = ticket("Echo suppression drops our own writes")
 
-		assertEquals(1, views.rows(open.id).size)
+		assertEquals(1, views.rows(admin, open.id).size)
 		tickets.patch(admin, moving, TicketPatch(status = "done"))
 
 		assertTrue(
-			views.rows(open.id).isEmpty(),
+			views.rows(admin, open.id).isEmpty(),
 			"a saved view that cached its ids would still be showing a done ticket",
 		)
 	}
@@ -106,7 +164,7 @@ class SavedViewTest : PostgresTest() {
 			mapOf("statusNot" to listOf("done"), "priority" to listOf("urgent")),
 		)
 
-		assertEquals(listOf(urgent), views.rows(chips.id).map { it.ticket.id })
+		assertEquals(listOf(urgent), views.rows(admin, chips.id).map { it.ticket.id })
 	}
 
 	@Test
@@ -119,7 +177,7 @@ class SavedViewTest : PostgresTest() {
 
 		assertEquals(
 			setOf(urgent, low),
-			views.rows(narrow.id).map { it.ticket.id }.toSet(),
+			views.rows(admin, narrow.id).map { it.ticket.id }.toSet(),
 			"the × on a chip removes a key from `filters`; nothing else about the view changes",
 		)
 	}
@@ -132,7 +190,7 @@ class SavedViewTest : PostgresTest() {
 
 		val unassigned = view(mapOf("unassigned" to true))
 
-		assertEquals(listOf(orphan), views.rows(unassigned.id).map { it.ticket.id })
+		assertEquals(listOf(orphan), views.rows(admin, unassigned.id).map { it.ticket.id })
 	}
 
 	/**
@@ -154,11 +212,11 @@ class SavedViewTest : PostgresTest() {
 
 		val chip = view(mapOf("label" to listOf(sync.id.toString())))
 
-		assertEquals(listOf(wearing), views.rows(chip.id).map { it.ticket.id })
+		assertEquals(listOf(wearing), views.rows(admin, chip.id).map { it.ticket.id })
 
 		// And the `×` widens it back, like every other chip's does.
 		views.update(admin, chip.id, filters = emptyMap())
-		assertEquals(2, views.rows(chip.id).size)
+		assertEquals(2, views.rows(admin, chip.id).size)
 	}
 
 	@Test
@@ -183,7 +241,7 @@ class SavedViewTest : PostgresTest() {
 
 		assertEquals(
 			listOf(mine),
-			views.rows(everything.id).map { it.ticket.id },
+			views.rows(admin, everything.id).map { it.ticket.id },
 			"a team's saved view is scoped to the team it was saved in, filters or no filters",
 		)
 	}
@@ -195,7 +253,7 @@ class SavedViewTest : PostgresTest() {
 		ticket("three", "done")
 		val open = view(mapOf("statusNot" to listOf("done")))
 
-		assertEquals(2, views.list(team.id).single { it.view.id == open.id }.count)
+		assertEquals(2, views.list(admin, team.id).single { it.view.id == open.id }.count)
 	}
 
 	@Test

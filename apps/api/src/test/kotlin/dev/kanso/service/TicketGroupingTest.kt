@@ -303,7 +303,7 @@ class TicketGroupingTest : PostgresTest() {
 			sortBy = ViewSortBy.PRIORITY,
 		)
 
-		assertEquals(listOf("backlog", "done"), views.grouped(view.id).map { it.key })
+		assertEquals(listOf("backlog", "done"), views.grouped(admin, view.id).map { it.key })
 	}
 
 	/**
@@ -328,9 +328,9 @@ class TicketGroupingTest : PostgresTest() {
 			sortBy = ViewSortBy.PRIORITY,
 		)
 
-		assertEquals(1, views.rows(view.id).size)
-		assertEquals(1, views.count(view.id))
-		assertEquals(1, views.grouped(view.id).sumOf { it.count })
+		assertEquals(1, views.rows(admin, view.id).size)
+		assertEquals(1, views.count(admin, view.id))
+		assertEquals(1, views.grouped(admin, view.id).sumOf { it.count })
 	}
 
 	/**
@@ -351,8 +351,8 @@ class TicketGroupingTest : PostgresTest() {
 			sortBy = ViewSortBy.UPDATED,
 		)
 
-		assertEquals(3, views.count(view.id))
-		assertEquals(3, views.grouped(view.id, limit = 1).single().count)
-		assertEquals(1, views.grouped(view.id, limit = 1).single().tickets.size)
+		assertEquals(3, views.count(admin, view.id))
+		assertEquals(3, views.grouped(admin, view.id, limit = 1).single().count)
+		assertEquals(1, views.grouped(admin, view.id, limit = 1).single().tickets.size)
 	}
 }

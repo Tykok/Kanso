@@ -1,5 +1,6 @@
 package dev.kanso.service
 
+import dev.kanso.domain.User
 import java.util.UUID
 
 /**
@@ -19,5 +20,5 @@ import java.util.UUID
  * An extension in the test source set rather than four private helpers: the identity above
  * is one claim, and four copies of it are four places to stop agreeing.
  */
-fun SavedViewService.rows(id: UUID, limit: Int = 200): List<TicketDetail> =
-	grouped(id, limit).flatMap { it.tickets }
+fun SavedViewService.rows(actor: User, id: UUID, limit: Int = 200): List<TicketDetail> =
+	grouped(actor, id, limit).flatMap { it.tickets }
