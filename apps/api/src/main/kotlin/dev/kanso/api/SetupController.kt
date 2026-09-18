@@ -77,7 +77,31 @@ class SetupController(
 	private val tx: TransactionTemplate,
 ) {
 
-	/** Unauthenticated: the sign-in screen has to know whether to offer the wizard. */
+	/**
+	 * Unauthenticated: the sign-in screen has to know whether to offer the wizard.
+	 *
+	 * *That* is what is unauthenticated — `needsOwner` and the booleans around it — and the
+	 * three strings this route used to hand out with them are not. `notion.parentPageId`
+	 * names a page in a workspace this instance does not own, `notion.workspaceName` names
+	 * the organisation, and `google.clientId` names its OAuth client; `curl` against any
+	 * reachable Kanso returned all three. `SyncAdminController` split `status` from `detail`
+	 * to keep ids like these from *signed-in members*, and the argument in its header — "an
+	 * id names a page in a workspace this instance does not control" — applies with more
+	 * force to a stranger. [currentState] redacts them for anyone who could not change them
+	 * anyway.
+	 *
+	 * Redaction rather than a second route because of who reads what: every screen that
+	 * wants the three strings is admin-facing already (`connections-section`, the wizard's
+	 * `notion-step` and `notion-connect`), while `app-shell` and the onboarding checklist
+	 * read only booleans and are reached by every member. One route keeps those callers as
+	 * they are; a split would have moved six of them for the benefit of three fields.
+	 *
+	 * `needsOwner` itself stays open, and stays a real disclosure: it says an instance is
+	 * deployed and unclaimed, which is the window `POST /api/setup/owner` is open in. That
+	 * is not closeable from here — the wizard cannot offer itself to whoever is about to
+	 * claim the instance without admitting there is something to claim. What limits it is
+	 * the `users_single_owner` index, which makes the race a race that only one caller wins.
+	 */
 	@GetMapping("/state")
 	fun state(): SetupStateResponse = currentState()
 
@@ -212,17 +236,25 @@ class SetupController(
 
 	// --- internals -----------------------------------------------------------
 
+	/**
+	 * [isInstanceAdmin] decides how much of this a caller is shown — see [state] for which
+	 * fields and why. Every other route on this controller has already called
+	 * [requireInstanceAdmin] before it gets here, so for them the answer is true and the
+	 * check is one repository read they were going to pay for.
+	 */
 	private fun currentState(): SetupStateResponse {
 		val state = settings.state()
 		// Four databases means the mirror has somewhere to push. The read needs a
 		// transaction of its own: nothing here is inside one, deliberately, so that
 		// a save commits before the client is rebuilt from it.
 		val bootstrapped = tx.execute { meta.findAll().size >= MIRRORED_DATABASES } ?: false
+		val full = isInstanceAdmin()
+		val notion = state.notion.copy(bootstrapped = bootstrapped)
 		return SetupStateResponse(
 			needsOwner = !settings.hasOwner(),
 			setupCompletedAt = state.setupCompletedAt,
-			notion = state.notion.copy(bootstrapped = bootstrapped),
-			google = state.google,
+			notion = if (full) notion else notion.copy(parentPageId = null, workspaceName = null),
+			google = if (full) state.google else state.google.copy(clientId = null),
 		)
 	}
 
@@ -275,6 +307,16 @@ class SetupController(
 		if (role?.canConfigureInstance != true) {
 			throw AccessDeniedException("Only the instance owner or an admin can change these settings")
 		}
+	}
+
+	/**
+	 * The same question as [requireInstanceAdmin], asked where there may be nobody to ask
+	 * about: `idOrNull` rather than `requireId`, because [state] is reached anonymously and
+	 * the honest answer for a caller with no session is "no" rather than a 401.
+	 */
+	private fun isInstanceAdmin(): Boolean {
+		val id = currentUser.idOrNull() ?: return false
+		return settings.instanceRoleOf(id)?.canConfigureInstance == true
 	}
 
 	private fun describe(e: NotionApiException): String = when (e.status) {
