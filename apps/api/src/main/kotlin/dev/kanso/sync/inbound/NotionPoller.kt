@@ -227,7 +227,14 @@ class NotionPoller(
 		if (start != ticket.start || due != ticket.due) schedule.cascadeFrom(ticket.id)
 
 		events.publish(
-			KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, ticket.teamId, ticket.projectId, origin = "notion")
+			KansoEvent.ticket(
+				ChangeKind.UPDATED,
+				ticket.id,
+				ticket.teamId,
+				ticket.projectId,
+				ticket.createdBy,
+				origin = "notion",
+			)
 		)
 		log.info("Applied Notion edit to ticket {}", ticket.id)
 	}

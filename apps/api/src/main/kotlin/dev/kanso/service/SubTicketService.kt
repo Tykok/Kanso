@@ -92,7 +92,15 @@ class SubTicketService(
 		parentId?.let { parentRefusal(ticketId, it)?.let { why -> throw ConflictException(why) } }
 
 		tickets.setParent(ticketId, parentId)
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, ticketId, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(
+				ChangeKind.UPDATED,
+				ticketId,
+				ticket.teamId,
+				ticket.projectId,
+				ticket.createdBy,
+			),
+		)
 		// The old parent's progress changed too, and the new one's did. Neither is stored,
 		// so there is nothing to recompute — which is the whole reason it is derived.
 	}

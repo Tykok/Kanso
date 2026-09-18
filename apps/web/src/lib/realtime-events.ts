@@ -77,11 +77,26 @@ export function topicsFor(
    * that knows which page is on screen. `store/docs.ts` is where it says so.
    */
   openDocPageId?: string,
+  /**
+   * The reader's own user id, for the one topic that is theirs rather than a scope's.
+   *
+   * A ticket with no team is a draft, and the server stopped announcing those on
+   * `/topic/tickets` because every browser in the instance is subscribed to it — a row
+   * `GET /api/tickets/{id}` answers 404 for was being named to all of them. `KansoEvent`
+   * sends a draft to its author instead, so without this the author is the one person who
+   * stops hearing about their own.
+   *
+   * Optional because it arrives a render later than the scope does: `useMe()` is a query.
+   * A missing id subscribes to one topic fewer and the next render adds it, which is the
+   * same shape `ticketTopics` already has for a team tree that has not loaded.
+   */
+  meId?: string,
 ): string[] {
   return [
     "/topic/projects",
     "/topic/teams",
     ...ticketTopics(scope, view, teams),
+    ...(meId ? [`/topic/users/${meId}/tickets`] : []),
     ...docTopics(openDocPageId),
   ];
 }

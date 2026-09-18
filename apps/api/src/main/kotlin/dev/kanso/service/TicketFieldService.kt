@@ -126,7 +126,13 @@ class TicketFieldService(
 		// a re-submitted form that moved nothing is not a change anybody should be told about.
 		if (moved) {
 			events.publish(
-				KansoEvent.ticket(ChangeKind.UPDATED, ticket.id, ticket.teamId, ticket.projectId),
+				KansoEvent.ticket(
+					ChangeKind.UPDATED,
+					ticket.id,
+					ticket.teamId,
+					ticket.projectId,
+					ticket.createdBy,
+				),
 			)
 		}
 		return fields.valuesOf(ticketId)

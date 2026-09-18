@@ -230,7 +230,15 @@ class ProjectService(
 		when {
 			plan.tickets == DispositionChoice.KEEP -> tickets.clearProject(projectId).forEach {
 				outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, it, OutboundOperation.UPSERT)
-				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, null))
+				events.publish(
+					KansoEvent.ticket(
+						ChangeKind.UPDATED,
+						it,
+						byId[it]?.teamId,
+						null,
+						byId[it]?.createdBy,
+					),
+				)
 			}
 
 			destructive -> {
@@ -246,13 +254,29 @@ class ProjectService(
 						OutboundOperation.DELETE,
 						payload = deletePayload(it.mirror.notionPageId),
 					)
-					events.publish(KansoEvent.ticket(ChangeKind.DELETED, it.id, it.teamId, projectId))
+					events.publish(
+						KansoEvent.ticket(
+							ChangeKind.DELETED,
+							it.id,
+							it.teamId,
+							projectId,
+							it.createdBy,
+						),
+					)
 				}
 			}
 
 			else -> tickets.setArchivedByProject(projectId, true).forEach {
 				outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, it, OutboundOperation.ARCHIVE)
-				events.publish(KansoEvent.ticket(ChangeKind.UPDATED, it, byId[it]?.teamId, projectId))
+				events.publish(
+					KansoEvent.ticket(
+						ChangeKind.UPDATED,
+						it,
+						byId[it]?.teamId,
+						projectId,
+						byId[it]?.createdBy,
+					),
+				)
 			}
 		}
 	}
