@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EFFORT_POINTS,
   TICKET_PRIORITIES,
   api,
+  fieldsApi,
+  socialApi,
   type EffortPoints,
   type Project,
   type Team,
@@ -13,6 +15,10 @@ import {
   type User,
 } from "@/lib/api";
 import { creationSeed } from "@/lib/creation-seed";
+import { applyTemplate, clearTemplate, type Filled, type FilledKey } from "@/lib/template-fill";
+import { useResolveTemplate, useTemplates } from "@/lib/queries/templates";
+import { useTeamLabels } from "@/lib/queries/social";
+import { useTeamFields } from "@/lib/queries/fields";
 import { keys, useMe } from "@/lib/queries";
 import { mayWrite } from "@/lib/seat";
 import { PRIORITY_LABELS } from "@/lib/status";
@@ -100,6 +106,7 @@ export function chosenEstimate(value: string): EffortPoints | undefined {
 export function newTicketBody(form: {
   teamId: string;
   title: string;
+  description: string;
   priority: TicketPriority;
   projectId: string;
   assigneeId: string;
@@ -111,6 +118,10 @@ export function newTicketBody(form: {
     // the server adopts it, because a ticket's project belongs to its team.
     teamId: form.teamId ? form.teamId : undefined,
     title: form.title,
+    // Omitted rather than sent empty, exactly as `teamId` is and for a kindred reason: a
+    // folded composer must put the same bytes on the wire it put before templates existed,
+    // so the fast path cannot be changed by a feature it never uses.
+    description: form.description ? form.description : undefined,
     priority: form.priority,
     estimate: chosenEstimate(form.estimate),
     projectId: form.projectId ? form.projectId : undefined,
@@ -176,6 +187,99 @@ export function ComposerForm({
   const [untitled, setUntitled] = useState(false);
 
   /**
+   * The template in force, and the three fields only a template puts on this form.
+   *
+   * Null `templateId` is the folded composer — one title field, ↵ creates — which is what
+   * this dialog was built around and what every creation that does not start from a
+   * template still gets. Nothing below renders until a template is chosen.
+   */
+  const [templateId, setTemplateId] = useState("");
+  const [description, setDescription] = useState("");
+  const [labelIds, setLabelIds] = useState<string[]>([]);
+  const [fieldValues, setFieldValues] = useState<Record<string, string | number | boolean>>({});
+  const [unresolved, setUnresolved] = useState<{ labels: string[]; fields: string[] }>({
+    labels: [],
+    fields: [],
+  });
+
+  /**
+   * Which fields the person has changed by hand. A ref rather than state: nothing renders
+   * off it, and a set that triggered a repaint on every keystroke would repaint the form
+   * for a fact only the next resolution reads. `lib/template-fill.ts` argues why it exists
+   * at all — without it, changing the team after choosing a template overwrites whatever
+   * somebody had typed.
+   */
+  const touched = useRef<Set<FilledKey>>(new Set());
+  const mark = (key: FilledKey) => touched.current.add(key);
+
+  const templates = useTemplates(teamId || undefined);
+  // Only to *name* what the template placed. The pills are drawn from ids the server
+  // resolved, so this list decides nothing — it is the difference between "adds 1 label"
+  // and "adds bug", and only the second is a sentence somebody can act on.
+  const teamLabels = useTeamLabels(teamId || undefined);
+
+  const teamFields = useTeamFields(teamId || undefined);
+
+  /** The pills to draw: the ids the server resolved, named by the team's own vocabulary. */
+  const placedLabels = (teamLabels.data ?? []).filter((label) => labelIds.includes(label.id));
+
+  /**
+   * The field values the template placed, said in words.
+   *
+   * Shown rather than applied quietly. They are written after the ticket exists, so nothing
+   * on the form can edit them yet — the full controls live on the ticket page — but a value
+   * that lands on a ticket without ever appearing on the screen that created it is the one
+   * thing this feature must not do.
+   */
+  const placedFields = (teamFields.data ?? [])
+    .filter((field) => field.id in fieldValues)
+    .map((field) => `${field.name} = ${String(fieldValues[field.id])}`);
+  const resolve = useResolveTemplate();
+
+  const seeded = (): Filled => ({
+    title: "",
+    description: "",
+    priority: "none",
+    estimate: "",
+    labelIds: [],
+    fieldValues: {},
+  });
+
+  const held = (): Filled => ({ title, description, priority, estimate, labelIds, fieldValues });
+
+  const write = (next: Filled) => {
+    setTitle(next.title);
+    setDescription(next.description);
+    setPriority(next.priority);
+    setEstimate(next.estimate);
+    setLabelIds(next.labelIds);
+    setFieldValues(next.fieldValues);
+  };
+
+  /**
+   * Choosing a template, or choosing it again because the team moved. Nothing is written —
+   * the form is filled and the person edits it, which is `creation-seed.ts`'s doctrine
+   * applied to a larger seed.
+   */
+  const pickTemplate = (id: string) => {
+    setTemplateId(id);
+    if (!id) {
+      write(clearTemplate(held(), touched.current, seeded()));
+      setUnresolved({ labels: [], fields: [] });
+      return;
+    }
+    resolve.mutate(
+      { id, teamId: teamId || undefined },
+      {
+        onSuccess: (resolved) => {
+          write(applyTemplate(held(), touched.current, resolved, seeded()));
+          setUnresolved(resolved.unresolved);
+        },
+      },
+    );
+  };
+
+  /**
    * A ticket always belongs to a team; a project does not. The list offered is
    * therefore the chosen team's, plus every team-less project — the only two places a
    * project a ticket may point at can live. No SQL constraint ties
@@ -192,7 +296,22 @@ export function ComposerForm({
 
   const create = useMutation({
     mutationFn: api.createTicket,
-    onSuccess: () => {
+    /**
+     * Two follow-up writes, and only when a template placed something.
+     *
+     * `POST /api/tickets` has never carried labels or field values — they are their own
+     * endpoints, because a label is attached and a field is valued rather than being columns
+     * of a ticket. So the composer does what the ticket page does, in the order the server
+     * requires: the row first, then what hangs off it. A failure here leaves a created
+     * ticket without its label, which is why it is not awaited into the close: the ticket
+     * exists and is on screen, and a dialog that refused to close over a missing pill would
+     * be claiming the creation failed when it did not.
+     */
+    onSuccess: (ticket) => {
+      if (labelIds.length > 0) void socialApi.setTicketLabels(ticket.id, labelIds);
+      if (Object.keys(fieldValues).length > 0) {
+        void fieldsApi.setTicketFields(ticket.id, fieldValues);
+      }
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       // The team's counter moved, and it is on display in the sidebar.
       queryClient.invalidateQueries({ queryKey: ["teams"] });
@@ -227,9 +346,40 @@ export function ComposerForm({
       return;
     }
     create.mutate(
-      newTicketBody({ teamId, title: trimmed, priority, projectId, assigneeId, estimate }),
+      newTicketBody({
+        teamId,
+        title: trimmed,
+        description,
+        priority,
+        projectId,
+        assigneeId,
+        estimate,
+      }),
     );
   };
+
+  /**
+   * The team selector sits above the picker and can move after a template is chosen, and the
+   * labels and fields it resolved belong to the team it was resolved against. Re-resolving is
+   * the only way they can be right; `applyTemplate` is what stops it overwriting anything
+   * somebody typed in the meantime.
+   *
+   * `templateId` is deliberately not in the dependency list — choosing a template already
+   * resolves through `pickTemplate`, and listing it here would resolve twice on one click.
+   */
+  useEffect(() => {
+    if (!templateId) return;
+    resolve.mutate(
+      { id: templateId, teamId: teamId || undefined },
+      {
+        onSuccess: (resolved) => {
+          write(applyTemplate(held(), touched.current, resolved, seeded()));
+          setUnresolved(resolved.unresolved);
+        },
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId]);
 
   const teamName = teams.find((team) => team.id === teamId)?.name;
 
@@ -253,6 +403,7 @@ export function ComposerForm({
           disabled={create.isPending}
           onChange={(event) => {
             setTitle(event.target.value);
+            mark("title");
             // Withdrawn on the answer, not on the next submit: the objection was that the
             // field was empty, and it is being filled.
             setUntitled(false);
@@ -266,6 +417,62 @@ export function ComposerForm({
             if (event.key === "Escape") onClose();
           }}
         />
+
+        {templateId && (
+          <textarea
+            className="mt-3 h-40 w-full resize-y rounded-md border border-border bg-card p-2 text-13 text-foreground outline-none placeholder:text-faint"
+            placeholder="Describe it…"
+            value={description}
+            disabled={create.isPending}
+            onChange={(event) => {
+              setDescription(event.target.value);
+              mark("description");
+            }}
+            // ↵ writes a newline here, unlike the title above: a description is prose, and a
+            // dialog that filed the ticket on the first paragraph break would be unusable.
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Escape") onClose();
+            }}
+          />
+        )}
+
+        {templateId && placedLabels.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {placedLabels.map((label) => (
+              <button
+                key={label.id}
+                type="button"
+                className="rounded-full border border-border px-2 py-0.5 text-11 text-muted-foreground"
+                // Removable, because everything a template places has to be editable before
+                // the button is pressed. Adding one that the template did not name is the
+                // ticket page's job, which is where the full picker lives.
+                onClick={() => {
+                  setLabelIds(labelIds.filter((id) => id !== label.id));
+                  mark("labelIds");
+                }}
+              >
+                {label.name} ×
+              </button>
+            ))}
+          </div>
+        )}
+
+        {templateId && placedFields.length > 0 && (
+          <p className="mt-2 text-11 text-muted-foreground">
+            Sets {placedFields.join(", ")} once the ticket exists.
+          </p>
+        )}
+
+        {templateId && (unresolved.labels.length > 0 || unresolved.fields.length > 0) && (
+          // Never a modal and never a refusal: the template degrades and says so. A template
+          // that half-works must not be indistinguishable from one that works.
+          <p className="mt-2 text-11 text-faint">
+            This template also sets{" "}
+            {[...unresolved.labels, ...unresolved.fields].join(", ")}, which this team does
+            not have.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 bg-background px-4 py-2.5">
@@ -404,6 +611,38 @@ export function ComposerForm({
 
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-11 text-faint">
         <Kbd>↵</Kbd> <span>create</span> <Kbd>esc</Kbd> <span>cancel</span>
+        <select
+          aria-label="Ticket template"
+          className="ml-2 rounded-md border border-border bg-card px-1.5 py-0.5 text-11 text-muted-foreground"
+          value={templateId}
+          disabled={create.isPending || resolve.isPending}
+          onChange={(event) => pickTemplate(event.target.value)}
+        >
+          <option value="">No template</option>
+          {/* Two groups, drawn off `teamId === null` and nothing else. A team that wrote its
+              own `Bug` sees both its own and Kanso's: hiding one would be deciding which,
+              and they already decided by writing theirs. */}
+          <optgroup label="Kanso">
+            {(templates.data ?? [])
+              .filter((template) => template.teamId === null)
+              .map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+          </optgroup>
+          {(templates.data ?? []).some((template) => template.teamId !== null) && (
+            <optgroup label={teamName ?? "This team"}>
+              {(templates.data ?? [])
+                .filter((template) => template.teamId !== null)
+                .map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+            </optgroup>
+          )}
+        </select>
         {!teamId && (
           // Not an error: it says what will happen, so nobody is surprised to find the
           // ticket has no identifier afterwards. With nothing composable to pick from, what

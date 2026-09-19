@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineDependency, TimelineTicket } from "@/lib/api";
 import { canMoveTicket, canSelectTicket, isContextRow, laneOf, overlapNotice, rowLabel } from "./row";
-import type { Row } from "./view";
+import type { LaneRow as Row } from "./rows";
 
 /** A dependency edge, defaulting to the unbroken case so each test overrides only what it tests. */
 const dep = (overrides: Partial<TimelineDependency> = {}): TimelineDependency => ({
@@ -24,6 +24,7 @@ const ticket = (overrides: Partial<TimelineTicket> = {}): TimelineTicket => ({
   status: "todo",
   critical: false,
   late: false,
+  slipping: false,
   teamKey: "KAN",
   context: false,
   editable: true,

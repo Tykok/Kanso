@@ -7,7 +7,7 @@ import { STATUS_COLORS } from "@/lib/status";
 import {
   barAccessibleName,
   derivedBorderClass,
-  LATE_STYLE,
+  SLIPPING_STYLE,
   SLACK_STYLE,
   slackTitle,
   slackWidthPx,
@@ -384,7 +384,11 @@ export function TimelineBar({
   // of six bracketed classes would be harder to read than the function computing
   // the same colour once.
   const colorStyle =
-    kind === "project" ? undefined : state === "late" ? LATE_STYLE : ticketTint(status, violated);
+    kind === "project"
+      ? undefined
+      : state === "slipping"
+        ? SLIPPING_STYLE
+        : ticketTint(status, violated);
 
   const derivedClass = derivedBorderClass(derived);
 
@@ -441,20 +445,21 @@ export function TimelineBar({
           />
         )}
         {/*
-         * Late is the one state whose fill is a two-tone hatch rather than a flat
-         * tint (`LATE_STYLE` below), and no flat ink clears 4.5:1 against both
+         * `slipping` is the one state whose fill is a two-tone hatch rather than a
+         * flat tint (`SLIPPING_STYLE`), and no flat ink clears 4.5:1 against both
          * bands in both themes at once: white holds against the darker band but
          * fails the lighter one in dark mode (3.12:1), and the reverse is true of
          * a dark ink — measured, not assumed, before choosing this. `--urgent`
          * itself is unchanged; only the label moves, onto the plain chart
          * background beside the bar, where a single colour reads reliably in
-         * both schemes. Nothing in the bundle draws a "late" bar at all — every
+         * both schemes. Nothing else in the bundle draws a hatched bar — every
          * problem state it does draw (a violated dependency, a critical-path
          * ticket) puts its label on a flat tint, never on a texture — so this is
          * the same move the bundle already makes for every other case, applied
          * to the one state it never faced.
          */}
-        {state !== "late" && <span className="truncate px-1.5">{label}</span>}
+        {/* Hidden on the hatched state: no flat ink clears 4.5:1 over those stripes. */}
+        {state !== "slipping" && <span className="truncate px-1.5">{label}</span>}
         {handles.end && (
           <span
             data-edge="end"
@@ -465,13 +470,13 @@ export function TimelineBar({
       </div>
 
       {/*
-       * The late label: a sibling for the same structural reason the link handle
+       * The slipping label: a sibling for the same structural reason the link handle
        * and the slack strip are — it sits past the bar's own `overflow: hidden`,
        * at the bar's right edge, and does not need to track a drag repainting only
        * the bar's own element. `aria-hidden`, like those two: the name is already
        * the bar's `aria-label`/`title`, and this is the sighted-only redraw of it.
        */}
-      {state === "late" && (
+      {state === "slipping" && (
         <span
           aria-hidden="true"
           className="pointer-events-none absolute top-1/2 z-[1] -mt-2 max-w-40 truncate pl-1.5 text-11 text-urgent"

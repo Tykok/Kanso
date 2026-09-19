@@ -99,7 +99,7 @@ anything to do with the mirror's.
 | 14 | A rollup or a formula has no column here and no meaning outside Notion. | Preserved as its *displayed* value in an "Imported from Notion" section of the description, with every other property nothing claimed. Deliberately lossy: a readable line there is worth more than a faithful copy of Notion's internals in a column that would then have to be kept in step with it. |
 | 15 | A relation only carries meaning if both ends come over. A `Projet` column pointing at a base being ignored — or imported as the wrong kind — has nothing to resolve to. | The second step says so beside the count of what it costs, and offers to import the other base as the kind that relation needs. It is never a blocker: the row lands in the fallback its base was given, and the relation is counted as dropped in the outcome. |
 | 16 | A `two_property` relation is declared on both sides and the two can disagree — a ticket naming project B while project A claims to hold it. | The child's own answer wins, because the child is the row being written, and the disagreement is counted in the outcome rather than settled silently. A parent's inverse column (`Tâches` on a projects base) is a source of last resort, read only where the child said nothing. |
-| 17 | Notion answers no page total for a data source, so a count is a walk at roughly 2.5 requests a second. | The walk is bounded by `kanso.notion.import.max-pages-per-database`, and a base longer than that reports the count it reached with a `+` — on the first step, the second, and the confirm button. A bare number in front of a confirm button would be a wrong one. The import then brings over the prefix it read and nothing past the bound; `follow-ups.md` holds that against it. |
+| 17 | Notion answers no page total for a data source, so a count is a walk at roughly 2.5 requests a second. | The walk is bounded by `kanso.notion.import.max-pages-per-database`, and a base longer than that reports the count it reached with a `+` — on the first step, the second, and the confirm button. A bare number in front of a confirm button would be a wrong one. The import then brings over the prefix it read and nothing past the bound; the wiki's [Follow-ups](https://github.com/Tykok/Kanso/wiki/Follow-ups) holds that against it. |
 | 18 | A `people` column can only become an assignee if a Kanso account already exists for that person. | The fourth step matches each Notion person met on a mapped column to an account and *writes* `users.notion_person_id`, so the answer holds for every later import and lets the mirror fill the `people` property afterwards. Anyone left unmatched leaves their rows unassigned rather than guessed at, and creating accounts stays the invitation flow's job. |
 
 ### Connecting Notion
@@ -181,7 +181,8 @@ Three things read this table, and only three:
 `data_source_id` is recorded on every row and, today, **read by nothing**. It is what a later
 run would need to report "this base was already brought over, 396 of its 400 pages are here",
 and `notion_import_origin_source_idx` is the index that query would use; no screen asks for
-it yet, and `follow-ups.md` says so rather than leaving the column looking load-bearing.
+it yet, and the wiki's [Follow-ups](https://github.com/Tykok/Kanso/wiki/Follow-ups) page says
+so rather than leaving the column looking load-bearing.
 
 None of the three is an inbound path. Re-reading Notion into an existing row is what "Notion
 is read-only in practice" refuses, and would overwrite whatever has been done in Kanso since.
@@ -191,7 +192,8 @@ four nullable columns and a `CHECK` that exactly one is set. The cost is that de
 entity leaves a row pointing at nothing, so the seed the writers resolve against is filtered
 to live rows first — `ImportOriginRepository.live`, one existence query per kind — and a
 stale row then behaves exactly like a relation into an ignored base: it resolves to nothing
-and falls back. Cleaning those rows up is a `follow-ups.md` line, not a trigger.
+and falls back. Cleaning those rows up is a line on the wiki's
+[Follow-ups](https://github.com/Tykok/Kanso/wiki/Follow-ups) page, not a trigger.
 
 ---
 

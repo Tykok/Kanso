@@ -314,8 +314,25 @@ class GithubWebhookService(
 			// ticket moved. Going this way is what keeps the mirror push, the feed row, the
 			// assignees' notification and the schedule cascade attached to a move that
 			// arrived from GitHub, rather than a status column somebody edited behind them.
+			// **No member to act as, no move.** `actorFor` answers null both for "nobody is
+			// linked" and for "this member may not edit this ticket", and `TicketService.patch`
+			// skips `access.require` entirely on a null actor — so the second answer was a way
+			// past the check rather than a note about attribution. What arrives here is text
+			// the *pull request's author* wrote: `PrLinkParser` reads the branch name, the
+			// title and the body, and `opened` needs no relationship with the repository at
+			// all. On a public repository that is a stranger typing `Fixes KAN-142` and moving
+			// a ticket in a team they are not in, on an instance where they have no account;
+			// with an account on a read-only seat it is `requireSeatThatWrites` bypassed. The
+			// feed sentence `V36` documents — *KAN-142 moved to Done via #418*, nobody named —
+			// was an argument about **attribution**, and the link row below still writes it.
+			// It was never an argument for moving the ticket.
+			val actor = actorFor(member, ticket)
+			if (actor == null) {
+				log.debug("{} does not move {}: nobody it may be attributed to", via, ticketId)
+				continue
+			}
 			ticketService.patch(
-				actor = actorFor(member, ticket),
+				actor = actor,
 				id = ticketId,
 				patch = TicketPatch(status = decision.to),
 				viaPullRequest = via,
@@ -324,7 +341,8 @@ class GithubWebhookService(
 	}
 
 	/**
-	 * Who to credit — and this is **attribution, not authorisation.**
+	 * Who to act as — and who to credit, which this file used to treat as the same question
+	 * answered for one reason and now treats as the same question answered for two.
 	 *
 	 * The distinction is the subtle one in this file. Whether the ticket moves was settled
 	 * before we got here, by the installation an admin performed, by `closes`, and by
@@ -343,9 +361,20 @@ class GithubWebhookService(
 	 * the whole delivery rollback-only — the refusal has to be asked *before* the call, not
 	 * caught after it.
 	 *
-	 * The move still happens with no actor, and that is coherent rather than a hole: it
-	 * happens for an author nobody has linked too, because its authority is the repository
-	 * and the App installed on it, never the person. What a resolvable member adds is a name.
+	 * **The move no longer happens with no actor.** It used to, on the argument that the
+	 * authority here is the repository and the App installed on it rather than the person —
+	 * and that argument holds for everything on this delivery *except the part a stranger
+	 * writes*. The installation is an admin's act; `Fixes KAN-142` in a pull request title is
+	 * not, and `targetFor` accepts it on `opened` from anyone who can open one. With no
+	 * actor, `TicketService.patch` takes its `requireStatusOnly` branch, which checks that no
+	 * field but `status` is set and checks nothing about who is asking — so "nobody to
+	 * credit" quietly meant "nobody to refuse". A null here is now a skipped transition, and
+	 * the link row and its `PULL_REQUEST_LINKED` activity are still written, because those
+	 * were what the documented nameless sentence was ever about.
+	 *
+	 * The cost is named: a merge by a maintainer with no linked Kanso account stops moving
+	 * the ticket. That is the same answer Kanso gives every other unidentified writer, and
+	 * linking an account is one button on the settings screen.
 	 */
 	private fun actorFor(memberId: UUID?, ticket: Ticket): User? {
 		val member = memberId?.let { users.findById(it) } ?: return null

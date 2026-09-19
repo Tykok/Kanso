@@ -1,17 +1,18 @@
 {
-  "_base": "TO FILL: the host the owner serves the captures from. Nothing binary is committed — five @2x PNGs are 1-2 MB and a clip is 5-30 MB per revision, permanently. Keep the /v1/ segment: replacing a file at a stable URL leaves caches serving the previous screenshot under the new caption.",
+  "_base": "The site serves its own captures: site/media/v1/ is copied into dist/ by build.mjs and published at this URL. The reasoning that kept them out was sized on PNG — five @2x PNGs are 1-2 MB — and the five here are WebP at 1920 wide, 233 KB for the set, once. That is smaller than the design material .gitignore already refuses, so the argument no longer reaches them, and a host nobody has to remember to pay for cannot go dark under a live page. A clip would still be 5-30 MB per revision: it does not come in here, and this entry has to change again the day one does. Absolute rather than relative because build.mjs concatenates base + src for both pages, and /fr/ sits a directory deeper than /. Keep the /v1/ segment: replacing a file at a stable URL leaves caches serving the previous screenshot under the new caption.",
   "_host": [
     "HTTPS. An http:// image on an HTTPS Pages document is blocked, not degraded.",
     "A versioned path, so a replaced capture gets a new URL.",
     "Publicly readable, no signed URLs: they expire and the page cannot notice."
   ],
   "_type": "image or video. A clip is the same entry with type changed and a poster added; the template does not move.",
-  "base": "https://media.example.invalid/kanso/v1/",
+  "_src": "What `pnpm shots` then `pnpm shots:pack` leaves in site/media/v1/. The test writes PNGs — Playwright encodes nothing else — and the pack step is what makes them the size committed here.",
+  "base": "https://tykok.github.io/Kanso/media/v1/",
   "steps": [
-    { "key": "step.project", "type": "image", "src": "01-project.png" },
-    { "key": "step.ticket", "type": "image", "src": "02-ticket.png" },
-    { "key": "step.timeline", "type": "image", "src": "03-timeline.png" },
-    { "key": "step.board", "type": "image", "src": "04-board.png" },
-    { "key": "step.assigned", "type": "image", "src": "05-assigned.png" }
+    { "key": "step.project", "type": "image", "src": "01-project.webp" },
+    { "key": "step.ticket", "type": "image", "src": "02-ticket.webp" },
+    { "key": "step.timeline", "type": "image", "src": "03-timeline.webp" },
+    { "key": "step.board", "type": "image", "src": "04-board.webp" },
+    { "key": "step.assigned", "type": "image", "src": "05-assigned.webp" }
   ]
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { barAt } from "./bar";
-import type { Row } from "./view";
+import type { Row } from "./rows";
 import type { TimelineDependency } from "@/lib/api";
 import { useRowMetrics } from "@/lib/row-metrics";
 import { widthOf, xOf, type Zoom } from "@/lib/timeline-geometry";

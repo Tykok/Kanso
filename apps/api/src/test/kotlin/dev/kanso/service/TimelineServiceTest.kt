@@ -141,14 +141,22 @@ class TimelineServiceTest : PostgresTest() {
 		assertTrue(row.start != null, "a completion date is a worse answer than a plan, and a better one than a blank row")
 	}
 
+	/**
+	 * This test used to assert the opposite — that an undated ticket was in `unscheduled`
+	 * and *not* in `tickets` — and the rename is the contract changing rather than the
+	 * assertion being tidied. The tray that separate list fed is gone: the screen no longer
+	 * splits its rows by whether somebody has given them dates, which was never a property
+	 * of the work.
+	 */
 	@Test
-	fun `undated tickets are listed separately rather than dropped`() {
+	fun `undated tickets are rows like any other, with nothing to draw`() {
 		val id = ticket("No dates", null, null, null)
 
 		val view = timeline.load(admin, teamId = team.id, projectId = null)
 
-		assertTrue(view.unscheduled.any { it.id == id })
-		assertTrue(view.tickets.none { it.id == id })
+		val row = view.tickets.single { it.id == id }
+		assertEquals(null, row.start)
+		assertEquals(null, row.due)
 	}
 
 	@Test
@@ -249,10 +257,12 @@ class TimelineServiceTest : PostgresTest() {
 
 		val view = timeline.load(admin, teamId = team.id, projectId = null)
 
-		// It has no bar to draw and it is not the reader's to schedule, so it lands in
-		// neither list — which is exactly what `outOfScope` has to keep announcing.
+		// Out of scope and undated, so it is not a row: the column carries the whole scope
+		// whatever its dates, and *context* only when it has something to draw. An undated
+		// ticket from another team explains nothing and would put work the reader cannot act
+		// on into a list they are planning from — which is exactly what `outOfScope` has to
+		// keep announcing instead.
 		assertTrue(view.tickets.none { it.id == elsewhere })
-		assertTrue(view.unscheduled.none { it.id == elsewhere })
 		assertEquals(
 			true,
 			view.dependencies.single().outOfScope,

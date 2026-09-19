@@ -65,7 +65,7 @@ export const Row = forwardRef<
 /**
  * A row's own `⋯`: out of sight at rest, revealed the moment the row it lives in
  * is worth acting on — hovered, holding focus anywhere inside it, or already open.
- * `docs/superpowers/specs/2026-08-09-mouse-parity-design.md` lists this as shipped,
+ * The wiki's `Spec - Every action reachable with a mouse` lists this as shipped,
  * deliberate behaviour, not a stylistic default the drawings happened to permit.
  *
  * A class string, not a wrapper: `opacity` is not an inherited CSS property, so a

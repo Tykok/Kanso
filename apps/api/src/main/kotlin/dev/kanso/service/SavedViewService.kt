@@ -70,15 +70,15 @@ class SavedViewService(
 ) {
 
 	@Transactional(readOnly = true)
-	fun list(teamId: UUID): List<SavedViewSummary> {
+	fun list(actor: User, teamId: UUID): List<SavedViewSummary> {
 		val scope = TicketScope(teams.descendantIds(teamId))
-		return views.findByTeam(teamId).map { row ->
-			SavedViewSummary(row.toDomain(), rows.count(scope, parseFilters(row.filters)))
-		}
+		return views.findByTeam(teamId)
+			.filter { it.isVisibleTo(actor) }
+			.map { row -> SavedViewSummary(row.toDomain(), rows.count(scope, parseFilters(row.filters))) }
 	}
 
 	@Transactional(readOnly = true)
-	fun get(id: UUID): SavedView = requireLive(id).toDomain()
+	fun get(actor: User, id: UUID): SavedView = requireVisible(actor, requireLive(id)).toDomain()
 
 	/**
 	 * The same question stacked: every bucket it has, each with a count of the whole
@@ -100,8 +100,8 @@ class SavedViewService(
 	 * has a choice about it, because the Archives tab is a screen.
 	 */
 	@Transactional(readOnly = true)
-	fun grouped(id: UUID, limit: Int = 200, offset: Long = 0): List<TicketGroup> {
-		val row = requireLive(id)
+	fun grouped(actor: User, id: UUID, limit: Int = 200, offset: Long = 0): List<TicketGroup> {
+		val row = requireVisible(actor, requireLive(id))
 		return groups.of(
 			scope = TicketScope(scopeOf(row.teamId)),
 			filters = parseFilters(row.filters),
@@ -122,8 +122,8 @@ class SavedViewService(
 	 * sidebar and the header disagreed the moment either was refetched alone.
 	 */
 	@Transactional(readOnly = true)
-	fun count(id: UUID): Int {
-		val row = requireLive(id)
+	fun count(actor: User, id: UUID): Int {
+		val row = requireVisible(actor, requireLive(id))
 		return rows.count(TicketScope(scopeOf(row.teamId)), parseFilters(row.filters))
 	}
 
@@ -178,7 +178,7 @@ class SavedViewService(
 		groupBy: ViewGroupBy? = null,
 		sortBy: ViewSortBy? = null,
 	): SavedView {
-		val current = requireLive(id)
+		val current = requireVisible(actor, requireLive(id))
 		access.requireTeam(actor, current.teamId)
 		filters?.let(::validate)
 		val renamed = name ?: current.name
@@ -204,7 +204,7 @@ class SavedViewService(
 	 */
 	@Transactional
 	fun delete(actor: User, id: UUID) {
-		val current = require(id)
+		val current = requireVisible(actor, require(id))
 		access.requireTeam(actor, current.teamId)
 		if (trash.find(TrashKind.VIEW, id) != null) return
 		trash.add(TrashKind.VIEW, id, actor.id)
@@ -250,6 +250,30 @@ class SavedViewService(
 	 * The row whatever state it is in, including one in the trash — which is what the three
 	 * exits need, because each of them is reached *because* the view was thrown away.
 	 */
+	/**
+	 * What `shared` has meant since `V10` and what nothing enforced: *"False means it is the
+	 * author's own, which is why `created_by` is not nullable-by-accident: an unshared view
+	 * with no owner would be reachable by nobody."*
+	 *
+	 * The column was written, read back and shown in the UI, and appeared in no predicate
+	 * anywhere — so a colleague on the same team listed a private view, read its rows,
+	 * published it by patching `shared` to true, rewrote the question it asked, or binned it.
+	 * Team write access was the only thing ever checked, and on a fresh instance whose
+	 * `team_members` is empty every member has that.
+	 *
+	 * [NotFoundException] and not [org.springframework.security.access.AccessDeniedException],
+	 * the same answer `TicketAccess.requireReadable` gives a private draft and for the same
+	 * reason: a 403 tells somebody walking ids that the row is there, and "Alice has a view
+	 * she did not share" is the fact being kept.
+	 *
+	 * A shared view stays the team's to edit and to delete — that is what sharing it was. The
+	 * rule is only about the ones that were not shared.
+	 */
+	private fun SavedViewRow.isVisibleTo(actor: User) = shared || createdBy == actor.id
+
+	private fun requireVisible(actor: User, row: SavedViewRow): SavedViewRow =
+		row.takeIf { it.isVisibleTo(actor) } ?: throw NotFoundException("No saved view ${row.id}")
+
 	private fun require(id: UUID): SavedViewRow =
 		views.findById(id) ?: throw NotFoundException("No saved view $id")
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { StatusCategory } from "@/lib/api";
+import type { StatusCategory, TimelineOptions } from "@/lib/api";
 import { useMemo } from "react";
 import { heldWrite, settlementOf } from "@/lib/offline-write";
 import { patchedTicket, removedTicket, ticketGuesses } from "@/lib/optimistic";
@@ -508,11 +508,13 @@ export const useGroupedTickets = (enabled = true) => {
  *
  * `enabled` so the list view does not pay for a query nothing renders.
  */
-export const useTimeline = (enabled: boolean) => {
+export const useTimeline = (enabled: boolean, options?: TimelineOptions) => {
   const scope = useUi((state) => state.scope);
+  // The options are part of the key, not just of the request: two sorts are two answers,
+  // and a shared key would serve the second from the first's cache.
   return useQuery({
-    queryKey: keys.timeline(scope),
-    queryFn: () => api.timeline(scope),
+    queryKey: [...keys.timeline(scope), options?.sort ?? "start", options?.hideCompleted ?? false],
+    queryFn: () => api.timeline(scope, options),
     enabled,
   });
 };

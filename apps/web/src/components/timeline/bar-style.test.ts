@@ -24,6 +24,22 @@ describe("barAccessibleName", () => {
     expect(name({ slackMinutes: 2 * 1440 })).toBe("KAN-1: Fix the OAuth login — 2 days of slack");
   });
 
+  /**
+   * The defect this whole split came from: a bar fed by negative slack was announced as
+   * `overdue`, so a screen reader said a ticket was late when its due date was three weeks
+   * away. No bar state may say that word — whether a deadline has gone by is a pill on the
+   * row's name, and a bar only ever describes the schedule.
+   */
+  it("never says a bar is overdue, in any state", () => {
+    for (const state of ["normal", "critical", "slipping"] as const) {
+      expect(name({ state })).not.toContain("overdue");
+    }
+  });
+
+  it("calls a hatched bar a forecast, in words", () => {
+    expect(name({ state: "slipping" })).toBe("KAN-1: Fix the OAuth login — projected to slip");
+  });
+
   it("appends slack after the clauses that already exist", () => {
     // A violated dependency and slack are two separate facts about the same bar; a
     // reader losing one of them because a formatter only made room for the other is

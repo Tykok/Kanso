@@ -75,6 +75,33 @@ export function xOf(instant: KansoInstant, origin: string, zoom: Zoom): number {
 }
 
 /**
+ * Whether today's rule is inside the window the reader is looking at.
+ *
+ * What the `Today` button reads to know whether it has anywhere to go. **Disabled, never
+ * hidden** — a control that vanishes when satisfied is one people stop looking for, and
+ * the one moment you reach for it is the moment you cannot see the thing it points at.
+ *
+ * A whole column of tolerance at each edge, and that is the one judgement here: a rule one
+ * pixel inside the viewport is technically visible and practically not, so a button that
+ * greyed out in that state would look broken to somebody who can see the problem it
+ * refuses to fix.
+ */
+export function todayInView(
+  todayX: number,
+  scrollLeft: number,
+  viewportWidth: number,
+  zoom: Zoom,
+): boolean {
+  const margin = PX_PER_DAY[zoom];
+  return todayX >= scrollLeft + margin && todayX <= scrollLeft + viewportWidth - margin;
+}
+
+/** Where to scroll so today's rule sits in the middle of the window rather than at an edge. */
+export function scrollToToday(todayX: number, viewportWidth: number): number {
+  return Math.max(0, todayX - viewportWidth / 2);
+}
+
+/**
  * A bar covers its last day rather than stopping at its start, and never shrinks below
  * one column — a milestone carries one bound and would otherwise be zero pixels wide,
  * and a pair held inverted mid-drag would otherwise be drawn backwards.

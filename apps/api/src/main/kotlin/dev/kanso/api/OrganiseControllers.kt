@@ -159,16 +159,17 @@ class SavedViewController(
 
 	@GetMapping("/teams/{teamId}/views")
 	fun list(@PathVariable teamId: UUID): List<SavedViewResponse> =
-		views.list(teamId).map(SavedViewResponse::of)
+		views.list(currentUser.require(), teamId).map(SavedViewResponse::of)
 
 	@GetMapping("/views/{id}")
 	fun get(@PathVariable id: UUID): SavedViewResponse {
-		val view = views.get(id)
+		val actor = currentUser.require()
+		val view = views.get(actor, id)
 		// The count is what the sidebar row shows, and asking for the view without it would
 		// make the header and the sidebar disagree the moment one was refetched alone. It is
 		// `views.count`, not the size of a page of rows: the page stops at 200 and the
 		// sidebar's own number never did, so the two used to part company on a large view.
-		return SavedViewResponse.of(view, views.count(id))
+		return SavedViewResponse.of(view, views.count(actor, id))
 	}
 
 	/**
@@ -185,11 +186,12 @@ class SavedViewController(
 		@RequestParam(defaultValue = "200") limit: Int,
 		@RequestParam(defaultValue = "0") offset: Long,
 	): TicketGroupsResponse {
-		val view = views.get(id)
+		val actor = currentUser.require()
+		val view = views.get(actor, id)
 		return TicketGroupsResponse.of(
 			groupBy = view.groupBy,
 			sortBy = view.sortBy,
-			groups = views.grouped(id, limit.coerceIn(1, 500), offset.coerceAtLeast(0)),
+			groups = views.grouped(actor, id, limit.coerceIn(1, 500), offset.coerceAtLeast(0)),
 		)
 	}
 
@@ -199,8 +201,9 @@ class SavedViewController(
 		@PathVariable teamId: UUID,
 		@Valid @RequestBody request: SavedViewCreateRequest,
 	): SavedViewResponse {
+		val actor = currentUser.require()
 		val created = views.create(
-			actor = currentUser.require(),
+			actor = actor,
 			teamId = teamId,
 			name = request.name,
 			shared = request.shared,
@@ -208,13 +211,14 @@ class SavedViewController(
 			groupBy = ViewGroupBy.from(request.groupBy),
 			sortBy = ViewSortBy.from(request.sortBy),
 		)
-		return SavedViewResponse.of(created, views.count(created.id))
+		return SavedViewResponse.of(created, views.count(actor, created.id))
 	}
 
 	@PatchMapping("/views/{id}")
 	fun patch(@PathVariable id: UUID, @RequestBody request: SavedViewPatchRequest): SavedViewResponse {
+		val actor = currentUser.require()
 		val updated = views.update(
-			actor = currentUser.require(),
+			actor = actor,
 			id = id,
 			name = request.name,
 			shared = request.shared,
@@ -222,7 +226,7 @@ class SavedViewController(
 			groupBy = request.groupBy?.let(ViewGroupBy::from),
 			sortBy = request.sortBy?.let(ViewSortBy::from),
 		)
-		return SavedViewResponse.of(updated, views.count(id))
+		return SavedViewResponse.of(updated, views.count(actor, id))
 	}
 
 	@DeleteMapping("/views/{id}")

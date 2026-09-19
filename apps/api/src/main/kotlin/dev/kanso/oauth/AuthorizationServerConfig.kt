@@ -183,11 +183,17 @@ class AuthorizationServerConfig {
 	fun registeredClientRepository(jdbc: JdbcOperations): RegisteredClientRepository =
 		JdbcRegisteredClientRepository(jdbc)
 
+	/**
+	 * Wrapped rather than replaced: the library's SQL, its columns and its row mapper are all
+	 * kept, and [HashedOAuthTokens] only decides what string those columns hold. Which is the
+	 * whole of the fix — `V18`'s schema is copied verbatim from the library and stays that
+	 * way, so nothing here has to be re-checked against it on the next upgrade.
+	 */
 	@Bean
 	fun authorizationService(
 		jdbc: JdbcOperations,
 		clients: RegisteredClientRepository,
-	): OAuth2AuthorizationService = JdbcOAuth2AuthorizationService(jdbc, clients)
+	): OAuth2AuthorizationService = HashedOAuthTokens(JdbcOAuth2AuthorizationService(jdbc, clients))
 
 	@Bean
 	fun authorizationConsentService(

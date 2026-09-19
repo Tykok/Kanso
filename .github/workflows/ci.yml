@@ -151,8 +151,8 @@ jobs:
       # rolldown bindings declare `engines: node ^20.19 || >=22.12`, and pnpm *skips*
       # an optional dependency whose engines do not match rather than failing — so a
       # too-old Node produces a successful install and then a Vitest run that dies on a
-      # missing `@rolldown/binding-*`. That is exactly the failure `docs/follow-ups.md`
-      # records four of six agents hitting under Node 20.14, and the reason it looks
+      # missing `@rolldown/binding-*`. That is exactly the failure the wiki's `Follow-ups`
+      # page records four of six agents hitting under Node 20.14, and the reason it looks
       # like a broken lockfile is that the install is green. The lockfile is fine; it
       # carries all fourteen platform bindings. If a future bump raises that floor past
       # this pin, the symptom will be a missing binding and the fix is this line.

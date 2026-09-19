@@ -78,7 +78,7 @@ abstract class ImportTestBase : PostgresTest() {
 		// `link` never touches the client, only `UserRepository` — the same fake workspace
 		// discovery reads from is enough, and building a second real bean would be wiring
 		// for a call this class never makes.
-		notionPeople = NotionPeople(client = client, users = users),
+		notionPeople = NotionPeople(client = client, users = users, tx = tx),
 		tx = tx,
 	)
 

@@ -1,4 +1,5 @@
-# The routing table from `docs/superpowers/specs/2026-09-09-docker-distribution-design.md`,
+# The routing table from the wiki's `Spec - One image, one domain, your own Postgres`
+# (https://github.com/Tykok/Kanso/wiki/Spec---One-image,-one-domain,-your-own-Postgres),
 # and a test fixture. The guard test enumerates the application's request mappings outside
 # `/api` and fails when one of them is not covered here, so every route below is a single
 # line with a literal path. Folding them into `handle` blocks would still satisfy Caddy and
@@ -24,6 +25,17 @@
 # `KANSO_TLS=auto`, which is what makes Caddy obtain a certificate, or `http://:80` under
 # `off`, which accepts every host name because whatever terminates TLS already checked it.
 {$KANSO_SITE_ADDRESS} {
+	# Two constants, where the line below is a conditional, because these two are nobody's
+	# but the caller's under either value of KANSO_TLS: Caddy writes neither, and no proxy in
+	# front of it is asked to. They matter because `ForwardedHeaderFilter` does not read the
+	# `X-Forwarded-*` family first — it reads RFC 7239 `Forwarded` first and falls back, so a
+	# caller sending one outranked the header Caddy had just set and chose both its own
+	# address and this instance's origin. `X-Forwarded-Prefix` is the same family and decides
+	# the context path. `WebConfig.forwardedHeaderFilter` makes the JVM ignore both as well;
+	# this is the half that holds for anything else listening behind this edge.
+	request_header -Forwarded
+	request_header -X-Forwarded-Prefix
+
 	# Whether an inbound `X-Forwarded-For` survives, decided by KANSO_TLS and written by
 	# /etc/s6-overlay/scripts/kanso-init — which is where the same variable already decides
 	# who the edge is. A conditional and not a constant, and a file rather than a

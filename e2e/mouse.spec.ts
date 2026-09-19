@@ -441,8 +441,8 @@ test("scenario 11 — a ticket row changes status, priority, name and existence 
 
   // The `⋯` stays out of sight until the row earns it — by hover, or by a
   // keyboard user tabbing straight to it without ever touching the mouse. This is
-  // shipped, specified behaviour (docs/superpowers/specs/2026-08-09-mouse-parity-
-  // design.md:20 lists it under "What ships"), not a stylistic default the drawings
+  // shipped, specified behaviour (the wiki's `Spec - Every action reachable with a
+  // mouse` lists it under "What ships"), not a stylistic default the drawings
   // happened to permit — an earlier draft of this task dropped it on that
   // misreading and was corrected. It is now `RowReveal` (ui/row.tsx): `group-hover:`
   // and `group-focus-within:` reading `<Row>`'s own `group` class, not a stylesheet
