@@ -72,9 +72,13 @@ export async function userIdOf(email: string): Promise<string> {
 
 /**
  * Brings the instance to the minimum state in which the application agrees to show a
- * list: an owner exists, and both test accounts have been through the preferences
- * step. Without the second point, every test would land on `/setup`. Idempotent: the
- * stack is long-lived and the suite is replayed against it.
+ * list: an owner exists, and both accounts carry the onboarding stamp the routing guard
+ * reads.
+ *
+ * Claiming stamps the owner by itself. The loop below is for the other account: under
+ * `KANSO_AUTH_MODE=dev` a member is provisioned by the auth filter on first sight of the
+ * header, by no path that knows what onboarding is — so it is stamped here or not at all.
+ * Idempotent: the stack is long-lived and the suite is replayed against it.
  */
 export async function seedInstance(): Promise<void> {
   const anonymous = await playwrightRequest.newContext({ baseURL: API_URL });
