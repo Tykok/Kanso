@@ -17,19 +17,21 @@ import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
  * ordinary bar of the same status, and lets the chain of arrows leaving it say
  * "critical" instead.
  *
- * `late` and `slipping` are the two this component still colours by itself, and
- * they are **two states and not one** because they are two different sentences.
- * `late` is a fact — the due date has gone by on work nobody closed. `slipping` is
- * a forecast — the critical path says this will overrun. This union used to carry
- * only `late`, fed by negative slack, and [barAccessibleName] announced it as
- * "overdue": a screen reader therefore said a ticket was late when its due date was
- * three weeks away.
+ * `slipping` is the one this component still colours by itself — the critical path
+ * says this will overrun — because it is worse than "no slack" and has to be seen
+ * without following a chain of arrows to notice it.
  *
- * A bar in both states draws `late`. A fact beats a forecast — a ticket whose date
- * has already passed is not *projected* to do anything, and drawing the prediction
- * over the event would be the screen preferring its arithmetic to what happened.
+ * **There is no `late` here, and there used to be.** This union carried one state fed
+ * by negative slack and [barAccessibleName] announced it as "overdue", so a screen
+ * reader said a ticket was late when its due date was three weeks away. Splitting the
+ * two fixed the sentence and created a second problem: `late` outranked `critical` on
+ * a bar, and once it meant "the deadline passed" it became the common case, so every
+ * bar on an instance with history read late and criticality was invisible behind it.
+ *
+ * Two facts about one ticket need two places. The schedule's state is the bar; whether
+ * a deadline has gone by is a pill on the row's name, in `row.tsx`.
  */
-export type BarState = "normal" | "critical" | "slipping" | "late";
+export type BarState = "normal" | "critical" | "slipping";
 
 /**
  * The hatch both `late` and `slipping` are drawn with, composed from `--urgent`
@@ -44,14 +46,6 @@ const HATCH: CSSProperties = {
   backgroundImage: `repeating-linear-gradient(45deg, var(--urgent), var(--urgent) 6px, ${LATE_STRIPE} 6px, ${LATE_STRIPE} 12px)`,
 };
 
-/**
- * One hatch, two names, and deliberately the same pixels.
- *
- * The two states differ in what they *mean* and in what a screen reader is told; they
- * do not differ in urgency to the eye, and inventing a second texture would ask a
- * reader to learn a distinction the accessible name already makes in words.
- */
-export const LATE_STYLE: CSSProperties = HATCH;
 export const SLIPPING_STYLE: CSSProperties = HATCH;
 
 /**
@@ -115,14 +109,8 @@ export function barAccessibleName({
   return [
     name,
     status && labelOfKey(status),
-    state === "late"
-      ? "overdue"
-      : state === "slipping"
-        ? "projected to slip"
-        : state === "critical"
-          ? "critical path"
-          : null,
-    violated && state !== "late" && state !== "slipping" ? "dependency not respected" : null,
+    state === "slipping" ? "projected to slip" : state === "critical" ? "critical path" : null,
+    violated && state !== "slipping" ? "dependency not respected" : null,
     slackMinutes && slackMinutes > 0 ? slackTitle(slackMinutes) : null,
   ]
     .filter(Boolean)

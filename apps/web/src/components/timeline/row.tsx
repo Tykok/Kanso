@@ -170,6 +170,24 @@ export function TimelineRow({
           </span>
         )}
         {name}
+        {/*
+          * Overdue lives on the name, not on the bar.
+          *
+          * It was a bar state until the e2e suite made the cost visible: `late` outranks
+          * `critical` on a bar, and once `late` meant "the due date has gone by" rather
+          * than "slack is negative" it became the common case — so on an instance with any
+          * history every bar read late and criticality was invisible behind it. Two facts
+          * about one ticket needed two places, and the name column is the one that was free.
+          *
+          * A word and not a colour: a hue on the identifier is lost to a colour-blind
+          * reader and to a greyscale print, and it would collide with the context row's
+          * italics. `title` rather than a tooltip component — the cell already uses one.
+          */}
+        {row.kind === "ticket" && row.ticket.late && (
+          <span className="ml-1.5 rounded-sm bg-urgent/15 px-1 text-10 not-italic text-urgent">
+            Overdue
+          </span>
+        )}
       </div>
       <div
         className={`group/lane relative shrink-0 basis-[var(--tl-chart)] ${context ? "opacity-55" : ""}`}
@@ -289,15 +307,10 @@ function bar(
       // Late, then slipping, then critical. A fact beats a forecast: a ticket whose date
       // has already passed is not "projected" to do anything, and drawing the prediction
       // over the event would be the screen preferring its arithmetic to what happened.
-      state={
-        ticket.late
-          ? "late"
-          : ticket.slipping
-            ? "slipping"
-            : ticket.critical
-              ? "critical"
-              : "normal"
-      }
+      // No `late` here any more — it is a pill on the name. A bar says what the *schedule*
+      // is doing: slipping, critical, or neither. Whether a deadline has passed is a fact
+      // about the ticket, and it was drowning the other two.
+      state={ticket.slipping ? "slipping" : ticket.critical ? "critical" : "normal"}
       label={ticket.title}
       start={start}
       end={end}
