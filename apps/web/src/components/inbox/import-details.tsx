@@ -17,17 +17,28 @@ import { StepPeople } from "./import-step-people";
  * was keeping the way forwards and the way back from disagreeing about whether step 4
  * existed.
  *
- * **Mounted on first unfold, and never unmounted again.** `StepPeople` asks the API which
- * people the plan names as soon as it mounts, so a panel nobody has ever opened must not
- * spend that request — hence waiting for the first `open`. But `StepPeople` also keeps
- * `edits` in a `useState` of its own, on purpose (see its own comment: a seeded guess must
- * not be written in until somebody has looked at it), and unmounting on every fold would
- * throw that state away with it — a correction the reader made would vanish the moment
- * they closed the panel to glance at something else. So once opened, the children stay
- * mounted and folding back up only hides them with `display: none`; the wrapper carries
- * `flex flex-col gap-4` from a class, which a bare `hidden` attribute loses to, so the
- * display is set inline instead. Both halves matter: nothing is requested before the
- * reader has looked, and nothing they typed is lost once they stop looking.
+ * **Always mounted; folding only hides it.** These two are not a detail view of the plan —
+ * they are what fills the request. `StepColumns`'s seeding effect is the only thing that
+ * carries the server's suggested columns into the shell's `mappings`, and `StepPeople`'s
+ * effect is the only thing that carries the standing correspondence into `people`. Neither
+ * the preview nor the confirm request falls back to a guess of its own when the client
+ * sends nothing: `NotionImportService` takes the request's mapping verbatim, and
+ * `TicketImport.resolveAssignees` resolves purely through `people[id]`. So a reader who
+ * never unfolds this panel would otherwise import every base on the writer's raw defaults
+ * with no assignees at all — worse than the five-step dialog this replaces ever allowed,
+ * since that one walked every reader through both before they could reach confirm.
+ *
+ * Folding hides the children with an inline `display: none` rather than unmounting them —
+ * the wrapper carries `flex flex-col gap-4` from a class, which a bare `hidden` attribute
+ * loses to — so `StepPeople`'s own `edits` state (kept local on purpose: a seeded guess
+ * must not be written in until somebody has looked at it) survives a close and a reopen.
+ *
+ * The cost is real and worth naming rather than hiding: `StepPeople` fires `peopleSeen` as
+ * soon as it mounts, so every plan with a mapped people column pays that request whether or
+ * not anybody ever unfolds the panel. That is the same request the old step 3 → step 4
+ * transition made on the way to every confirm, and a saved round trip is not worth an
+ * import that silently drops every assignee. What the panel holds is the request, so it is
+ * mounted for the request's sake and folded only for the reader's.
  */
 export function ImportDetails({
   bases,
@@ -55,8 +66,6 @@ export function ImportDetails({
   onPeople: (people: Record<string, string | null>) => void;
 }) {
   const [open, setOpen] = useState(false);
-  /** Once true, never false again — see the doc comment above for why. */
-  const [everOpened, setEverOpened] = useState(false);
   const [people, setPeople] = useState<Record<string, string | null>>({});
 
   /** Told to the shell as well as kept here, because the request carries it. */
@@ -71,32 +80,27 @@ export function ImportDetails({
         type="button"
         className="flex items-center gap-2.5 text-left text-12"
         aria-expanded={open}
-        onClick={() => {
-          setOpen((shown) => !shown);
-          setEverOpened(true);
-        }}
+        onClick={() => setOpen((shown) => !shown)}
       >
         <span className="font-medium">Columns and people</span>
         <span className="flex-1 text-11 text-faint">{detailsSummary({ mappings, people })}</span>
         <span className="text-faint">{open ? "▴" : "▾"}</span>
       </button>
 
-      {everOpened && (
-        <div className="flex flex-col gap-4" style={open ? undefined : { display: "none" }}>
-          <StepColumns
-            bases={bases}
-            kept={kept}
-            mappings={mappings}
-            fallbacks={fallbacks}
-            teams={teams}
-            projects={projects}
-            onMapping={onMapping}
-            onSeed={onSeed}
-            onFallback={onFallback}
-          />
-          <StepPeople plan={plan} onPeople={takePeople} />
-        </div>
-      )}
+      <div className="flex flex-col gap-4" style={open ? undefined : { display: "none" }}>
+        <StepColumns
+          bases={bases}
+          kept={kept}
+          mappings={mappings}
+          fallbacks={fallbacks}
+          teams={teams}
+          projects={projects}
+          onMapping={onMapping}
+          onSeed={onSeed}
+          onFallback={onFallback}
+        />
+        <StepPeople plan={plan} onPeople={takePeople} />
+      </div>
     </div>
   );
 }
