@@ -47,8 +47,8 @@ test("scenario 30 — settings opens the import on the real workspace", async ({
   await seedTeam(api, { name: unique("Destination"), key: uniqueKey() });
 
   const page = await openAs(browser, ADMIN);
-  // Connections is not the tab `/settings` opens on its own — see `24-shortcuts.spec.ts` and
-  // `28-github-link.spec.ts` for the same `?section=` pattern against a different tab.
+  // Connections is not the tab `/settings` opens on its own — see `29-team-statuses.spec.ts`
+  // and `28-github-link.spec.ts` for the same `?section=` pattern against a different tab.
   await page.goto("/settings?section=connections");
 
   // Matching, before importing: the folded panel pre-fills itself from what is set here.
