@@ -40,9 +40,6 @@ type FormCardProps = {
   onSubmit: () => void;
   primaryLabel: string;
   pending?: boolean;
-  onBack?: () => void;
-  onSkip?: () => void;
-  skipLabel?: string;
 };
 
 /**
@@ -57,9 +54,6 @@ export function FormCard({
   onSubmit,
   primaryLabel,
   pending,
-  onBack,
-  onSkip,
-  skipLabel = "Skip",
 }: FormCardProps) {
   return (
     <form
@@ -85,20 +79,10 @@ export function FormCard({
       </div>
 
       <div className="flex items-center gap-2 border-t border-border px-3.5 py-2.5">
-        {onBack && (
-          <button type="button" className="button" onClick={onBack}>
-            Back
-          </button>
-        )}
         <span className="text-11 text-faint">
           <kbd>↵</kbd> {primaryLabel.toLowerCase()}
         </span>
         <span className="ml-auto flex items-center gap-2">
-          {onSkip && (
-            <button type="button" className="button" onClick={onSkip}>
-              {skipLabel}
-            </button>
-          )}
           <button type="submit" className="button button-primary" disabled={pending}>
             {pending ? "Working…" : primaryLabel}
           </button>
