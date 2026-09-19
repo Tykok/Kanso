@@ -1,11 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { api } from "@/lib/api";
-import { actionErrorMessage } from "@/lib/errors";
+import { ImportFirstTeam } from "@/components/inbox/import-first-team";
 import { useTeams } from "@/lib/queries";
-import { TextField } from "./fields";
 
 /**
  * Screen 24's way in, from the wizard rather than from the app it has not opened yet.
@@ -25,27 +21,17 @@ import { TextField } from "./fields";
  * left out — it is one that produces rows nobody can find.
  *
  * Two ways out, both offered: a Notion database of teams imports on its own, needing no
- * destination at all, and otherwise a team is named here. The team is created by this card
- * and not by the dialog on purpose — the dialog's own promise is that nothing is written
- * before its fifth step.
+ * destination at all, and otherwise a team is named here — by [ImportFirstTeam], which
+ * step 2 of the dialog now draws as well. This card is not the only way in: the settings
+ * screen opens the same dialog with nothing in front of it, and that path reached the dead
+ * Next with none of this said.
  */
 export function NotionImportCard({ onOpen }: { onOpen: () => void }) {
-  const queryClient = useQueryClient();
   const teams = useTeams();
-  const [name, setName] = useState("");
 
   // Archived teams are filtered out by `import-dialog` before it offers the list, so a
   // count that included them would promise a destination the picker never shows.
   const destinations = (teams.data ?? []).filter((team) => !team.archived);
-
-  const create = useMutation({
-    mutationFn: (teamName: string) => api.createTeam({ name: teamName }),
-    onSuccess: () => {
-      // By prefix, the way `team-dialog` does it: the key carries the archived toggle.
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
-      setName("");
-    },
-  });
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -57,40 +43,7 @@ export function NotionImportCard({ onOpen }: { onOpen: () => void }) {
         skipped rather than duplicated.
       </span>
 
-      {destinations.length === 0 && !teams.isPending && (
-        <>
-          <span className="text-11 text-faint">
-            No team yet. A Notion database of teams imports on its own; tickets and
-            projects need a team to land in — one without a team is a draft, with no
-            identifier to print and in no list. Import your teams base first, or name a
-            team here.
-          </span>
-
-          <TextField
-            label="First team"
-            value={name}
-            placeholder="Design"
-            onChange={(event) => setName(event.target.value)}
-          />
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="button"
-              disabled={create.isPending}
-              onClick={() => {
-                const trimmed = name.trim();
-                if (trimmed) create.mutate(trimmed);
-              }}
-            >
-              {create.isPending ? "Creating…" : "Create the team"}
-            </button>
-            {create.error && (
-              <span className="text-12 text-urgent">{actionErrorMessage(create.error)}</span>
-            )}
-          </div>
-        </>
-      )}
+      {destinations.length === 0 && !teams.isPending && <ImportFirstTeam />}
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="button" onClick={onOpen}>

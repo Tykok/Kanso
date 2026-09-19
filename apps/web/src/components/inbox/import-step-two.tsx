@@ -5,6 +5,7 @@ import { useImportSchema } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { suggestionsFrom, type BaseMapping } from "./import-columns";
+import { ImportFirstTeam } from "./import-first-team";
 import {
   importPlan,
   targetOf,
@@ -77,27 +78,38 @@ export function StepTwo({
         </span>
       </div>
 
-      <label className="flex items-center gap-2.5 text-12">
-        <span className="text-muted-foreground">Into team</span>
-        <select
-          className="min-w-[180px]"
-          value={teamId}
-          onChange={(event) => onTeam(event.target.value)}
-        >
-          <option value="">— choose a team —</option>
-          {/* Already narrowed to the possible destinations by the shell; only sorted here. */}
-          {[...teams]
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-        </select>
-        <span className="text-11 text-faint">
-          Imported tickets take their number from it, like any other.
-        </span>
-      </label>
+      {/*
+       * The picker only when there is something in it. An instance with no team drew it
+       * anyway, holding its own placeholder and nothing else, beside a Next that could
+       * never enable — which reads as a dropdown that will not open rather than as the
+       * one row the instance is missing. [ImportFirstTeam] says it instead, and the
+       * created team is selected by the shell on its own, since one team is no choice.
+       */}
+      {teams.length > 0 && (
+        <label className="flex items-center gap-2.5 text-12">
+          <span className="text-muted-foreground">Into team</span>
+          <select
+            className="min-w-[180px]"
+            value={teamId}
+            onChange={(event) => onTeam(event.target.value)}
+          >
+            <option value="">— choose a team —</option>
+            {/* Already narrowed to the possible destinations by the shell; only sorted here. */}
+            {[...teams]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+          </select>
+          <span className="text-11 text-faint">
+            Imported tickets take their number from it, like any other.
+          </span>
+        </label>
+      )}
+
+      {teams.length === 0 && teamRequired && <ImportFirstTeam />}
 
       <div className="flex flex-col gap-0.5">
         <div
