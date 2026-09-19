@@ -76,6 +76,26 @@ export default function SetupRoute() {
     );
   }
 
+  // Any other /api/me failure — the 401 above is the only one with a screen of its own —
+  // used to fall straight through to "Opening Kanso…" below: `claimed && signedIn` is
+  // false, so the redirect effect never fires, and nothing else in this ladder tells the
+  // reader anything is wrong. Answered the way `setup.error` already is, with the same
+  // retry, rather than dead-ending on a sentence that describes a request that succeeded.
+  if (claimed && me.error) {
+    return (
+      <SetupPage>
+        <MessageCard title="Cannot reach the instance">
+          <p className="m-0 text-12 text-urgent">{messageFor(me.error)}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="button" onClick={() => me.refetch()}>
+              Try again
+            </button>
+          </div>
+        </MessageCard>
+      </SetupPage>
+    );
+  }
+
   if (!setup.data.needsOwner) {
     return (
       <SetupPage>
