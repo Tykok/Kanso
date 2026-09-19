@@ -1,10 +1,9 @@
 package dev.kanso.api
 
+import dev.kanso.auth.ConfiguredProviders
 import dev.kanso.auth.CurrentUser
-import dev.kanso.auth.DynamicClientRegistrationRepository
 import dev.kanso.auth.GoogleCredentialProbe
 import dev.kanso.auth.GoogleProbeResult
-import dev.kanso.auth.OidcRegistrations
 import dev.kanso.config.KansoProperties
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.settings.GoogleSettingsState
@@ -67,7 +66,7 @@ data class GoogleTestRequest(val clientId: String? = null, val clientSecret: Str
 class SetupController(
 	private val settings: InstanceSettingsService,
 	private val notionClient: ReloadableNotionClient,
-	private val registrations: DynamicClientRegistrationRepository,
+	private val providers: ConfiguredProviders,
 	private val meta: NotionMetaRepository,
 	private val currentUser: CurrentUser,
 	private val googleProbe: GoogleCredentialProbe,
@@ -190,7 +189,9 @@ class SetupController(
 	fun saveGoogle(@RequestBody request: GoogleSetupRequest): SetupStateResponse {
 		requireInstanceAdmin()
 		settings.saveGoogle(request.clientId, request.clientSecret)
-		reloadOAuthRegistrations()
+		// The same rebuild the next startup will do — see [ConfiguredProviders]. Here it is
+		// what makes the button appear without a restart.
+		providers.refresh()
 		return currentState()
 	}
 
@@ -255,25 +256,6 @@ class SetupController(
 			setupCompletedAt = state.setupCompletedAt,
 			notion = if (full) notion else notion.copy(parentPageId = null, workspaceName = null),
 			google = if (full) state.google else state.google.copy(clientId = null),
-		)
-	}
-
-	/**
-	 * Rebuilds the whole list rather than only Google: `reload` replaces the
-	 * repository's contents, so a GitHub registration coming from the environment
-	 * would otherwise disappear the moment someone saves Google credentials.
-	 */
-	private fun reloadOAuthRegistrations() {
-		val resolved = settings.resolved()
-		registrations.reload(
-			OidcRegistrations.from(
-				props.auth.copy(
-					google = KansoProperties.Provider(
-						clientId = resolved.googleClientId.orEmpty(),
-						clientSecret = resolved.googleClientSecret.orEmpty(),
-					),
-				)
-			)
 		)
 	}
 
