@@ -54,6 +54,7 @@ export function StepColumns({
   onMapping,
   onSeed,
   onFallback,
+  onLoading,
 }: {
   bases: ImportPlanEntry[];
   /** What every base becomes, so a relation into an ignored one can be told apart. */
@@ -66,13 +67,21 @@ export function StepColumns({
   /** Separate from [onMapping] because the shell refuses a second seed, never an edit. */
   onSeed: (sourceId: string, seed: BaseMapping) => void;
   onFallback: (sourceId: string, fallback: Fallback) => void;
+  /** Whether any schema is still in flight — see the comment on [schemas] for why this matters. */
+  onLoading: (loading: boolean) => void;
 }) {
   /**
    * Every kept base's schema, asked for here rather than inside each section.
    *
-   * `openFallbacks` needs the whole set rather than one at a time, because a
+   * Two things need the whole set. `openFallbacks` reads the sibling mappings, because a
    * `single_property` relation can live on the parent's base alone — a base asked about its
-   * own schema in isolation would have nothing there to point at.
+   * own schema in isolation would have nothing there to point at. And the shell's Preview
+   * button has to stay dead while any of them is in flight: the seed below only runs once a
+   * schema arrives, so leaving early sends `columns: {}` for that base and throws away the
+   * server's pre-fill — silently, since nothing walks the reader back through this folded
+   * panel before the request goes out the way the old step 3 walked them through clicking
+   * Next. `onLoading` is how that verdict reaches `import-plan.tsx`, which owns the button
+   * now that this component no longer draws one of its own.
    *
    * `useQueries`, so a base whose schema Notion refuses still fails alone: each entry keeps
    * its own status, and the section below draws it.
@@ -80,6 +89,11 @@ export function StepColumns({
   const schemas = useQueries({
     queries: bases.map((base) => importSchemaQuery(base.sourceId, base.target)),
   });
+
+  const loading = schemas.some((schema) => schema.isPending);
+  useEffect(() => {
+    onLoading(loading);
+  }, [loading, onLoading]);
 
   /** The bases whose schema has arrived, with what has been said about each. */
   const mapped: MappedBase[] = bases.flatMap((base, index) => {

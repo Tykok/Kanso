@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { NotionImportSchema } from "./import-columns";
 import type { NotionImportSource, Team } from "@/lib/api";
 import { ImportDetails } from "./import-details";
 import { ImportPlan } from "./import-plan";
@@ -35,13 +36,15 @@ vi.mock("@/lib/queries", async (importOriginal) => {
 });
 
 const createTeam = vi.hoisted(() => vi.fn());
+/** Left at its default (never resolving) except in the one test that needs it in flight. */
+const SCHEMA = vi.hoisted(() => vi.fn(() => new Promise<NotionImportSchema>(() => {})));
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
     api: { ...actual.api, createTeam },
-    notionImportApi: { ...actual.notionImportApi, peopleSeen: async () => [] },
+    notionImportApi: { ...actual.notionImportApi, peopleSeen: async () => [], schema: SCHEMA },
     notionPeopleApi: {
       ...actual.notionPeopleApi,
       view: async () => ({ available: true, people: [] }),
@@ -94,6 +97,7 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
       onSuggest={noop}
       onNext={noop}
       pending={false}
+      busy={false}
       details={
         <ImportDetails
           bases={[]}
@@ -107,6 +111,7 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
           onSeed={noop}
           onFallback={noop}
           onPeople={noop}
+          onLoading={noop}
         />
       }
     />,
@@ -160,5 +165,99 @@ describe("the plan screen's destination team", () => {
     // them. `import-details.test.tsx` covers the seeding and the display toggle itself.
     const toggle = screen.getByRole("button", { name: /columns and people/i });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+/**
+ * Finding 1: a base whose schema has not arrived yet must not be allowed past Preview.
+ *
+ * `StepColumns` seeds the shell's `mappings` from the server's suggestion only once its
+ * schema query answers; clicking through earlier sends `columns: {}` for that base and
+ * `NotionImportService` takes it verbatim. `ImportDetails` combines `StepColumns` and
+ * `StepPeople`'s own in-flight state and reports it up through `onLoading`; this is the
+ * proof that a real, unresolved schema request reaches all the way to the button — a
+ * fake `useImportSchema` stub, the way the tests above use one, would not exercise the
+ * wiring this finding is about.
+ */
+describe("the Preview button waits for the folded panel", () => {
+  function pending({ teams = [team()] }: { teams?: Team[] } = {}) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    function Harness() {
+      const [busy, setBusy] = useState(false);
+      return (
+        <ImportPlan
+          sources={SOURCES}
+          loading={false}
+          mapping={MAPPING}
+          kept={MAPPING}
+          mappings={{}}
+          counts={importCounts(SOURCES, MAPPING)}
+          planEmpty={false}
+          teams={teams}
+          teamId={teams[0]?.id ?? ""}
+          teamRequired
+          onTeam={noop}
+          onCycle={noop}
+          onSuggest={noop}
+          onNext={noop}
+          pending={false}
+          busy={busy}
+          details={
+            <ImportDetails
+              bases={[{ sourceId: "base", name: "Tasks", target: "tickets", pages: 4 }]}
+              kept={MAPPING}
+              mappings={{}}
+              fallbacks={{}}
+              teams={[]}
+              projects={[]}
+              plan={[]}
+              onMapping={noop}
+              onSeed={noop}
+              onFallback={noop}
+              onPeople={noop}
+              onLoading={setBusy}
+            />
+          }
+        />
+      );
+    }
+
+    return render(<Harness />, { wrapper });
+  }
+
+  const previewButton = () =>
+    screen.getByRole("button", { name: /preview the import/i }) as HTMLButtonElement;
+
+  it("stays disabled while a base's schema is still in flight", async () => {
+    SCHEMA.mockImplementation(() => new Promise<NotionImportSchema>(() => {}));
+    pending();
+
+    await waitFor(() => expect(previewButton().disabled).toBe(true));
+    expect(screen.getByText(/waiting for the columns and the people/i)).not.toBeNull();
+  });
+
+  it("re-enables once the schema answers", async () => {
+    let resolve: (schema: NotionImportSchema) => void = () => {};
+    SCHEMA.mockImplementation(() => new Promise<NotionImportSchema>((r) => (resolve = r)));
+    pending();
+
+    await waitFor(() => expect(previewButton().disabled).toBe(true));
+
+    resolve({
+      sourceId: "base",
+      target: "tickets",
+      columns: [],
+      fields: [],
+      suggestion: { columns: {}, values: {} },
+      defaults: {},
+    });
+
+    await waitFor(() => expect(previewButton().disabled).toBe(false));
   });
 });

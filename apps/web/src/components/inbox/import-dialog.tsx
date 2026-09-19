@@ -49,6 +49,9 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
    * unassigned rather than guessed at.
    */
   const [people, setPeople] = useState<Record<string, string | null>>({});
+  /** Preview has to stay dead while `StepColumns` or `StepPeople` is still mid-request — see
+   *  their own comments for why leaving early would throw away a suggestion nobody chose. */
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   const discovered = useQuery({
     queryKey: ["notion-import-sources"],
@@ -226,6 +229,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
               }
               onNext={toPreview}
               pending={preview.isPending}
+              busy={detailsLoading}
               error={preview.isError ? actionErrorMessage(preview.error) : undefined}
               details={
                 <ImportDetails
@@ -240,6 +244,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
                   onSeed={seedMapping}
                   onFallback={setFallback}
                   onPeople={setPeople}
+                  onLoading={setDetailsLoading}
                 />
               }
             />
