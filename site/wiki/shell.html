@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  The chrome every wiki page shares: the bar, the column, the pager and the foot. The body
+  slot below is filled with the page's own template before any placeholder is substituted,
+  so a body's placeholders are read from its dictionary in the same pass as the shell's.
+
+  This note names no placeholder, for the reason template.html's does: the slot is filled
+  by a plain string replace, which takes the first match — and a mention of it up here is
+  the first match, leaving the real slot unfilled six pages at a time.
+
+  It carries no prose of its own. Everything with words in it comes from
+  site/i18n/<lang>.json — the same file the landing page reads, because the bar and the
+  foot say the same things on both — or from the page's own dictionary, which is where
+  meta.title and meta.description come from and why they override the landing's.
+-->
+<html lang="{{page.lang}}" data-accent="indigo">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{meta.title}}</title>
+    <meta name="description" content="{{meta.description}}" />
+    <link rel="canonical" href="{{page.canonical}}" />
+    <link rel="alternate" hreflang="{{page.lang}}" href="{{page.self.href}}" />
+    <link rel="alternate" hreflang="{{page.other.lang}}" href="{{page.other.href}}" />
+    <link rel="alternate" hreflang="x-default" href="{{page.default.href}}" />
+    <link rel="stylesheet" href="{{page.rel}}tokens.css" />
+    <link rel="stylesheet" href="{{page.rel}}style.css" />
+    <script>
+      /* The app selects its dark palette with a stored preference; the site has nothing to
+         store and no toggle, so it follows the system, in the head, before first paint. */
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches)
+        document.documentElement.classList.add("dark");
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#doc">{{doc.skip}}</a>
+
+    <header class="topbar">
+      <a class="brand" href="{{home.href}}">Kanso</a>
+      <span class="topbar-note">{{doc.eyebrow}}</span>
+      <nav class="langs" aria-label="{{nav.language}}">{{page.switch}}</nav>
+    </header>
+
+    <div class="doc-frame">
+      <!-- A column, not a drawer: six rows fit on a phone screen above the article, and a
+           disclosure that has to be opened is a table of contents nobody reads. -->
+      <nav class="doc-nav" aria-label="{{doc.eyebrow}}">
+        <p class="eyebrow">{{doc.eyebrow}}</p>
+        {{doc.nav}}
+      </nav>
+
+      <main class="doc" id="doc">
+        {{doc.body}}
+
+        <nav class="pager" aria-label="{{doc.eyebrow}}">{{doc.prev}}{{doc.next}}</nav>
+      </main>
+    </div>
+
+    <footer class="topbar footer">
+      <span class="meta">{{footer.licence}}</span>
+      <a class="meta" href="{{repo.url}}">{{footer.repo}}</a>
+    </footer>
+  </body>
+</html>

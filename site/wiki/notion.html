@@ -1,0 +1,84 @@
+<!--
+  Page 4. The page that has to be honest, because the mirror is the feature people ask
+  for and the conflict rule is the thing they discover.
+
+  It states the one decision first and then derives everything from it, in the order a
+  reader meets the consequences: what goes out, what comes back, what is refused, and what
+  cannot be carried at all.
+-->
+<header class="doc-head">
+  <p class="eyebrow">{{head.eyebrow}}</p>
+  <h1>{{head.title}}</h1>
+  <p class="lead">{{head.lead}}</p>
+</header>
+
+<section class="doc-section">
+  <h2>{{why.title}}</h2>
+  <p>{{why.body}}</p>
+  <div class="note"><p>{{why.rule}}</p></div>
+  <p>{{why.down}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{out.title}}</h2>
+  <p>{{out.body}}</p>
+  <ul class="dbs">
+    <li>Kanso · Teams</li>
+    <li>Kanso · Projects</li>
+    <li>Kanso · Tickets</li>
+    <li>Kanso · Docs</li>
+  </ul>
+  <p>{{out.readers}}</p>
+  <p>{{out.order}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{in.title}}</h2>
+  <p>{{in.body}}</p>
+  <p>{{in.scalar}}</p>
+  <p>{{in.created}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{wins.title}}</h2>
+  <p>{{wins.body}}</p>
+  <div class="note"><p>{{wins.banner}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{import.title}}</h2>
+  <p>{{import.body}}</p>
+  <p>{{import.rules}}</p>
+  <p>{{import.refused}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{connect.title}}</h2>
+  <p>{{connect.body}}</p>
+  <p>{{connect.paste}}</p>
+  <p>{{connect.env}}</p>
+  <p>{{connect.token}}</p>
+  <div class="note"><p>{{connect.secret}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{lossy.title}}</h2>
+  <p>{{lossy.body}}</p>
+  <dl class="kv">
+    <dt>{{lossy.people.label}}</dt>
+    <dd>{{lossy.people}}</dd>
+    <dt>{{lossy.relations.label}}</dt>
+    <dd>{{lossy.relations}}</dd>
+    <dt>{{lossy.order.label}}</dt>
+    <dd>{{lossy.order}}</dd>
+  </dl>
+</section>
+
+<section class="doc-section">
+  <h2>{{ops.title}}</h2>
+  <p>{{ops.body}}</p>
+  <pre class="block"><code>GET  /api/admin/sync
+POST /api/admin/notion/reconcile</code></pre>
+  <p>{{ops.reconcile}}</p>
+  <p>{{ops.none}}</p>
+</section>

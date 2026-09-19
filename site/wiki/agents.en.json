@@ -1,0 +1,52 @@
+{
+  "meta.title": "Agents and the API — Kanso",
+  "meta.description": "An MCP door for an agent, API tokens and signed webhooks for a service, and a GitHub link for the pull requests. Ten tools, each speaking the team's own vocabulary.",
+
+  "head.eyebrow": "Agents and the API",
+  "head.title": "Two doors, because an agent and a service are not the same visitor.",
+  "head.lead": "An agent is a person at a laptop, acting on their behalf and needing their consent. A service is not. Kanso gives them different doors rather than one door with a note about how to use it.",
+
+  "doors.title": "Which door",
+  "doors.body": "An <strong>agent</strong> comes through <code>/api/mcp</code>: it registers itself, you approve it in your browser, and it holds a token that opens that one endpoint and nothing else. A <strong>service</strong> comes through the REST API with a token you minted for it, which is the whole API and carries your role. The first is for something acting as you; the second is for something acting on its own, and the difference is worth keeping.",
+
+  "mcp.title": "The MCP door",
+  "mcp.body": "One command, run wherever the agent lives:",
+  "mcp.nothing": "Nothing is pasted. The command only writes down an address. The first time the agent calls it, Kanso answers <code>401</code> with a header naming its own authorisation server, and the agent registers itself, opens your browser and asks.",
+  "mcp.consent": "What you read there is a Kanso page on Kanso's own origin: which application is asking, <strong>where it would send the code</strong>, how old its registration is, and the permissions in sentences rather than scope names. Approve it and the agent holds a token.",
+  "mcp.scope": "That token opens one door and not the rest of the API — it is accepted at <code>/api/mcp</code> and refused everywhere else — and what comes through it <strong>acts as you</strong>: every change says your name in the activity feed.",
+  "mcp.revoke": "Settings → Agents lists what you have let in and revokes it. Revoking takes the tokens with the permission, so the next request is refused rather than the next hour.",
+  "mcp.signin": "<strong>Sign in to Kanso in that browser first.</strong> The authorisation URL answers a browser with no session <code>401</code> with an empty body, so an agent's link opens on a blank page rather than on a login screen. It is the one rough edge left in this flow, and it is written down rather than smoothed over: signing in first makes it invisible.",
+
+  "tools.title": "Ten tools go through it",
+  "tools.body": "Three read, five write, and two are the triage pair — which is the one an agent is actually good at.",
+  "tools.list": "The tickets matching a scope and a filter.",
+  "tools.get": "One ticket in full, by identifier.",
+  "tools.workload": "What every member of a team is carrying, heaviest first: open tickets, how many are in progress, the points somebody sized, how many carry no estimate at all, and the age of their oldest open ticket.",
+  "tools.create": "File one ticket.",
+  "tools.update": "Change one, by identifier.",
+  "tools.split": "Turn one existing ticket into a parent and file the parts you name underneath it, in one call. Returns the identifiers the parts were given.",
+  "tools.link": "Record an edge between two tickets that already exist. <code>from</code> and <code>to</code> read as a sentence: <code>from</code> blocks <code>to</code>, duplicates <code>to</code>, relates to <code>to</code>.",
+  "tools.plan": "File a whole plan already worked out — several tickets, which are parts of which, and which block which — into one team, in one call.",
+  "tools.queue": "What nobody has ruled on yet.",
+  "tools.triage": "The ruling: <code>accepted</code>, <code>backlogged</code>, <code>duplicate</code> or <code>closed</code>, recorded as a decision rather than applied as a silent edit.",
+  "tools.words": "Each of them speaks the <em>team's</em> vocabulary. A status key the ticket's team does not have is refused with the list of the ones it does, so an agent that guessed <code>done</code> at a team that calls it <code>Livré</code> is told, not ignored.",
+  "tools.dev": "Dev mode has no door at all, and says so instead of failing quietly: under <code>KANSO_AUTH_MODE=dev</code> identity comes from an unverified header, and an authorisation server behind that would issue durable tokens to anyone who can reach it.",
+
+  "token.title": "API tokens, for a service",
+  "token.body": "Settings → Tokens mints one — <code>kanso_pat_…</code>, shown once, scoped <code>kanso:read</code> and <code>kanso:write</code> — and it is presented the ordinary way:",
+  "token.warning": "<strong>That is the whole REST API, not one door onto it.</strong> The token carries its owner's role, so an integration given an owner's token can do what an owner can. There is no scope narrower than a person today, which is worth knowing before handing one to somebody else's software.",
+
+  "hooks.title": "Webhooks",
+  "hooks.body": "With a token, an integration provisions itself: <code>POST /api/webhooks</code> subscribes and returns a signing secret. Every delivery afterwards carries two headers.",
+  "hooks.event": "What happened.",
+  "hooks.signature": "<code>t=&lt;unix&gt;,v1=&lt;hmac&gt;</code> over the body, with the secret the subscription returned.",
+  "hooks.ask": "An integration can also declare a custom field on a team, write and read its values, and — importantly — ask <code>/api/teams/{id}/statuses</code> and <code>/api/tickets/filters</code> what words this instance actually uses. A team invents its own, so a service that hardcodes <code>done</code> is a service that breaks on the team that renamed it.",
+
+  "openapi.title": "The API describes itself",
+  "openapi.body": "<code>GET /v3/api-docs</code>, behind a session or a token like every other read. It is generated from the controllers rather than kept beside them, so it says what the code says: 153 paths and the shape of every request body — which is the half a route list never gives.",
+
+  "github.title": "GitHub",
+  "github.body": "Kanso knows what the work is; GitHub knows whether it is done. Without a link between them the same fact gets typed twice — a branch named after a ticket, then a ticket dragged to Done after a merge — and the second typing is the one that gets forgotten.",
+  "github.link": "An owner registers a GitHub App for the instance; each member then links their own GitHub account from settings, which is the one card on that screen a plain member has something to do on. A pull request whose branch or body names a ticket key shows up on that ticket, with the branch to start it from.",
+  "github.feed": "Linking your account is also what decides how the feed reads. With it, the activity says <em>you</em> moved KAN-142 to Done; without it, the same event reads <em>KAN-142 moved to Done via #418</em>."
+}

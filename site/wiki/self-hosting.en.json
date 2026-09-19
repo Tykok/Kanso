@@ -1,0 +1,57 @@
+{
+  "meta.title": "Self-hosting — Kanso",
+  "meta.description": "One image, two variables, your own Postgres. TLS, what /data holds, what to back up, and what the first boot's failures look like.",
+
+  "head.eyebrow": "Self-hosting",
+  "head.title": "One image, two variables, your Postgres.",
+  "head.lead": "This is the summary an operator needs before the first boot. <code>docs/self-hosting.md</code> in the repository is the long version — the routing table, running your own proxy, and every symptom in full.",
+
+  "image.title": "What ships",
+  "image.body": "One image holds the front end, the API and a proxy that routes between them, on one origin, for <code>linux/amd64</code> and <code>linux/arm64</code>. There is no second container to stand up and no service mesh to describe: what a browser reaches is one port.",
+  "image.nodb": "<strong>Postgres is not in it, deliberately.</strong> A container that owns your data is a container you cannot restart without thinking about it, and every platform worth deploying to already has a managed Postgres you would rather use. <code>docker/docker-compose.yml</code> ships one beside the image for the case where you have none.",
+
+  "db.title": "Prepare the database",
+  "db.body": "Kanso creates its own tables — Flyway runs at boot, every boot, and one application container means there is nothing to coordinate. What it cannot create is the role, the database and one extension:",
+  "db.trgm": "<strong><code>pg_trgm</code> is the line that fails on a managed instance.</strong> A migration runs <code>CREATE EXTENSION IF NOT EXISTS pg_trgm</code> itself, so on a Postgres where the <code>kanso</code> role is a superuser you can skip it. On a managed one the role usually is not: RDS, Supabase and Neon all allow it, a locked-down corporate cluster generally needs a DBA to run that one line. The symptom is the container exiting during Flyway with <code>permission denied to create extension &quot;pg_trgm&quot;</code>.",
+  "db.version": "Postgres 16 is what is tested. Anything with <code>pg_trgm</code> and a recent enough JDBC dialect will work; nothing in the schema is exotic.",
+
+  "env.title": "The environment",
+  "env.body": "Two variables are required and everything else has a defensible default or is derived from them.",
+  "env.url": "<strong>Required.</strong> The URL a browser reaches this instance at, scheme included. The CORS policy, the WebSocket handshake check and every OAuth redirect URI are derived from it, which is why getting it wrong shows up as three unrelated-looking symptoms.",
+  "env.db": "<strong>Required</strong>, with <code>_USERNAME</code> and <code>_PASSWORD</code>. The host is resolved from inside the container: a service name on Compose, <code>host.docker.internal</code> for a Postgres on this machine but outside Docker, and never <code>localhost</code>.",
+  "env.tls": "<code>auto</code> or <code>off</code>. Defaults to <code>auto</code> when the public URL is <code>https:</code> — see below.",
+  "env.secret": "The AES key encrypting the secrets the setup wizard stored. Generated into the volume on first boot if unset. Setting it explicitly is half of what makes the container stateless.",
+  "env.auth": "<code>dev</code> makes identity come from an unverified <code>X-Kanso-User</code> header. It exists for tests and CI, has to be asked for explicitly, logs a loud warning, and disables the agent door entirely. <strong>Never expose an instance running that way.</strong>",
+  "env.rest": "Everything else Kanso reads — <code>NOTION_*</code>, <code>GOOGLE_*</code>, <code>GITHUB_*</code>, the webhook and rate-limit settings — is optional and passes straight through. Anything set here wins over the setup wizard and is shown read-only in it.",
+
+  "tls.title": "TLS, and who the edge is",
+  "tls.auto": "<strong><code>auto</code></strong> — Caddy inside the image obtains and renews a Let's Encrypt certificate for the host in the public URL. Port 80 has to be reachable from the public internet for the challenge, not only 443. This is the right answer if the edge is not otherwise under your control.",
+  "tls.off": "<strong><code>off</code></strong> — your own proxy terminates TLS and Kanso serves plain HTTP behind it. The public URL still says <code>https://…</code>: it describes what the <em>browser</em> uses, not what the container listens on.",
+  "tls.forwarded": "Under <code>off</code>, <code>X-Forwarded-For</code> becomes your job. Caddy preserves the inbound header verbatim, because your proxy is the edge — so your proxy has to drop any header it did not set, or a client can name its own address. Under <code>auto</code>, Caddy is the edge and discards it for you.",
+
+  "data.title": "What /data holds, and what to back up",
+  "data.body": "Two things that must survive a restart. Nothing else — tickets, documents and sessions are all in Postgres.",
+  "data.key": "The AES key encrypting the Notion token and the OAuth client secrets the wizard stored. <strong>Lose it and those secrets have to be entered again.</strong>",
+  "data.acme.label": "Caddy's ACME state",
+  "data.acme": "The certificate and account key, under <code>KANSO_TLS=auto</code>. Lose it and every restart asks Let's Encrypt for a new certificate.",
+  "data.stateless": "<strong>The container is stateless</strong> — no volume at all — when you set <code>KANSO_SECRET_KEY</code> explicitly <em>and</em> run <code>KANSO_TLS=off</code>. Both reasons for <code>/data</code> are gone, and what is left is an image and two environment variables, which is the shape ECS, Fly or a Kubernetes Deployment wants. Aim for that if you have one.",
+  "data.backup": "So a backup is: your Postgres, and either <code>/data/secret.key</code> or the value of <code>KANSO_SECRET_KEY</code> kept wherever you keep secrets.",
+
+  "ops.title": "Running it",
+  "ops.upgrade": "Upgrading is pulling a newer image and restarting it. Flyway runs at every boot and brings the schema forward; there is no separate migration step to remember and no maintenance window to declare for one application container.",
+  "ops.sessions": "Sessions are held in memory, so more than one API instance needs a shared session store — one property, with <code>spring-session-jdbc</code>. Until then, run one.",
+  "ops.health": "<code>/actuator/health</code> answers liveness, readiness and the database check, which is what a platform's health probe should point at. The entrypoint also probes the database host before starting the JVM and exits in about ten seconds with a message naming what it could not reach, rather than failing deep inside a stack trace a minute later.",
+
+  "fail.title": "When it does not come up",
+  "fail.url.label": "Exits in a second",
+  "fail.url": "<code>KANSO_PUBLIC_URL is not set</code>. It says what to set.",
+  "fail.reach.label": "Exits in ten seconds",
+  "fail.reach": "<code>cannot reach …</code> — the entrypoint probed the database host and got nothing. On Compose that host is the service name; outside Docker on this machine it is <code>host.docker.internal</code>, never <code>localhost</code>.",
+  "fail.flyway.label": "Exits during Flyway",
+  "fail.flyway": "<code>password authentication failed</code> means the host answered, so the URL is right and the credentials are not. <code>permission denied to create extension</code> is <code>pg_trgm</code>, above.",
+  "fail.socket.label": "Signed in, but nothing updates by itself",
+  "fail.socket": "The WebSocket handshake was rejected. The <code>Origin</code> header is compared to the public URL exactly — the same cause as a Google sign-in returning <code>redirect_uri_mismatch</code>, and usually a proxy not sending <code>X-Forwarded-Proto: https</code>.",
+  "fail.cert.label": "No certificate under auto",
+  "fail.cert": "Port 80 must be reachable from the public internet for the ACME challenge, not only 443.",
+  "fail.more": "The container prints the address Caddy bound and the <code>KANSO_TLS</code> it resolved on one line before anything else, which is the first thing to read when the symptom is ambiguous."
+}

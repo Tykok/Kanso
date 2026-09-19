@@ -1,0 +1,90 @@
+<!--
+  Page 1. The only page whose job is to end somewhere else: a reader who finishes it has a
+  running instance and a ticket in it, and every claim the other five pages make is about
+  something they can now open.
+
+  The shell commands are written here rather than in the dictionaries. Both languages hand
+  the reader the same characters, and a translated copy of `docker compose up` is a copy
+  that can drift from the one on the other page.
+-->
+<header class="doc-head">
+  <p class="eyebrow">{{head.eyebrow}}</p>
+  <h1>{{head.title}}</h1>
+  <p class="lead">{{head.lead}}</p>
+</header>
+
+<section class="doc-section">
+  <h2>{{run.title}}</h2>
+  <p>{{run.body}}</p>
+  <pre class="block"><code>docker run -d -p 80:80 -p 443:443 -v kanso-data:/data \
+  -e KANSO_PUBLIC_URL=https://kanso.example.com \
+  -e SPRING_DATASOURCE_URL='jdbc:postgresql://db.internal:5432/kanso?sslmode=require' \
+  -e SPRING_DATASOURCE_USERNAME=kanso -e SPRING_DATASOURCE_PASSWORD=… \
+  ghcr.io/tykok/kanso</code></pre>
+  <p>{{run.two}}</p>
+  <p>{{run.compose}}</p>
+  <div class="note"><p>{{run.note}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{dev.title}}</h2>
+  <p>{{dev.body}}</p>
+  <pre class="block"><code>cp .env.example .env
+docker compose up</code></pre>
+  <dl class="kv">
+    <dt>localhost:3000</dt>
+    <dd>{{dev.web}}</dd>
+    <dt>localhost:8080</dt>
+    <dd>{{dev.api}}</dd>
+    <dt>localhost:8080/actuator/health</dt>
+    <dd>{{dev.health}}</dd>
+  </dl>
+  <p>{{dev.apps}}</p>
+  <pre class="block"><code>docker compose up -d db                      # Postgres only
+cd apps/api && ./gradlew bootRun             # http://localhost:8080
+cd apps/web && pnpm install && pnpm dev      # http://localhost:3000</code></pre>
+</section>
+
+<section class="doc-section">
+  <h2>{{wizard.title}}</h2>
+  <p>{{wizard.body}}</p>
+  <ol>
+    <li>{{wizard.account}}</li>
+    <li>{{wizard.notion}}</li>
+    <li>{{wizard.google}}</li>
+    <li>{{wizard.preferences}}</li>
+  </ol>
+  <p>{{wizard.skip}}</p>
+  <p>{{wizard.invite}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{first.title}}</h2>
+  <p>{{first.body}}</p>
+  <dl class="kv">
+    <dt>c</dt>
+    <dd>{{first.c}}</dd>
+    <dt>e</dt>
+    <dd>{{first.e}}</dd>
+    <dt>1 … 6</dt>
+    <dd>{{first.digits}}</dd>
+    <dt>⇧s</dt>
+    <dd>{{first.shift}}</dd>
+    <dt>⌘K</dt>
+    <dd>{{first.palette}}</dd>
+    <dt>?</dt>
+    <dd>{{first.help}}</dd>
+  </dl>
+  <p>{{first.number}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{next.title}}</h2>
+  <ul>
+    <li><a href="{{href.model}}">{{nav.model}}</a> — {{next.model}}</li>
+    <li><a href="{{href.working}}">{{nav.working}}</a> — {{next.working}}</li>
+    <li><a href="{{href.notion}}">{{nav.notion}}</a> — {{next.notion}}</li>
+    <li><a href="{{href.agents}}">{{nav.agents}}</a> — {{next.agents}}</li>
+    <li><a href="{{href.self-hosting}}">{{nav.self-hosting}}</a> — {{next.selfHosting}}</li>
+  </ul>
+</section>

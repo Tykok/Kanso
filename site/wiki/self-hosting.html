@@ -1,0 +1,93 @@
+<!--
+  Page 6. The operator's page: what to set, what to back up, and what a failure looks like.
+
+  It is deliberately a summary with one destination — `docs/self-hosting.md` in the
+  repository is the long version, and a second full copy of it here would be the copy that
+  goes stale. Everything on this page is either a decision an operator makes before the
+  first boot, or a symptom they will meet at it.
+-->
+<header class="doc-head">
+  <p class="eyebrow">{{head.eyebrow}}</p>
+  <h1>{{head.title}}</h1>
+  <p class="lead">{{head.lead}}</p>
+</header>
+
+<section class="doc-section">
+  <h2>{{image.title}}</h2>
+  <p>{{image.body}}</p>
+  <p>{{image.nodb}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{db.title}}</h2>
+  <p>{{db.body}}</p>
+  <pre class="block"><code>CREATE DATABASE kanso;
+CREATE USER kanso WITH PASSWORD '…';
+\c kanso
+CREATE EXTENSION IF NOT EXISTS pg_trgm;   -- superuser
+GRANT ALL ON SCHEMA public TO kanso;      -- Flyway creates the tables</code></pre>
+  <div class="note"><p>{{db.trgm}}</p></div>
+  <p>{{db.version}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{env.title}}</h2>
+  <p>{{env.body}}</p>
+  <dl class="kv">
+    <dt>KANSO_PUBLIC_URL</dt>
+    <dd>{{env.url}}</dd>
+    <dt>SPRING_DATASOURCE_URL</dt>
+    <dd>{{env.db}}</dd>
+    <dt>KANSO_TLS</dt>
+    <dd>{{env.tls}}</dd>
+    <dt>KANSO_SECRET_KEY</dt>
+    <dd>{{env.secret}}</dd>
+    <dt>KANSO_AUTH_MODE</dt>
+    <dd>{{env.auth}}</dd>
+  </dl>
+  <p>{{env.rest}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{tls.title}}</h2>
+  <p>{{tls.auto}}</p>
+  <p>{{tls.off}}</p>
+  <div class="note"><p>{{tls.forwarded}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{data.title}}</h2>
+  <p>{{data.body}}</p>
+  <dl class="kv">
+    <dt>/data/secret.key</dt>
+    <dd>{{data.key}}</dd>
+    <dt>{{data.acme.label}}</dt>
+    <dd>{{data.acme}}</dd>
+  </dl>
+  <p>{{data.stateless}}</p>
+  <p>{{data.backup}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{ops.title}}</h2>
+  <p>{{ops.upgrade}}</p>
+  <p>{{ops.sessions}}</p>
+  <p>{{ops.health}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{fail.title}}</h2>
+  <dl class="kv">
+    <dt>{{fail.url.label}}</dt>
+    <dd>{{fail.url}}</dd>
+    <dt>{{fail.reach.label}}</dt>
+    <dd>{{fail.reach}}</dd>
+    <dt>{{fail.flyway.label}}</dt>
+    <dd>{{fail.flyway}}</dd>
+    <dt>{{fail.socket.label}}</dt>
+    <dd>{{fail.socket}}</dd>
+    <dt>{{fail.cert.label}}</dt>
+    <dd>{{fail.cert}}</dd>
+  </dl>
+  <p>{{fail.more}}</p>
+</section>

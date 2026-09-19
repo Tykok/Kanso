@@ -1,0 +1,65 @@
+{
+  "meta.title": "Le modèle — Kanso",
+  "meta.description": "Les équipes possèdent les tickets, les projets les regroupent, les statuts sont les mots propres d'une équipe, et les documents qui expliquent le travail sont posés à côté. Le vocabulaire dans lequel le reste de Kanso est écrit.",
+
+  "head.eyebrow": "Le modèle",
+  "head.title": "Six noms, et lequel possède les autres.",
+  "head.lead": "Rien ici n'est un écran. C'est ce dont les écrans parlent, et le reste de cette documentation emploie ces mots sans les redéfinir.",
+
+  "teams.title": "Les équipes",
+  "teams.body": "L'équipe est l'unité de possession et l'unité de vocabulaire. <strong>Une équipe possède ses tickets</strong> — chaque ticket en a exactement une — et elle possède la liste des statuts que ces tickets peuvent prendre, les étiquettes qu'ils peuvent porter et les champs personnalisés qu'ils peuvent contenir. Deux équipes d'une même instance peuvent être en désaccord sur les trois, et aucune n'a tort.",
+  "teams.nest": "Les équipes s'imbriquent : une équipe peut avoir un parent, récursivement, et une requête sur le travail d'une équipe peut porter sur tout son sous-arbre. La barre latérale dessine l'imbrication mais plafonne le retrait à deux niveaux ; une imbrication de quatre rend donc les niveaux deux, trois et quatre au même retrait.",
+
+  "projects.title": "Les projets",
+  "projects.body": "Un projet regroupe des tickets et porte un responsable, un statut, des dates et des points de santé. C'est l'unité à laquelle se lisent une feuille de route et un planning, et c'est là qu'on attache un document quand il explique un ensemble de travail plutôt qu'un ticket.",
+  "projects.rule": "Le projet d'un ticket doit appartenir à l'équipe du ticket. La règle est vérifiée à l'identique à la création et à la modification, et c'est elle qui empêche le projet de devenir une seconde hiérarchie concurrente.",
+  "projects.transverse": "Une exception, délibérée : un projet qui n'appartient à <em>aucune</em> équipe est transverse et appartient partout. C'est la seule forme sous laquelle un projet porte des tickets de plusieurs équipes — et l'élargissement du planning, qui fait entrer les autres travaillant sur un projet partagé, n'est actif que pour un projet transverse et inerte pour tous les autres.",
+  "projects.move": "Déplacer un projet vers une autre équipe est refusé par un 409 tant que des tickets ailleurs pointent encore dessus, plutôt que de vider silencieusement leur projet. Un ticket archivé peut maintenir ce refus sans qu'on puisse l'atteindre depuis l'écran ; c'est une aspérité connue.",
+
+  "tickets.title": "Les tickets",
+  "tickets.body": "L'unité de travail. Un ticket appartient à une équipe, éventuellement à un projet, et porte les champs ci-dessous plus une description, un assigné et les champs personnalisés déclarés par son équipe.",
+  "tickets.key.label": "KAN-142",
+  "tickets.key": "Un identifiant court propre à l'équipe, attribué dans la transaction d'insertion depuis un compteur porté par la ligne de l'équipe. C'est le nom qu'on donne au ticket à l'oral, et ce que <code>/t/KAN-142</code> résout.",
+  "tickets.status.label": "statut",
+  "tickets.status": "L'un des statuts propres à l'équipe — voir plus bas. Jamais une liste globale.",
+  "tickets.priority.label": "priorité",
+  "tickets.priority": "Aucune, basse, moyenne, haute ou urgente. Un vocabulaire fermé, le même partout.",
+  "tickets.dates.label": "début, échéance",
+  "tickets.dates": "L'une, les deux, ou aucune. Une borne seule est un jalon, et le planificateur la laisse telle quelle plutôt que de faire pousser l'autre.",
+  "tickets.estimate.label": "estimation",
+  "tickets.estimate": "Des points, sur une suite de Fibonacci tronquée — 1, 2, 3, 5, 8, 13 — et nullable. <strong>Non estimé</strong> et <strong>estimé à zéro</strong> sont deux états différents : toute somme exclut le non-estimé, et tout écran qui montre une somme dit aussi combien de tickets elle n'a pas pu représenter.",
+  "tickets.social": "Les commentaires avec mentions, les étiquettes, les favoris et les saisies de temps s'accrochent au ticket. Son activité aussi : qui a changé quoi, quand, et par quelle porte — une modification faite par un agent porte le nom de la personne dont il a utilisé le jeton.",
+
+  "statuses.title": "Les statuts sont les mots de l'équipe",
+  "statuses.body": "Une nouvelle équipe démarre avec six statuts, et c'est la dernière chose que Kanso décide à leur sujet. Une équipe les renomme, les réordonne, en ajoute un septième et en retire un dont elle ne se sert pas. La liste, le tableau, les graphiques et chaque outil MCP lui répondent alors avec ses propres mots.",
+  "statuses.six": "Backlog, Todo, In progress, In review, Done, Canceled — les six du départ, et les six couleurs que la palette livre.",
+  "statuses.own": "Il n'existe donc aucun statut global sur lequel filtrer deux équipes qui ont divergé. Cela rendrait le tableau inutilisable au-dessus d'une seule équipe : chaque statut déclare aussi ce qu'il <em>signifie</em>.",
+
+  "meanings.title": "Les cinq sens",
+  "meanings.body": "Chaque statut, renommé ou non, appartient à l'une de cinq catégories. Elles sont figées, ne s'affichent jamais comme un statut, et c'est en elles que se pose une question qui traverse deux vocabulaires : <code>meaning:started</code>, c'est tout ce qui est en cours, dans toutes les équipes, quel que soit le mot de chacune.",
+  "meanings.backlog": "Noté, pas encore mis en file.",
+  "meanings.unstarted": "En file, personne n'a commencé.",
+  "meanings.started": "En cours — <code>In progress</code> et <code>In review</code> tous les deux, par défaut.",
+  "meanings.completed": "Terminé.",
+  "meanings.canceled": "Abandonné, et non terminé.",
+  "meanings.move": "C'est aussi ce qui fait survivre un ticket à un déplacement. Un ticket déplacé vers une équipe qui n'a jamais entendu parler de son statut arrive dans <strong>le premier statut de même sens de cette équipe</strong>, par position — et, seulement si la destination ne sait pas exprimer ce sens du tout, dans son premier statut. Il n'arrive jamais dans un mot que personne là-bas ne sait lire.",
+
+  "links.title": "Les arêtes entre tickets",
+  "links.depends": "<strong>blocks</strong> est orientée et c'est la seule que le planificateur lit : une flèche fin-à-début disant que le successeur ne peut pas commencer avant la fin de son prédécesseur. Déplacer une date règle toute la composante connexe autour du changement, et pas les seuls successeurs directs.",
+  "links.cycle": "Une dépendance qui fermerait un cycle est refusée avec le chemin qu'elle aurait fermé, plutôt qu'avec les mots « cycle détecté » — sur quoi personne ne peut agir.",
+  "links.parent": "Un ticket peut avoir un ticket parent. Les sous-tickets sont une hiérarchie de lecture, pas un second planificateur : rien n'est agrégé automatiquement.",
+  "links.related": "<strong>relates</strong> est symétrique et ne porte aucun ordre ; <strong>duplicates</strong> est orientée et pointe vers le survivant. Les deux existent pour que « c'est la même chose que ça » se navigue au lieu de s'écrire dans une description où rien ne peut le suivre.",
+
+  "docs.title": "Les documents",
+  "docs.body": "Un document est une page Notion, référencée par Kanso et non recopiée dedans. La page qui explique une décision est rattachée au travail qu'elle a décidé : on la trouve depuis le ticket au lieu d'un dossier dans un second outil.",
+  "docs.many": "La référence est plusieurs-à-plusieurs <em>des deux côtés</em> : un document peut être attaché à plusieurs projets et plusieurs tickets, et un ticket peut porter plusieurs documents. Kanso met aussi son propre index de documents en miroir dans Notion, quatrième des quatre bases.",
+
+  "fields.title": "Les champs personnalisés",
+  "fields.body": "Une équipe déclare ses propres champs — <code>text</code>, <code>number</code>, <code>boolean</code> ou <code>select</code> — et chaque ticket de cette équipe peut en porter une valeur. Un champ est défini une fois et valué par ticket : l'écran de réglages peut lister ce qui existe, un renommage est un renommage, et une faute de frappe est une erreur plutôt qu'un nouveau champ.",
+  "fields.api": "Ils sont sur le fil dans chaque réponse de ticket, y compris celles des outils MCP, depuis avant qu'il y ait quoi que ce soit à y mettre : une forme qui gagne une clé plus tard est une forme que chaque intégration existante a déjà figée.",
+
+  "access.title": "Qui a le droit de quoi",
+  "access.body": "Trois rôles d'instance qui peuvent écrire — propriétaire, administrateur, membre — et un quatrième, <strong>viewer</strong>, qui lit et n'écrit jamais. Propriétaire et administrateur sont les deux qui peuvent configurer l'instance.",
+  "access.why": "<strong>Les lectures sont ouvertes ; seules les écritures sont restreintes.</strong> Aucun <code>GET</code> de Kanso n'est cloisonné par équipe : tout utilisateur authentifié peut lire les tickets, les projets, le planning et les membres de n'importe quelle équipe. C'est délibéré et à sens unique — le planning inter-équipes existe pour montrer qui d'autre fait quoi, et masquer une partie de « qui d'autre » supprime la raison de l'avoir construit. Les écritures, elles, sont cloisonnées par équipe, partout.",
+  "access.trash": "Supprimer n'est pas archiver. <strong>Archivé</strong> est une décision sans horloge ; <strong>supprimé</strong> est un compte à rebours de trente jours, et les deux sont deux onglets aux compteurs distincts dans la corbeille."
+}

@@ -421,3 +421,181 @@ a {
     gap: 40px;
   }
 }
+
+/*
+ * The wiki: the same page, given a column.
+ *
+ * Nothing below introduces a colour, a radius or a shadow the landing page does not
+ * already use — a documentation page that looked like a different product would be the
+ * one thing this whole build exists to prevent. What it adds is a second axis: an index
+ * that stays put, and a body long enough to need headings that a reader can aim at.
+ */
+
+.topbar-link {
+  font-size: 12px;
+  color: var(--faint);
+  text-decoration: none;
+}
+.topbar-link:hover {
+  color: var(--foreground);
+}
+
+.doc-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 26px;
+  max-width: var(--page);
+  margin-inline: auto;
+  padding: 0 var(--gutter) clamp(48px, 7vw, 92px);
+}
+
+/* On a phone the index is six rows above the article, which is shorter than the first
+   paragraph it would otherwise push down; it becomes a column at the width where one
+   fits beside the text. */
+.doc-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule);
+}
+.doc-nav a {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+.doc-nav a:hover {
+  color: var(--foreground);
+}
+/* The current page is stated by weight and ink, not by a filled row: the column is a
+   list of destinations, and a highlighted band would make it look like a control. */
+.doc-nav a[aria-current] {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.doc {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.doc-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: clamp(28px, 4vw, 44px) 0 clamp(30px, 4vw, 44px);
+}
+
+.doc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: clamp(30px, 4vw, 44px) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.doc-section h2 {
+  max-width: 34ch;
+}
+
+/* 68ch rather than the landing page's 58: that one is a sequence of claims read standing
+   up, this one is prose read sitting down, and a measure tuned for a headline makes a
+   paragraph of six sentences look like a column of confetti. */
+.doc-section p,
+.doc-section li {
+  font-size: 14px;
+  color: var(--muted-foreground);
+  max-width: 68ch;
+}
+
+.doc-section strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.doc-section code {
+  color: var(--foreground);
+}
+
+.doc-section ul,
+.doc-section ol {
+  margin: 2px 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 7px;
+}
+
+/* A command is not prose and does not take the prose measure: the 68ch above is tuned for
+   sentences, and a `docker run` capped at it wraps in the middle of a variable name where
+   the reader has to reassemble the line themselves. It takes the column. */
+.doc-section .block {
+  max-width: none;
+}
+
+/* A caveat is not a decoration, so it is a rule and an ink rather than a tinted box with
+   an icon: the same device the landing page uses for its one closing statement. */
+.note {
+  padding-left: 16px;
+  border-left: 2px solid var(--primary);
+}
+.note p {
+  color: var(--foreground);
+}
+
+/* Two columns of short pairs — a key and what it does, a variable and what it is for.
+   Not a <table>: every row here is two cells and nothing spans, so a grid reflows to one
+   column on a phone where a table would have to scroll sideways. */
+.kv {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 18px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  max-width: 68ch;
+}
+.kv dt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+.kv dd {
+  margin: 0;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 26px;
+  border-top: 1px solid var(--rule);
+}
+.pager a {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+  text-decoration: none;
+}
+.pager .pager-next {
+  margin-left: auto;
+  text-align: right;
+}
+
+@media (min-width: 900px) {
+  .doc-frame {
+    grid-template-columns: 178px minmax(0, 1fr);
+    gap: clamp(28px, 5vw, 64px);
+  }
+  .doc-nav {
+    /* `start` rather than a pixel offset: the bar is not fixed, so the column scrolls
+       away with it and then stops, which is where a reader expects an index to sit. */
+    position: sticky;
+    top: 28px;
+    align-self: start;
+    padding-top: clamp(28px, 4vw, 44px);
+    border-top: 0;
+  }
+}

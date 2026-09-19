@@ -1,0 +1,65 @@
+{
+  "meta.title": "The model — Kanso",
+  "meta.description": "Teams own tickets, projects group them, statuses are a team's own words, and the documents that explain the work sit beside it. The vocabulary the rest of Kanso is written in.",
+
+  "head.eyebrow": "The model",
+  "head.title": "Six nouns, and which of them owns the others.",
+  "head.lead": "Nothing here is a screen. It is what the screens are about, and the rest of this documentation uses these words without redefining them.",
+
+  "teams.title": "Teams",
+  "teams.body": "A team is the unit of ownership and the unit of vocabulary. <strong>A team owns its tickets</strong> — every ticket has exactly one — and it owns the list of statuses those tickets may be in, the labels they may carry, and the custom fields they may hold. Two teams in the same instance can disagree about all three and neither is wrong.",
+  "teams.nest": "Teams nest: a team may have a parent, recursively, and a query for a team's work can be asked of its subtree. The sidebar draws the nesting but caps the indentation at two levels, so a four-deep nest renders levels two, three and four at the same indent.",
+
+  "projects.title": "Projects",
+  "projects.body": "A project groups tickets and carries a lead, a status, dates and health updates. It is the unit a roadmap and a timeline are read at, and it is where a document is attached when the document explains a body of work rather than one ticket.",
+  "projects.rule": "A ticket's project must belong to the ticket's own team. The rule is checked identically when a ticket is created and when it is patched, and it is what keeps a project from becoming a second, competing hierarchy.",
+  "projects.transverse": "One exception, deliberate: a project that belongs to <em>no</em> team is transverse and belongs everywhere. That is the only shape in which a project ever holds tickets from more than one team — and the timeline's widening, where it draws in everyone else with work in a shared project, is live only for a transverse project and inert for every other.",
+  "projects.move": "Moving a project to another team is refused with a 409 when tickets elsewhere still point at it, rather than silently clearing their project. An archived ticket can hold the refusal open with no way to reach it from the screen; that is a known rough edge.",
+
+  "tickets.title": "Tickets",
+  "tickets.body": "The unit of work. A ticket belongs to one team, optionally to one project, and carries the fields below plus a description, an assignee and whatever custom fields its team has declared.",
+  "tickets.key.label": "KAN-142",
+  "tickets.key": "A short identifier of the team's own, allocated inside the insert transaction from a counter on the team row. It is what a ticket is called out loud, and what <code>/t/KAN-142</code> resolves.",
+  "tickets.status.label": "status",
+  "tickets.status": "One of the team's own statuses — see below. Never a global list.",
+  "tickets.priority.label": "priority",
+  "tickets.priority": "None, low, medium, high or urgent. A closed vocabulary, the same everywhere.",
+  "tickets.dates.label": "start, due",
+  "tickets.dates": "Either, both or neither. One bound alone is a milestone, and the scheduler keeps it that way rather than growing the other.",
+  "tickets.estimate.label": "estimate",
+  "tickets.estimate": "Points, on a truncated Fibonacci scale — 1, 2, 3, 5, 8, 13 — and nullable. <strong>Not estimated</strong> and <strong>estimated at zero</strong> are different states, so every sum excludes the unestimated and every screen showing a sum also says how many tickets it could not speak for.",
+  "tickets.social": "Comments with mentions, labels, favourites, and time entries all hang off a ticket. So does its activity: who changed what, when, and through which door — a change made by an agent says the name of the person whose token it used.",
+
+  "statuses.title": "Statuses are a team's own words",
+  "statuses.body": "A new team starts with six statuses, and that is the last thing Kanso decides about them. A team renames them, reorders them, adds a seventh and removes one it does not use. The list, the board, the charts and every MCP tool then say that team's words back.",
+  "statuses.six": "Backlog, Todo, In progress, In review, Done, Canceled — the six a team starts with, and the six colours the palette ships.",
+  "statuses.own": "Which means there is no global status to filter on across two teams that have diverged. That would make the board useless above one team, so each status also declares what it <em>means</em>.",
+
+  "meanings.title": "The five meanings",
+  "meanings.body": "Every status, renamed or not, belongs to one of five categories. They are fixed, they are never shown as a status, and they are what a question spanning two vocabularies is asked in: <code>meaning:started</code> is everything under way, in every team, whatever each one calls it.",
+  "meanings.backlog": "Noted, not yet queued.",
+  "meanings.unstarted": "Queued, nobody has started.",
+  "meanings.started": "Under way — <code>In progress</code> and <code>In review</code> both, by default.",
+  "meanings.completed": "Finished.",
+  "meanings.canceled": "Dropped, and not finished.",
+  "meanings.move": "It is also what makes a ticket survive a move. A ticket moved into a team that has never heard of its status arrives in <strong>that team's first status of the same meaning</strong>, by position — and, only when the destination cannot express that meaning at all, in its first status. It never arrives in a word nobody there can read.",
+
+  "links.title": "Edges between tickets",
+  "links.depends": "<strong>blocks</strong> is directed and is the only kind the scheduler reads: one finish-to-start arrow saying the successor cannot begin before its predecessor ends. Moving a date settles the whole connected component around the change, not the direct successors alone.",
+  "links.cycle": "A dependency that would close a cycle is refused with the path it would have closed, rather than with the words &ldquo;cycle detected&rdquo; — which is not something anybody can act on.",
+  "links.parent": "A ticket may have a parent ticket. Sub-tickets are a hierarchy for reading, not a second scheduler: nothing is rolled up automatically.",
+  "links.related": "<strong>relates</strong> is symmetric and carries no order; <strong>duplicates</strong> is directed and points at the survivor. Both exist so that &ldquo;this is the same as that&rdquo; can be navigated instead of written in a description where nothing can follow it.",
+
+  "docs.title": "Documents",
+  "docs.body": "A document is a Notion page, referenced by Kanso rather than copied into it. The page that explains a decision is attached to the work it decided, so it is found from the ticket instead of from a folder in a second tool.",
+  "docs.many": "The reference is many-to-many <em>on both sides</em>: a document can be attached to several projects and several tickets, and a ticket can carry several documents. Kanso also mirrors its own document index into Notion, which is the fourth of the four databases.",
+
+  "fields.title": "Custom fields",
+  "fields.body": "A team declares its own fields — <code>text</code>, <code>number</code>, <code>boolean</code> or <code>select</code> — and every ticket on that team can carry a value for each. A field is defined once and valued per ticket, so the settings screen can list what exists, a rename is a rename, and a typo is a mistake rather than a new field.",
+  "fields.api": "They are on the wire in every ticket response, including the MCP tools', from before there was anything to put in them: a shape that gains a key later is a shape every existing integration has already pinned.",
+
+  "access.title": "Who may do what",
+  "access.body": "Three instance roles that may write — owner, admin, member — and a fourth, <strong>viewer</strong>, that reads and never writes. Owner and admin are the two that may configure the instance.",
+  "access.why": "<strong>Reads are open; only writes are scoped.</strong> No <code>GET</code> in Kanso is scoped by team: any authenticated user can read any team's tickets, projects, timeline and roster. That is deliberate and one-directional — the cross-team timeline exists to show who else is doing what, and hiding some of &ldquo;who else&rdquo; removes the reason it was built. Writes are gated per team, everywhere.",
+  "access.trash": "Deleting is not archiving. <strong>Archived</strong> is a decision with no clock on it; <strong>deleted</strong> is a thirty-day countdown, and the two are separate tabs with separate counts in Trash."
+}

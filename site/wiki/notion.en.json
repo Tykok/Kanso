@@ -1,0 +1,53 @@
+{
+  "meta.title": "Notion — Kanso",
+  "meta.description": "Kanso mirrors four databases into Notion so the people who follow along never open Kanso. What goes out, what comes back, why Kanso wins every conflict, and what the mapping cannot carry.",
+
+  "head.eyebrow": "Notion",
+  "head.title": "Two directions, and only one of them is a loop.",
+  "head.lead": "Connect Notion and everyone who does not open Kanso reads the same data where they already work. It is a mirror, not a second source of truth, and this page is mostly about that difference.",
+
+  "why.title": "The one decision everything follows from",
+  "why.body": "Notion cannot sit between two people editing the same board. A call takes roughly 300–800&nbsp;ms, the integration is capped near three requests a second, and there is no push worth relying on. Anything routed through it inherits those numbers.",
+  "why.rule": "<strong>Postgres is the operational source of truth. Notion is an asynchronous mirror.</strong> Kanso writes to Postgres, answers you, and pushes to Notion afterwards.",
+  "why.down": "So Kanso stays fully usable while Notion is unreachable, and reconciles afterwards. Nothing you do in the app waits on a network call to somebody else's service.",
+
+  "out.title": "Outbound, continuously",
+  "out.body": "Every write enqueues a sync job <em>in the same transaction</em> as the business change, so a crash cannot lose one. A worker dequeues them with <code>FOR UPDATE SKIP LOCKED</code>, throttles itself with a token bucket, retries with exponential backoff, and writes into four databases:",
+  "out.readers": "Those four are the whole of the mirror, and they are ordinary Notion databases. The people who only need to follow along filter, group and chart them the way they already do, and never open Kanso.",
+  "out.order": "Jobs carry a dependency priority — team, then project, then ticket, then document — because a relation needs its target page to exist first. A push whose target has no page yet is deferred a few seconds rather than failed.",
+
+  "in.title": "Inbound, by polling",
+  "in.body": "Notion has no dependable push, so Kanso polls incrementally on <code>last_edited_time</code>, with a persisted cursor per data source and echo suppression so its own writes do not come back as changes.",
+  "in.scalar": "The poller applies <strong>scalar fields only</strong> — title, status, priority, dates, the archived flag. It does not apply relations, because Notion replaces a relation array wholesale and accepting one back would turn a concurrent edit into silent data loss. It does not apply people either, because a <code>people</code> property cannot represent a Kanso user with no Notion account, so reading it back would quietly drop assignees. Relations and assignments stay Kanso-authoritative.",
+  "in.created": "A page created by hand in Notion is <strong>not adopted</strong>. A ticket needs a team and a per-team number, and neither is something a page created in the mirror can supply; the poller logs it and moves on rather than inventing rows.",
+
+  "wins.title": "Kanso wins, and what that costs",
+  "wins.body": "If the Postgres row moved after the last successful push, an edit made in Notion is discarded and a corrective push is queued. Notion converges back on its own, which means <strong>somebody editing in Notion will see their change reverted</strong>.",
+  "wins.banner": "That is the design, not a bug — but it has to be said out loud to the people reading the mirror, or they lose trust in the tool. Put a banner on the parent page saying the databases are maintained by Kanso. Making Notion-side editing first-class needs per-field merge and a real conflict UI; it is a v2 conversation, not a setting.",
+
+  "import.title": "The import, which happens once",
+  "import.body": "You arrive with six months of tickets already in Notion, and the import adopts them: it lists the bases it can see, you say which team each one becomes, and it copies the pages in. It reads that workspace's own columns and its own words, so a base whose status column is called <code>État</code> and whose options read <code>En cours</code> comes over as work already started rather than as a pile of <code>Todo</code>.",
+  "import.rules": "Two rules keep this exception from leaking back into the mirror. An imported ticket gets its <strong>own</strong> page in <code>Kanso · Tickets</code>, and <strong>the source page is never adopted and never written to</strong>. Adopting it would put &ldquo;Kanso wins&rdquo; in charge of a workspace somebody had just handed over, which is how an import erases the thing it imported.",
+  "import.refused": "A page the import cannot take — no title, or already archived — is reported with its id and its reason rather than filed as another <em>Untitled</em>. The once-only rule is enforced by the database, not by remembering to check, which is what makes the import safe to press twice.",
+
+  "connect.title": "Connecting it",
+  "connect.body": "From the setup wizard, or later from settings → setup. One step has to happen in Notion, because no provider will issue an OAuth client to a host it has never heard of: create a <strong>public</strong> integration and register the redirect URI Kanso prints next to the field.",
+  "connect.paste": "Then paste what that page gives you — its authorization URL, or the client id and the secret together — into the client id field, and both are filled in from the one paste. Everything after that is a button. <em>Connect Notion</em> opens Notion's own consent screen, which is also where you pick which pages Kanso may see, so nothing has to be shared by hand from a <code>•••</code> menu. <em>Create the databases</em> then builds the four and queues everything already in Postgres.",
+  "connect.env": "Set <code>NOTION_CLIENT_ID</code> and <code>NOTION_CLIENT_SECRET</code> in the environment and the paste is gone for good: every instance you bring up afterwards shows only the button. They pin the <em>door</em>, not the connection — nothing is mirrored until somebody consents. Anything set in the environment wins over the wizard and is shown read-only, because operator config and in-app config disagreeing silently is worse than either alone.",
+  "connect.token": "Pasting an internal integration token still works, folded away behind <em>Paste an integration token instead</em> — for an instance that already has one, and for one whose browser cannot reach a consent screen at all.",
+  "connect.secret": "Secrets entered in the wizard are encrypted with AES-GCM before they touch the database, with a key from <code>KANSO_SECRET_KEY</code> or generated into the data volume. <strong>Back that key up.</strong> Without it, the stored secrets have to be entered again.",
+
+  "lossy.title": "Where the mapping is lossy",
+  "lossy.body": "Three places where Notion's model cannot hold Kanso's, stated here rather than discovered:",
+  "lossy.people.label": "people",
+  "lossy.people": "A <code>people</code> property only accepts Notion workspace members. Kanso writes it when it knows the person's Notion id, and always writes a parallel <code>Assignees (Kanso)</code> rich-text with everyone's name, so the mirror stays readable. The text column is ignored on the way back.",
+  "lossy.relations.label": "relations",
+  "lossy.relations": "Writing a relation replaces the whole array; there is no merge. So every push writes the entity's complete state from Postgres, which is consistent with &ldquo;Kanso wins&rdquo; and the reason partial pushes are never attempted.",
+  "lossy.order.label": "parent page",
+  "lossy.order": "The page the four databases are created under is chosen from a list rather than named by id. The list excludes any page whose parent is a database, because a search filtered to pages returns database rows — and every page the mirror writes is one.",
+
+  "ops.title": "Operating it",
+  "ops.body": "Two endpoints, both behind an owner or admin session:",
+  "ops.reconcile": "The first reports queue depth, failures and poll cursors. The second rewrites every page from Postgres, which is what to reach for after an outage or a bulk edit made in the wrong place. A full reconcile queues at most 500 tickets per call and says so in the log.",
+  "ops.none": "With no token at all, every write still enqueues a sync job and a no-op client completes it. The queue and the retry machinery are exercised, and nothing leaves the machine — which is also what makes Notion genuinely optional rather than nominally so."
+}

@@ -1,0 +1,53 @@
+{
+  "meta.title": "Notion — Kanso",
+  "meta.description": "Kanso met quatre bases en miroir dans Notion pour que ceux qui suivent n'ouvrent jamais Kanso. Ce qui sort, ce qui revient, pourquoi Kanso gagne tous les conflits, et ce que la correspondance ne sait pas porter.",
+
+  "head.eyebrow": "Notion",
+  "head.title": "Deux directions, dont une seule est une boucle.",
+  "head.lead": "Connectez Notion et tous ceux qui n'ouvrent pas Kanso lisent les mêmes données là où ils travaillent déjà. C'est un miroir, pas une seconde source de vérité, et cette page parle surtout de cette différence.",
+
+  "why.title": "La décision dont tout découle",
+  "why.body": "Notion ne peut pas se tenir entre deux personnes qui éditent le même tableau. Un appel prend environ 300 à 800&nbsp;ms, l'intégration est plafonnée autour de trois requêtes par seconde, et il n'y a pas de push sur lequel compter. Tout ce qui passe par là hérite de ces chiffres.",
+  "why.rule": "<strong>Postgres est la source de vérité opérationnelle. Notion est un miroir asynchrone.</strong> Kanso écrit dans Postgres, vous répond, et pousse vers Notion ensuite.",
+  "why.down": "Kanso reste donc pleinement utilisable pendant que Notion est injoignable, et se réconcilie après. Rien de ce que vous faites dans l'application n'attend un appel réseau vers le service de quelqu'un d'autre.",
+
+  "out.title": "Sortant, en continu",
+  "out.body": "Chaque écriture met un travail de synchronisation en file <em>dans la même transaction</em> que le changement métier : un crash ne peut pas en perdre un. Un worker les dépile avec <code>FOR UPDATE SKIP LOCKED</code>, se limite par un token bucket, réessaie en backoff exponentiel, et écrit dans quatre bases :",
+  "out.readers": "Ces quatre-là sont tout le miroir, et ce sont des bases Notion ordinaires. Ceux qui ont seulement besoin de suivre les filtrent, les groupent et les représentent comme ils le font déjà, et n'ouvrent jamais Kanso.",
+  "out.order": "Les travaux portent une priorité de dépendance — équipe, puis projet, puis ticket, puis document — parce qu'une relation exige que sa page cible existe d'abord. Une poussée dont la cible n'a pas encore de page est différée de quelques secondes plutôt que mise en échec.",
+
+  "in.title": "Entrant, par sondage",
+  "in.body": "Notion n'a pas de push fiable, donc Kanso sonde de façon incrémentale sur <code>last_edited_time</code>, avec un curseur persisté par source de données et une suppression d'écho pour que ses propres écritures ne reviennent pas comme des changements.",
+  "in.scalar": "Le poller n'applique que les <strong>champs scalaires</strong> — titre, statut, priorité, dates, drapeau d'archivage. Il n'applique pas les relations : Notion remplace un tableau de relations en entier, et l'accepter en retour transformerait une édition concurrente en perte de données silencieuse. Il n'applique pas non plus les personnes : une propriété <code>people</code> ne sait pas représenter un utilisateur Kanso sans compte Notion, donc la relire ferait disparaître des assignés sans bruit. Relations et assignations restent la propriété de Kanso.",
+  "in.created": "Une page créée à la main dans Notion n'est <strong>pas adoptée</strong>. Un ticket a besoin d'une équipe et d'un numéro propre à cette équipe, et une page créée dans le miroir ne peut fournir ni l'un ni l'autre ; le poller la journalise et passe, plutôt que d'inventer des lignes.",
+
+  "wins.title": "Kanso gagne, et ce que cela coûte",
+  "wins.body": "Si la ligne Postgres a bougé depuis la dernière poussée réussie, une modification faite dans Notion est écartée et une poussée corrective est mise en file. Notion reconverge seul — ce qui veut dire que <strong>celui qui édite dans Notion verra sa modification revenir en arrière</strong>.",
+  "wins.banner": "C'est la conception, pas un défaut — mais il faut le dire à voix haute à ceux qui lisent le miroir, sinon ils perdent confiance dans l'outil. Posez un bandeau sur la page parente disant que ces bases sont maintenues par Kanso. Faire de l'édition côté Notion un citoyen de première classe demande une fusion champ par champ et une vraie interface de conflit : c'est une conversation de v2, pas un réglage.",
+
+  "import.title": "L'import, qui a lieu une fois",
+  "import.body": "Vous arrivez avec six mois de tickets déjà dans Notion, et l'import les adopte : il liste les bases qu'il voit, vous dites quelle équipe chacune devient, et il y copie les pages. Il lit les colonnes propres de cet espace et ses propres mots : une base dont la colonne de statut s'appelle <code>État</code> et dont les options disent <code>En cours</code> arrive comme du travail déjà commencé, et non comme un tas de <code>Todo</code>.",
+  "import.rules": "Deux règles empêchent cette exception de refluer dans le miroir. Un ticket importé reçoit sa <strong>propre</strong> page dans <code>Kanso · Tickets</code>, et <strong>la page source n'est jamais adoptée ni écrite</strong>. L'adopter mettrait « Kanso gagne » aux commandes d'un espace qu'on vient de vous confier, ce qui est exactement la façon dont un import efface ce qu'il importe.",
+  "import.refused": "Une page que l'import ne peut pas prendre — sans titre, ou déjà archivée — est signalée avec son identifiant et sa raison, plutôt que classée comme un <em>Untitled</em> de plus. La règle « une seule fois » est tenue par la base de données et non par le fait de penser à vérifier, ce qui rend l'import sûr à presser deux fois.",
+
+  "connect.title": "La connexion",
+  "connect.body": "Depuis l'assistant d'installation, ou plus tard depuis réglages → installation. Une étape doit se passer dans Notion, parce qu'aucun fournisseur n'émet de client OAuth pour un hôte dont il n'a jamais entendu parler : créez une intégration <strong>publique</strong> et enregistrez l'URI de redirection que Kanso affiche à côté du champ.",
+  "connect.paste": "Collez ensuite ce que cette page vous donne — son URL d'autorisation, ou le client id et le secret ensemble — dans le champ client id, et les deux sont remplis par ce seul collage. Tout le reste est un bouton. <em>Connect Notion</em> ouvre l'écran de consentement de Notion, qui est aussi l'endroit où vous choisissez les pages que Kanso peut voir : rien n'a à être partagé à la main depuis un menu <code>•••</code>. <em>Create the databases</em> construit alors les quatre et met en file tout ce qui est déjà dans Postgres.",
+  "connect.env": "Posez <code>NOTION_CLIENT_ID</code> et <code>NOTION_CLIENT_SECRET</code> dans l'environnement et le collage disparaît pour de bon : chaque instance montée ensuite n'affiche plus que le bouton. Ils épinglent la <em>porte</em>, pas la connexion — rien n'est mis en miroir tant que personne n'a consenti. Tout ce qui est posé dans l'environnement l'emporte sur l'assistant et s'affiche en lecture seule, parce qu'une configuration d'exploitant et une configuration dans l'application qui se contredisent en silence valent moins que l'une ou l'autre seule.",
+  "connect.token": "Coller un jeton d'intégration interne fonctionne toujours, replié derrière <em>Paste an integration token instead</em> — pour une instance qui en a déjà un, et pour celle dont le navigateur ne peut pas atteindre un écran de consentement.",
+  "connect.secret": "Les secrets saisis dans l'assistant sont chiffrés en AES-GCM avant de toucher la base, avec une clé venue de <code>KANSO_SECRET_KEY</code> ou générée dans le volume de données. <strong>Sauvegardez cette clé.</strong> Sans elle, les secrets stockés doivent être ressaisis.",
+
+  "lossy.title": "Là où la correspondance perd",
+  "lossy.body": "Trois endroits où le modèle de Notion ne sait pas tenir celui de Kanso, énoncés ici plutôt que découverts :",
+  "lossy.people.label": "people",
+  "lossy.people": "Une propriété <code>people</code> n'accepte que des membres de l'espace Notion. Kanso l'écrit quand il connaît l'identifiant Notion de la personne, et écrit toujours en parallèle un texte riche <code>Assignees (Kanso)</code> avec le nom de chacun, pour que le miroir reste lisible. Cette colonne de texte est ignorée au retour.",
+  "lossy.relations.label": "relations",
+  "lossy.relations": "Écrire une relation remplace tout le tableau ; il n'y a pas de fusion. Chaque poussée écrit donc l'état complet de l'entité depuis Postgres, ce qui est cohérent avec « Kanso gagne » et la raison pour laquelle aucune poussée partielle n'est jamais tentée.",
+  "lossy.order.label": "page parente",
+  "lossy.order": "La page sous laquelle les quatre bases sont créées se choisit dans une liste plutôt qu'en nommant un identifiant. La liste exclut toute page dont le parent est une base, parce qu'une recherche filtrée sur les pages renvoie les lignes de base — et chaque page que le miroir écrit en est une.",
+
+  "ops.title": "L'exploiter",
+  "ops.body": "Deux points d'entrée, tous deux derrière une session propriétaire ou administrateur :",
+  "ops.reconcile": "Le premier rapporte la profondeur de file, les échecs et les curseurs de sondage. Le second réécrit chaque page depuis Postgres, et c'est ce vers quoi se tourner après une panne ou une modification en masse faite au mauvais endroit. Une réconciliation complète met au plus 500 tickets en file par appel, et le dit dans le journal.",
+  "ops.none": "Sans aucun jeton, chaque écriture met quand même un travail de synchronisation en file et un client neutre le termine. La file et le mécanisme de reprise tournent, et rien ne quitte la machine — c'est aussi ce qui rend Notion véritablement optionnel plutôt que nominalement."
+}
