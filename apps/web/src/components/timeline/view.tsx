@@ -572,14 +572,19 @@ export function TimelineView({
 
           {/*
            * An empty chart still draws its calendar, rather than being replaced by a
-           * sentence. That is the ordinary first load — everything in the tray, nothing
-           * planned — and it is exactly when a chip has to have somewhere to be dropped;
-           * a message where the days should be would leave the tray unemptiable by hand
-           * on the one screen that is all tray.
+           * sentence — and the condition now means something different from what it used
+           * to. With the tray gone, no rows means **the scope is empty**, not that nobody
+           * has scheduled anything: an undated ticket is a row like any other. So the
+           * sentence says what is actually true, and the calendar stays under it because
+           * an empty timeline is still where you would drop the first thing.
+           *
+           * `min-h` rather than a fixed 120px: the chart should fill the space it was
+           * given whether or not it has bars, which is the whole of what a reader means by
+           * "the timeline does not take the screen unless there are tickets".
            */}
           {rows.length === 0 && (
-            <div className="flex h-[120px] items-center justify-center text-12 text-muted-foreground pointer-events-none">
-              Nothing scheduled here yet — drag a ticket onto a day.
+            <div className="pointer-events-none flex min-h-[240px] items-center justify-center text-12 text-muted-foreground">
+              Nothing here yet — create a ticket, or widen the scope.
             </div>
           )}
 
