@@ -96,18 +96,19 @@ the window and the picture is of finished work. Move `PLAN` forward when it does
 
 ## The import, which needs a workspace
 
-`import.spec.ts` (scenario 23) walks screen 24's five steps and then asserts the rows the
-import wrote. It cannot run against a workspace nobody has, and with no `NOTION_TOKEN` the
-dialog's first step prints a sentence and there is nothing to walk — so the suite brings
-its own workspace: `notion-workspace.ts` answers Notion's own HTTP API on port 8099, with
-three related bases, a status column called `Etat` and options called `En cours`.
+`import.spec.ts` (scenario 23) walks screen 24's plan and its confirmation and then asserts
+the rows the import wrote. It cannot run against a workspace nobody has, and with no
+`NOTION_TOKEN` the dialog's plan screen prints a sentence and there is nothing to walk — so
+the suite brings its own workspace: `notion-workspace.ts` answers Notion's own HTTP API on
+port 8099, with three related bases, a status column called `Etat` and options called
+`En cours`.
 
 `30-setup-import.spec.ts` (scenario 30) needs the same workspace for the same reason. It
-opens the *other* door onto those five steps — the setup wizard's Notion step, which offers
-the people table and the import once Notion is connected — and checks the two things that
-mount point can break on its own: `/setup` is outside `(app)`, so nothing the shell provides
-is there, and `FormCard` is a `<form>`, in which the dialog's own buttons would otherwise
-submit the wizard out from under a half-finished import.
+opens the *other* door onto screen 24 — the "Import from Notion…" button on the Connections
+card in Settings, rather than the command palette — and checks the two things that mount
+point can break on its own without the other suite noticing: the button stays disabled
+until Notion is configured, and it sits beside the Notion people list this scenario also
+matches against before importing.
 
 The seam is `NOTION_BASE_URL`, which `application.yml` already reads. Pointing the API at
 the suite's workspace puts the real `HttpNotionClient` under test — its search-filter
@@ -161,10 +162,10 @@ Two accounts, created on the spot by `dev` mode:
 | `member@kanso.test` | member  | What a member does not see                      |
 
 `seedInstance()`, called in every file's `beforeAll`, claims the instance for the
-owner if it is brand new and marks both accounts as having been through the
-preferences step. Without that second point the application redirects to `/setup` and
-no test ever sees a list. The operation is idempotent: the stack is long-lived, and
-the suite is replayed against it without being reset.
+owner if it is brand new and stamps both accounts with the onboarding flag
+`app-shell.tsx`'s routing guard reads. Without that second point the application
+redirects to `/setup` and no test ever sees a list. The operation is idempotent: the
+stack is long-lived, and the suite is replayed against it without being reset.
 
 Every page sets its identity with `context.addInitScript`, which writes
 `localStorage["kanso.devUser"]` before the page's first script runs and replays on
