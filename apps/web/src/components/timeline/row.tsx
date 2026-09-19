@@ -25,6 +25,15 @@ export type RowControl = {
   /** Released at a point on the page. The view decides what, if anything, was under it. */
   onLinkEnd: (x: number, y: number) => void;
   onLinkCancel: () => void;
+  /**
+   * The two halves of "drag an undated row onto a day", which the tray used to own.
+   *
+   * They are on the row rather than on a component of their own because the gesture moved
+   * with the tickets: the source is now the row you were already looking at, not a chip in
+   * a heap above the chart.
+   */
+  onPlanDragMove: (x: number, y: number) => void;
+  onPlanDrop: (ticketId: string, x: number, y: number) => void;
 };
 
 /**
@@ -233,7 +242,36 @@ function bar(
   const { ticket } = row;
   const start = ticket.start ?? ticket.due;
   const end = ticket.due ?? ticket.start;
-  if (!start || !end) return null;
+
+  /**
+   * Nobody has dated it, so there is no bar — not a placeholder, not a ghost at today, not
+   * a zero-width tick. A bar is a claim about days and this ticket makes none.
+   *
+   * What the lane carries instead is the gesture: a small handle at the left edge that can
+   * be dragged onto a day, which is the tray's one good idea kept and moved to where the
+   * ticket already is. It is drawn only when the chart can be planned on at all, for the
+   * same three reasons a bar answers to.
+   */
+  if (!start || !end) {
+    if (!canMoveTicket(ticket, control.canPlan)) return null;
+    return (
+      <button
+        type="button"
+        aria-label={`Schedule ${ticket.identifier}`}
+        className="absolute left-0 top-1/2 z-[1] h-3 w-6 -translate-y-1/2 cursor-grab rounded-sm border border-dashed border-border active:cursor-grabbing"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          control.onSelect(ticket.id);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            control.onPlanDragMove(event.clientX, event.clientY);
+          }
+        }}
+        onPointerUp={(event) => control.onPlanDrop(ticket.id, event.clientX, event.clientY)}
+      />
+    );
+  }
 
   const bounds = { start: ticket.start !== undefined, end: ticket.due !== undefined };
 

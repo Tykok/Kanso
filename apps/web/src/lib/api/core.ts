@@ -448,6 +448,16 @@ export type TimelineDependency = {
 
 export type TimelineUnscheduled = { id: string; identifier: string; title: string };
 
+/** How the column is stacked. Mirrors `TimelineSort` — three orders and no fourth. */
+export const TIMELINE_SORTS = ["start", "priority", "due"] as const;
+export type TimelineSort = (typeof TIMELINE_SORTS)[number];
+
+/**
+ * What the column asks for beyond the scope. Absent means the server's own defaults —
+ * `start` and everything shown — which is what the screen opens on.
+ */
+export type TimelineOptions = { sort?: TimelineSort; hideCompleted?: boolean };
+
 export type TimelineView = {
   projects: TimelineProject[];
   tickets: TimelineTicket[];
@@ -1457,14 +1467,19 @@ export const api = {
   // --- timeline ------------------------------------------------------------
 
   /**
-   * One GET for the whole screen. Neither filter is a page: bounds, slack and the
-   * arrows are computed together, so they have to arrive together.
+   * One GET for the whole screen, and `page` bounds the **column** rather than the chart.
+   *
+   * Bounds, slack and the arrows are still computed together and still arrive together —
+   * a Gantt showing two pages of a shape would show two plans. What pages is the list
+   * beside it, which holds every ticket in scope including finished work.
    */
-  timeline: (scope: Scope) =>
+  timeline: (scope: Scope, options?: TimelineOptions) =>
     request<TimelineView>(
       `/api/timeline${query({
         teamId: scope.kind === "team" ? scope.id : undefined,
         projectId: scope.kind === "project" ? scope.id : undefined,
+        sort: options?.sort,
+        hideCompleted: options?.hideCompleted ? "true" : undefined,
       })}`,
     ),
 
