@@ -75,6 +75,7 @@ describe("newTicketBody", () => {
   const FORM = {
     teamId: "team-1",
     title: "Ship the composer",
+    description: "",
     priority: "none" as TicketPriority,
     projectId: "",
     assigneeId: "",
@@ -125,6 +126,7 @@ describe("newTicketBody, with no team chosen", () => {
   const FORM_WITHOUT_TEAM = {
     teamId: "",
     title: "A thought typed in a meeting",
+    description: "",
     priority: "none" as TicketPriority,
     projectId: "",
     assigneeId: "",
@@ -154,5 +156,19 @@ describe("newTicketBody, with no team chosen", () => {
 
     expect(body.teamId).toBeUndefined();
     expect(body.projectId).toBe("project-1");
+  });
+
+  // The same caution as the estimate above, for the field templates brought with them: a
+  // folded composer is every creation that does not start from a template, and it has to put
+  // the same bytes on the wire it put before this feature existed.
+  it("sends no description when the composer is folded", () => {
+    const body = newTicketBody(FORM_WITHOUT_TEAM);
+    expect(body.description).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(body))).not.toHaveProperty("description");
+  });
+
+  it("carries a description once a template has placed one", () => {
+    const body = newTicketBody({ ...FORM_WITHOUT_TEAM, description: "## What happens\n" });
+    expect(body.description).toBe("## What happens\n");
   });
 });
