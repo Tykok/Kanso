@@ -1,0 +1,127 @@
+<!--
+  Page 3. The screens, in the order somebody meets them once they have more than ten
+  tickets: first the three drawings, then the language that narrows them, then the four
+  screens that ask a question the drawings cannot.
+
+  Every section is one screen and one claim about it. A section that needed two would be
+  describing two screens.
+-->
+<header class="doc-head">
+  <p class="eyebrow">{{head.eyebrow}}</p>
+  <h1>{{head.title}}</h1>
+  <p class="lead">{{head.lead}}</p>
+</header>
+
+<section class="doc-section">
+  <h2>{{drawings.title}}</h2>
+  <p>{{drawings.body}}</p>
+  <dl class="kv">
+    <dt>{{drawings.list.label}}</dt>
+    <dd>{{drawings.list}}</dd>
+    <dt>{{drawings.board.label}}</dt>
+    <dd>{{drawings.board}}</dd>
+    <dt>{{drawings.timeline.label}}</dt>
+    <dd>{{drawings.timeline}}</dd>
+  </dl>
+  <p>{{drawings.wide}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{filter.title}}</h2>
+  <p>{{filter.body}}</p>
+  <pre class="block"><code>assignee:me status:in-progress
+project:design-system -priority:low
+meaning:started label:regression</code></pre>
+  <p>{{filter.fields}}</p>
+  <div class="note"><p>{{filter.meaning}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{views.title}}</h2>
+  <p>{{views.body}}</p>
+  <p>{{views.where}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{keys.title}}</h2>
+  <p>{{keys.body}}</p>
+  <dl class="kv">
+    <dt>j k ↑ ↓</dt>
+    <dd>{{keys.move}}</dd>
+    <dt>↵</dt>
+    <dd>{{keys.open}}</dd>
+    <dt>c</dt>
+    <dd>{{keys.create}}</dd>
+    <dt>e</dt>
+    <dd>{{keys.rename}}</dd>
+    <dt>1 … 6</dt>
+    <dd>{{keys.digits}}</dd>
+    <dt>⇧s</dt>
+    <dd>{{keys.status}}</dd>
+    <dt>⇧p</dt>
+    <dd>{{keys.priority}}</dd>
+    <dt>x</dt>
+    <dd>{{keys.archive}}</dd>
+    <dt>/</dt>
+    <dd>{{keys.filter}}</dd>
+    <dt>⌘K</dt>
+    <dd>{{keys.palette}}</dd>
+    <dt>,</dt>
+    <dd>{{keys.settings}}</dd>
+    <dt>?</dt>
+    <dd>{{keys.help}}</dd>
+  </dl>
+  <p>{{keys.remap}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{schedule.title}}</h2>
+  <p>{{schedule.body}}</p>
+  <ol>
+    <li>{{schedule.slack}}</li>
+    <li>{{schedule.forward}}</li>
+    <li>{{schedule.done}}</li>
+  </ol>
+  <p>{{schedule.critical}}</p>
+  <p>{{schedule.notion}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{cycles.title}}</h2>
+  <p>{{cycles.body}}</p>
+  <p>{{cycles.rollover}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{workload.title}}</h2>
+  <p>{{workload.body}}</p>
+  <p>{{workload.points}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{triage.title}}</h2>
+  <p>{{triage.body}}</p>
+  <dl class="kv">
+    <dt>accepted</dt>
+    <dd>{{triage.accepted}}</dd>
+    <dt>backlogged</dt>
+    <dd>{{triage.backlogged}}</dd>
+    <dt>duplicate</dt>
+    <dd>{{triage.duplicate}}</dd>
+    <dt>closed</dt>
+    <dd>{{triage.closed}}</dd>
+  </dl>
+  <p>{{triage.record}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{inbox.title}}</h2>
+  <p>{{inbox.body}}</p>
+  <p>{{inbox.realtime}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{progress.title}}</h2>
+  <p>{{progress.body}}</p>
+  <p>{{progress.roadmap}}</p>
+</section>

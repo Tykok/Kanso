@@ -5,6 +5,19 @@
 
   "nav.tagline": "Gestion de projet auto-hébergée",
   "nav.language": "Langue",
+  "nav.docs": "Documentation",
+
+  "doc.skip": "Aller à la page",
+  "doc.eyebrow": "Documentation",
+  "pager.prev": "Précédent",
+  "pager.next": "Suivant",
+
+  "nav.get-started": "Démarrer",
+  "nav.model": "Le modèle",
+  "nav.working": "Travailler dedans",
+  "nav.notion": "Notion",
+  "nav.agents": "Agents et API",
+  "nav.self-hosting": "Auto-hébergement",
 
   "hero.eyebrow": "Gestion de projet · documents vivants",
   "hero.title": "Kanso mène un projet de bout en bout — équipes, projets, tickets, cycles, une feuille de route, un planning avec ses dépendances, la charge par personne — et garde à côté les documents qui l'expliquent.",

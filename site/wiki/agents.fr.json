@@ -1,0 +1,52 @@
+{
+  "meta.title": "Agents et API — Kanso",
+  "meta.description": "Une porte MCP pour un agent, des jetons d'API et des webhooks signés pour un service, et un lien GitHub pour les pull requests. Dix outils, chacun parlant le vocabulaire propre de l'équipe.",
+
+  "head.eyebrow": "Agents et API",
+  "head.title": "Deux portes, parce qu'un agent et un service ne sont pas le même visiteur.",
+  "head.lead": "Un agent est une personne devant un ordinateur : il agit en son nom et a besoin de son consentement. Un service, non. Kanso leur donne des portes différentes plutôt qu'une porte unique accompagnée d'une note sur la façon de s'en servir.",
+
+  "doors.title": "Quelle porte",
+  "doors.body": "Un <strong>agent</strong> entre par <code>/api/mcp</code> : il s'enregistre lui-même, vous l'approuvez dans votre navigateur, et il détient un jeton qui ouvre ce seul point d'entrée et rien d'autre. Un <strong>service</strong> entre par l'API REST avec un jeton que vous avez émis pour lui, qui donne toute l'API et porte votre rôle. Le premier sert à quelque chose qui agit comme vous ; le second à quelque chose qui agit pour son compte, et la différence mérite d'être tenue.",
+
+  "mcp.title": "La porte MCP",
+  "mcp.body": "Une commande, lancée là où vit l'agent :",
+  "mcp.nothing": "Rien n'est collé. La commande ne fait qu'écrire une adresse. Au premier appel, Kanso répond <code>401</code> avec un en-tête nommant son propre serveur d'autorisation, et l'agent s'enregistre, ouvre votre navigateur et demande.",
+  "mcp.consent": "Ce que vous lisez là est une page Kanso, sur l'origine de Kanso : quelle application demande, <strong>où elle enverrait le code</strong>, quel âge a son enregistrement, et les permissions en phrases plutôt qu'en noms de scopes. Approuvez, et l'agent détient un jeton.",
+  "mcp.scope": "Ce jeton ouvre une porte et pas le reste de l'API — il est accepté sur <code>/api/mcp</code> et refusé partout ailleurs — et ce qui passe par là <strong>agit comme vous</strong> : chaque changement porte votre nom dans le fil d'activité.",
+  "mcp.revoke": "Réglages → Agents liste ce que vous avez laissé entrer et le révoque. Révoquer emporte les jetons avec la permission : c'est la requête suivante qui est refusée, pas l'heure suivante.",
+  "mcp.signin": "<strong>Connectez-vous d'abord à Kanso dans ce navigateur.</strong> L'URL d'autorisation répond <code>401</code> avec un corps vide à un navigateur sans session : le lien de l'agent s'ouvre donc sur une page blanche plutôt que sur un écran de connexion. C'est la dernière aspérité de ce flux, et elle est écrite ici plutôt que masquée — se connecter d'abord la rend invisible.",
+
+  "tools.title": "Dix outils passent par là",
+  "tools.body": "Trois lisent, cinq écrivent, et deux forment la paire de tri — celle pour laquelle un agent est réellement doué.",
+  "tools.list": "Les tickets correspondant à un périmètre et à un filtre.",
+  "tools.get": "Un ticket complet, par identifiant.",
+  "tools.workload": "Ce que porte chaque membre d'une équipe, du plus chargé au moins : tickets ouverts, combien sont en cours, les points que quelqu'un a estimés, combien ne portent aucune estimation, et l'âge de leur plus vieux ticket ouvert.",
+  "tools.create": "Saisir un ticket.",
+  "tools.update": "En modifier un, par identifiant.",
+  "tools.split": "Transformer un ticket existant en parent et déposer dessous les parties que vous nommez, en un seul appel. Renvoie les identifiants donnés aux parties.",
+  "tools.link": "Enregistrer une arête entre deux tickets existants. <code>from</code> et <code>to</code> se lisent comme une phrase : <code>from</code> bloque <code>to</code>, duplique <code>to</code>, est lié à <code>to</code>.",
+  "tools.plan": "Déposer un plan entier déjà élaboré — plusieurs tickets, lesquels sont des parties de lesquels, et lesquels bloquent lesquels — dans une équipe, en un seul appel.",
+  "tools.queue": "Ce sur quoi personne n'a encore tranché.",
+  "tools.triage": "Le verdict : <code>accepted</code>, <code>backlogged</code>, <code>duplicate</code> ou <code>closed</code>, enregistré comme une décision plutôt qu'appliqué comme une modification silencieuse.",
+  "tools.words": "Chacun parle le vocabulaire de l'<em>équipe</em>. Une clé de statut que l'équipe du ticket n'a pas est refusée avec la liste de celles qu'elle a : un agent qui a deviné <code>done</code> dans une équipe qui dit <code>Livré</code> est prévenu, pas ignoré.",
+  "tools.dev": "Le mode dev n'a aucune porte, et le dit au lieu d'échouer en silence : sous <code>KANSO_AUTH_MODE=dev</code>, l'identité vient d'un en-tête non vérifié, et un serveur d'autorisation derrière cela émettrait des jetons durables à quiconque peut l'atteindre.",
+
+  "token.title": "Les jetons d'API, pour un service",
+  "token.body": "Réglages → Tokens en émet un — <code>kanso_pat_…</code>, montré une fois, portant <code>kanso:read</code> et <code>kanso:write</code> — et il se présente de la façon ordinaire :",
+  "token.warning": "<strong>C'est toute l'API REST, pas une porte dessus.</strong> Le jeton porte le rôle de son propriétaire : une intégration à qui l'on donne le jeton d'un propriétaire peut faire ce qu'un propriétaire fait. Il n'existe aujourd'hui aucune portée plus étroite qu'une personne, ce qu'il vaut mieux savoir avant d'en confier un au logiciel de quelqu'un d'autre.",
+
+  "hooks.title": "Les webhooks",
+  "hooks.body": "Avec un jeton, une intégration se provisionne elle-même : <code>POST /api/webhooks</code> s'abonne et renvoie un secret de signature. Chaque livraison porte ensuite deux en-têtes.",
+  "hooks.event": "Ce qui s'est passé.",
+  "hooks.signature": "<code>t=&lt;unix&gt;,v1=&lt;hmac&gt;</code> sur le corps, avec le secret renvoyé par l'abonnement.",
+  "hooks.ask": "Une intégration peut aussi déclarer un champ personnalisé sur une équipe, en écrire et en lire les valeurs, et — surtout — demander à <code>/api/teams/{id}/statuses</code> et <code>/api/tickets/filters</code> quels mots cette instance emploie vraiment. Une équipe invente les siens : un service qui code <code>done</code> en dur est un service qui casse sur l'équipe qui l'a renommé.",
+
+  "openapi.title": "L'API se décrit elle-même",
+  "openapi.body": "<code>GET /v3/api-docs</code>, derrière une session ou un jeton comme toute autre lecture. Elle est générée depuis les contrôleurs plutôt que tenue à côté d'eux : elle dit donc ce que le code dit — 153 chemins et la forme de chaque corps de requête, c'est-à-dire la moitié qu'une liste de routes ne donne jamais.",
+
+  "github.title": "GitHub",
+  "github.body": "Kanso sait quel est le travail ; GitHub sait s'il est fait. Sans lien entre les deux, le même fait se tape deux fois — une branche nommée d'après un ticket, puis un ticket traîné vers Done après une fusion — et c'est la seconde frappe qu'on oublie.",
+  "github.link": "Un propriétaire enregistre une GitHub App pour l'instance ; chaque membre relie ensuite son propre compte GitHub depuis les réglages, seule carte de cet écran sur laquelle un simple membre ait quelque chose à faire. Une pull request dont la branche ou le corps nomme une clé de ticket apparaît sur ce ticket, avec la branche depuis laquelle la démarrer.",
+  "github.feed": "Relier votre compte décide aussi de la façon dont le fil se lit. Avec, l'activité dit que <em>vous</em> avez passé KAN-142 en Done ; sans, le même événement se lit <em>KAN-142 passé en Done via #418</em>."
+}

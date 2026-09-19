@@ -1,0 +1,57 @@
+{
+  "meta.title": "Auto-hébergement — Kanso",
+  "meta.description": "Une image, deux variables, votre propre Postgres. TLS, ce que contient /data, ce qu'il faut sauvegarder, et à quoi ressemblent les échecs du premier démarrage.",
+
+  "head.eyebrow": "Auto-hébergement",
+  "head.title": "Une image, deux variables, votre Postgres.",
+  "head.lead": "Voici le résumé dont un exploitant a besoin avant le premier démarrage. <code>docs/self-hosting.md</code>, dans le dépôt, est la version longue — la table de routage, votre propre proxy en frontal, et chaque symptôme en entier.",
+
+  "image.title": "Ce qui est livré",
+  "image.body": "Une image contient le front, l'API et un proxy qui route entre les deux, sur une seule origine, en <code>linux/amd64</code> et <code>linux/arm64</code>. Pas de second conteneur à monter ni de maillage de services à décrire : ce qu'un navigateur atteint est un port.",
+  "image.nodb": "<strong>Postgres n'y est pas, délibérément.</strong> Un conteneur qui possède vos données est un conteneur qu'on ne redémarre pas sans y penser, et toute plateforme sur laquelle il vaut la peine de déployer a déjà un Postgres managé que vous préférerez. <code>docker/docker-compose.yml</code> en livre un à côté de l'image pour le cas où vous n'en avez aucun.",
+
+  "db.title": "Préparer la base",
+  "db.body": "Kanso crée ses propres tables — Flyway tourne au démarrage, à chaque démarrage, et un unique conteneur applicatif signifie qu'il n'y a rien à coordonner. Ce qu'il ne peut pas créer, c'est le rôle, la base et une extension :",
+  "db.trgm": "<strong><code>pg_trgm</code> est la ligne qui échoue sur une instance managée.</strong> Une migration lance elle-même <code>CREATE EXTENSION IF NOT EXISTS pg_trgm</code> : sur un Postgres où le rôle <code>kanso</code> est superutilisateur, vous pouvez la sauter. Sur une instance managée, il ne l'est en général pas : RDS, Supabase et Neon l'autorisent tous, un cluster d'entreprise verrouillé demande en général qu'un DBA passe cette seule ligne. Le symptôme est le conteneur qui sort pendant Flyway avec <code>permission denied to create extension &quot;pg_trgm&quot;</code>.",
+  "db.version": "Postgres 16 est ce qui est testé. Tout ce qui a <code>pg_trgm</code> et un dialecte JDBC assez récent fonctionnera ; rien dans le schéma n'est exotique.",
+
+  "env.title": "L'environnement",
+  "env.body": "Deux variables sont requises, et tout le reste a une valeur par défaut défendable ou s'en déduit.",
+  "env.url": "<strong>Requise.</strong> L'URL à laquelle un navigateur atteint cette instance, schéma compris. La politique CORS, la vérification de la poignée de main WebSocket et chaque URI de redirection OAuth s'en déduisent — c'est pourquoi une erreur ici se manifeste par trois symptômes qui n'ont l'air d'avoir aucun rapport.",
+  "env.db": "<strong>Requise</strong>, avec <code>_USERNAME</code> et <code>_PASSWORD</code>. L'hôte est résolu depuis l'intérieur du conteneur : un nom de service sous Compose, <code>host.docker.internal</code> pour un Postgres sur cette machine mais hors de Docker, et jamais <code>localhost</code>.",
+  "env.tls": "<code>auto</code> ou <code>off</code>. Vaut <code>auto</code> par défaut quand l'URL publique est en <code>https:</code> — voir plus bas.",
+  "env.secret": "La clé AES qui chiffre les secrets stockés par l'assistant d'installation. Générée dans le volume au premier démarrage si elle n'est pas posée. La poser explicitement est la moitié de ce qui rend le conteneur sans état.",
+  "env.auth": "<code>dev</code> fait venir l'identité d'un en-tête <code>X-Kanso-User</code> non vérifié. Ce mode existe pour les tests et la CI, doit être demandé explicitement, journalise un avertissement bruyant et désactive entièrement la porte des agents. <strong>N'exposez jamais une instance qui tourne ainsi.</strong>",
+  "env.rest": "Tout le reste de ce que Kanso lit — <code>NOTION_*</code>, <code>GOOGLE_*</code>, <code>GITHUB_*</code>, les réglages de webhooks et de limitation — est optionnel et passe tel quel. Ce qui est posé ici l'emporte sur l'assistant d'installation et s'y affiche en lecture seule.",
+
+  "tls.title": "TLS, et qui est le frontal",
+  "tls.auto": "<strong><code>auto</code></strong> — le Caddy embarqué obtient et renouvelle un certificat Let's Encrypt pour l'hôte de l'URL publique. Le port 80 doit être joignable depuis l'internet public pour le défi, pas seulement le 443. C'est la bonne réponse si le frontal n'est pas par ailleurs sous votre contrôle.",
+  "tls.off": "<strong><code>off</code></strong> — votre propre proxy termine TLS et Kanso sert du HTTP en clair derrière. L'URL publique dit toujours <code>https://…</code> : elle décrit ce qu'emploie le <em>navigateur</em>, pas ce que le conteneur écoute.",
+  "tls.forwarded": "Sous <code>off</code>, <code>X-Forwarded-For</code> devient votre affaire. Caddy préserve l'en-tête entrant tel quel, puisque votre proxy est le frontal — c'est donc à votre proxy de supprimer tout en-tête qu'il n'a pas posé lui-même, faute de quoi un client peut déclarer sa propre adresse. Sous <code>auto</code>, Caddy est le frontal et l'écarte pour vous.",
+
+  "data.title": "Ce que contient /data, et ce qu'il faut sauvegarder",
+  "data.body": "Deux choses qui doivent survivre à un redémarrage. Rien d'autre — tickets, documents et sessions sont tous dans Postgres.",
+  "data.key": "La clé AES qui chiffre le jeton Notion et les secrets de client OAuth stockés par l'assistant. <strong>La perdre oblige à ressaisir ces secrets.</strong>",
+  "data.acme.label": "L'état ACME de Caddy",
+  "data.acme": "Le certificat et la clé de compte, sous <code>KANSO_TLS=auto</code>. Le perdre fait redemander un certificat à Let's Encrypt à chaque redémarrage.",
+  "data.stateless": "<strong>Le conteneur est sans état</strong> — aucun volume — quand vous posez <code>KANSO_SECRET_KEY</code> explicitement <em>et</em> tournez en <code>KANSO_TLS=off</code>. Les deux raisons d'avoir <code>/data</code> disparaissent, et il reste une image et deux variables d'environnement, c'est-à-dire la forme qu'attendent ECS, Fly ou un Deployment Kubernetes. Visez cela si vous en avez un.",
+  "data.backup": "Une sauvegarde, c'est donc : votre Postgres, et soit <code>/data/secret.key</code>, soit la valeur de <code>KANSO_SECRET_KEY</code> gardée là où vous gardez vos secrets.",
+
+  "ops.title": "L'exploitation",
+  "ops.upgrade": "Mettre à jour, c'est tirer une image plus récente et la redémarrer. Flyway tourne à chaque démarrage et fait avancer le schéma ; pas d'étape de migration séparée à retenir, et pas de fenêtre de maintenance à déclarer pour un seul conteneur applicatif.",
+  "ops.sessions": "Les sessions sont en mémoire : plus d'une instance d'API demande un stockage de sessions partagé — une propriété, avec <code>spring-session-jdbc</code>. D'ici là, n'en faites tourner qu'une.",
+  "ops.health": "<code>/actuator/health</code> répond sur la vivacité, la disponibilité et la vérification de la base : c'est ce que doit viser la sonde de santé d'une plateforme. Le point d'entrée sonde aussi l'hôte de la base avant de démarrer la JVM et sort en une dizaine de secondes avec un message nommant ce qu'il n'a pas pu atteindre, au lieu d'échouer une minute plus tard au fond d'une trace.",
+
+  "fail.title": "Quand ça ne démarre pas",
+  "fail.url.label": "Sort en une seconde",
+  "fail.url": "<code>KANSO_PUBLIC_URL is not set</code>. Le message dit quoi poser.",
+  "fail.reach.label": "Sort en dix secondes",
+  "fail.reach": "<code>cannot reach …</code> — le point d'entrée a sondé l'hôte de la base et n'a rien eu. Sous Compose, cet hôte est le nom du service ; hors de Docker sur cette machine, c'est <code>host.docker.internal</code>, jamais <code>localhost</code>.",
+  "fail.flyway.label": "Sort pendant Flyway",
+  "fail.flyway": "<code>password authentication failed</code> veut dire que l'hôte a répondu : l'URL est bonne, les identifiants non. <code>permission denied to create extension</code>, c'est <code>pg_trgm</code>, plus haut.",
+  "fail.socket.label": "Connecté, mais rien ne se met à jour seul",
+  "fail.socket": "La poignée de main WebSocket a été refusée. L'en-tête <code>Origin</code> est comparé à l'URL publique exactement — même cause qu'une connexion Google renvoyant <code>redirect_uri_mismatch</code>, et le plus souvent un proxy qui n'envoie pas <code>X-Forwarded-Proto: https</code>.",
+  "fail.cert.label": "Pas de certificat sous auto",
+  "fail.cert": "Le port 80 doit être joignable depuis l'internet public pour le défi ACME, pas seulement le 443.",
+  "fail.more": "Le conteneur affiche, sur une ligne et avant tout le reste, l'adresse sur laquelle Caddy s'est lié et le <code>KANSO_TLS</code> qu'il a résolu : c'est la première chose à lire quand le symptôme est ambigu."
+}
