@@ -84,6 +84,13 @@ export function ConnectionsSection({
   }, [connected, connectError, queryClient]);
 
   const [token, setToken] = useState("");
+  /**
+   * The paste is the fallback, not the way in — and `Test connection` folds with it. It
+   * was written to catch a typo in a token, and with consent as the way in there is no
+   * token to mistype; beside the field it is still the right button, on the screen it is
+   * one more control to read past.
+   */
+  const [pasting, setPasting] = useState(state.notion.managedByEnvironment);
   const [parentPageId, setParentPageId] = useState(state.notion.parentPageId ?? "");
   const [clientId, setClientId] = useState(state.google.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
@@ -95,23 +102,29 @@ export function ConnectionsSection({
     mutationFn: () =>
       api.testNotion({ token: token.trim() || undefined, parentPageId: parentPageId.trim() }),
   });
+  /**
+   * Saving the page is what creates the databases.
+   *
+   * Two requests rather than one endpoint doing both: `POST /api/setup/notion` would
+   * become eight Notion round trips deep, and every MCP caller would inherit a latency it
+   * never asked for. Chained here, each failure lands on the card that caused it.
+   *
+   * Guarded on the answer rather than on the props: `save` returns the state it just
+   * wrote, and that is the only reading that knows whether the page it stored is new.
+   */
   const saveNotion = useMutation({
-    mutationFn: () =>
-      api.saveNotion({ token: token.trim() || undefined, parentPageId: parentPageId.trim() }),
+    mutationFn: async () => {
+      const next = await api.saveNotion({
+        token: token.trim() || undefined,
+        parentPageId: parentPageId.trim(),
+      });
+      if (next.notion.parentPageId && !next.notion.bootstrapped) await api.bootstrapNotion();
+      return next;
+    },
     onSuccess: (next) => {
       setToken("");
       refresh(next);
-    },
-  });
-  /**
-   * Refetched rather than written into the cache: the route answers the mirror's own
-   * reading — see `api.bootstrapNotion` — and this screen is drawn from the setup state,
-   * where the answer's fields do not exist. The queue below is read from the same call,
-   * so it is invalidated too.
-   */
-  const bootstrap = useMutation({
-    mutationFn: api.bootstrapNotion,
-    onSuccess: () => {
+      // The databases may have just appeared, and `next` was read before they did.
       queryClient.invalidateQueries({ queryKey: keys.setupState });
       queryClient.invalidateQueries({ queryKey: keys.sync });
       queryClient.invalidateQueries({ queryKey: keys.syncDetail });
@@ -197,18 +210,30 @@ export function ConnectionsSection({
 
         {canConfigure && (
           <>
-            <input
-              id="notion-token"
-              className="w-full max-w-[380px]"
-              type="password"
-              autoComplete="off"
-              disabled={notionLocked}
-              placeholder={
-                state.notion.configured ? "Stored — leave empty to keep it" : "Integration token"
-              }
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-            />
+            <button
+              type="button"
+              className="text-11 underline text-faint hover:text-foreground"
+              onClick={() => setPasting((open) => !open)}
+            >
+              {pasting ? "Hide the token field" : "Paste an integration token instead"}
+            </button>
+            {pasting && (
+              <input
+                id="notion-token"
+                aria-label="Integration token"
+                className="w-full max-w-[380px]"
+                type="password"
+                autoComplete="off"
+                disabled={notionLocked}
+                placeholder={
+                  state.notion.configured
+                    ? "Stored — leave empty to keep it"
+                    : "Integration token"
+                }
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+              />
+            )}
             {/* The same block the wizard draws, for the same reason `NotionConnect` is
                 shared: choosing the parent page is one act, whether it is being done during
                 setup or changed a month later. */}
@@ -221,46 +246,32 @@ export function ConnectionsSection({
               />
             </div>
             <SettingsInline>
-              <button
-                className="button"
-                disabled={notionLocked || test.isPending}
-                onClick={() => test.mutate()}
-              >
-                Test connection
-              </button>
+              {pasting && (
+                <button
+                  className="button"
+                  disabled={notionLocked || test.isPending}
+                  onClick={() => test.mutate()}
+                >
+                  Test connection
+                </button>
+              )}
               <button
                 className="button button-primary"
                 disabled={notionLocked || saveNotion.isPending || !parentPageId.trim()}
                 onClick={() => saveNotion.mutate()}
               >
-                Save
+                {saveNotion.isPending ? "Saving…" : "Save"}
               </button>
-              {/* The saved page, not the field beside it: `NotionBootstrap` reads what is
-                  in Postgres, and connecting through Notion grants a token without granting
-                  a page. Offered on that state the button could only come back with the
-                  server's refusal. The note below says what to do instead. */}
-              {state.notion.configured &&
-                !state.notion.bootstrapped &&
-                state.notion.parentPageId && (
-                  <button
-                    className="button"
-                    disabled={bootstrap.isPending}
-                    onClick={() => bootstrap.mutate()}
-                  >
-                    Create the databases
-                  </button>
-                )}
             </SettingsInline>
             {test.data && <SettingsNote error={!test.data.ok}>{test.data.detail}</SettingsNote>}
             {test.isError && <SettingsNote error>{message(test.error)}</SettingsNote>}
             {saveNotion.isError && <SettingsNote error>{message(saveNotion.error)}</SettingsNote>}
-            {bootstrap.isError && <SettingsNote error>{message(bootstrap.error)}</SettingsNote>}
             <SettingsNote>
               {state.notion.bootstrapped
                 ? "The four mirrored databases exist."
-                : state.notion.configured && !state.notion.parentPageId
-                  ? "Choose a parent page above and save: Kanso creates its four databases under it, and until it has one there is nowhere to create them."
-                  : "The databases have not been created yet; nothing can be pushed until they are."}
+                : state.notion.configured
+                  ? "Choose the page Kanso creates its four databases under, then save."
+                  : "Not connected. Tickets live in Postgres only."}
             </SettingsNote>
 
             {/* Screen 24's way in. The import reads Notion and writes Kanso, which is the
