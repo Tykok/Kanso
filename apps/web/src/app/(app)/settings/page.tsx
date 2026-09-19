@@ -13,6 +13,7 @@ import { PeopleSection } from "@/components/settings/people-section";
 import { RequestBases } from "@/components/settings/request-bases";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { StatusesSection } from "@/components/settings/statuses-section";
+import { TemplatesSection } from "@/components/settings/templates-section";
 import { TokensSection } from "@/components/settings/tokens-section";
 import { VelocitySection } from "@/components/settings/velocity-section";
 import { useMe, useSetupState } from "@/lib/queries";
@@ -24,6 +25,7 @@ type SectionId =
   | "account"
   | "velocity"
   | "statuses"
+  | "templates"
   | "people"
   | "connections"
   | "github"
@@ -36,6 +38,7 @@ const SECTION_NAMES: Record<SectionId, string> = {
   account: "Account",
   velocity: "Velocity",
   statuses: "Statuses",
+  templates: "Templates",
   people: "People",
   connections: "Connections",
   github: "GitHub",
@@ -94,6 +97,7 @@ export default function SettingsPage() {
         // `TeamStatusService` refuses the writes from anybody else anyway — this is the
         // tab not being offered rather than the backstop.
         "statuses",
+        "templates",
         "people",
         "connections",
         "github",
@@ -113,6 +117,11 @@ export default function SettingsPage() {
         "shortcuts",
         "account",
         "velocity",
+        // In both arrays, unlike "statuses" beside it. A team's *vocabulary* is its shape
+        // and belongs to a configurator; a team's *templates* are how it writes things
+        // down, and `TicketTemplateService` already lets anybody who may edit the team
+        // write them. The Kanso level is gated inside the section instead.
+        "templates",
         "connections",
         "github",
         "agents",
@@ -151,6 +160,7 @@ export default function SettingsPage() {
           {section === "shortcuts" && <ShortcutsSection />}
           {section === "velocity" && <VelocitySection />}
           {section === "statuses" && canConfigure && <StatusesSection />}
+          {section === "templates" && <TemplatesSection />}
           {section === "people" && canConfigure && <PeopleSection />}
           {section === "github" && <GithubSection canConfigure={canConfigure} />}
           {section === "agents" && <AgentsSection />}
