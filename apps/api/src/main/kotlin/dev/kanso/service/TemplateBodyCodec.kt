@@ -112,17 +112,32 @@ class TemplateBodyCodec(private val json: ObjectMapper) {
 			.distinct()
 	}
 
-	private fun fields(value: Any?): Map<String, String> {
+	/**
+	 * Names to JSON scalars, kept in whatever type they arrived as.
+	 *
+	 * Not stringified, which was the first draft and was wrong: `FieldValueCodec.validate`
+	 * refuses `"true"` for a boolean field on purpose, so stringifying here would make every
+	 * checkbox and every number in a template unresolvable while looking like a resolver bug.
+	 * This side does not know which definition applies — it has no team to ask — so it checks
+	 * only that the value is a scalar at all, and `TemplateResolver` is where it meets the
+	 * definition that owns its type.
+	 */
+	private fun fields(value: Any?): Map<String, Any?> {
 		if (value == null) return emptyMap()
 		if (value !is Map<*, *>) throw BadRequestException("Template fields must be a name-to-value map")
 		if (value.size > 20) throw BadRequestException("A template may name at most 20 fields")
 		return value.entries.associate { (key, raw) ->
 			val name = (key as? String)?.trim()
 				?: throw BadRequestException("Template field names must be text")
-			// Stringified rather than typed: the *definition* owns the type, and this side has no
-			// team to ask which definition applies. `TemplateResolver` is where the value meets
-			// `FieldValueCodec` and is accepted or reported as unresolved.
-			name to (raw?.toString() ?: "")
+			if (raw != null && raw !is String && raw !is Number && raw !is Boolean) {
+				throw BadRequestException(
+					"Template field \"$name\" must be text, a number or true/false",
+				)
+			}
+			if (raw is String && raw.length > maxText) {
+				throw BadRequestException("Template field \"$name\" is longer than $maxText characters")
+			}
+			name to raw
 		}
 	}
 }

@@ -33,8 +33,17 @@ data class TemplateBody(
 	val estimate: Int? = null,
 	/** Label names, lower-cased and de-duplicated by the codec. */
 	val labels: List<String> = emptyList(),
-	/** Custom field name to its value, as the field's own type will read it. */
-	val fields: Map<String, String> = emptyMap(),
+	/**
+	 * Custom field name to its value, as a **JSON scalar** — string, number or boolean.
+	 *
+	 * Not stringified, and that is not a detail. `FieldValueCodec.validate` deliberately
+	 * refuses `"true"` for a boolean field — "a field that accepted either would be a text
+	 * field with a checkbox drawn on it" — so a template whose values were all strings could
+	 * never tick a checkbox or set a number, and both would surface as `unresolved` with
+	 * nothing wrong with them. The type is loose here because it is exactly as loose as what
+	 * `validate` accepts, and narrowing it would mean re-deciding per type on this side.
+	 */
+	val fields: Map<String, Any?> = emptyMap(),
 )
 
 /**

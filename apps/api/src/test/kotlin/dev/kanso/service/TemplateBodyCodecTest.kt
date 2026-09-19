@@ -62,9 +62,24 @@ class TemplateBodyCodecTest {
 			priority = TicketPriority.HIGH,
 			estimate = 3,
 			labels = listOf("bug"),
-			fields = mapOf("Severity" to "major"),
+			fields = mapOf("Severity" to "major", "Blocking" to true, "Weight" to 3),
 		)
 		assertEquals(body, codec.decode(codec.encode(body)))
+	}
+
+	@Test
+	fun `a field value keeps the type it arrived as`() {
+		// Stringifying these was the first draft and it would have made every checkbox in every
+		// template unresolvable: `FieldValueCodec.validate` refuses "true" for a boolean.
+		val body = codec.decode("""{"fields": {"Blocking": true, "Weight": 3, "Severity": "major"}}""")
+		assertEquals(true, body.fields["Blocking"])
+		assertEquals(3, body.fields["Weight"])
+		assertEquals("major", body.fields["Severity"])
+	}
+
+	@Test
+	fun `a field value that is not a scalar is refused`() {
+		assertFailsWith<BadRequestException> { codec.decode("""{"fields": {"Severity": ["a"]}}""") }
 	}
 
 	@Test
