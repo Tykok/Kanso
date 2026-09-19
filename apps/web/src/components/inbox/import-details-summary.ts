@@ -11,22 +11,32 @@ import type { BaseMapping } from "./import-columns";
 export function detailsSummary({
   mappings,
   people,
+  peopleTotal,
 }: {
   mappings: Record<string, BaseMapping>;
   people: Record<string, string | null>;
+  /**
+   * Every row `StepPeople` drew — `rows.length`, reported straight from there rather than
+   * read off `people`'s own keys. `buildAssignments` omits a row with neither an edit nor
+   * a confirmed link, which on a workspace Kanso has never matched before is every row —
+   * so counting `people`'s keys as the denominator is what let this lid say "N fields
+   * guessed" and never mention a single unmatched person on exactly the import this fold
+   * exists to warn about.
+   */
+  peopleTotal: number;
 }): string {
   const fields = Object.values(mappings).reduce(
     (sum, mapping) => sum + Object.keys(mapping.columns).length,
     0,
   );
-  const entries = Object.values(people);
-  const matched = entries.filter((id) => id !== null).length;
-  const unmatched = entries.length - matched;
+  const matched = Object.values(people).filter((id) => id !== null).length;
+  const unmatched = peopleTotal - matched;
 
   const parts: string[] = [];
   if (fields > 0) parts.push(`${fields} ${fields === 1 ? "field" : "fields"} guessed`);
-  if (entries.length > 0) {
-    parts.push(`${matched} ${matched === 1 ? "person" : "people"} matched`);
+  if (peopleTotal > 0) {
+    parts.push(`${peopleTotal} ${peopleTotal === 1 ? "person" : "people"} met`);
+    parts.push(`${matched} matched`);
     if (unmatched > 0) parts.push(`${unmatched} unmatched`);
   }
 

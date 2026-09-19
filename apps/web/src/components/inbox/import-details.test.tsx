@@ -161,7 +161,7 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
     await waitFor(() => expect(calls.at(-1)).toEqual({ "notion-1": "user-1" }));
 
     // The lid is telling the truth too: a person is matched, not "nothing mapped yet".
-    expect(screen.getByText(/1 person matched/i)).not.toBeNull();
+    await waitFor(() => expect(screen.getByText(/1 person met · 1 matched/i)).not.toBeNull());
   });
 
   /**

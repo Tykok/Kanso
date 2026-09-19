@@ -43,12 +43,16 @@ export function StepPeople({
   edits,
   onEdit,
   onPeople,
+  onCount,
   onLoading,
 }: {
   plan: NotionImportPlanRow[];
   edits: Record<string, string | null>;
   onEdit: (id: string, value: string | null) => void;
   onPeople: (people: Record<string, string | null>) => void;
+  /** `rows.length`, so the lid can tell "nobody has matched anyone" from "nobody is here" —
+   *  `buildAssignments`' own output cannot, since it omits exactly that row. */
+  onCount: (count: number) => void;
   /** `peopleSeen`'s query key is the plan itself, so a target or column change re-keys it —
    *  reported as `isFetching` rather than `isLoading` so the shell sees that refetch too,
    *  not only the first one. */
@@ -81,6 +85,10 @@ export function StepPeople({
   useEffect(() => {
     onPeople(assignments);
   }, [assignments, onPeople]);
+
+  useEffect(() => {
+    onCount(rows.length);
+  }, [rows, onCount]);
 
   const busy = seen.isFetching || known.isFetching;
   useEffect(() => {
