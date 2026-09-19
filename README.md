@@ -32,6 +32,10 @@ the same data in Notion. Notion is never in the collaboration loop — it is too
 
 Kanso stays fully usable when Notion is down, and reconciles afterwards.
 
+**[The documentation](https://tykok.github.io/Kanso/docs/get-started/)** is six pages, in
+English and in French: getting started, the model, working in Kanso, Notion, agents and the
+API, and self-hosting. This file is the short version of the first and the last of them.
+
 ---
 
 ## Quick start
@@ -274,8 +278,11 @@ docs        architecture notes
 
 ## Status
 
-v1 in progress. Not yet: per-field merge on conflict, Notion webhooks, attachments,
-sub-tickets.
+v1 in progress. Not yet: per-field merge on conflict, Notion webhooks, attachments.
+
+Sub-tickets were on that list and are not any more: a ticket carries a parent, the ticket
+page draws its parts, and `kanso_split_ticket` files them in one call. They are a hierarchy
+for reading rather than a second scheduler — nothing is rolled up automatically.
 
 Two things a reader should know are missing rather than hidden. **A token has no scope
 narrower than a person**: `kanso:read` and `kanso:write` are the whole vocabulary, and a
