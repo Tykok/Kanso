@@ -10,11 +10,11 @@ import {
   type CSSProperties,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import type { TimelineSort } from "@/lib/api";
 import { TimelineArrows } from "./arrows";
 import { barAt, type BarEdit } from "./bar";
 import { TimelineGrid } from "./grid";
 import { laneOf, TimelineRow } from "./row";
-import { TimelineTray } from "./tray";
 import { buildRows, rowKey, type Row } from "./rows";
 import type {
   KansoInstant,
@@ -90,6 +90,10 @@ export function TimelineView({
   reportError: (message: string | null) => void;
 }) {
   const zoom = useUi((state) => state.zoom);
+  const timelineSort = useUi((state) => state.timelineSort);
+  const setTimelineSort = useUi((state) => state.setTimelineSort);
+  const hideCompleted = useUi((state) => state.hideCompleted);
+  const setHideCompleted = useUi((state) => state.setHideCompleted);
   const scope = useUi((state) => state.scope);
   // The pointer half of `canPlan` in `actions.ts`: the same rule, so the mouse and the
   // keyboard agree about which chart is read-only without the two importing from
@@ -377,39 +381,47 @@ export function TimelineView({
   );
 
   /**
-   * Dropping a chip schedules a one-day milestone on the day it landed on. Any other
-   * length would be a guess presented as a plan — the tray says a ticket has no dates,
-   * not that anyone knows how long it will take.
+   * Dropping an undated row schedules a one-day milestone on the day it landed on. Any
+   * other length would be a guess presented as a plan — the row says a ticket has no
+   * dates, not that anyone knows how long it will take.
    *
-   * Nothing optimistic: the chart draws the timeline response, and this ticket is not in
-   * it yet — it is in `unscheduled`, with no slack and no criticality of its own. Moving
-   * it across by hand would mean inventing both. The refetch `onSettled` triggers is
-   * what moves the chip onto the grid, and a refusal leaves it in the tray, which is the
-   * same signal a bar snapping back gives.
+   * Nothing optimistic: the chart draws the timeline response, and this ticket has no
+   * slack and no criticality of its own until the server gives it dates. Moving it across
+   * by hand would mean inventing both. The refetch `onSettled` triggers is what draws the
+   * bar, and a refusal leaves the row undated — the same signal a bar snapping back gives.
    */
-  const trayControl = useMemo(
+  /**
+   * What the tray used to carry, kept whole and handed to the rows instead.
+   *
+   * The guard is still here as well as on the row: a drag begun inside a scope stays a drag
+   * if the scope changes under the pointer, and the band must stop painting the instant it
+   * does — which the row cannot see.
+   */
+  const planControl = useMemo(
     () => ({
-      selectedId,
-      onSelect: select,
-      canPlan,
       // `tray.tsx` already refuses to let a press become a drag once `canPlan` is
       // false, so this fires day to day only inside a scope. It is still guarded here
       // too, for the one gesture that can straddle the boundary: a drag begun inside a
       // scope stays a drag if the scope changes under the pointer, and the band must
       // stop painting the instant it does.
-      onDragMove: (x: number, y: number) => paintDrop(canPlan ? dayUnder(x, y) : null),
-      onDrop: (ticketId: string, x: number, y: number) => {
+      onPlanDragMove: (x: number, y: number) => paintDrop(canPlan ? dayUnder(x, y) : null),
+      onPlanDrop: (ticketId: string, x: number, y: number) => {
         const at = dayUnder(x, y);
         paintDrop(null);
-        // The same three-reasons rule the bars answer to: a tray chip is a plan too,
-        // and the global chart is read-only for a chip exactly as it is for a bar.
+        // The same three-reasons rule the bars answer to: scheduling an undated row is a
+        // plan too, and the global chart is read-only for it exactly as it is for a bar.
         if (!canPlan || !at) return;
         patchTicket({ id: ticketId, start: at.day, due: at.day });
       },
-      onDragEnd: () => paintDrop(null),
     }),
-    [selectedId, select, canPlan, dayUnder, paintDrop, patchTicket],
+    [canPlan, dayUnder, paintDrop, patchTicket],
   );
+
+  /**
+   * One object, memoised once. Spreading the two at the render site would build a new
+   * `control` on every frame and defeat the memo each of them exists for.
+   */
+  const rowControl = useMemo(() => ({ ...control, ...planControl }), [control, planControl]);
 
   // `&& !view`: once there is something to draw, a background refetch that fails must
   // not replace the chart with a sentence — least of all mid-drag, which would unmount
@@ -447,28 +459,48 @@ export function TimelineView({
     // corner it is meant to sit in. Both are children of `.main`, which is the column
     // that gives the chart the height left over.
     <>
-      {/*
-       * Derived here rather than sent as its own list, which the response no longer carries:
-       * the column replacing this tray is the next task, and reading the undated rows out of
-       * `tickets` keeps the screen behaving exactly as it did in the meantime rather than
-       * leaving a half-built one on the branch.
-       */}
-      <TimelineTray
-        items={(view?.tickets ?? [])
-          .filter((ticket) => !ticket.start && !ticket.due)
-          .map((ticket) => ({
-            id: ticket.id,
-            identifier: ticket.identifier,
-            title: ticket.title,
-          }))}
-        control={trayControl}
-      />
+
 
       {/*
        * A cap was hit server-side: the drawing is missing bars and has no next page to
        * offer instead of them. Outside the scroller, like the tray above it, so the
        * warning does not scroll away with the chart it is about.
        */}
+      {/*
+        * The column's own two controls, above the scroller so they do not scroll away from
+        * the list they govern — the same reason the warning below them sits here.
+        */}
+      <div className="flex items-center gap-3 px-2 py-1 text-11 text-muted-foreground">
+        <label className="flex items-center gap-1.5">
+          <span className="text-faint">Sort</span>
+          <select
+            aria-label="Timeline sort"
+            className="rounded-md border border-border bg-card px-1.5 py-0.5 text-11"
+            value={timelineSort}
+            onChange={(event) => setTimelineSort(event.target.value as TimelineSort)}
+          >
+            <option value="start">Start date</option>
+            <option value="priority">Priority</option>
+            <option value="due">Due date</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            aria-label="Hide completed"
+            checked={hideCompleted}
+            onChange={(event) => setHideCompleted(event.target.checked)}
+          />
+          <span>Hide completed</span>
+        </label>
+        {/*
+          * Said where the reader is, not in a toast: another page exists and scrolling is
+          * what fetches it. Distinct from the warning below, which means bars are missing
+          * and no scroll will bring them.
+          */}
+        {view?.hasMore && <span className="text-faint">More rows load as you scroll</span>}
+      </div>
+
       {view?.truncated && (
         <div className="px-2 py-1 text-11 text-warning" role="status">
           This view hit its limit — some bars are not drawn. Narrow the scope to see them all.
@@ -559,7 +591,7 @@ export function TimelineView({
                     origin={bounds.origin}
                     zoom={zoom}
                     timezone={timezone}
-                    control={control}
+                    control={rowControl}
                   />
                 )}
               </div>
