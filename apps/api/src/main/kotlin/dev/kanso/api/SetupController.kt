@@ -227,7 +227,17 @@ class SetupController(
 		return googleProbe.check(clientId, clientSecret, googleRedirectUri())
 	}
 
-	/** Skipping is finishing: the banner stops, nothing is decided permanently. */
+	/**
+	 * For an instance claimed before this branch shipped, not for anything in this app.
+	 *
+	 * Claiming the instance is finishing it now — [LocalAuthService.claimOwner] calls
+	 * [InstanceSettingsService.markSetupCompleted] itself, at the moment that is true — so
+	 * this route has no caller anywhere in the front end, and calling it on an instance
+	 * claimed since then is a no-op: the column is already set. What it is still for is the
+	 * instance claimed *before*, back when `setup_completed_at` was written by the wizard's
+	 * last step rather than by claiming — an owner exists there with the column still null,
+	 * and an operator who wants it backfilled calls this by hand.
+	 */
 	@PostMapping("/complete")
 	fun complete(): SetupStateResponse {
 		requireInstanceAdmin()

@@ -126,8 +126,16 @@ class InstanceSettingsRepository {
 		}
 	}
 
+	/**
+	 * A no-op once the column is set, rather than a second write pushing the timestamp
+	 * forward: `claimOwner` calls this once, at the moment that is actually true, and the
+	 * only other caller left is `/api/setup/complete`, kept for an operator's script
+	 * against an instance claimed before that became true. Overwriting on a repeat call
+	 * would let that script quietly replace a real record with whatever time it happened
+	 * to run.
+	 */
 	fun markSetupCompleted(at: OffsetDateTime = OffsetDateTime.now()) {
-		InstanceSettings.update({ InstanceSettings.id eq true }) {
+		InstanceSettings.update({ (InstanceSettings.id eq true) and InstanceSettings.setupCompletedAt.isNull() }) {
 			it[setupCompletedAt] = at
 		}
 	}
