@@ -60,10 +60,11 @@ export function buildAssignments(
 }
 
 /**
- * `people-seen`'s answer joined against the workspace's standing correspondence, so step 4
- * can pre-fill a suggestion it did not itself ask for. A person `people-seen` reports but
- * the correspondence has never heard of — the read is unavailable, or the page names a
- * guest outside `GET /users` — still gets a row, with neither a link nor a suggestion.
+ * `people-seen`'s answer joined against the workspace's standing correspondence, so the
+ * folded people panel can pre-fill a suggestion it did not itself ask for. A person
+ * `people-seen` reports but the correspondence has never heard of — the read is
+ * unavailable, or the page names a guest outside `GET /users` — still gets a row, with
+ * neither a link nor a suggestion.
  *
  * Sorted by name then id, because `people-seen` promises no order of its own and a row
  * list that reshuffled itself on every refetch would be a screen fighting the reader

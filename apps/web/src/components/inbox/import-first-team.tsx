@@ -14,9 +14,10 @@ import { actionErrorMessage } from "@/lib/errors";
  * "— choose a team —" and nothing else. A dropdown that opens onto nothing does not read
  * as a missing row; it reads as a broken control, and there is no way from there to find
  * out which of the two it is. So the block is one component, drawn by the wizard's card
- * before the dialog opens and by step 2 in the place the destination would have been.
+ * before the dialog opens and by the plan screen in the place the destination would have
+ * been.
  *
- * It writes a row, which is the one thing the dialog otherwise keeps for its fifth step.
+ * It writes a row, which is the one thing the dialog otherwise keeps for its confirmation.
  * That promise is about the workspace's content — nothing is read out of Notion and
  * written here — and a team somebody typed the name of is theirs either way.
  */

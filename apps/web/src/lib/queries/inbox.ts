@@ -136,13 +136,14 @@ export function useRetryFailedPushes() {
  *
  * Keyed by the base *and* its target, because the fields a base is asked about are the
  * target's — the same data source read as teams and read as tickets is two different
- * questions. Two steps use it: the third to make the mapping, the second to notice that a
- * mapped relation points at a base nobody is importing. One hook so they cannot ask for it
- * on different terms.
+ * questions. Two places use it: the folded columns panel to make the mapping, the plan
+ * screen to notice that a mapped relation points at a base nobody is importing. One hook
+ * so they cannot ask for it on different terms.
  *
  * `staleTime: Infinity` because a data source's schema does not change while a dialog is
- * open, and every miss is a call to Notion. `retry: false` for the same reason step 1 has
- * it: a workspace that refuses is a sentence to print, not something to ask again about.
+ * open, and every miss is a call to Notion. `retry: false` for the same reason the plan
+ * screen's own discovery query has it: a workspace that refuses is a sentence to print,
+ * not something to ask again about.
  */
 export const importSchemaQuery = (sourceId: string, target: NotionImportPlanRow["target"]) => ({
   queryKey: ["notion-import-schema", sourceId, target] as const,
@@ -152,10 +153,11 @@ export const importSchemaQuery = (sourceId: string, target: NotionImportPlanRow[
 });
 
 /**
- * The options as well as the hook, because step 3 asks for every kept base at once —
- * `useQueries`, since a hook cannot be called in a loop, and because that step has to know
- * whether *any* of them is still in flight before it lets the reader leave it. One
- * definition either way: the two steps cannot ask for the same schema on different terms.
+ * The options as well as the hook, because the folded columns panel asks for every kept
+ * base at once — `useQueries`, since a hook cannot be called in a loop, and because
+ * `openFallbacks` needs the whole set together: a `single_property` relation can live on
+ * the parent's base alone. One definition either way: the panel and the plan screen cannot
+ * ask for the same schema on different terms.
  */
 export const useImportSchema = (sourceId: string, target: NotionImportPlanRow["target"]) =>
   useQuery(importSchemaQuery(sourceId, target));

@@ -17,10 +17,11 @@ function selection(edits: Record<string, string | null>, id: string, fallback: s
 
 /**
  * The standing correspondence between Notion workspace members and Kanso accounts —
- * `users.notion_person_id`, matched by [NotionPeople] and read by screen 24's step 4 to
- * pre-fill the people its own mapped columns met. This is where the rest of the workspace
- * gets matched, once, ahead of any particular import — and once the mirror writes the
- * `people` property, the only place that link is made or broken outside one.
+ * `users.notion_person_id`, matched by [NotionPeople] and read by screen 24's folded
+ * people panel to pre-fill the people its own mapped columns met. This is where the rest
+ * of the workspace gets matched, once, ahead of any particular import — and once the
+ * mirror writes the `people` property, the only place that link is made or broken outside
+ * one.
  *
  * The read is open to anyone who can see the app, the same as `NotionPeopleController`
  * itself says — matching identities is not a secret. Saving is configurator-only on the
@@ -31,9 +32,9 @@ function selection(edits: Record<string, string | null>, id: string, fallback: s
  * `preselectedAccount` — showing the guess is the point — but [buildAssignments] is what
  * `Save` actually sends, and it never turns an untouched suggestion into a write: a row
  * nobody looked at resends its own already-confirmed link, or nothing at all. Accepting a
- * guess takes an actual click, the same way step 3's overridable pre-fills are defaults
- * and never a rule nobody can see — the difference is that here a default that nobody
- * looked at is not sent as an answer.
+ * guess takes an actual click, the same way the folded columns panel's overridable
+ * pre-fills are defaults and never a rule nobody can see — the difference is that here a
+ * default that nobody looked at is not sent as an answer.
  */
 export function NotionPeopleSection({ canConfigure }: { canConfigure: boolean }) {
   const queryClient = useQueryClient();

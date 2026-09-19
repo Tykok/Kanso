@@ -19,6 +19,19 @@ describe("what the folded panel says about itself", () => {
     expect(summary).toBe("2 fields guessed · 1 person matched · 1 unmatched");
   });
 
+  /** Summed across every base, not read off one — the loop is the whole implementation. */
+  it("sums the fields guessed across more than one base", () => {
+    const summary = detailsSummary({
+      mappings: {
+        tasks: { columns: { title: "Name", status: "Statut" }, values: {} },
+        docs: { columns: { title: "Titre" }, values: {} },
+      },
+      people: {},
+    });
+
+    expect(summary).toBe("3 fields guessed");
+  });
+
   it("says nothing about people when no column names any", () => {
     const summary = detailsSummary({
       mappings: { base: { columns: { title: "Name" }, values: {} } },
