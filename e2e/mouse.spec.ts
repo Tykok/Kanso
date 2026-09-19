@@ -329,9 +329,11 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
   // cookie is what earns that screen under `oidc`, which this stack is not
   // running. What dev mode *can* prove, and what actually distinguishes the fix
   // from the defect, is that the old identity is gone: `kanso.devUser` is
-  // cleared client-side, and the very next request lands as a different,
-  // never-onboarded person, who the app sends to first-run setup rather than
-  // straight back to the ticket list as "E2E owner".
+  // cleared client-side, and the very next request re-provisions the filter's own
+  // fallback, `dev@kanso.local`, through `UserProvisioning.findOrCreateByEmail` —
+  // which stamps `onboardedAt` on every call now, not only the first. So there is
+  // no wizard left to send a fresh identity to: it lands on the same ticket list
+  // "E2E owner" was looking at, just not as them.
   await trigger.click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect
@@ -352,7 +354,7 @@ test("scenario 10 — the brand menu names who you are, and signs you out", asyn
       }
     })
     .toBeNull();
-  await expect(page.getByRole("heading", { level: 1, name: "Preferences" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "All tickets" })).toBeVisible();
   await expect(page.getByText("E2E owner")).toHaveCount(0);
 });
 
