@@ -5,6 +5,19 @@
 
   "nav.tagline": "Self-hosted project manager",
   "nav.language": "Language",
+  "nav.docs": "Documentation",
+
+  "doc.skip": "Skip to the page",
+  "doc.eyebrow": "Documentation",
+  "pager.prev": "Previous",
+  "pager.next": "Next",
+
+  "nav.get-started": "Get started",
+  "nav.model": "The model",
+  "nav.working": "Working in Kanso",
+  "nav.notion": "Notion",
+  "nav.agents": "Agents and the API",
+  "nav.self-hosting": "Self-hosting",
 
   "hero.eyebrow": "Project manager · living documents",
   "hero.title": "Kanso runs a project end to end — teams, projects, tickets, cycles, a roadmap, a timeline with dependencies, workload — and keeps the documents that explain it alongside.",

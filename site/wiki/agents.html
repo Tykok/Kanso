@@ -1,0 +1,87 @@
+<!--
+  Page 5. Two doors, and the page exists mostly to say why they are two.
+
+  The `kbd`-shaped lists here are tool names and header names rather than keys, which is
+  the same two-column shape and the reason `.kv` is not called `.keys`.
+-->
+<header class="doc-head">
+  <p class="eyebrow">{{head.eyebrow}}</p>
+  <h1>{{head.title}}</h1>
+  <p class="lead">{{head.lead}}</p>
+</header>
+
+<section class="doc-section">
+  <h2>{{doors.title}}</h2>
+  <p>{{doors.body}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{mcp.title}}</h2>
+  <p>{{mcp.body}}</p>
+  <pre class="block"><code>claude mcp add --transport http kanso http://localhost:8080/api/mcp</code></pre>
+  <p>{{mcp.nothing}}</p>
+  <p>{{mcp.consent}}</p>
+  <p>{{mcp.scope}}</p>
+  <p>{{mcp.revoke}}</p>
+  <div class="note"><p>{{mcp.signin}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{tools.title}}</h2>
+  <p>{{tools.body}}</p>
+  <dl class="kv">
+    <dt>kanso_list_tickets</dt>
+    <dd>{{tools.list}}</dd>
+    <dt>kanso_get_ticket</dt>
+    <dd>{{tools.get}}</dd>
+    <dt>kanso_team_workload</dt>
+    <dd>{{tools.workload}}</dd>
+    <dt>kanso_create_ticket</dt>
+    <dd>{{tools.create}}</dd>
+    <dt>kanso_update_ticket</dt>
+    <dd>{{tools.update}}</dd>
+    <dt>kanso_split_ticket</dt>
+    <dd>{{tools.split}}</dd>
+    <dt>kanso_link_tickets</dt>
+    <dd>{{tools.link}}</dd>
+    <dt>kanso_plan</dt>
+    <dd>{{tools.plan}}</dd>
+    <dt>kanso_triage_queue</dt>
+    <dd>{{tools.queue}}</dd>
+    <dt>kanso_triage</dt>
+    <dd>{{tools.triage}}</dd>
+  </dl>
+  <p>{{tools.words}}</p>
+  <p>{{tools.dev}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{token.title}}</h2>
+  <p>{{token.body}}</p>
+  <pre class="block"><code>curl -H "Authorization: Bearer $KANSO_TOKEN" http://localhost:8080/api/teams</code></pre>
+  <div class="note"><p>{{token.warning}}</p></div>
+</section>
+
+<section class="doc-section">
+  <h2>{{hooks.title}}</h2>
+  <p>{{hooks.body}}</p>
+  <dl class="kv">
+    <dt>X-Kanso-Event</dt>
+    <dd>{{hooks.event}}</dd>
+    <dt>X-Kanso-Signature</dt>
+    <dd>{{hooks.signature}}</dd>
+  </dl>
+  <p>{{hooks.ask}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{openapi.title}}</h2>
+  <p>{{openapi.body}}</p>
+</section>
+
+<section class="doc-section">
+  <h2>{{github.title}}</h2>
+  <p>{{github.body}}</p>
+  <p>{{github.link}}</p>
+  <p>{{github.feed}}</p>
+</section>

@@ -1,0 +1,47 @@
+{
+  "meta.title": "Démarrer — Kanso",
+  "meta.description": "Lancer Kanso avec Docker, traverser l'assistant d'installation et saisir le premier ticket. Les deux variables qui constituent toute la configuration, et les touches qui font le travail.",
+
+  "head.eyebrow": "Démarrer",
+  "head.title": "Une instance qui tourne, et un ticket dedans.",
+  "head.lead": "Deux choses à configurer, un assistant, six touches. Tout le reste a une valeur par défaut défendable ou se déduit, et se change plus tard depuis les réglages.",
+
+  "run.title": "Le lancer contre votre propre Postgres",
+  "run.body": "Une image — le front, l'API et un proxy qui route entre les deux — sur une seule origine. Kanso ne livre pas de base de données : un conteneur qui possède vos données est un conteneur qu'on ne redémarre pas sans y penser.",
+  "run.two": "Ces deux choses — l'URL à laquelle il vit et la base dans laquelle il écrit — sont toute la configuration. Caddy obtient seul un certificat pour cet hôte, en <code>linux/amd64</code> comme en <code>linux/arm64</code>.",
+  "run.compose": "Pas encore de base ? <code>docker/docker-compose.yml</code> livre un <code>postgres:16-alpine</code> à côté de l'image. Copiez-le, changez <code>KANSO_PUBLIC_URL</code> et le mot de passe, puis <code>docker compose up -d</code>.",
+  "run.note": "L'hôte de <code>SPRING_DATASOURCE_URL</code> est résolu depuis l'intérieur du conteneur. Sous Compose c'est le nom du service ; pour un Postgres qui tourne sur cette machine mais hors de Docker, c'est <code>host.docker.internal</code>. Ce n'est jamais <code>localhost</code>, qui désigne le conteneur lui-même.",
+
+  "dev.title": "Ou le lancer depuis les sources",
+  "dev.body": "Le <code>docker-compose.yml</code> du dépôt est autre chose : il construit les deux applications depuis les sources et les sert sur deux ports, ce que pilote la suite Playwright. Renseignez les identifiants OIDC dans <code>.env</code>, ou posez <code>KANSO_AUTH_MODE=dev</code>.",
+  "dev.web": "L'application web",
+  "dev.api": "L'API REST, le WebSocket et le point d'entrée MCP",
+  "dev.health": "Vivacité, disponibilité et vérification de la base",
+  "dev.apps": "Pour lancer les applications hors de Docker et n'y garder que Postgres :",
+
+  "wizard.title": "L'assistant d'installation",
+  "wizard.body": "Le premier lancement ouvre un assistant plutôt qu'un écran de connexion, faute de quelqu'un à qui se connecter. Il a quatre étapes et seule la première est obligatoire.",
+  "wizard.account": "<strong>Le compte propriétaire.</strong> Une adresse et un mot de passe. Ce compte peut configurer l'instance ; rien d'autre ne le peut.",
+  "wizard.notion": "<strong>Notion.</strong> Optionnel, et réouvrable. La connexion a sa propre page — voir <em>Notion</em>.",
+  "wizard.google": "<strong>La connexion Google.</strong> Optionnelle. Une instance peut tourner avec les seuls mots de passe.",
+  "wizard.preferences": "<strong>Les préférences.</strong> Thème, accent, barre latérale. Par personne, pas par instance.",
+  "wizard.skip": "Chaque étape après le compte est passable et réouvrable depuis les réglages — <code>,</code> — de sorte qu'on peut saisir des tickets en moins d'une minute et décider du reste plus tard.",
+  "wizard.invite": "Celui qui arrive ensuite entre par un lien d'invitation généré par le propriétaire, et ne voit que l'étape des préférences. Notion et Google valent pour toute l'instance : un membre n'a rien à y décider, et les étapes sont masquées plutôt que montrées désactivées.",
+
+  "first.title": "La première équipe, et le premier ticket",
+  "first.body": "Un ticket appartient à une équipe, donc l'équipe vient d'abord — la barre latérale en crée une. Ensuite le clavier est l'interface, et les mêmes touches valent dans la liste, sur le tableau et sur le planning.",
+  "first.c": "Créer, depuis n'importe où",
+  "first.e": "Renommer sur place",
+  "first.digits": "Les six premiers statuts de votre équipe, dans son ordre",
+  "first.shift": "Choisir un statut par son nom, y compris un septième",
+  "first.palette": "La palette de commandes (<code>Ctrl+K</code> ailleurs)",
+  "first.help": "Tous les raccourcis, tels que ce compte les a liés",
+  "first.number": "Le ticket reçoit un identifiant court propre à son équipe — KAN-1, puis KAN-2 — attribué à l'intérieur de la transaction d'insertion, depuis un compteur porté par la ligne de l'équipe. Deux personnes qui pressent <code>c</code> au même instant obtiennent 41 et 42 : pas de trou, pas de collision.",
+
+  "next.title": "Où aller ensuite",
+  "next.model": "équipes, projets, tickets, statuts et les documents à côté.",
+  "next.working": "une requête dessinée de trois façons, filtres, cycles, charge, tri.",
+  "next.notion": "ce qui est mis en miroir, ce qui ne l'est pas, et pourquoi Notion ne gagne jamais.",
+  "next.agents": "la porte MCP pour un agent, jetons et webhooks pour un service.",
+  "next.selfHosting": "TLS, ce que contient <code>/data</code>, et ce qu'il faut sauvegarder."
+}

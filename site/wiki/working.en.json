@@ -1,0 +1,75 @@
+{
+  "meta.title": "Working in Kanso — Kanso",
+  "meta.description": "List, board and timeline are one query drawn three ways. The filter language, saved views, the keyboard, scheduling, cycles, workload, triage and the public roadmap.",
+
+  "head.eyebrow": "Working in Kanso",
+  "head.title": "One query, three drawings, and four screens that ask something else.",
+  "head.lead": "The list, the board and the timeline are not three features kept in step. They are one scoped query rendered three ways, which is why a filter typed in one of them is still true in the next.",
+
+  "drawings.title": "Three drawings of one query",
+  "drawings.body": "Pick a scope — a team, a project, a cycle, a person — narrow it with a filter, and then choose how to look at it. One chord cycles list, board and timeline, and the selection survives the change.",
+  "drawings.list.label": "List",
+  "drawings.list": "Rows, grouped and folded. The densest of the three and the one the keyboard is designed for.",
+  "drawings.board.label": "Board",
+  "drawings.board": "One column per status of the team. Dragging a card changes the status, and nothing else.",
+  "drawings.timeline.label": "Timeline",
+  "drawings.timeline": "Bars over weeks, the dependencies drawn between them, and a warning where two overlap.",
+  "drawings.wide": "Above one team, a board cannot have one column per status — two teams may share no word at all. So a wider board stacks by <em>meaning</em>, the five categories both vocabularies have, and a drop is rebased onto each card's own team's word. Moving between two words that mean the same thing needs a board scoped to one team.",
+
+  "filter.title": "The filter language",
+  "filter.body": "<code>/</code> opens the filter box. It is one line of text, it completes as you type, and what it writes is what it parses — so a filter can be read, copied and pasted between people.",
+  "filter.fields": "The fields are <code>status:</code>, <code>meaning:</code>, <code>priority:</code>, <code>assignee:</code> (including <code>assignee:me</code>), <code>project:</code>, <code>cycle:</code> and <code>label:</code>. A leading <code>-</code> negates: <code>-priority:low</code>. A chip prints a name, the text prints a token, and both come off the same catalogue so they cannot disagree.",
+  "filter.meaning": "<code>status:</code> and <code>meaning:</code> are not two spellings of one thing. <code>status:</code> asks for a word one team uses. <code>meaning:started</code> asks the question <code>status:</code> cannot: everything under way, in every team, whatever each one calls it.",
+
+  "views.title": "Saved views",
+  "views.body": "A scope, a filter, a grouping and a drawing, kept under a name. Saved views are how a recurring question stops being retyped — a team's incoming bugs, one person's week, everything blocked — and they are per team rather than global, so they speak that team's vocabulary.",
+  "views.where": "The sidebar's <em>Saved views</em> row lists them; opening one restores everything it stored, including which of the three drawings it was saved in.",
+
+  "keys.title": "The keyboard",
+  "keys.body": "The same keys in all three drawings. They are not a shortcut layer over a mouse interface — the list is built to be driven this way, and the mouse is what works too.",
+  "keys.move": "Move the selection",
+  "keys.open": "Open the selected ticket",
+  "keys.create": "Create, from anywhere",
+  "keys.rename": "Rename in place",
+  "keys.digits": "Your team's first six statuses, in its own order",
+  "keys.status": "Pick a status by name, including a seventh",
+  "keys.priority": "Pick a priority by name",
+  "keys.archive": "Archive",
+  "keys.filter": "Filter",
+  "keys.palette": "The command palette (<code>Ctrl+K</code> elsewhere)",
+  "keys.settings": "Settings",
+  "keys.help": "Every shortcut, as this account has them bound",
+  "keys.remap": "Every one of them is remappable, per account, and <code>?</code> prints the bindings in force rather than a picture of the defaults. What is stored is the overrides alone — an account that never changed anything stores nothing, and inherits an improved default instead of a frozen copy of an old one.",
+
+  "schedule.title": "Dates, dependencies and the cascade",
+  "schedule.body": "A <code>blocks</code> edge is one finish-to-start arrow. Moving a date does not push the direct successors and stop: it settles the whole connected component around the change, because a diamond has a ticket whose two predecessors are both in the blast radius and settling it against one would leave the other violated. Three rules decide what actually moves.",
+  "schedule.slack": "<strong>Slack is respected.</strong> A successor that still starts after its predecessor ends does not move, and the descent stops there. Without this, every micro-adjustment would creep the whole graph forward and no ticket would ever have slack.",
+  "schedule.forward": "<strong>Nothing is ever pulled backwards.</strong> Freeing slack does not drag work into the past — nobody expects it and nobody could undo it.",
+  "schedule.done": "<strong>A done ticket never moves.</strong> Its edge is reported violated instead: a plan that claims to hold when it does not is the worst outcome available.",
+  "schedule.critical": "The critical path is computed per connected component, never per project and never over what is currently on screen — a chain can span three projects, and anchoring on the visible scope would repaint identical data every time the filter changes.",
+  "schedule.notion": "A date edited in Notion goes through the same engine: the poller writes the scalar and then cascades, so a date typed into the mirror cannot break the plan in silence.",
+
+  "cycles.title": "Cycles",
+  "cycles.body": "A cycle is a dated window of work for one team. The screen answers three questions — how far it has got, what is left, and what will not fit — and every number on it arrives already derived from one endpoint, so the percentage in the header and the list of slipping tickets underneath cannot disagree.",
+  "cycles.rollover": "Closing a cycle carries its unfinished work into the next one and says so in the activity feed. Velocity is measured from closed cycles; a person may declare one to start with, and it is used only until two closed cycles can answer better — two numbers answering the same question and disagreeing is a tool that lies, so exactly one of them is ever the one being planned with.",
+
+  "workload.title": "Workload",
+  "workload.body": "Open tickets per person, each bar cut by status and drawn long in proportion to the heaviest person's count. It answers <em>who is carrying more than whom</em>, which is a question a count can settle — rather than pretending to measure hours.",
+  "workload.points": "Points sit beside the count rather than replacing it, and every row showing a total in points also shows how many of its tickets are not in that total. A sum that quietly leaves out the unestimated half of a plate is worse than a count that never claimed to weigh anything.",
+
+  "triage.title": "Triage",
+  "triage.body": "The queue of everything nobody has ruled on yet. It is a gate, not a view: a ticket leaves it because somebody decided, and the decision is one of four words. Similar tickets are offered beside each one, which is what makes the duplicate ruling cheap.",
+  "triage.accepted": "It is work, it stays.",
+  "triage.backlogged": "It is work, not now.",
+  "triage.duplicate": "It is that other ticket, and the link says which.",
+  "triage.closed": "It is not work.",
+  "triage.record": "Each ruling is recorded as a decision rather than applied as a silent edit — which is what makes it safe to hand the queue to an agent. The same four words are the whole vocabulary of the <code>kanso_triage</code> tool.",
+
+  "inbox.title": "Inbox and realtime",
+  "inbox.body": "Mentions, assignments and replies land in the inbox, reachable from the bell in the top bar with its unread count. It is a list of things that happened to <em>you</em>, not a feed of everything.",
+  "inbox.realtime": "Boards and lists update themselves. Every write publishes on a Postgres channel, every API instance receives it and pushes to its own clients over one WebSocket, and the session cookie that authenticated the page authenticates the socket — so there is no second login and no polling loop.",
+
+  "progress.title": "Progress, and the shop window",
+  "progress.body": "Per person and per team, over closed cycles: what was delivered, at what rate, and what the charts can and cannot speak for. The same rule as everywhere else — a number that could not be computed is absent rather than zero.",
+  "progress.roadmap": "<code>/roadmap</code> is the one page a stranger may read. It draws the tickets somebody explicitly marked public — the default is private, so publishing is an act, never a state a row drifted into — in the application's own statuses, with nothing reworded for the shop window. Votes help with the ordering; they do not commit to a date."
+}

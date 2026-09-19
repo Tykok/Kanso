@@ -1,0 +1,75 @@
+{
+  "meta.title": "Travailler dedans — Kanso",
+  "meta.description": "Liste, tableau et planning sont une seule requête dessinée de trois façons. Le langage de filtre, les vues enregistrées, le clavier, la planification, les cycles, la charge, le tri et la feuille de route publique.",
+
+  "head.eyebrow": "Travailler dedans",
+  "head.title": "Une requête, trois dessins, et quatre écrans qui demandent autre chose.",
+  "head.lead": "La liste, le tableau et le planning ne sont pas trois fonctionnalités maintenues en phase. C'est une seule requête cadrée, rendue de trois façons — et c'est pourquoi un filtre tapé dans l'une reste vrai dans la suivante.",
+
+  "drawings.title": "Trois dessins d'une même requête",
+  "drawings.body": "On choisit un périmètre — une équipe, un projet, un cycle, une personne —, on le resserre avec un filtre, puis on choisit comment le regarder. Une touche fait tourner liste, tableau et planning, et la sélection survit au changement.",
+  "drawings.list.label": "Liste",
+  "drawings.list": "Des lignes, groupées et repliables. La plus dense des trois, et celle pour laquelle le clavier est conçu.",
+  "drawings.board.label": "Tableau",
+  "drawings.board": "Une colonne par statut de l'équipe. Déplacer une carte change le statut, et rien d'autre.",
+  "drawings.timeline.label": "Planning",
+  "drawings.timeline": "Des barres sur les semaines, les dépendances dessinées entre elles, et un avertissement là où deux se chevauchent.",
+  "drawings.wide": "Au-delà d'une équipe, un tableau ne peut pas avoir une colonne par statut — deux équipes peuvent ne partager aucun mot. Un tableau élargi empile donc par <em>sens</em>, les cinq catégories que les deux vocabulaires ont, et un dépôt est rebasé sur le mot de l'équipe de la carte. Déplacer entre deux mots qui veulent dire la même chose demande un tableau cadré sur une seule équipe.",
+
+  "filter.title": "Le langage de filtre",
+  "filter.body": "<code>/</code> ouvre la boîte de filtre. C'est une ligne de texte, elle se complète à la frappe, et ce qu'elle écrit est ce qu'elle sait relire — un filtre se lit donc, se copie et se colle d'une personne à l'autre.",
+  "filter.fields": "Les champs sont <code>status:</code>, <code>meaning:</code>, <code>priority:</code>, <code>assignee:</code> (dont <code>assignee:me</code>), <code>project:</code>, <code>cycle:</code> et <code>label:</code>. Un <code>-</code> en tête nie : <code>-priority:low</code>. Une puce affiche un nom, le texte écrit un jeton, et les deux sortent du même catalogue : ils ne peuvent pas diverger.",
+  "filter.meaning": "<code>status:</code> et <code>meaning:</code> ne sont pas deux orthographes d'une même chose. <code>status:</code> demande un mot qu'une équipe emploie. <code>meaning:started</code> pose la question que <code>status:</code> ne peut pas poser : tout ce qui est en cours, dans toutes les équipes, quel que soit le mot de chacune.",
+
+  "views.title": "Les vues enregistrées",
+  "views.body": "Un périmètre, un filtre, un groupement et un dessin, gardés sous un nom. Les vues enregistrées sont ce qui empêche une question récurrente d'être retapée — les bugs entrants d'une équipe, la semaine de quelqu'un, tout ce qui est bloqué — et elles sont par équipe plutôt que globales, donc elles parlent le vocabulaire de cette équipe.",
+  "views.where": "La ligne <em>Saved views</em> de la barre latérale les liste ; en ouvrir une restaure tout ce qu'elle a stocké, y compris celui des trois dessins dans lequel elle a été enregistrée.",
+
+  "keys.title": "Le clavier",
+  "keys.body": "Les mêmes touches dans les trois dessins. Ce n'est pas une couche de raccourcis posée sur une interface à la souris — la liste est faite pour être conduite ainsi, et la souris est ce qui marche aussi.",
+  "keys.move": "Déplacer la sélection",
+  "keys.open": "Ouvrir le ticket sélectionné",
+  "keys.create": "Créer, depuis n'importe où",
+  "keys.rename": "Renommer sur place",
+  "keys.digits": "Les six premiers statuts de votre équipe, dans son ordre",
+  "keys.status": "Choisir un statut par son nom, y compris un septième",
+  "keys.priority": "Choisir une priorité par son nom",
+  "keys.archive": "Archiver",
+  "keys.filter": "Filtrer",
+  "keys.palette": "La palette de commandes (<code>Ctrl+K</code> ailleurs)",
+  "keys.settings": "Les réglages",
+  "keys.help": "Tous les raccourcis, tels que ce compte les a liés",
+  "keys.remap": "Chacune est remappable, par compte, et <code>?</code> affiche les liaisons en vigueur plutôt qu'une image des valeurs par défaut. Ce qui est stocké, ce sont les seules surcharges — un compte qui n'a rien changé ne stocke rien, et hérite d'un défaut amélioré au lieu d'une copie figée de l'ancien.",
+
+  "schedule.title": "Dates, dépendances et cascade",
+  "schedule.body": "Une arête <code>blocks</code> est une flèche fin-à-début. Déplacer une date ne pousse pas les successeurs directs pour s'arrêter là : elle règle toute la composante connexe autour du changement, parce qu'un losange contient un ticket dont les deux prédécesseurs sont dans le rayon et que le régler contre l'un laisserait l'autre violé. Trois règles décident de ce qui bouge vraiment.",
+  "schedule.slack": "<strong>La marge est respectée.</strong> Un successeur qui commence encore après la fin de son prédécesseur ne bouge pas, et la descente s'arrête là. Sans cela, chaque micro-ajustement ferait avancer tout le graphe et aucun ticket n'aurait jamais de marge.",
+  "schedule.forward": "<strong>Rien n'est jamais tiré en arrière.</strong> Libérer de la marge ne traîne pas le travail dans le passé — personne ne s'y attend et personne ne pourrait le défaire.",
+  "schedule.done": "<strong>Un ticket terminé ne bouge jamais.</strong> Son arête est signalée violée à la place : un plan qui prétend tenir alors qu'il ne tient pas est le pire résultat disponible.",
+  "schedule.critical": "Le chemin critique est calculé par composante connexe, jamais par projet et jamais sur ce qui est à l'écran — une chaîne peut traverser trois projets, et s'ancrer sur le périmètre visible repeindrait des données identiques à chaque changement de filtre.",
+  "schedule.notion": "Une date modifiée dans Notion passe par le même moteur : le poller écrit le scalaire puis fait cascader, de sorte qu'une date tapée dans le miroir ne peut pas casser le plan en silence.",
+
+  "cycles.title": "Les cycles",
+  "cycles.body": "Un cycle est une fenêtre datée de travail, pour une équipe. L'écran répond à trois questions — où il en est, ce qui reste, ce qui ne rentrera pas — et chaque nombre y arrive déjà dérivé d'un seul point d'entrée : le pourcentage de l'en-tête et la liste des tickets qui glissent en dessous ne peuvent pas se contredire.",
+  "cycles.rollover": "Clore un cycle reporte son travail inachevé dans le suivant et le dit dans le fil d'activité. La vélocité se mesure sur les cycles clos ; une personne peut en déclarer une pour commencer, et elle ne sert que jusqu'à ce que deux cycles clos répondent mieux — deux nombres qui répondent à la même question en se contredisant font un outil qui ment, donc un seul des deux est jamais celui avec lequel on planifie.",
+
+  "workload.title": "La charge",
+  "workload.body": "Les tickets ouverts par personne, chaque barre découpée par statut et longue en proportion du compte de la personne la plus chargée. Elle répond à <em>qui porte plus que qui</em>, une question qu'un décompte peut trancher — plutôt que de prétendre mesurer des heures.",
+  "workload.points": "Les points sont posés à côté du compte et non à sa place, et toute ligne affichant un total en points affiche aussi combien de ses tickets n'y sont pas. Une somme qui laisse discrètement de côté la moitié non estimée d'une assiette est pire qu'un décompte qui n'a jamais prétendu peser quoi que ce soit.",
+
+  "triage.title": "Le tri",
+  "triage.body": "La file de tout ce sur quoi personne n'a encore tranché. C'est une porte, pas une vue : un ticket en sort parce que quelqu'un a décidé, et la décision est l'un de quatre mots. Les tickets similaires sont proposés à côté de chacun, ce qui rend le verdict « doublon » bon marché.",
+  "triage.accepted": "C'est du travail, il reste.",
+  "triage.backlogged": "C'est du travail, pas maintenant.",
+  "triage.duplicate": "C'est cet autre ticket, et le lien dit lequel.",
+  "triage.closed": "Ce n'est pas du travail.",
+  "triage.record": "Chaque verdict est enregistré comme une décision plutôt qu'appliqué comme une modification silencieuse — c'est ce qui rend la file confiable à confier à un agent. Ces quatre mots sont tout le vocabulaire de l'outil <code>kanso_triage</code>.",
+
+  "inbox.title": "Boîte de réception et temps réel",
+  "inbox.body": "Mentions, assignations et réponses atterrissent dans la boîte de réception, accessible par la cloche de la barre du haut avec son compteur de non-lus. C'est une liste de ce qui vous est arrivé à <em>vous</em>, pas un fil de tout.",
+  "inbox.realtime": "Tableaux et listes se mettent à jour seuls. Chaque écriture publie sur un canal Postgres, chaque instance de l'API la reçoit et la pousse à ses propres clients par un WebSocket, et le cookie de session qui a authentifié la page authentifie la socket — donc pas de seconde connexion et pas de boucle de sondage.",
+
+  "progress.title": "La progression, et la vitrine",
+  "progress.body": "Par personne et par équipe, sur les cycles clos : ce qui a été livré, à quel rythme, et ce dont les graphiques peuvent ou ne peuvent pas répondre. La même règle que partout ailleurs — un nombre qui n'a pas pu être calculé est absent plutôt que nul.",
+  "progress.roadmap": "<code>/roadmap</code> est la seule page qu'un inconnu peut lire. Elle dessine les tickets que quelqu'un a explicitement marqués publics — le défaut est privé, donc publier est un acte, jamais un état vers lequel une ligne aurait dérivé — dans les statuts propres de l'application, sans rien reformuler pour la vitrine. Les votes aident à l'ordre ; ils n'engagent aucune date."
+}
