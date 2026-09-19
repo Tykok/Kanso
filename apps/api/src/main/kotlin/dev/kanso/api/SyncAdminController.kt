@@ -186,9 +186,9 @@ class SyncAdminController(
 	 * Owner or admin. It writes into the connected workspace, and with `force` it writes
 	 * four *new* databases over the mirror's existing pointers — which is the same act as
 	 * connecting Notion in the first place, guarded the same way `SetupController` guards
-	 * that. The web app only ever calls it from the wizard and from the connections
-	 * section, both of which are already drawn for a configurator, so this refuses nothing
-	 * a screen offers.
+	 * that. The web app has one caller left now that the wizard is gone — the connections
+	 * screen's Save, already drawn for a configurator — so this refuses nothing a screen
+	 * offers.
 	 */
 	@PostMapping("/notion/bootstrap")
 	fun bootstrapNotion(@RequestParam(defaultValue = "false") force: Boolean): SyncStatusResponse {
