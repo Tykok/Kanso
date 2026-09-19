@@ -11,13 +11,15 @@ import {
 } from "@/lib/api";
 import { usePeople } from "@/lib/queries";
 import { actionErrorMessage } from "@/lib/errors";
-import { Button } from "@/components/ui/button";
 import { buildAssignments, isSuggested, preselectedAccount, seenPeopleRows, type PersonRow } from "./import-people";
 
 const EMPTY_VIEW: NotionPeopleView = { available: true, people: [] };
 
 /**
- * Step 4: who the people the mapped columns name are, in Kanso.
+ * Who the people the mapped columns name are, in Kanso.
+ *
+ * The other half of the folded panel `import-details.tsx` builds — see `StepColumns` for
+ * the argument against a Next of its own here.
  *
  * One row per person `peopleSeen` reports for this plan — not the whole workspace, which
  * is `settings/notion-people-section.tsx`'s job. Pre-filled from the standing
@@ -27,25 +29,18 @@ const EMPTY_VIEW: NotionPeopleView = { available: true, people: [] };
  *
  * [edits] is local and holds only what the reader has touched, never a seeded pre-fill:
  * `<select>` shows the guess so it can be accepted, but nothing here writes it in until the
- * reader has. [onPeople] is told the computed write on every change, so a click on "Preview
- * the import" always sees the latest map without this step needing to reach back into the
- * shell's own state. Nothing here writes for real either way — `NotionPeople.link` runs
- * only once the import is confirmed, through `notionImportApi.confirm`'s `people` field.
+ * reader has. [onPeople] is told the computed write on every change, so the plan screen's
+ * own Preview button always sees the latest map without this component needing to reach
+ * back into the shell's own state. Nothing here writes for real either way —
+ * `NotionPeople.link` runs only once the import is confirmed, through
+ * `notionImportApi.confirm`'s `people` field.
  */
 export function StepPeople({
   plan,
   onPeople,
-  onNext,
-  onBack,
-  pending,
-  error,
 }: {
   plan: NotionImportPlanRow[];
   onPeople: (people: Record<string, string | null>) => void;
-  onNext: () => void;
-  onBack: () => void;
-  pending: boolean;
-  error?: string;
 }) {
   const seen = useQuery({
     queryKey: ["notion-import-people-seen", plan],
@@ -70,7 +65,7 @@ export function StepPeople({
   /**
    * Tells the shell the write on every change to [rows] or [edits] — including the first,
    * so an untouched row's already-confirmed link is still carried into the request even if
-   * the reader never opens this step's own state again before clicking through.
+   * the reader never opens this panel again before clicking through.
    */
   useEffect(() => {
     onPeople(assignments);
@@ -149,16 +144,6 @@ export function StepPeople({
           })}
         </div>
       )}
-
-      <div className="flex items-center gap-2.5">
-        <Button disabled={pending} onClick={onNext}>
-          Preview the import
-        </Button>
-        <Button variant="outline" onClick={onBack}>
-          Back
-        </Button>
-      </div>
-      {error && <span className="text-12 text-urgent">{error}</span>}
     </>
   );
 }

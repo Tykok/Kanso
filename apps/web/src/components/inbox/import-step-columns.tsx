@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useQueries, type UseQueryResult } from "@tanstack/react-query";
 import { type Project, type Team } from "@/lib/api";
 import { importSchemaQuery } from "@/lib/queries";
-import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/errors";
 import {
   EMPTY_MAPPING,
@@ -24,7 +23,11 @@ import type { ImportField, ImportMapping, ImportPlanEntry } from "./import-map";
 import { FIELD_LABELS, TARGET_LABELS } from "./import-targets";
 
 /**
- * Step 3: which column answers which field, and what the words inside it mean.
+ * Which column answers which field, and what the words inside it mean.
+ *
+ * One half of the folded panel `import-details.tsx` builds — the other is `StepPeople` —
+ * so there is no Next of its own here: the panel it lives in is not a step to leave, only
+ * one to unfold.
  *
  * One section per kept base, because three targets have three sets of fields: a base of
  * teams is asked about its parent, a base of projects about its lead and its team, a base
@@ -48,14 +51,9 @@ export function StepColumns({
   fallbacks,
   teams,
   projects,
-  hasPeople,
   onMapping,
   onSeed,
   onFallback,
-  onNext,
-  onBack,
-  pending,
-  error,
 }: {
   bases: ImportPlanEntry[];
   /** What every base becomes, so a relation into an ignored one can be told apart. */
@@ -64,25 +62,17 @@ export function StepColumns({
   fallbacks: Record<string, Fallback>;
   teams: Team[];
   projects: Project[];
-  /** A people column is mapped somewhere, so step 4 is on the way to the preview. */
-  hasPeople: boolean;
   onMapping: (sourceId: string, mapping: BaseMapping) => void;
   /** Separate from [onMapping] because the shell refuses a second seed, never an edit. */
   onSeed: (sourceId: string, seed: BaseMapping) => void;
   onFallback: (sourceId: string, fallback: Fallback) => void;
-  onNext: () => void;
-  onBack: () => void;
-  pending: boolean;
-  error?: string;
 }) {
   /**
    * Every kept base's schema, asked for here rather than inside each section.
    *
-   * Two things need the whole set. The button below has to stay dead while any of them is
-   * in flight: the seed only happens when a schema arrives, so leaving early would send
-   * `columns: {}` for that base and throw away the server's pre-fill — silently, and with
-   * `hasPeople` false, skipping step 4 as well. And `openFallbacks` reads the sibling
-   * mappings, because a `single_property` relation can live on the parent's base alone.
+   * `openFallbacks` needs the whole set rather than one at a time, because a
+   * `single_property` relation can live on the parent's base alone — a base asked about its
+   * own schema in isolation would have nothing there to point at.
    *
    * `useQueries`, so a base whose schema Notion refuses still fails alone: each entry keeps
    * its own status, and the section below draws it.
@@ -90,8 +80,6 @@ export function StepColumns({
   const schemas = useQueries({
     queries: bases.map((base) => importSchemaQuery(base.sourceId, base.target)),
   });
-
-  const loading = schemas.some((schema) => schema.isPending);
 
   /** The bases whose schema has arrived, with what has been said about each. */
   const mapped: MappedBase[] = bases.flatMap((base, index) => {
@@ -127,28 +115,6 @@ export function StepColumns({
           />
         ))}
       </div>
-
-      {hasPeople && (
-        <span className="text-11 text-faint">
-          A people column is mapped, so the next step asks who those people are in Kanso.
-        </span>
-      )}
-
-      <div className="flex items-center gap-2.5">
-        <Button disabled={pending || loading} onClick={onNext}>
-          {hasPeople ? "Match the people" : "Preview the import"}
-        </Button>
-        <Button variant="outline" onClick={onBack}>
-          Back
-        </Button>
-        {loading && (
-          <span className="text-11 text-faint">
-            Waiting for the columns, so nothing is mapped by accident.
-          </span>
-        )}
-      </div>
-
-      {error && <span className="text-12 text-urgent">{error}</span>}
     </>
   );
 }
@@ -294,7 +260,7 @@ function BaseSection({
  * import itself was given.
  */
 const FALLBACK_NONE: Record<keyof Fallback, string> = {
-  teamId: "the team chosen in step 2",
+  teamId: "the team already chosen above",
   parentTeamId: "no parent team",
   projectId: "one project named after the base",
 };
