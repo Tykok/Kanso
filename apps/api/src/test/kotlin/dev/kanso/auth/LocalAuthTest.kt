@@ -6,6 +6,7 @@ import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
+import dev.kanso.settings.PreferencesService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -19,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -35,6 +37,7 @@ class LocalAuthTest : PostgresTest() {
 	@Autowired lateinit var encoder: PasswordEncoder
 	@Autowired lateinit var tx: TransactionTemplate
 	@Autowired lateinit var jdbc: JdbcClient
+	@Autowired lateinit var preferences: PreferencesService
 
 	/** Only the rows local auth owns, so a shared container stays usable for the rest. */
 	@BeforeTest
@@ -126,6 +129,18 @@ class LocalAuthTest : PostgresTest() {
 		val reloaded = tx.execute { users.findByEmail(email) }
 		assertTrue(reloaded?.lastLoginAt != null, "last_login_at is how an idle account becomes visible")
 		assertTrue(tx.execute { localAuth.passwordLoginEnabled() } == true)
+	}
+
+	/**
+	 * The wizard's last step used to stamp this. With the wizard down to one screen there
+	 * is no later step to do it, and the routing guard reads the stamp — unstamped, every
+	 * new owner is sent back to a wizard that has nothing left to ask.
+	 */
+	@Test
+	fun `claiming the instance stamps the onboarding`() {
+		val owner = localAuth.claimOwner("stamped@kanso.test", "Stamped", "a-long-enough-password")
+
+		assertNotNull(preferences.get(owner.id).onboardedAt)
 	}
 
 	@Test

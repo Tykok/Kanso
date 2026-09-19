@@ -6,6 +6,8 @@ import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
+import dev.kanso.settings.PreferencesPatch
+import dev.kanso.settings.PreferencesService
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.slf4j.LoggerFactory
@@ -47,6 +49,7 @@ data class PendingInvitation(
 class InvitationService(
 	private val users: UserRepository,
 	private val encoder: PasswordEncoder,
+	private val preferences: PreferencesService,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -145,6 +148,10 @@ class InvitationService(
 			it[acceptedBy] = user.id
 		}
 		if (claimed != 1) throw BadRequestException(REJECTED)
+
+		// The wizard an invited account used to be sent through asked for preferences and
+		// nothing else, and settings asks for those better. See `LocalAuthService.claimOwner`.
+		preferences.save(user.id, PreferencesPatch(onboarded = true))
 
 		log.info("Invitation accepted by {} as {} (kanso id {})", user.email, user.instanceRole.wire, user.id)
 		return user

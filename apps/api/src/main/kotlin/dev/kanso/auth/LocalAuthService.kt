@@ -5,6 +5,9 @@ import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.service.ConflictException
+import dev.kanso.settings.InstanceSettingsService
+import dev.kanso.settings.PreferencesPatch
+import dev.kanso.settings.PreferencesService
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -33,6 +36,8 @@ class LocalAuthService(
 	private val users: UserRepository,
 	private val attempts: LoginAttemptLog,
 	private val encoder: PasswordEncoder,
+	private val preferences: PreferencesService,
+	private val settings: InstanceSettingsService,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -59,7 +64,7 @@ class LocalAuthService(
 		if (users.ownerExists()) throw ConflictException(OWNER_TAKEN)
 		if (users.findByEmail(address) != null) throw ConflictException("An account already exists for $address")
 
-		return try {
+		val owner = try {
 			users.createLocalUser(
 				email = address,
 				displayName = displayName.ifBlank { address.substringBefore('@') },
@@ -72,6 +77,21 @@ class LocalAuthService(
 			if (!mentions(e, OWNER_INDEX)) throw e
 			throw ConflictException(OWNER_TAKEN)
 		}
+
+		/*
+		 * Both stamps belong to the act of claiming, not to a later screen.
+		 *
+		 * `onboarded_at` is read by the routing guard, which sends an unstamped account
+		 * into the wizard; the wizard is one screen now and that screen is this endpoint,
+		 * so an account created here has already seen everything there is to see.
+		 * `setup_completed_at` had one writer — the wizard's last step — and no reader in
+		 * the web app, and a field that can now never be set is worse than one nobody
+		 * reads.
+		 */
+		preferences.save(owner.id, PreferencesPatch(onboarded = true))
+		settings.markSetupCompleted()
+
+		return owner
 	}
 
 	/**
