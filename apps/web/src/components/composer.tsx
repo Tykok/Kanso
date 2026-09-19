@@ -612,6 +612,7 @@ export function ComposerForm({
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-11 text-faint">
         <Kbd>↵</Kbd> <span>create</span> <Kbd>esc</Kbd> <span>cancel</span>
         <select
+          aria-label="Ticket template"
           className="ml-2 rounded-md border border-border bg-card px-1.5 py-0.5 text-11 text-muted-foreground"
           value={templateId}
           disabled={create.isPending || resolve.isPending}
