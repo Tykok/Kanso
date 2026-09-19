@@ -38,10 +38,10 @@ import { STUB_BASE_URL, startNotionWorkspace, type NotionWorkspaceStub } from ".
  * ## What it asserts, beyond clicking through
  *
  * - the three bases and their page counts, off the workspace as the server searched it;
- * - a relation the reader has not answered yet surfacing as step 2's suggestion, and
- *   accepting it mapping the base it points at;
- * - the columns step offering only the columns whose *type* can carry a field, and the
- *   server's own pre-fill having arrived;
+ * - a relation the reader has not answered yet surfacing as the plan screen's suggestion,
+ *   and accepting it mapping the base it points at;
+ * - the folded columns panel offering only the columns whose *type* can carry a field, and
+ *   the server's own pre-fill having arrived;
  * - the option table: `En cours` mapped by hand, and the two words Kanso's vocabulary does
  *   not hold named as falling back — in words, not as a count;
  * - no fallback question asked anywhere, because every link in this workspace resolves;
@@ -135,14 +135,12 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
 
   // --- step 1: what the workspace holds ------------------------------------
 
-  await expect(dialog.getByText("What is in this workspace")).toBeVisible();
   for (const base of [teams, projects, tickets]) {
     await expect(dialog.getByText(base.name, { exact: true })).toBeVisible();
   }
   // Counted by walking the pages, so this is the discovery walk's own answer and not the
   // stub's: one team page, one project page, two task pages.
   await expect(dialog.getByText("3 databases, 4 pages in all.")).toBeVisible();
-  await dialog.getByRole("button", { name: "Choose what becomes what" }).click();
 
   // --- step 2: what becomes what -------------------------------------------
 
@@ -166,7 +164,7 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
   await expect(hint).toHaveCount(0);
   await expect(dialog.getByText("4 of 4 pages kept")).toBeVisible();
 
-  await dialog.getByRole("button", { name: "Say which column is which" }).click();
+  await dialog.getByRole("button", { name: /Columns and people/ }).click();
 
   // --- step 3: the columns, and the words inside them -----------------------
 
@@ -207,18 +205,21 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
     await expect(dialog.getByText(question)).toHaveCount(0);
   }
 
-  await expect(
-    dialog.getByText("A people column is mapped, so the next step asks who those people are in Kanso."),
-  ).toBeVisible();
-  await dialog.getByRole("button", { name: "Match the people" }).click();
-
   // --- step 4: who these people are ----------------------------------------
 
   await expect(dialog.getByText("Who these people are")).toBeVisible();
-  await expect(dialog.getByText(person.name)).toBeVisible();
+  // The panel is mounted from the moment the dialog opens, not from this click, and
+  // `peopleSeen`'s query key is the plan itself — so every column mapped above restarts it.
+  // The default timeout races the *last* restart, triggered by the "En cours" select a few
+  // lines up; a generous one here is the cost of the request being real rather than stubbed
+  // into the component, which is the whole reason this file exists.
+  await expect(dialog.getByText(person.name)).toBeVisible({ timeout: 20_000 });
   // The only select on this step, one row per person the *mapped* columns name — and this
-  // workspace names one, on both task pages, counted once.
-  const match = dialog.getByRole("combobox");
+  // workspace names one, on both task pages, counted once. Scoped to that person's own row:
+  // the folded panel keeps every `StepColumns` select mounted beside this one now, so the
+  // dialog's own combobox count is no longer the bound this line is testing.
+  const personRow = dialog.locator("div").filter({ hasText: person.name }).last();
+  const match = personRow.getByRole("combobox");
   await expect(match).toHaveCount(1);
   await match.selectOption(me.user.id);
 
