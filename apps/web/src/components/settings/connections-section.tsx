@@ -103,7 +103,20 @@ export function ConnectionsSection({
       refresh(next);
     },
   });
-  const bootstrap = useMutation({ mutationFn: api.bootstrapNotion, onSuccess: refresh });
+  /**
+   * Refetched rather than written into the cache: the route answers the mirror's own
+   * reading — see `api.bootstrapNotion` — and this screen is drawn from the setup state,
+   * where the answer's fields do not exist. The queue below is read from the same call,
+   * so it is invalidated too.
+   */
+  const bootstrap = useMutation({
+    mutationFn: api.bootstrapNotion,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.setupState });
+      queryClient.invalidateQueries({ queryKey: keys.sync });
+      queryClient.invalidateQueries({ queryKey: keys.syncDetail });
+    },
+  });
   const saveGoogle = useMutation({
     mutationFn: () => api.saveGoogle({ clientId: clientId.trim(), clientSecret }),
     onSuccess: (next) => {
@@ -222,15 +235,21 @@ export function ConnectionsSection({
               >
                 Save
               </button>
-              {state.notion.configured && !state.notion.bootstrapped && (
-                <button
-                  className="button"
-                  disabled={bootstrap.isPending}
-                  onClick={() => bootstrap.mutate()}
-                >
-                  Create the databases
-                </button>
-              )}
+              {/* The saved page, not the field beside it: `NotionBootstrap` reads what is
+                  in Postgres, and connecting through Notion grants a token without granting
+                  a page. Offered on that state the button could only come back with the
+                  server's refusal. The note below says what to do instead. */}
+              {state.notion.configured &&
+                !state.notion.bootstrapped &&
+                state.notion.parentPageId && (
+                  <button
+                    className="button"
+                    disabled={bootstrap.isPending}
+                    onClick={() => bootstrap.mutate()}
+                  >
+                    Create the databases
+                  </button>
+                )}
             </SettingsInline>
             {test.data && <SettingsNote error={!test.data.ok}>{test.data.detail}</SettingsNote>}
             {test.isError && <SettingsNote error>{message(test.error)}</SettingsNote>}
@@ -239,7 +258,9 @@ export function ConnectionsSection({
             <SettingsNote>
               {state.notion.bootstrapped
                 ? "The four mirrored databases exist."
-                : "The databases have not been created yet; nothing can be pushed until they are."}
+                : state.notion.configured && !state.notion.parentPageId
+                  ? "Choose a parent page above and save: Kanso creates its four databases under it, and until it has one there is nowhere to create them."
+                  : "The databases have not been created yet; nothing can be pushed until they are."}
             </SettingsNote>
 
             {/* Screen 24's way in. The import reads Notion and writes Kanso, which is the

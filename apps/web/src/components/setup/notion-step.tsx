@@ -1,12 +1,13 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { NotionPeopleSection } from "@/components/settings/notion-people-section";
 import { api, type SetupState } from "@/lib/api";
 import { useMe } from "@/lib/queries";
 import { canConfigure as configures } from "@/lib/seat";
+import { setupKeys } from "./data";
 import { Callout, Divider, TextField, messageFor } from "./fields";
 import { NotionConnect } from "./notion-connect";
 import { NotionImportCard } from "./notion-import-card";
@@ -50,7 +51,14 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
   const [importing, setImporting] = useState(false);
 
   const test = useMutation({ mutationFn: api.testNotion });
-  const bootstrap = useMutation({ mutationFn: api.bootstrapNotion, onSuccess: onState });
+  const queryClient = useQueryClient();
+  const bootstrap = useMutation({
+    mutationFn: api.bootstrapNotion,
+    // Refetched, not written. The route answers the mirror's status — see
+    // `api.bootstrapNotion` — and `bootstrapped` on this screen is the setup route's own
+    // count of `notion_databases`, which only that route can tell us.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: setupKeys.state }),
+  });
   const save = useMutation({
     mutationFn: api.saveNotion,
     onSuccess: (next) => {
@@ -169,7 +177,14 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
           <div className="flex flex-wrap items-center gap-2">
             {stored.bootstrapped ? (
               <span className="text-11 text-faint">Databases already created in Notion.</span>
-            ) : (
+            ) : /*
+               * Drawn from the *saved* page and not from the field above it, because that is
+               * what `NotionBootstrap` reads. Connecting through Notion grants a token and
+               * no page, which is the state every instance passes through — and the button
+               * offered there had exactly one outcome, the server's "No Notion parent page
+               * configured", three screens away from the field that answers it.
+               */
+            stored.parentPageId ? (
               <>
                 <button
                   type="button"
@@ -183,6 +198,11 @@ export function NotionStep({ head, state, onState, onDone, onSkip, onBack }: Pro
                   Tickets, teams and projects, once. Safe to leave for later.
                 </span>
               </>
+            ) : (
+              <span className="text-11 text-faint">
+                Choose the parent page above and save this step — Kanso creates its four
+                databases under that page, and has nowhere to put them until it has one.
+              </span>
             )}
           </div>
         )}

@@ -1134,7 +1134,14 @@ export const api = {
       headers: token ? { "X-Notion-Token": token } : {},
     }),
 
-  bootstrapNotion: () => request<SetupState>("/api/admin/notion/bootstrap", { method: "POST" }),
+  /**
+   * Answers the mirror's own reading — the four ids it has just created — and not a setup
+   * state, which is what `SyncAdminController.bootstrapNotion` says it returns and why.
+   * Typed as one for long enough that both callers wrote it straight into the setup cache,
+   * where `notion` is not a field: the screen that had just created the databases went
+   * blank on its next render. A caller that draws `bootstrapped` refetches instead.
+   */
+  bootstrapNotion: () => request<SyncDetail>("/api/admin/notion/bootstrap", { method: "POST" }),
 
   saveGoogle: (body: { clientId: string; clientSecret: string }) =>
     request<SetupState>("/api/setup/google", { method: "POST", body: JSON.stringify(body) }),
