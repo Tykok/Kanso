@@ -414,7 +414,19 @@ export type TimelineTicket = {
   /** Absent for a ticket with no dependencies: it has no slack to report. */
   slackMinutes?: number;
   critical: boolean;
+  /**
+   * The due date has gone by and nobody has finished or cancelled it. A fact about this
+   * ticket alone, which is why a list row can print it without loading a timeline.
+   */
   late: boolean;
+  /**
+   * The critical path says this will overrun: slack is negative.
+   *
+   * This is what `late` used to mean on this type, and the split is the point — the bar
+   * announced negative slack as "overdue", so a screen reader said a ticket was late when
+   * its due date was three weeks away. A bar in both states draws `late`.
+   */
+  slipping: boolean;
   /** Whose ticket this is, printed before the identifier on a context row. */
   teamKey: string;
   /** Drawn for reading: outside the scope, not selectable, never draggable. */

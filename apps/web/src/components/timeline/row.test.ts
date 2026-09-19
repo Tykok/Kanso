@@ -24,6 +24,7 @@ const ticket = (overrides: Partial<TimelineTicket> = {}): TimelineTicket => ({
   status: "todo",
   critical: false,
   late: false,
+  slipping: false,
   teamKey: "KAN",
   context: false,
   editable: true,

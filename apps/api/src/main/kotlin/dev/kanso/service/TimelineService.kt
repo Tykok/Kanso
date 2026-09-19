@@ -14,6 +14,8 @@ import dev.kanso.schedule.Edge
 import dev.kanso.schedule.Node
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 
 data class TimelineProject(
@@ -38,7 +40,25 @@ data class TimelineTicket(
 	/** Null for an unscheduled ticket or one with no dependencies. */
 	val slackMinutes: Long?,
 	val critical: Boolean,
+
+	/**
+	 * The due date has passed and nobody has finished or cancelled it.
+	 *
+	 * A fact about this ticket alone — no graph, no projection — which is exactly why it is
+	 * the one a filter can be built on and the one a list row can print without loading a
+	 * timeline. [slipping] is the other half, and the two were one field under this name
+	 * until `bar-style.ts` was caught announcing a forecast as `overdue`.
+	 */
 	val late: Boolean,
+
+	/**
+	 * The critical path says this will overrun: slack is negative.
+	 *
+	 * This is what [late] used to mean, and the rename is the point. A ticket can be both,
+	 * and a bar draws [late] first — a fact beats a forecast, because a ticket whose date
+	 * has already passed is not *projected* to do anything.
+	 */
+	val slipping: Boolean,
 	/** Outside the filter the reader asked for: drawn because it explains their dates. */
 	val context: Boolean,
 	/** May this reader move it — the same rule the mutations enforce, answered once here. */
@@ -188,6 +208,10 @@ class TimelineService(
 		// One call for every team drawn: the rule costs a couple of queries per distinct
 		// team, and asking it per ticket would be two thousand ancestor walks.
 		val editableTeams = access.editableTeams(actor, drawn.mapNotNull { it.teamId }.toSet())
+		// Read once for the whole response rather than per ticket. A response assembled
+		// across midnight would otherwise disagree with itself about which day it is, and
+		// two tickets with the same due date would come back with different answers.
+		val today = LocalDate.now(ZoneOffset.UTC)
 
 		return TimelineView(
 			projects = projectRows(own, drawn, projectId, teamIds),
@@ -204,7 +228,8 @@ class TimelineService(
 					due = ticket.due,
 					slackMinutes = minutes,
 					critical = minutes == 0L,
-					late = minutes != null && minutes < 0L,
+					late = isLate(ticket, today),
+					slipping = minutes != null && minutes < 0L,
 					context = ticket.id !in ownIds,
 					// The server's answer, so the client has no rule to re-derive and
 					// no membership graph to hold.
@@ -241,6 +266,30 @@ class TimelineService(
 	 * never examines that edge at all. This reports what is broken *now*, including
 	 * breakage that predates every request.
 	 */
+	/**
+	 * Whether the due date has gone by on work nobody has closed.
+	 *
+	 * **UTC on both sides, and that is the whole of the correctness here.** A due date with
+	 * `hasTime` false names a *day* and is stored as that day's midnight in UTC — see
+	 * `KansoInstant`. Comparing it against the server's local date would make a ticket late
+	 * a day early for a server east of Greenwich and a day late for one west of it, on data
+	 * nobody touched, and the bug would only ever show on instances hosted outside UTC.
+	 *
+	 * A ticket due *today* is not late, which is why this is `isBefore` and not `!isAfter`.
+	 * The day is not over, and a badge that lit at midnight on the due date itself would
+	 * accuse somebody of being late on the morning they were given.
+	 *
+	 * The category and never the status key — `KAN-90`. A team may call finished work
+	 * anything, so `status == "done"` is a sentence this class is not allowed to write.
+	 */
+	private fun isLate(ticket: Ticket, today: LocalDate): Boolean {
+		val due = ticket.due ?: return false
+		val day = due.at.withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()
+		if (!day.isBefore(today)) return false
+		val category = statusCategories.categoryOf(ticket.teamId, ticket.status)
+		return category != StatusCategory.COMPLETED && category != StatusCategory.CANCELED
+	}
+
 	private fun brokenEdges(byId: Map<UUID, Ticket>, edges: List<Edge>, categories: Categories): Map<Edge, Boolean> =
 		edges.mapNotNull { edge ->
 			val predecessorEnd = byId[edge.predecessorId]?.let { it.due?.at ?: it.start?.at }
