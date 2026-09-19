@@ -30,8 +30,13 @@ import { StepPeople } from "./import-step-people";
  *
  * Folding hides the children with an inline `display: none` rather than unmounting them —
  * the wrapper carries `flex flex-col gap-4` from a class, which a bare `hidden` attribute
- * loses to — so `StepPeople`'s own `edits` state (kept local on purpose: a seeded guess
- * must not be written in until somebody has looked at it) survives a close and a reopen.
+ * loses to — so a close and a reopen on this screen cost nothing. Crossing to the
+ * confirmation screen and back is a different kind of unmount, though: `ImportPlan` and
+ * everything folded beneath it, this component included, leaves the tree while step 2 is
+ * on screen and remounts fresh on Back. `mappings` and `people` survive that because the
+ * shell re-derives them from its own state on every render; `StepPeople`'s `edits` cannot
+ * be re-derived — it is what the reader typed, not a guess — so it lives in
+ * `import-dialog.tsx` instead and arrives here as a prop. See `edits` there for why.
  *
  * The cost is real and worth naming rather than hiding: `StepPeople` fires `peopleSeen` as
  * soon as it mounts, so every plan with a mapped people column pays that request whether or
@@ -48,9 +53,11 @@ export function ImportDetails({
   teams,
   projects,
   plan,
+  edits,
   onMapping,
   onSeed,
   onFallback,
+  onEdit,
   onPeople,
   onLoading,
 }: {
@@ -61,9 +68,12 @@ export function ImportDetails({
   teams: Team[];
   projects: Project[];
   plan: NotionImportPlanRow[];
+  /** The person correspondence's edits, lifted above `StepPeople` — see `import-dialog.tsx`. */
+  edits: Record<string, string | null>;
   onMapping: (sourceId: string, mapping: BaseMapping) => void;
   onSeed: (sourceId: string, seed: BaseMapping) => void;
   onFallback: (sourceId: string, fallback: Fallback) => void;
+  onEdit: (id: string, value: string | null) => void;
   onPeople: (people: Record<string, string | null>) => void;
   /** Whether `StepColumns` or `StepPeople` is still waiting on a request — see
    *  `import-plan.tsx`'s Preview button, which this reaches through the shell. */
@@ -97,7 +107,11 @@ export function ImportDetails({
         <span className="text-faint">{open ? "▴" : "▾"}</span>
       </button>
 
-      <div className="flex flex-col gap-4" style={open ? undefined : { display: "none" }}>
+      <div
+        data-testid="import-details-body"
+        className="flex flex-col gap-4"
+        style={open ? undefined : { display: "none" }}
+      >
         <StepColumns
           bases={bases}
           kept={kept}
@@ -110,7 +124,13 @@ export function ImportDetails({
           onFallback={onFallback}
           onLoading={setColumnsLoading}
         />
-        <StepPeople plan={plan} onPeople={takePeople} onLoading={setPeopleLoading} />
+        <StepPeople
+          plan={plan}
+          edits={edits}
+          onEdit={onEdit}
+          onPeople={takePeople}
+          onLoading={setPeopleLoading}
+        />
       </div>
     </div>
   );

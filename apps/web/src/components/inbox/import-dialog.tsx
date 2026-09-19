@@ -49,9 +49,24 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
    * unassigned rather than guessed at.
    */
   const [people, setPeople] = useState<Record<string, string | null>>({});
+  /**
+   * What the reader has changed about a person match — lifted up here for the same reason
+   * `people` is, and for one more: `ImportPlan`, and everything folded beneath it including
+   * `StepPeople`, unmounts when the shell moves to step 2, so state kept inside that
+   * component does not survive a Back. A local `edits` re-created empty on the remount
+   * would re-seed every row from the standing correspondence and silently drop a match the
+   * reader just made — invisible on this branch because Back now lands on the folded plan
+   * screen rather than on the people screen with the `<select>` visibly back at
+   * "Unmatched". Keeping it here means the remount gets the same `edits` back.
+   */
+  const [edits, setEdits] = useState<Record<string, string | null>>({});
   /** Preview has to stay dead while `StepColumns` or `StepPeople` is still mid-request — see
    *  their own comments for why leaving early would throw away a suggestion nobody chose. */
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const setEdit = (id: string, value: string | null) => {
+    setEdits((current) => ({ ...current, [id]: value }));
+  };
 
   const discovered = useQuery({
     queryKey: ["notion-import-sources"],
@@ -240,9 +255,11 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
                   teams={destinations}
                   projects={projects.data ?? []}
                   plan={plan}
+                  edits={edits}
                   onMapping={setBaseMapping}
                   onSeed={seedMapping}
                   onFallback={setFallback}
+                  onEdit={setEdit}
                   onPeople={setPeople}
                   onLoading={setDetailsLoading}
                 />
