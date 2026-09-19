@@ -1,7 +1,7 @@
 "use client";
 
 import { TimelineBar, type BarEdit } from "./bar";
-import type { Row } from "./view";
+import type { LaneRow as Row, Row as AnyRow } from "./rows";
 import type { TimelineDependency } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
 import { categoryOf } from "@/lib/status";
@@ -71,7 +71,7 @@ export function isContextRow(row: Row) {
  * -1 for a project row as much as for an absent one: a project is not a ticket, and the
  * cursor the chart scrolls to is always a ticket's.
  */
-export function laneOf(rows: readonly Row[], ticketId: string | undefined): number {
+export function laneOf(rows: readonly AnyRow[], ticketId: string | undefined): number {
   if (ticketId === undefined) return -1;
   return rows.findIndex((row) => row.kind === "ticket" && row.ticket.id === ticketId);
 }

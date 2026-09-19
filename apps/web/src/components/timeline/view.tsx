@@ -15,6 +15,7 @@ import { barAt, type BarEdit } from "./bar";
 import { TimelineGrid } from "./grid";
 import { laneOf, TimelineRow } from "./row";
 import { TimelineTray } from "./tray";
+import { buildRows, rowKey, type Row } from "./rows";
 import type {
   KansoInstant,
   TimelineDependency,
@@ -41,16 +42,10 @@ import {
 import { useUi } from "@/store/ui";
 
 /**
- * A lane of the chart. Exported because `row.tsx` draws one and, later, the arrow layer
- * has to find the vertical position of a ticket by walking the same order.
+ * Re-exported so the three files that draw a lane keep importing it from here, which is
+ * where it lived before the grouping rule moved into its own tested module.
  */
-export type Row =
-  | { kind: "project"; project: TimelineProject }
-  | { kind: "ticket"; ticket: TimelineTicket };
-
-/** Project and ticket ids come from different tables, so the kind is part of the key. */
-const rowKey = (row: Row) =>
-  row.kind === "project" ? `project:${row.project.id}` : `ticket:${row.ticket.id}`;
+export type { Row } from "./rows";
 
 /** A week of air either side, so the first bar is not flush against the axis. */
 const PADDING_DAYS = 7;
@@ -218,34 +213,11 @@ export function TimelineView({
   }, [view]);
 
   /**
-   * Rows in reading order: each project once, its tickets under it, and the
-   * project-less tickets last under no heading. A project with no scheduled tickets
-   * still gets its row — its bar may come from an explicit bound.
+   * Rows in reading order. The rule itself lives in `rows.ts` and is tested there: it is a
+   * decision about what somebody reads, so it belongs somewhere a table of inputs can
+   * assert it rather than inside a component that has to be rendered to ask.
    */
-  const rows = useMemo<Row[]>(() => {
-    if (!view) return [];
-
-    const byProject = new Map<string | undefined, TimelineTicket[]>();
-    for (const ticket of view.tickets) {
-      const key = ticket.projectId;
-      byProject.set(key, [...(byProject.get(key) ?? []), ticket]);
-    }
-
-    const grouped = view.projects.flatMap((project): Row[] => [
-      { kind: "project", project },
-      ...(byProject.get(project.id) ?? []).map((ticket): Row => ({ kind: "ticket", ticket })),
-    ]);
-
-    // Whatever is left: no project, or a project the response did not carry a row for
-    // — an archived one, say. Falling out of the grouping would drop the ticket from
-    // the chart entirely, which is a worse answer than an unheaded row.
-    const placed = new Set(view.projects.map((project) => project.id));
-    const orphans = view.tickets
-      .filter((ticket) => ticket.projectId === undefined || !placed.has(ticket.projectId))
-      .map((ticket): Row => ({ kind: "ticket", ticket }));
-
-    return [...grouped, ...orphans];
-  }, [view]);
+  const rows = useMemo<Row[]>(() => buildRows(view), [view]);
 
   /**
    * The chart's scroller and the block of lanes inside it.
@@ -566,15 +538,30 @@ export function TimelineView({
                 className="absolute left-0 top-0 w-full"
                 style={{ transform: `translateY(${item.start - laneMargin}px)` }}
               >
-                <TimelineRow
-                  row={rows[item.index]}
-                  deps={view?.dependencies ?? []}
-                  nameOf={nameOf}
-                  origin={bounds.origin}
-                  zoom={zoom}
-                  timezone={timezone}
-                  control={control}
-                />
+                {/*
+                  * A team heading spans the column and draws nothing against the time axis,
+                  * so it is rendered here rather than handed to `TimelineRow` — which takes
+                  * `LaneRow` precisely so that the case it cannot draw is unrepresentable.
+                  * It appears only on a scope spanning more than one team; `rows.ts` says why.
+                  */}
+                {rows[item.index].kind === "team" ? (
+                  <div
+                    className="flex h-full items-center px-2 text-11 font-medium text-faint"
+                    style={{ width: "var(--tl-names)" }}
+                  >
+                    {(rows[item.index] as { kind: "team"; teamKey: string }).teamKey}
+                  </div>
+                ) : (
+                  <TimelineRow
+                    row={rows[item.index] as Exclude<Row, { kind: "team" }>}
+                    deps={view?.dependencies ?? []}
+                    nameOf={nameOf}
+                    origin={bounds.origin}
+                    zoom={zoom}
+                    timezone={timezone}
+                    control={control}
+                  />
+                )}
               </div>
             ))}
           </div>
