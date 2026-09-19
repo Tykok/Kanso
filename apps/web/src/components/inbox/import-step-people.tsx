@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -27,20 +27,27 @@ const EMPTY_VIEW: NotionPeopleView = { available: true, people: [] };
  * in settings, is never asked about again; a row with only a guess carries the word
  * "suggested" until the reader has actually looked at it — see [buildAssignments].
  *
- * [edits] is local and holds only what the reader has touched, never a seeded pre-fill:
- * `<select>` shows the guess so it can be accepted, but nothing here writes it in until the
- * reader has. [onPeople] is told the computed write on every change, so the plan screen's
- * own Preview button always sees the latest map without this component needing to reach
- * back into the shell's own state. Nothing here writes for real either way —
- * `NotionPeople.link` runs only once the import is confirmed, through
- * `notionImportApi.confirm`'s `people` field.
+ * [edits] holds only what the reader has touched, never a seeded pre-fill: `<select>`
+ * shows the guess so it can be accepted, but nothing here writes it in until the reader
+ * has. It is lifted into `import-dialog.tsx` rather than kept as this component's own
+ * state — `Back` from the confirmation unmounts everything folded under `ImportPlan`,
+ * this component included, and a local `edits` would restart empty on the way back,
+ * silently dropping a match the reader had already made. [onPeople] is told the computed
+ * write on every change, so the plan screen's own Preview button always sees the latest
+ * map without this component needing to reach back into the shell's own state. Nothing
+ * here writes for real either way — `NotionPeople.link` runs only once the import is
+ * confirmed, through `notionImportApi.confirm`'s `people` field.
  */
 export function StepPeople({
   plan,
+  edits,
+  onEdit,
   onPeople,
   onLoading,
 }: {
   plan: NotionImportPlanRow[];
+  edits: Record<string, string | null>;
+  onEdit: (id: string, value: string | null) => void;
   onPeople: (people: Record<string, string | null>) => void;
   /** `peopleSeen`'s query key is the plan itself, so a target or column change re-keys it —
    *  reported as `isFetching` rather than `isLoading` so the shell sees that refetch too,
@@ -58,7 +65,6 @@ export function StepPeople({
     retry: false,
   });
   const members = usePeople();
-  const [edits, setEdits] = useState<Record<string, string | null>>({});
 
   const rows = useMemo<PersonRow[]>(
     () => seenPeopleRows(seen.data ?? [], known.data ?? EMPTY_VIEW),
@@ -138,9 +144,7 @@ export function StepPeople({
                 </span>
                 <select
                   value={value}
-                  onChange={(event) =>
-                    setEdits((current) => ({ ...current, [row.id]: event.target.value || null }))
-                  }
+                  onChange={(event) => onEdit(row.id, event.target.value || null)}
                 >
                   <option value="">Unmatched</option>
                   {sortedMembers.map((member) => (

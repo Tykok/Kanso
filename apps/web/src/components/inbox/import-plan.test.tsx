@@ -107,9 +107,11 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
           teams={[]}
           projects={[]}
           plan={[]}
+          edits={{}}
           onMapping={noop}
           onSeed={noop}
           onFallback={noop}
+          onEdit={noop}
           onPeople={noop}
           onLoading={noop}
         />
@@ -217,9 +219,11 @@ describe("the Preview button waits for the folded panel", () => {
               teams={[]}
               projects={[]}
               plan={[]}
+              edits={{}}
               onMapping={noop}
               onSeed={noop}
               onFallback={noop}
+              onEdit={noop}
               onPeople={noop}
               onLoading={setBusy}
             />
