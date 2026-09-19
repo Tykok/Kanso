@@ -475,7 +475,22 @@ export function TimelineView({
     // corner it is meant to sit in. Both are children of `.main`, which is the column
     // that gives the chart the height left over.
     <>
-      <TimelineTray items={view?.unscheduled ?? []} control={trayControl} />
+      {/*
+       * Derived here rather than sent as its own list, which the response no longer carries:
+       * the column replacing this tray is the next task, and reading the undated rows out of
+       * `tickets` keeps the screen behaving exactly as it did in the meantime rather than
+       * leaving a half-built one on the branch.
+       */}
+      <TimelineTray
+        items={(view?.tickets ?? [])
+          .filter((ticket) => !ticket.start && !ticket.due)
+          .map((ticket) => ({
+            id: ticket.id,
+            identifier: ticket.identifier,
+            title: ticket.title,
+          }))}
+        control={trayControl}
+      />
 
       {/*
        * A cap was hit server-side: the drawing is missing bars and has no next page to
