@@ -1,7 +1,7 @@
 "use client";
 
 import { TimelineBar, type BarEdit } from "./bar";
-import type { Row } from "./view";
+import type { LaneRow as Row, Row as AnyRow } from "./rows";
 import type { TimelineDependency } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
 import { categoryOf } from "@/lib/status";
@@ -25,6 +25,15 @@ export type RowControl = {
   /** Released at a point on the page. The view decides what, if anything, was under it. */
   onLinkEnd: (x: number, y: number) => void;
   onLinkCancel: () => void;
+  /**
+   * The two halves of "drag an undated row onto a day", which the tray used to own.
+   *
+   * They are on the row rather than on a component of their own because the gesture moved
+   * with the tickets: the source is now the row you were already looking at, not a chip in
+   * a heap above the chart.
+   */
+  onPlanDragMove: (x: number, y: number) => void;
+  onPlanDrop: (ticketId: string, x: number, y: number) => void;
 };
 
 /**
@@ -71,7 +80,7 @@ export function isContextRow(row: Row) {
  * -1 for a project row as much as for an absent one: a project is not a ticket, and the
  * cursor the chart scrolls to is always a ticket's.
  */
-export function laneOf(rows: readonly Row[], ticketId: string | undefined): number {
+export function laneOf(rows: readonly AnyRow[], ticketId: string | undefined): number {
   if (ticketId === undefined) return -1;
   return rows.findIndex((row) => row.kind === "ticket" && row.ticket.id === ticketId);
 }
@@ -161,6 +170,24 @@ export function TimelineRow({
           </span>
         )}
         {name}
+        {/*
+          * Overdue lives on the name, not on the bar.
+          *
+          * It was a bar state until the e2e suite made the cost visible: `late` outranks
+          * `critical` on a bar, and once `late` meant "the due date has gone by" rather
+          * than "slack is negative" it became the common case — so on an instance with any
+          * history every bar read late and criticality was invisible behind it. Two facts
+          * about one ticket needed two places, and the name column is the one that was free.
+          *
+          * A word and not a colour: a hue on the identifier is lost to a colour-blind
+          * reader and to a greyscale print, and it would collide with the context row's
+          * italics. `title` rather than a tooltip component — the cell already uses one.
+          */}
+        {row.kind === "ticket" && row.ticket.late && (
+          <span className="ml-1.5 rounded-sm bg-urgent/15 px-1 text-10 not-italic text-urgent">
+            Overdue
+          </span>
+        )}
       </div>
       <div
         className={`group/lane relative shrink-0 basis-[var(--tl-chart)] ${context ? "opacity-55" : ""}`}
@@ -233,7 +260,36 @@ function bar(
   const { ticket } = row;
   const start = ticket.start ?? ticket.due;
   const end = ticket.due ?? ticket.start;
-  if (!start || !end) return null;
+
+  /**
+   * Nobody has dated it, so there is no bar — not a placeholder, not a ghost at today, not
+   * a zero-width tick. A bar is a claim about days and this ticket makes none.
+   *
+   * What the lane carries instead is the gesture: a small handle at the left edge that can
+   * be dragged onto a day, which is the tray's one good idea kept and moved to where the
+   * ticket already is. It is drawn only when the chart can be planned on at all, for the
+   * same three reasons a bar answers to.
+   */
+  if (!start || !end) {
+    if (!canMoveTicket(ticket, control.canPlan)) return null;
+    return (
+      <button
+        type="button"
+        aria-label={`Schedule ${ticket.identifier}`}
+        className="absolute left-0 top-1/2 z-[1] h-3 w-6 -translate-y-1/2 cursor-grab rounded-sm border border-dashed border-border active:cursor-grabbing"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          control.onSelect(ticket.id);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            control.onPlanDragMove(event.clientX, event.clientY);
+          }
+        }}
+        onPointerUp={(event) => control.onPlanDrop(ticket.id, event.clientX, event.clientY)}
+      />
+    );
+  }
 
   const bounds = { start: ticket.start !== undefined, end: ticket.due !== undefined };
 
@@ -248,7 +304,13 @@ function bar(
       kind="ticket"
       // Late first: a late ticket is critical too, and the worse of the two is what the
       // reader has to be told.
-      state={ticket.late ? "late" : ticket.critical ? "critical" : "normal"}
+      // Late, then slipping, then critical. A fact beats a forecast: a ticket whose date
+      // has already passed is not "projected" to do anything, and drawing the prediction
+      // over the event would be the screen preferring its arithmetic to what happened.
+      // No `late` here any more — it is a pill on the name. A bar says what the *schedule*
+      // is doing: slipping, critical, or neither. Whether a deadline has passed is a fact
+      // about the ticket, and it was drowning the other two.
+      state={ticket.slipping ? "slipping" : ticket.critical ? "critical" : "normal"}
       label={ticket.title}
       start={start}
       end={end}

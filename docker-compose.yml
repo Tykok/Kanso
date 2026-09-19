@@ -9,8 +9,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-kanso}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kanso}
     ports:
-      # Exposed so you can psql / point a local API run at it.
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Exposed so you can psql / point a local API run at it — to *this* machine and not
+      # to the network. A compose `ports:` entry with no address binds 0.0.0.0, and Docker
+      # installs its own DNAT rules ahead of the host firewall, so a `ufw deny 5432` does
+      # not cover it: without the prefix this is `kanso`/`kanso` on tcp/5432 to everyone on
+      # the café wifi. BIND_ADDRESS is there for the one honest reason to widen it — the
+      # stack running on a VM or a remote box, browsed from a laptop — and `.env.example`
+      # says what widening it costs, which is `KANSO_AUTH_MODE=dev` on the network.
+      - "${BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - kanso-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -108,7 +114,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${API_PORT:-8080}:8080"
+      # Loopback by default, and this is the port `application.yml` names as the one that
+      # must not be published: `forward-headers-strategy: framework` is set unconditionally,
+      # so a caller that reaches the JVM with no Caddy in the way claims whatever origin and
+      # whatever address it likes. See the `db` service for BIND_ADDRESS.
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:8080"
     volumes:
       # Holds the generated encryption key. Lose this volume without having set
       # KANSO_SECRET_KEY and the stored Notion and Google secrets have to be
@@ -135,7 +145,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8080}
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
 
 volumes:
   kanso-pgdata:

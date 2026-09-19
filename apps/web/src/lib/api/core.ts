@@ -414,7 +414,19 @@ export type TimelineTicket = {
   /** Absent for a ticket with no dependencies: it has no slack to report. */
   slackMinutes?: number;
   critical: boolean;
+  /**
+   * The due date has gone by and nobody has finished or cancelled it. A fact about this
+   * ticket alone, which is why a list row can print it without loading a timeline.
+   */
   late: boolean;
+  /**
+   * The critical path says this will overrun: slack is negative.
+   *
+   * This is what `late` used to mean on this type, and the split is the point — the bar
+   * announced negative slack as "overdue", so a screen reader said a ticket was late when
+   * its due date was three weeks away. A bar in both states draws `late`.
+   */
+  slipping: boolean;
   /** Whose ticket this is, printed before the identifier on a context row. */
   teamKey: string;
   /** Drawn for reading: outside the scope, not selectable, never draggable. */
@@ -436,13 +448,27 @@ export type TimelineDependency = {
 
 export type TimelineUnscheduled = { id: string; identifier: string; title: string };
 
+/** How the column is stacked. Mirrors `TimelineSort` — three orders and no fourth. */
+export const TIMELINE_SORTS = ["start", "priority", "due"] as const;
+export type TimelineSort = (typeof TIMELINE_SORTS)[number];
+
+/**
+ * What the column asks for beyond the scope. Absent means the server's own defaults —
+ * `start` and everything shown — which is what the screen opens on.
+ */
+export type TimelineOptions = { sort?: TimelineSort; hideCompleted?: boolean };
+
 export type TimelineView = {
   projects: TimelineProject[];
   tickets: TimelineTicket[];
   dependencies: TimelineDependency[];
-  unscheduled: TimelineUnscheduled[];
-  /** The scope hit `SCOPE_LIMIT`, so bars are missing and the chart has to say so. */
+  /**
+   * The *shared* widening hit `SCOPE_LIMIT`, so bars are missing and the chart has to say
+   * so. The scope itself is paged rather than capped — see `hasMore`.
+   */
   truncated: boolean;
+  /** Another page of the column exists. Nothing is missing from the drawing; scroll. */
+  hasMore: boolean;
 };
 
 /** What a dependency write returns: the tickets its cascade moved. */
@@ -1360,6 +1386,12 @@ export const api = {
     /** Absent files a draft — see `Ticket.identifier` for what that costs it. */
     teamId?: string;
     title: string;
+    /**
+     * Absent rather than empty when the composer is folded, which is every creation that
+     * does not start from a template. `TicketService.create` has accepted a description
+     * since `V1`; this type simply never offered one, because no screen had a field for it.
+     */
+    description?: string;
     status?: TicketStatus;
     priority?: TicketPriority;
     estimate?: EffortPoints;
@@ -1435,14 +1467,19 @@ export const api = {
   // --- timeline ------------------------------------------------------------
 
   /**
-   * One GET for the whole screen. Neither filter is a page: bounds, slack and the
-   * arrows are computed together, so they have to arrive together.
+   * One GET for the whole screen, and `page` bounds the **column** rather than the chart.
+   *
+   * Bounds, slack and the arrows are still computed together and still arrive together —
+   * a Gantt showing two pages of a shape would show two plans. What pages is the list
+   * beside it, which holds every ticket in scope including finished work.
    */
-  timeline: (scope: Scope) =>
+  timeline: (scope: Scope, options?: TimelineOptions) =>
     request<TimelineView>(
       `/api/timeline${query({
         teamId: scope.kind === "team" ? scope.id : undefined,
         projectId: scope.kind === "project" ? scope.id : undefined,
+        sort: options?.sort,
+        hideCompleted: options?.hideCompleted ? "true" : undefined,
       })}`,
     ),
 

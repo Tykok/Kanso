@@ -72,7 +72,15 @@ class TicketLinkService(
 		if (fromId == toId) throw BadRequestException("A ticket cannot ${type.wire} itself")
 
 		if (!links.link(fromId, toId, type)) return emptyList()
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, fromId, from.teamId, from.projectId))
+		events.publish(
+			KansoEvent.ticket(
+				ChangeKind.UPDATED,
+				fromId,
+				from.teamId,
+				from.projectId,
+				from.createdBy,
+			),
+		)
 		return emptyList()
 	}
 
@@ -85,6 +93,14 @@ class TicketLinkService(
 		if (!links.unlink(fromId, toId, type)) {
 			throw NotFoundException("No ${type.wire} link $fromId -> $toId")
 		}
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, fromId, from.teamId, from.projectId))
+		events.publish(
+			KansoEvent.ticket(
+				ChangeKind.UPDATED,
+				fromId,
+				from.teamId,
+				from.projectId,
+				from.createdBy,
+			),
+		)
 	}
 }

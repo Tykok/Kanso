@@ -244,8 +244,8 @@ class TrashSourcesTest : PostgresTest() {
 
 		views.delete(admin, view.id)
 
-		assertTrue(views.list(team.id).isEmpty(), "the sidebar rail is a live read")
-		assertFailsWith<NotFoundException> { views.get(view.id) }
+		assertTrue(views.list(admin, team.id).isEmpty(), "the sidebar rail is a live read")
+		assertFailsWith<NotFoundException> { views.get(admin, view.id) }
 		val row = trashRow(view.id)
 		assertEquals(TrashKind.VIEW, row.kind)
 		assertEquals("Slipping", row.label)
@@ -261,7 +261,7 @@ class TrashSourcesTest : PostgresTest() {
 
 		trash.restore(admin, TrashKind.VIEW, view.id)
 
-		assertEquals(listOf("Slipping"), views.list(team.id).map { it.view.name })
+		assertEquals(listOf("Slipping"), views.list(admin, team.id).map { it.view.name })
 		assertTrue(trash.load().trash.isEmpty())
 	}
 
@@ -274,7 +274,7 @@ class TrashSourcesTest : PostgresTest() {
 		trash.purge(admin, TrashKind.VIEW, view.id)
 
 		assertTrue(trash.load().trash.isEmpty())
-		assertFailsWith<NotFoundException> { views.get(view.id) }
+		assertFailsWith<NotFoundException> { views.get(admin, view.id) }
 	}
 
 	/**

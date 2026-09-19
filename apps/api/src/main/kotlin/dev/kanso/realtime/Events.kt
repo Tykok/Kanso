@@ -31,11 +31,25 @@ data class KansoEvent(
 	 * gives. This is an identity, which is all the rest of the payload is.
 	 */
 	val blockId: UUID? = null,
+	/**
+	 * Who wrote the row, carried for one case: a ticket with no team.
+	 *
+	 * A draft is the one entity on this bus whose *existence* is private.
+	 * `TicketAccess.requireReadable` answers 404 rather than 403 for one — a 403 tells
+	 * somebody walking UUIDs that the row is there, which is the single thing a draft must
+	 * not say — and [destinations] used to say it anyway, to every open tab in the instance,
+	 * with the id and the moment it was touched. Scope, and the same kind of scope as
+	 * [teamId]; it is not carried for any other reason and no receiver reads it.
+	 */
+	val createdBy: UUID? = null,
 	/** "kanso" for a user action, "notion" when the inbound poller applied it. */
 	val origin: String = "kanso",
 	val at: OffsetDateTime = OffsetDateTime.now(),
 ) {
-	/** Broadcast destinations. Everything lands on the entity topic; team-scoped views get a narrower one. */
+	/**
+	 * Broadcast destinations. Most rows land on the entity topic and team-scoped views get a
+	 * narrower one beside it; presence and a team-less ticket get the narrow one instead.
+	 */
 	fun destinations(): List<String> = buildList {
 		// Presence is the one entity with no wide topic, and the exception is the point of
 		// it. "Who is reading page X" interests the people reading page X and nobody else,
@@ -48,6 +62,19 @@ data class KansoEvent(
 			add(viewersTopic(id))
 			return@buildList
 		}
+		// A ticket with no team is a draft, and the wide topic is exactly what it may not
+		// have: every browser in the instance is subscribed to `/topic/tickets`, so a row
+		// `GET /api/tickets/{id}` answers 404 for was announced to all of them. Its author
+		// is the one person the HTTP layer would show it to, so they are the one person told
+		// — and when nobody can be named, nobody is told. Fail-closed on purpose: a draft
+		// whose author is unknown here is a draft this bus has nothing safe to say about,
+		// and a tab that misses the update refetches on its next navigation. Only
+		// `tickets`, because a team-less *project* is transverse by design and instance-wide
+		// on purpose — see `ProjectService`.
+		if (entity == TICKETS && teamId == null) {
+			createdBy?.let { add(authorTopic(it, entity)) }
+			return@buildList
+		}
 		add("/topic/$entity")
 		teamId?.let { add("/topic/teams/$it/$entity") }
 	}
@@ -55,6 +82,20 @@ data class KansoEvent(
 	companion object {
 		/** The [entity] presence travels under. Not a topic anybody subscribes to directly. */
 		const val VIEWERS = "doc_viewers"
+
+		/** The [entity] whose team-less rows are private rather than transverse. */
+		const val TICKETS = "tickets"
+
+		/**
+		 * Where a row nobody else may see is announced to the one person who may.
+		 *
+		 * Mirrored by `topicsFor` in `apps/web/src/lib/realtime-events.ts`, which is the
+		 * usual hazard of a computed destination: a mismatch is a feature that silently
+		 * does nothing. Here it would be quieter still, because the wide topic this
+		 * replaces carried the same events — so the symptom is not "drafts stopped
+		 * updating", it is "drafts stopped updating for their author only".
+		 */
+		fun authorTopic(authorId: UUID, entity: String): String = "/topic/users/$authorId/$entity"
 
 		/**
 		 * Where a page's presence is broadcast, and where a reader declares their own by
@@ -64,8 +105,19 @@ data class KansoEvent(
 		 */
 		fun viewersTopic(pageId: UUID): String = "/topic/docs/$pageId/viewers"
 
-		fun ticket(kind: ChangeKind, id: UUID, teamId: UUID?, projectId: UUID?, origin: String = "kanso") =
-			KansoEvent("tickets", kind, id, teamId, projectId, origin = origin)
+		/**
+		 * [createdBy] matters only when [teamId] is null, and is then the difference between
+		 * telling the author and telling nobody — so a caller that has the row in hand
+		 * passes it, and one that does not accepts that a draft it touched goes unannounced.
+		 */
+		fun ticket(
+			kind: ChangeKind,
+			id: UUID,
+			teamId: UUID?,
+			projectId: UUID?,
+			createdBy: UUID? = null,
+			origin: String = "kanso",
+		) = KansoEvent(TICKETS, kind, id, teamId, projectId, createdBy = createdBy, origin = origin)
 
 		fun project(kind: ChangeKind, id: UUID, teamId: UUID?, origin: String = "kanso") =
 			KansoEvent("projects", kind, id, teamId, null, origin = origin)

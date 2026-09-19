@@ -290,6 +290,7 @@ class TeamService(
 							ticket.id,
 							target,
 							ticket.projectId.takeUnless { ticket.id in stranded },
+							ticket.createdBy,
 						)
 					)
 				}
@@ -305,7 +306,15 @@ class TeamService(
 						OutboundOperation.DELETE,
 						payload = deletePayload(it.mirror.notionPageId),
 					)
-					events.publish(KansoEvent.ticket(ChangeKind.DELETED, it.id, it.teamId, it.projectId))
+					events.publish(
+						KansoEvent.ticket(
+							ChangeKind.DELETED,
+							it.id,
+							it.teamId,
+							it.projectId,
+							it.createdBy,
+						),
+					)
 				}
 			}
 
@@ -329,6 +338,7 @@ class TeamService(
 							ticketId,
 							byId[ticketId]?.teamId,
 							if (ticketId in stranded) null else byId[ticketId]?.projectId,
+							byId[ticketId]?.createdBy,
 						)
 					)
 				}

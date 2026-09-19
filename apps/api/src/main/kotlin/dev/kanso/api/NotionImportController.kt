@@ -145,6 +145,23 @@ data class ImportRequest(
  * access-checks every team the plan lands in and hands its people table to `link`, guard
  * and all.
  *
+ * **A security review raised [sources] against exactly that gap and was answered "no".**
+ * The objection is worth stating because it is a good one and will be made again: `sources`
+ * does not answer about a base the caller named, it runs `discovery.search` over the whole
+ * workspace minus Kanso's own four, so any member — a contractor invited to one team, or a
+ * read-only seat, since `ReadOnlySeat` never refuses a GET — reads back the names and row
+ * counts of every database the integration can reach, and can then ask [schema] about any of
+ * them. That is a real disclosure and it is the one the paragraph above already prices in.
+ *
+ * It is not closed here because closing it costs more than it buys: `NotionImportIsOpenTest`
+ * exists precisely to fail this edit, an import is a member's job to carry out, and a 403 at
+ * step 1 ends the wizard at a door nothing downstream can get past. The narrowing that would
+ * satisfy both is an admin-staged allowlist of importable bases — `sources` answering only
+ * what a configurator put in play — which is a feature with a screen and a migration, not a
+ * guard. Until somebody wants it, the honest position is that this instance's Notion
+ * integration is scoped to what Kanso may mirror, and a workspace holding boards no member
+ * may see should not have granted it in the first place.
+ *
  * **The gap with `GET /api/setup/notion/pages`, which stays configurator-only, is real and
  * not an inconsistency**: that route lists the pages of the workspace so somebody can choose
  * where Kanso will *create its four databases* — an act of instance configuration, taking a

@@ -417,10 +417,10 @@ export function TicketList({
                 style={{ height: metrics.height, transform: `translateY(${item.start}px)` }}
               >
                 {/*
-                  * One level of indent and no more. `docs/follow-ups.md` records that the
-                  * sidebar's two-level cap renders levels 2, 3 and 4 at the same indent,
-                  * leaving the rows indistinguishable; the server caps the nest at one
-                  * level precisely so this list never has a third to draw.
+                  * One level of indent and no more. The wiki's `Follow-ups` page records
+                  * that the sidebar's two-level cap renders levels 2, 3 and 4 at the same
+                  * indent, leaving the rows indistinguishable; the server caps the nest at
+                  * one level precisely so this list never has a third to draw.
                   */}
                 {children !== undefined && (
                   <button

@@ -21,19 +21,20 @@ import {
 } from "./support";
 
 /**
- * The five placeholders the site's walk-through is laid out against — and why they are
+ * The five captures the site's walk-through is laid out against — and why they are
  * a test rather than a script that navigates and saves files.
  *
  * Every shot waits on the locators the screen it photographs is made of and asserts
  * what the caption claims *before* the shutter opens, so a screen that moved makes this
- * go red instead of producing a tidy photograph of the wrong thing. The author replaces
- * these five files with real captures and video clips; until then they are what the page
- * shows, which is exactly why a wrong one must not pass quietly.
+ * go red instead of producing a tidy photograph of the wrong thing. These are no longer
+ * placeholders: `pnpm shots:pack` packs what this writes into `site/media/v1/`, and that
+ * is what the published page shows — which is exactly why a wrong one must not pass
+ * quietly. Video clips still come later, from the author.
  *
  * Nothing here is named with `unique()`. A timestamped team would give every
- * regeneration a different picture, which is the one property a placeholder cannot
- * afford — so the names are literal, and a virgin database becomes a precondition
- * instead of a preference. It is checked before anything is written.
+ * regeneration a different picture, which is the one property these cannot afford — so
+ * the names are literal, and a virgin database becomes a precondition instead of a
+ * preference. It is checked before anything is written.
  *
  * Not in the default run: `grepInvert` in `playwright.config.ts` says why.
  */
@@ -41,16 +42,39 @@ import {
 test.beforeAll(seedInstance);
 
 /**
- * Where `site/media.json` expects them. Resolved off this file rather than off the
+ * Where `pnpm shots:pack` looks for them. Resolved off this file rather than off the
  * working directory, so the five land beside the site that shows them whichever
- * directory the run was started from. The folder is `.gitignore`d — see the spec on why
- * media never enters an AGPL repository's history.
+ * directory the run was started from. These PNGs stay `.gitignore`d — about 1.1 MB for
+ * the set, and what the site publishes is the 233 KB of WebP the pack step writes one
+ * level down, in `v1/`. `.gitignore` carries the arithmetic.
  */
 const MEDIA = join(__dirname, "..", "site", "media");
 
 const TEAM = { name: "Atlas", key: "KAN" };
 const PROJECT = "Notion mirror";
 const VIEW = "Assigned to me";
+
+/**
+ * Who the reader sees, and who the rest of the suite needs to keep seeing.
+ *
+ * `support.ts` claims the instance as `E2E owner`, which is the right name for a fixture
+ * and the wrong one for a landing page: it is the assignee in shot 02's composer and the
+ * person the filter chip resolves to in shot 05, so the walk-through would show a product
+ * whose one user is the test harness. The owner of this instance is the owner of the site
+ * — change `PICTURED` and nothing else if the name should be another.
+ *
+ * Put back afterwards because four other specs assert `E2E owner` by name
+ * (`mouse`, `18-documents`, `26-doc-collaboration`), and this file is the only one that
+ * renames anybody. A run that fails in the middle leaves the new name behind; that costs
+ * nothing, since a second run is refused until the database is reset anyway.
+ */
+const PICTURED = "Elie Treport";
+const SEEDED = "E2E owner";
+
+async function rename(api: APIRequestContext, displayName: string): Promise<void> {
+  const named = await api.put("/api/me", { data: { displayName } });
+  expect(named.ok(), `Could not name the owner ${displayName}`).toBeTruthy();
+}
 
 /**
  * The plan, in absolute days.
@@ -144,6 +168,34 @@ async function refuseUnlessVirgin(api: APIRequestContext): Promise<void> {
 }
 
 /**
+ * The one piece of the shell that has no business on a landing page.
+ *
+ * The shortcut bar ends with `DevUserSwitcher`, and the captures are necessarily taken
+ * against `KANSO_AUTH_MODE=dev` — the identity in this suite is a header. So the corner
+ * of every shot reads `dev as [owner@kanso.test]`: a text field asking the reader to type
+ * an email nobody verifies, which is a development affordance photographed as a feature.
+ * It is not what any of the five captions is about.
+ *
+ * Hidden rather than worked around, because there is no other way to reach these screens:
+ * `oidc` mode wants a provider, and the shortcut bar is otherwise worth keeping — the
+ * keys it prints are exactly what `step.ticket.caption` claims. Matched on the `title` the
+ * component writes for the affordance itself, so a rename of the bar cannot silently stop
+ * hiding it; what a moved selector produces is the switcher back in frame, which the
+ * author sees when he looks at the five files before committing them.
+ */
+const HIDE_DEV_IDENTITY = () => {
+  const hide = () => {
+    const style = document.createElement("style");
+    style.textContent = `form:has(> span[title^="Dev auth"]) { display: none !important; }`;
+    document.head.append(style);
+  };
+  // An init script runs before the document has a `<head>` on a fresh navigation, and
+  // after it has one on a client-side one. Both happen here: shot 05 is a `goto`.
+  if (document.head) hide();
+  else document.addEventListener("DOMContentLoaded", hide, { once: true });
+};
+
+/**
  * A page that photographs the same on anybody's machine: 1440×900 at 2×, light whatever
  * the operating system prefers.
  *
@@ -168,6 +220,7 @@ async function openLitPage(browser: Browser): Promise<Page> {
     window.localStorage.setItem("kanso.devUser", who);
     window.localStorage.setItem("kanso.preferences", JSON.stringify({ theme: "light" }));
   }, ADMIN);
+  await context.addInitScript(HIDE_DEV_IDENTITY);
   const page = await context.newPage();
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -198,6 +251,7 @@ test("the walk-through's five captures", { tag: "@shots" }, async ({ browser }) 
   // `/api/me` answers, over whatever the bootstrap script had painted.
   const lit = await api.put("/api/me/preferences", { data: { theme: "light" } });
   expect(lit.ok(), "Could not pin the theme to light").toBeTruthy();
+  await rename(api, PICTURED);
 
   const ownerId = await userIdOf(ADMIN);
   const team = await seedTeam(api, TEAM);
@@ -325,14 +379,32 @@ test("the walk-through's five captures", { tag: "@shots" }, async ({ browser }) 
     ).toBeVisible();
 
     /*
-     * Neither end is late and neither is on a critical path — two days of slack between
-     * them, which is what the plan was chosen to show. This is also the assertion that
-     * expires: once those absolute days are behind the machine's clock every bar reads
-     * "overdue" and hatches red, and this fails rather than handing the site a
-     * walk-through of missed deadlines. Move `PLAN` forward when it does.
+     * One end with slack, one end without — which is the pair of marks the shot is for,
+     * and not what this used to assert.
+     *
+     * It asked for `normal` at both ends, on the grounds that neither is late and neither
+     * is on a critical path, and said that it would expire once the clock passed those
+     * absolute days and every bar started reading "overdue". Both halves were wrong, and
+     * the first made the shot impossible to produce at all:
+     *
+     * `late` is negative slack, not a due date in the past — `TimelineService` reads
+     * `slackMinutes`, and the clock is nowhere in it, so time passing changes no bar's
+     * state. And `critical` is `slackMinutes == 0`, computed by a backward pass that
+     * anchors whatever has no successor at the end of its own chain (`CriticalPath`,
+     * `chainEnd`). The last ticket of a chain therefore has zero slack by construction:
+     * the successor is *always* `critical`, and `normal` could never have passed.
+     *
+     * That costs the picture nothing. `BarState` says `critical` carries no colour of its
+     * own — the bar is drawn exactly like an ordinary one of the same status — so what the
+     * reader sees is the predecessor's two days of slack, hatched, running into an arrow.
+     * That is `about`'s own sentence: the critical path is emphasised, slack is hatched.
+     *
+     * What can still expire is the plan's shape, not its states: `PLAN` is absolute days,
+     * and once they are all behind the clock the today marker leaves the window and the
+     * chart is a photograph of finished work. Move `PLAN` forward when it does.
      */
     await expect(bar(predecessor)).toHaveAttribute("data-state", "normal");
-    await expect(bar(successor)).toHaveAttribute("data-state", "normal");
+    await expect(bar(successor)).toHaveAttribute("data-state", "critical");
 
     // The dateless one is a chip in the tray rather than a bar, which is the other half
     // of what a timeline over real work looks like.
@@ -376,5 +448,6 @@ test("the walk-through's five captures", { tag: "@shots" }, async ({ browser }) 
     await shoot(page, "05-assigned.png");
   });
 
+  await rename(api, SEEDED);
   await api.dispose();
 });

@@ -68,6 +68,18 @@ object TicketFilterVocabulary {
 		"unestimated",
 		"estimateMin",
 		"estimateMax",
+		/**
+		 * "Overdue" — the due date has gone by on work nobody has closed.
+		 *
+		 * A bare key like `unassigned` and `unestimated` beside it, not an `is:` prefix.
+		 * This vocabulary has no prefixes, and inventing one for a single word would be a
+		 * second grammar that every reader of the first has to learn.
+		 *
+		 * It is `TimelineService.isLate`'s definition and not a second one. That is the
+		 * whole ruling behind this key: one word for the badge, the filter and the bar, so
+		 * a saved view and a timeline can never disagree about which tickets are late.
+		 */
+		"late",
 	)
 
 	/**
@@ -118,6 +130,7 @@ object TicketFilterVocabulary {
 		labelIds = uuids("label", filters["label"]),
 		openedMoreThanDaysAgo = number("openedForDays", filters["openedForDays"]),
 		unestimated = flag(filters["unestimated"]),
+		late = flag(filters["late"]),
 		estimateMin = number("estimateMin", filters["estimateMin"]),
 		estimateMax = number("estimateMax", filters["estimateMax"]),
 	)

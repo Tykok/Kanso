@@ -55,7 +55,11 @@ export function useActionContext(local: {
   // The chart's own query, asked for again rather than passed down: same key, so this is
   // the same cache entry the chart reads and no second request exists. `enabled` is the
   // view, so the list pays nothing for edges no action there can use.
-  const timeline = useTimeline(view === "timeline");
+  // The column's sort and its completed toggle are part of the question, so they travel
+  // with it: two sorts are two answers and the query key says so.
+  const timelineSort = useUi((state) => state.timelineSort);
+  const hideCompleted = useUi((state) => state.hideCompleted);
+  const timeline = useTimeline(view === "timeline", { sort: timelineSort, hideCompleted });
   const { mutate: patchTicket } = usePatchTicket();
   const { mutate: unarchiveEntity } = useUnarchive();
   const { mutate: deleteTicket } = useDeleteTicket();

@@ -15,24 +15,38 @@ import { STATUS_COLORS, STATUS_LABELS } from "@/lib/status";
  * The state a bar is drawn in. `critical` — on the schedule's critical path, no
  * slack left — carries no colour of its own: the drawing shows it exactly like an
  * ordinary bar of the same status, and lets the chain of arrows leaving it say
- * "critical" instead. `late` is the one state this component still colours by
- * itself, because it is worse than "no slack" — it has already run out — and a
- * ticket that overran its own deadline needs to be seen without following a chain
- * of arrows to notice it.
+ * "critical" instead.
+ *
+ * `slipping` is the one this component still colours by itself — the critical path
+ * says this will overrun — because it is worse than "no slack" and has to be seen
+ * without following a chain of arrows to notice it.
+ *
+ * **There is no `late` here, and there used to be.** This union carried one state fed
+ * by negative slack and [barAccessibleName] announced it as "overdue", so a screen
+ * reader said a ticket was late when its due date was three weeks away. Splitting the
+ * two fixed the sentence and created a second problem: `late` outranked `critical` on
+ * a bar, and once it meant "the deadline passed" it became the common case, so every
+ * bar on an instance with history read late and criticality was invisible behind it.
+ *
+ * Two facts about one ticket need two places. The schedule's state is the bar; whether
+ * a deadline has gone by is a pill on the row's name, in `row.tsx`.
  */
-export type BarState = "normal" | "critical" | "late";
+export type BarState = "normal" | "critical" | "slipping";
 
 /**
- * Late, composed from `--urgent` rather than written as a second colour — a
+ * The hatch both `late` and `slipping` are drawn with, composed from `--urgent`
+ * rather than written as a second colour — a
  * repeating hatch, not a flat fill, so the state survives a colour-blind reader and
  * a greyscale screenshot alike. Inline style, not a Tailwind arbitrary value: a
  * `repeating-linear-gradient` wrapped in a bracketed class is unreadable, and this
  * is no less a token reference for being spelled in JS.
  */
 const LATE_STRIPE = "color-mix(in srgb, var(--urgent) 70%, black)";
-export const LATE_STYLE: CSSProperties = {
+const HATCH: CSSProperties = {
   backgroundImage: `repeating-linear-gradient(45deg, var(--urgent), var(--urgent) 6px, ${LATE_STRIPE} 6px, ${LATE_STRIPE} 12px)`,
 };
+
+export const SLIPPING_STYLE: CSSProperties = HATCH;
 
 /**
  * An ordinary ticket bar's own colour: a pale tint of its status, exactly the hue a
@@ -95,8 +109,8 @@ export function barAccessibleName({
   return [
     name,
     status && labelOfKey(status),
-    state === "late" ? "overdue" : state === "critical" ? "critical path" : null,
-    violated && state !== "late" ? "dependency not respected" : null,
+    state === "slipping" ? "projected to slip" : state === "critical" ? "critical path" : null,
+    violated && state !== "slipping" ? "dependency not respected" : null,
     slackMinutes && slackMinutes > 0 ? slackTitle(slackMinutes) : null,
   ]
     .filter(Boolean)

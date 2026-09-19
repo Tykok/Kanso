@@ -18,6 +18,8 @@ import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -82,6 +84,19 @@ data class TicketFilters(
 	/** Bounds on the points, inclusive. Both may be asked at once. */
 	val estimateMin: Int? = null,
 	val estimateMax: Int? = null,
+	/**
+	 * "Overdue": the due date has gone by and nobody has finished or cancelled it.
+	 *
+	 * A flag and not a bound on the due date, for [unestimated]'s reason: "past" is a
+	 * comparison against *now*, which a caller cannot express as a literal without the
+	 * answer changing tomorrow. Its own flag also keeps it combinable — `late` together
+	 * with a `dueBefore` would be two questions and this is one.
+	 *
+	 * The same word `TimelineService.isLate` computes, deliberately: one definition for the
+	 * badge, the filter and the bar, which is the whole of the ruling. A second spelling
+	 * here would be the two definitions that ruling exists to prevent.
+	 */
+	val late: Boolean = false,
 )
 
 /**
@@ -130,10 +145,24 @@ class TicketQueryRepository {
 		offset: Long = 0,
 		/** Which bucket each status falls in, and where that bucket sits — `KAN-28`. */
 		statuses: StatusGrouping = StatusGrouping.SEEDED,
+		/**
+		 * The timeline column's own ordering, which replaces [sortBy] when present.
+		 *
+		 * A second parameter rather than two more values on `ViewSortBy`: that vocabulary is
+		 * a saved view's, it is on the wire, and `saved_views_sort_by_chk` holds it. Two
+		 * timeline-only words would appear in every saved view's dropdown and in a
+		 * constraint that has nothing to do with this screen.
+		 *
+		 * **Last in the list on purpose.** `TicketGrouping` calls this method positionally,
+		 * so a parameter inserted anywhere above `limit` silently shifts three arguments —
+		 * which is a compile error today and would have been a wrong query the day one of
+		 * those types happened to match.
+		 */
+		dateOrder: dev.kanso.service.TimelineSort? = null,
 	): List<Ticket> {
 		if (scope.teamIds?.isEmpty() == true) return emptyList()
 		return Tickets.selectAll().where(predicate(scope, filters))
-			.orderBy(*(groupOrder(groupBy, statuses) + order(sortBy)))
+			.orderBy(*(groupOrder(groupBy, statuses) + (dateOrder?.let(::timelineOrder) ?: order(sortBy))))
 			.limit(limit).offset(offset)
 			.map { it.toTicket() }
 	}
@@ -289,6 +318,37 @@ class TicketQueryRepository {
 			// both can be combined with a bound, and the answer is then empty, which is the
 			// honest reading of "unsized and bigger than a 3".
 			if (filters.unestimated) add(Tickets.estimate.isNull())
+			// Overdue, asked the same way `TimelineService.isLate` answers it and for the
+			// same reasons — see `TicketFilters.late`.
+			//
+			// The boundary is **today's midnight UTC**, and `less` rather than `lessEq`: a
+			// due date names a civil day stored as that day's midnight in UTC, so `< today`
+			// is exactly "a day before this one" and a ticket due today is not yet late.
+			// Comparing against `now()` instead would make a ticket due today late from
+			// 00:00:01, which is the accusation `isLate` refuses to make.
+			//
+			// The category through `team_statuses`, never a literal status key: `KAN-90`
+			// means a team may call finished work anything, so `status <> 'done'` is a
+			// sentence no query in this file is allowed to write.
+			if (filters.late) {
+				val startOfToday = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.DAYS)
+				add(Tickets.dueAt.isNotNull())
+				add(Tickets.dueAt less startOfToday)
+				add(
+					notExists(
+						TeamStatuses.selectAll().where {
+							(TeamStatuses.teamId eq Tickets.teamId) and
+								(TeamStatuses.key eq Tickets.status) and
+								(
+									TeamStatuses.category inList listOf(
+										StatusCategory.COMPLETED.wire,
+										StatusCategory.CANCELED.wire,
+									)
+								)
+						}
+					)
+				)
+			}
 			// A bound never matches an unsized ticket, and this is on purpose rather than by
 			// accident of SQL's null comparison: a ticket nobody has estimated is not known
 			// to be small, so neither `≥ 5` nor `≤ 5` may claim it. The `unestimated` chip is
@@ -334,6 +394,38 @@ class TicketQueryRepository {
 				Tickets.number to SortOrder.DESC,
 			)
 		}
+
+	/**
+	 * The column's three orders, each with the same `number DESC` tie-break [order] uses and
+	 * for exactly the reason its header gives: two rows tied on the sort key and ordered by
+	 * nothing else can land on both page 1 and page 2, or on neither.
+	 *
+	 * That failure is why this file has a tie-break at all, and it is worth restating here
+	 * because the column is the first caller to page over a key that is *frequently* tied —
+	 * every ticket somebody scheduled on the same Monday shares a `start_at` exactly.
+	 *
+	 * Nulls last on both date orders. A ticket nobody has dated has no position on a time
+	 * axis, and SQL's default of sorting nulls first on `ASC` would open the column with
+	 * everything unplanned above everything planned.
+	 */
+	private fun timelineOrder(
+		sort: dev.kanso.service.TimelineSort,
+	): Array<Pair<Expression<*>, SortOrder>> = when (sort) {
+		dev.kanso.service.TimelineSort.START -> arrayOf(
+			Tickets.startAt to SortOrder.ASC_NULLS_LAST,
+			Tickets.number to SortOrder.DESC,
+		)
+		dev.kanso.service.TimelineSort.DUE -> arrayOf(
+			Tickets.dueAt to SortOrder.ASC_NULLS_LAST,
+			Tickets.number to SortOrder.DESC,
+		)
+		// The same expression `ViewSortBy.PRIORITY` uses, so a board and a timeline cannot
+		// drift into ordering urgent work differently.
+		dev.kanso.service.TimelineSort.PRIORITY -> arrayOf(
+			priorityRank to SortOrder.ASC,
+			Tickets.number to SortOrder.DESC,
+		)
+	}
 
 	/**
 	 * Which bucket a row falls in, as an expression the database can both group and order

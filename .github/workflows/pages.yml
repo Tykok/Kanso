@@ -5,9 +5,9 @@
 # Left on the branch default, the first run fails at `deploy-pages` with an error that
 # names a token rather than the setting, which is a confusing place to start.
 #
-# This is the repository's first workflow, and `docs/follow-ups.md` records that there
-# is no CI: Vitest and Playwright run when someone remembers. That stays true here on
-# purpose. A publishing workflow that also tested could be reddened by a flaky stack,
+# This is the repository's first workflow, and the wiki's `Follow-ups` page records that
+# there is no CI: Vitest and Playwright run when someone remembers. That stays true here
+# on purpose. A publishing workflow that also tested could be reddened by a flaky stack,
 # and a red badge on the site pipeline would say nothing about the site. Adding
 # typecheck, lint, Vitest or Playwright is a separate decision.
 

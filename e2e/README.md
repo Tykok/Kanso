@@ -69,7 +69,7 @@ pnpm exec playwright show-report
 
 ## The captures, which are not a scenario
 
-`shots.spec.ts` writes the five PNGs the public site's walk-through shows, into
+`shots.spec.ts` writes the five captures the public site's walk-through shows, into
 `site/media/`. It is tagged `@shots` and `playwright.config.ts` keeps it out of every
 other run, because it writes files and because it needs a database no `Atlas` has been
 created in — ticket identifiers come off a counter on the team row, and a picture
@@ -79,12 +79,20 @@ photographing `KAN-47`.
 ```bash
 docker compose down -v && KANSO_AUTH_MODE=dev docker compose up -d --build --wait
 pnpm shots
+pnpm shots:pack
 ```
 
-The files are never committed: they are uploaded to the host named in `site/media.json`.
-Its dates are absolute, in September 2026, and the run goes red once they are past —
-deliberately, so the site is never handed a walk-through of missed deadlines. Move
-`PLAN` forward when that happens.
+The second command is what the site actually publishes. Playwright encodes PNG and
+nothing else, and the five come to about 1.1 MB; `shots:pack` re-encodes them as WebP at
+1920 wide into `site/media/v1/`, which is 233 KB for the set and is committed. The PNGs
+beside them are not — `.gitignore` carries the arithmetic. It needs `cwebp`
+(`brew install webp`), the one tool this step wants that the suite does not.
+
+Look at the five before committing them. Every shot asserts its own screen before the
+shutter opens, so what the assertions do not cover is what an eye has to: a half-loaded
+panel, a state nobody meant to photograph. `PLAN` is absolute days in September 2026 —
+what expires is not a bar's colour but the chart's shape, once the today marker has left
+the window and the picture is of finished work. Move `PLAN` forward when it does.
 
 ## The import, which needs a workspace
 
@@ -93,6 +101,13 @@ import wrote. It cannot run against a workspace nobody has, and with no `NOTION_
 dialog's first step prints a sentence and there is nothing to walk — so the suite brings
 its own workspace: `notion-workspace.ts` answers Notion's own HTTP API on port 8099, with
 three related bases, a status column called `Etat` and options called `En cours`.
+
+`30-setup-import.spec.ts` (scenario 30) needs the same workspace for the same reason. It
+opens the *other* door onto those five steps — the setup wizard's Notion step, which offers
+the people table and the import once Notion is connected — and checks the two things that
+mount point can break on its own: `/setup` is outside `(app)`, so nothing the shell provides
+is there, and `FormCard` is a `<form>`, in which the dialog's own buttons would otherwise
+submit the wizard out from under a half-finished import.
 
 The seam is `NOTION_BASE_URL`, which `application.yml` already reads. Pointing the API at
 the suite's workspace puts the real `HttpNotionClient` under test — its search-filter
@@ -105,7 +120,7 @@ KANSO_AUTH_MODE=dev NOTION_TOKEN=e2e-stub-token \
   NOTION_BASE_URL=http://host.docker.internal:8099/v1 \
   docker compose up -d --build --wait
 
-KANSO_NOTION_STUB=1 pnpm exec playwright test e2e/import.spec.ts
+KANSO_NOTION_STUB=1 pnpm exec playwright test e2e/import.spec.ts e2e/30-setup-import.spec.ts
 ```
 
 Two variables on the stack, one on the runner, and they are not interchangeable: the first
@@ -117,8 +132,8 @@ Desktop. The port is fixed because `NOTION_BASE_URL` is read when the container 
 the server starts when the spec does — override both together with
 `KANSO_NOTION_STUB_PORT`.
 
-Without `KANSO_NOTION_STUB=1` the scenario **skips**, with the command above in the skip's
-message, so a default `pnpm test:e2e` stays green and says plainly that one scenario did not
+Without `KANSO_NOTION_STUB=1` both scenarios **skip**, with the command above in the skip's
+message, so a default `pnpm test:e2e` stays green and says plainly which scenarios did not
 run. That flag is the *whole* decision, on purpose. The tempting guard — ask the API whether
 the three bases are there and skip if they are not — makes the precondition the feature under
 test: break discovery and the scenario would skip on a correctly configured stack, and a
@@ -373,8 +388,9 @@ mean something.
 New files query by role and accessible name. A label whose text is an `sr-only` span is
 invisible to `getByLabel`, which matches a label's *rendered* text — the property chips on
 the ticket page are labelled that way, and `getByRole("combobox", { name: … })` is what
-reaches them, through the same accessibility tree a screen reader reads. `follow-ups.md` holds it against the older
-scenarios that they reach for private CSS classes — `.row`, `.status`, `.shortcuts` —
+reaches them, through the same accessibility tree a screen reader reads. The wiki's
+`Follow-ups` holds it against the older scenarios that they reach for private CSS
+classes — `.row`, `.status`, `.shortcuts` —
 which couples the suite to the stylesheet and breaks on refactors that changed nothing a
 person can see. Timeline bars are `role="button"` named `${identifier}: ${title}`, tray
 chips are named the same way, and a dependency arrow is a focusable path whose `<title>`

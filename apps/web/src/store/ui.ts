@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ViewFilters } from "@/lib/api";
+import type { TimelineSort, ViewFilters } from "@/lib/api";
 import type { Zoom } from "@/lib/timeline-geometry";
 
 /**
@@ -90,6 +90,15 @@ type UiState = {
   view: View;
   zoom: Zoom;
   /**
+   * How the timeline's column is stacked, and whether finished work is in it.
+   *
+   * View state and not a stored preference: a preference means a column, a `CHECK` and a
+   * migration for a switch somebody flips twice a week, and `V28`'s vocabulary is for
+   * things that describe a person rather than a glance.
+   */
+  timelineSort: TimelineSort;
+  hideCompleted: boolean;
+  /**
    * An arrow being drawn, from the bar its handle was pressed on. Set for the length of
    * one gesture and read by three places at once — the bar that started it, the arrow
    * layer drawing the rubber band, and the view resolving where it was dropped — which
@@ -120,6 +129,8 @@ type UiState = {
   select: (id?: string) => void;
   setView: (view: View) => void;
   setZoom: (zoom: Zoom) => void;
+  setTimelineSort: (sort: TimelineSort) => void;
+  setHideCompleted: (hide: boolean) => void;
   startLinking: (fromId: string) => void;
   stopLinking: () => void;
   open: (overlay: Overlay) => void;
@@ -134,6 +145,10 @@ export const useUi = create<UiState>((set) => ({
   scope: { kind: "all" },
   view: "list",
   zoom: "day",
+  timelineSort: "start",
+  // Starts off: showing everything is the decision, and the toggle is what keeps that
+  // decision from becoming a complaint on an instance where most work is finished.
+  hideCompleted: false,
   overlay: "none",
   dialog: { kind: "none" },
   query: "",
@@ -150,6 +165,8 @@ export const useUi = create<UiState>((set) => ({
    */
   setView: (view) => set({ view }),
   setZoom: (zoom) => set({ zoom }),
+  setTimelineSort: (timelineSort) => set({ timelineSort }),
+  setHideCompleted: (hideCompleted) => set({ hideCompleted }),
   startLinking: (fromId) => set({ linking: { fromId } }),
   // Called on every ending a gesture has — dropped on a bar, dropped on nothing, or
   // taken away by the system — so no path can leave a rubber band drawn by nobody.

@@ -510,7 +510,9 @@ class TicketService(
 		// A caller with no actor cannot assign anyone — the siphon passes none — so this is
 		// the same no-op it already was for an empty list, said in the type system.
 		actor?.let { recordAssigneeChanges(it, ticket.id, before = emptyList(), after = assigneeIds) }
-		events.publish(KansoEvent.ticket(ChangeKind.CREATED, ticket.id, effectiveTeamId, projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.CREATED, ticket.id, effectiveTeamId, projectId, ticket.createdBy),
+		)
 		return TicketDetail(ticket, team?.key, assigneeIds, docIds)
 	}
 
@@ -720,7 +722,9 @@ class TicketService(
 				if (updated.archived) OutboundOperation.ARCHIVE else OutboundOperation.UPSERT,
 			)
 		}
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, updated.teamId, updated.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.UPDATED, id, updated.teamId, updated.projectId, updated.createdBy),
+		)
 
 		// The cascade runs inside this transaction, so the event published just above —
 		// which `EventPublisher` defers to `afterCommit` — already announces it. One
@@ -757,7 +761,9 @@ class TicketService(
 		if (trash.find(TrashKind.TICKET, id) != null) return
 		trash.add(TrashKind.TICKET, id, actor.id)
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.ARCHIVE)
-		events.publish(KansoEvent.ticket(ChangeKind.DELETED, id, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.DELETED, id, ticket.teamId, ticket.projectId, ticket.createdBy),
+		)
 	}
 
 	/**
@@ -780,7 +786,9 @@ class TicketService(
 			id,
 			if (ticket.archived) OutboundOperation.ARCHIVE else OutboundOperation.UPSERT,
 		)
-		events.publish(KansoEvent.ticket(ChangeKind.CREATED, id, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.CREATED, id, ticket.teamId, ticket.projectId, ticket.createdBy),
+		)
 	}
 
 	/**
@@ -798,7 +806,9 @@ class TicketService(
 		access.require(actor, ticket)
 		tickets.setArchived(id, true)
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.ARCHIVE)
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId, ticket.createdBy),
+		)
 	}
 
 	/**
@@ -821,7 +831,9 @@ class TicketService(
 			payload = deletePayload(ticket.mirror.notionPageId),
 		)
 		tickets.delete(id)
-		events.publish(KansoEvent.ticket(ChangeKind.DELETED, id, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.DELETED, id, ticket.teamId, ticket.projectId, ticket.createdBy),
+		)
 	}
 
 	@Transactional
@@ -833,7 +845,9 @@ class TicketService(
 		tickets.setAssignees(id, userIds)
 		recordAssigneeChanges(actor, id, before, userIds)
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId, ticket.createdBy),
+		)
 		return decorate(listOf(ticket)).single()
 	}
 
@@ -844,7 +858,9 @@ class TicketService(
 		requireDocs(docIds)
 		tickets.setDocs(id, docIds)
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId))
+		events.publish(
+			KansoEvent.ticket(ChangeKind.UPDATED, id, ticket.teamId, ticket.projectId, ticket.createdBy),
+		)
 		return decorate(listOf(ticket)).single()
 	}
 
@@ -860,7 +876,7 @@ class TicketService(
 	 * changed is a reader doing the log's job.
 	 *
 	 * The cascade the caller runs afterwards is not logged. It moves other tickets' dates,
-	 * and the same argument `follow-ups.md` records for the event applies to the log: two
+	 * and the same argument the wiki's `Follow-ups` records for the event applies to the log: two
 	 * hundred rows nobody reads, for a change every receiver answers by refetching.
 	 */
 	private fun recordScalarChanges(

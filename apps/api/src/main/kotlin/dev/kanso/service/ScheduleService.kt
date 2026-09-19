@@ -103,7 +103,13 @@ class ScheduleService(
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, predecessorId, OutboundOperation.UPSERT)
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, successorId, OutboundOperation.UPSERT)
 		events.publish(
-			KansoEvent.ticket(ChangeKind.UPDATED, successorId, successor.teamId, successor.projectId)
+			KansoEvent.ticket(
+				ChangeKind.UPDATED,
+				successorId,
+				successor.teamId,
+				successor.projectId,
+				successor.createdBy,
+			)
 		)
 		return cascadeFrom(predecessor.id)
 	}
@@ -174,7 +180,15 @@ class ScheduleService(
 		}
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, predecessorId, OutboundOperation.UPSERT)
 		outbox.enqueue(Destination.NOTION, OutboundEntityType.TICKET, successorId, OutboundOperation.UPSERT)
-		events.publish(KansoEvent.ticket(ChangeKind.UPDATED, successor.id, successor.teamId, successor.projectId))
+		events.publish(
+			KansoEvent.ticket(
+				ChangeKind.UPDATED,
+				successor.id,
+				successor.teamId,
+				successor.projectId,
+				successor.createdBy,
+			),
+		)
 	}
 
 	private fun toNode(ticket: Ticket, categories: Categories) = Node(

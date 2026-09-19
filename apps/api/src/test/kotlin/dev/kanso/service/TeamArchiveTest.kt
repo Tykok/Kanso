@@ -289,7 +289,7 @@ class TeamArchiveTest : PostgresTest() {
 	 * applied to what it held. Running a second one does not archive anything twice —
 	 * it *re-disperses*, which is a different operation wearing the same name: here the
 	 * sub-team archived alongside its parent is quietly lifted out of the subtree, so
-	 * `unarchive` on it no longer brings that parent back. `follow-ups.md` recorded this
+	 * `unarchive` on it no longer brings that parent back. The wiki's `Follow-ups` recorded this
 	 * as "re-archiving re-runs the whole dispersal"; the damage is what the run does to
 	 * rows the first plan already placed.
 	 */

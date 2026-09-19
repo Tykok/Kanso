@@ -14,6 +14,9 @@ import dev.kanso.schedule.Edge
 import dev.kanso.schedule.Node
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import dev.kanso.domain.Wire
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 
 data class TimelineProject(
@@ -38,7 +41,25 @@ data class TimelineTicket(
 	/** Null for an unscheduled ticket or one with no dependencies. */
 	val slackMinutes: Long?,
 	val critical: Boolean,
+
+	/**
+	 * The due date has passed and nobody has finished or cancelled it.
+	 *
+	 * A fact about this ticket alone — no graph, no projection — which is exactly why it is
+	 * the one a filter can be built on and the one a list row can print without loading a
+	 * timeline. [slipping] is the other half, and the two were one field under this name
+	 * until `bar-style.ts` was caught announcing a forecast as `overdue`.
+	 */
 	val late: Boolean,
+
+	/**
+	 * The critical path says this will overrun: slack is negative.
+	 *
+	 * This is what [late] used to mean, and the rename is the point. A ticket can be both,
+	 * and a bar draws [late] first — a fact beats a forecast, because a ticket whose date
+	 * has already passed is not *projected* to do anything.
+	 */
+	val slipping: Boolean,
 	/** Outside the filter the reader asked for: drawn because it explains their dates. */
 	val context: Boolean,
 	/** May this reader move it — the same rule the mutations enforce, answered once here. */
@@ -65,15 +86,17 @@ data class TimelineEdge(
 	val outOfScope: Boolean,
 )
 
-data class TimelineUnscheduled(val id: UUID, val identifier: String, val title: String)
-
 data class TimelineView(
 	val projects: List<TimelineProject>,
 	val tickets: List<TimelineTicket>,
 	val dependencies: List<TimelineEdge>,
-	val unscheduled: List<TimelineUnscheduled>,
-	/** A cap was hit, so the drawing is incomplete — there is no next page to offer instead. */
+	/**
+	 * A cap was hit *on the shared widening*, so the drawing is missing bars it cannot offer
+	 * a page for. No longer set by the scope itself — see [hasMore].
+	 */
 	val truncated: Boolean,
+	/** Another page of the column exists. Nothing is missing from the drawing; scroll. */
+	val hasMore: Boolean,
 )
 
 /**
@@ -87,6 +110,32 @@ data class TimelineView(
  * is the normal case, and drawing only your own half of it printed dates with their
  * causes cut off.
  */
+/**
+ * How the left column is stacked. Three orders and no fourth, and **not** [ViewSortBy].
+ *
+ * That vocabulary belongs to saved views, is on the wire, and is held to a `CHECK` in
+ * `saved_views_sort_by_chk`. Adding `start` and `due` to it so that one screen could use
+ * them would put two timeline-only words into every saved view's dropdown and into a
+ * constraint that has nothing to do with this feature.
+ *
+ * `priority` overlaps with [ViewSortBy.PRIORITY] deliberately: the same question asked on a
+ * different screen, answered by the same expression in `TicketQueryRepository`, so the two
+ * cannot drift into ordering urgent work differently.
+ */
+enum class TimelineSort(override val wire: String) : Wire {
+	START("start"), DUE("due"), PRIORITY("priority");
+
+	companion object {
+		fun from(raw: String?): TimelineSort =
+			raw?.let { wanted ->
+				entries.firstOrNull { it.wire == wanted }
+					?: throw BadRequestException(
+						"Unknown timeline sort '$wanted' (expected one of ${entries.joinToString { it.wire }})",
+					)
+			} ?: START
+	}
+}
+
 @Service
 class TimelineService(
 	private val tickets: TicketRepository,
@@ -98,14 +147,31 @@ class TimelineService(
 ) {
 
 	@Transactional(readOnly = true)
-	fun load(actor: User, teamId: UUID?, projectId: UUID?): TimelineView {
+	fun load(
+		actor: User,
+		teamId: UUID?,
+		projectId: UUID?,
+		sort: TimelineSort = TimelineSort.START,
+		page: Int = 0,
+		/** Null takes [DEFAULT_PAGE]. The constant stays private: it is this class's answer. */
+		pageSize: Int? = null,
+		hideCompleted: Boolean = false,
+	): TimelineView {
 		val teamIds = teamId?.let { teams.descendantIds(it) }
-		val own = tickets.search(
+		val size = (pageSize ?: DEFAULT_PAGE).coerceIn(1, SCOPE_LIMIT)
+		// One more than the page, so `hasMore` is a fact rather than a second COUNT over the
+		// same predicate — which would be a query that can disagree with the one beside it.
+		val fetched = tickets.search(
 			teamIds = teamIds,
 			projectId = projectId,
+			categories = if (hideCompleted) OPEN_CATEGORIES else emptyList(),
 			includeArchived = false,
-			limit = SCOPE_LIMIT,
+			limit = size + 1,
+			offset = page.toLong() * size,
+			dateOrder = sort,
 		)
+		val hasMore = fetched.size > size
+		val own = fetched.take(size)
 		val ownIds = own.map { it.id }.toSet()
 
 		// The closure, not the scope: anchoring the critical path on what happens to be
@@ -133,11 +199,30 @@ class TimelineService(
 			.filter { it.id !in ownIds && !it.archived && it.teamId != null }
 			.distinctBy { it.id }
 		val drawn = own + context
-		val truncated = own.size >= SCOPE_LIMIT || shared.size >= SCOPE_LIMIT
+		// Only `shared` can be truncated now. The scope itself is *paged* rather than capped
+		// — see this class's header — so `own` reaching its limit means "there is another
+		// page", which `hasMore` says, not "the drawing is missing rows", which is what this
+		// flag warns about and what a shared project pulling in another team's board still
+		// does.
+		val truncated = shared.size >= SCOPE_LIMIT
 
 		// A bar needs a date, and this is the same predicate `Node.scheduled` uses — one
 		// spelling of "drawable", so the arrows and the scheduler cannot disagree.
 		val bars = drawn.filter { it.start != null || it.due != null }
+
+		/**
+		 * The rows: the whole scope, plus the context that has something to draw.
+		 *
+		 * `own` goes in whole — dated or not — which is the change this ticket is. A row
+		 * without dates renders its name and no bar, and the tray that used to hold those
+		 * tickets above the chart is gone.
+		 *
+		 * Context is filtered to what has dates, and deliberately not widened to match. A
+		 * context row exists to explain where your dates came from; an *undated* ticket from
+		 * another team explains nothing and would put work the reader cannot act on into a
+		 * list they are trying to plan from.
+		 */
+		val rows = own + context.filter { it.start != null || it.due != null }
 
 		// What the client can actually resolve, which is not the same as [drawn]: every
 		// `own` ticket is somewhere in the response — dated ones as bars, undated ones in
@@ -188,10 +273,14 @@ class TimelineService(
 		// One call for every team drawn: the rule costs a couple of queries per distinct
 		// team, and asking it per ticket would be two thousand ancestor walks.
 		val editableTeams = access.editableTeams(actor, drawn.mapNotNull { it.teamId }.toSet())
+		// Read once for the whole response rather than per ticket. A response assembled
+		// across midnight would otherwise disagree with itself about which day it is, and
+		// two tickets with the same due date would come back with different answers.
+		val today = LocalDate.now(ZoneOffset.UTC)
 
 		return TimelineView(
 			projects = projectRows(own, drawn, projectId, teamIds),
-			tickets = bars.map { ticket ->
+			tickets = rows.map { ticket ->
 				val minutes = slack[ticket.id]?.toMinutes()
 				TimelineTicket(
 					id = ticket.id,
@@ -204,7 +293,8 @@ class TimelineService(
 					due = ticket.due,
 					slackMinutes = minutes,
 					critical = minutes == 0L,
-					late = minutes != null && minutes < 0L,
+					late = isLate(ticket, today),
+					slipping = minutes != null && minutes < 0L,
 					context = ticket.id !in ownIds,
 					// The server's answer, so the client has no rule to re-derive and
 					// no membership graph to hold.
@@ -223,11 +313,8 @@ class TimelineService(
 						outOfScope = it.predecessorId !in presentIds || it.successorId !in presentIds,
 					)
 				},
-			// The scope's own undated work only: the tray is where *your* tickets wait for
-			// a date, and other teams' would make it a list the reader cannot empty.
-			unscheduled = own.filter { it.start == null && it.due == null }
-				.map { TimelineUnscheduled(it.id, identifier(it), it.title) },
 			truncated = truncated,
+			hasMore = hasMore,
 		)
 	}
 
@@ -241,6 +328,30 @@ class TimelineService(
 	 * never examines that edge at all. This reports what is broken *now*, including
 	 * breakage that predates every request.
 	 */
+	/**
+	 * Whether the due date has gone by on work nobody has closed.
+	 *
+	 * **UTC on both sides, and that is the whole of the correctness here.** A due date with
+	 * `hasTime` false names a *day* and is stored as that day's midnight in UTC — see
+	 * `KansoInstant`. Comparing it against the server's local date would make a ticket late
+	 * a day early for a server east of Greenwich and a day late for one west of it, on data
+	 * nobody touched, and the bug would only ever show on instances hosted outside UTC.
+	 *
+	 * A ticket due *today* is not late, which is why this is `isBefore` and not `!isAfter`.
+	 * The day is not over, and a badge that lit at midnight on the due date itself would
+	 * accuse somebody of being late on the morning they were given.
+	 *
+	 * The category and never the status key — `KAN-90`. A team may call finished work
+	 * anything, so `status == "done"` is a sentence this class is not allowed to write.
+	 */
+	private fun isLate(ticket: Ticket, today: LocalDate): Boolean {
+		val due = ticket.due ?: return false
+		val day = due.at.withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()
+		if (!day.isBefore(today)) return false
+		val category = statusCategories.categoryOf(ticket.teamId, ticket.status)
+		return category != StatusCategory.COMPLETED && category != StatusCategory.CANCELED
+	}
+
 	private fun brokenEdges(byId: Map<UUID, Ticket>, edges: List<Edge>, categories: Categories): Map<Edge, Boolean> =
 		edges.mapNotNull { edge ->
 			val predecessorEnd = byId[edge.predecessorId]?.let { it.due?.at ?: it.start?.at }
@@ -334,5 +445,27 @@ class TimelineService(
 		 * one. An oversized response is a better failure than a wrong number.
 		 */
 		const val SCOPE_LIMIT = 2000
+
+		/**
+		 * One page of the column, and the reason it is not `SCOPE_LIMIT`.
+		 *
+		 * The column shows every ticket in scope including finished work, which on a mature
+		 * instance is most of it, so the first screen would otherwise fetch and decorate
+		 * thousands of rows to draw the forty a reader can see. The virtualiser asks for the
+		 * next page as it approaches the end.
+		 */
+		const val DEFAULT_PAGE = 200
+
+		/**
+		 * What `hideCompleted` keeps, said as the three categories rather than as "not the
+		 * other two". `TicketFilters.categories` is an inclusion list, and inverting it here
+		 * would put a second spelling of "open" in this file — the vocabulary already has
+		 * one, and `StatusCategory` is where it lives.
+		 */
+		val OPEN_CATEGORIES = listOf(
+			StatusCategory.BACKLOG,
+			StatusCategory.UNSTARTED,
+			StatusCategory.STARTED,
+		)
 	}
 }

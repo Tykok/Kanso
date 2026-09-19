@@ -7,6 +7,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "shots": "playwright test --grep @shots",
+    "shots:pack": "for f in site/media/*.png; do cwebp -quiet -resize 1920 0 -q 90 -m 6 -sharp_yuv \"$f\" -o \"site/media/v1/$(basename \"$f\" .png).webp\"; done",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
