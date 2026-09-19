@@ -18,6 +18,8 @@ import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.springframework.stereotype.Repository
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -82,6 +84,19 @@ data class TicketFilters(
 	/** Bounds on the points, inclusive. Both may be asked at once. */
 	val estimateMin: Int? = null,
 	val estimateMax: Int? = null,
+	/**
+	 * "Overdue": the due date has gone by and nobody has finished or cancelled it.
+	 *
+	 * A flag and not a bound on the due date, for [unestimated]'s reason: "past" is a
+	 * comparison against *now*, which a caller cannot express as a literal without the
+	 * answer changing tomorrow. Its own flag also keeps it combinable — `late` together
+	 * with a `dueBefore` would be two questions and this is one.
+	 *
+	 * The same word `TimelineService.isLate` computes, deliberately: one definition for the
+	 * badge, the filter and the bar, which is the whole of the ruling. A second spelling
+	 * here would be the two definitions that ruling exists to prevent.
+	 */
+	val late: Boolean = false,
 )
 
 /**
@@ -289,6 +304,37 @@ class TicketQueryRepository {
 			// both can be combined with a bound, and the answer is then empty, which is the
 			// honest reading of "unsized and bigger than a 3".
 			if (filters.unestimated) add(Tickets.estimate.isNull())
+			// Overdue, asked the same way `TimelineService.isLate` answers it and for the
+			// same reasons — see `TicketFilters.late`.
+			//
+			// The boundary is **today's midnight UTC**, and `less` rather than `lessEq`: a
+			// due date names a civil day stored as that day's midnight in UTC, so `< today`
+			// is exactly "a day before this one" and a ticket due today is not yet late.
+			// Comparing against `now()` instead would make a ticket due today late from
+			// 00:00:01, which is the accusation `isLate` refuses to make.
+			//
+			// The category through `team_statuses`, never a literal status key: `KAN-90`
+			// means a team may call finished work anything, so `status <> 'done'` is a
+			// sentence no query in this file is allowed to write.
+			if (filters.late) {
+				val startOfToday = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.DAYS)
+				add(Tickets.dueAt.isNotNull())
+				add(Tickets.dueAt less startOfToday)
+				add(
+					notExists(
+						TeamStatuses.selectAll().where {
+							(TeamStatuses.teamId eq Tickets.teamId) and
+								(TeamStatuses.key eq Tickets.status) and
+								(
+									TeamStatuses.category inList listOf(
+										StatusCategory.COMPLETED.wire,
+										StatusCategory.CANCELED.wire,
+									)
+								)
+						}
+					)
+				)
+			}
 			// A bound never matches an unsized ticket, and this is on purpose rather than by
 			// accident of SQL's null comparison: a ticket nobody has estimated is not known
 			// to be small, so neither `≥ 5` nor `≤ 5` may claim it. The `unestimated` chip is
