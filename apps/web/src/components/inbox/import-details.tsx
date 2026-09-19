@@ -81,6 +81,7 @@ export function ImportDetails({
 }) {
   const [open, setOpen] = useState(false);
   const [people, setPeople] = useState<Record<string, string | null>>({});
+  const [peopleTotal, setPeopleTotal] = useState(0);
   const [columnsLoading, setColumnsLoading] = useState(false);
   const [peopleLoading, setPeopleLoading] = useState(false);
 
@@ -103,7 +104,9 @@ export function ImportDetails({
         onClick={() => setOpen((shown) => !shown)}
       >
         <span className="font-medium">Columns and people</span>
-        <span className="flex-1 text-11 text-faint">{detailsSummary({ mappings, people })}</span>
+        <span className="flex-1 text-11 text-faint">
+          {detailsSummary({ mappings, people, peopleTotal })}
+        </span>
         <span className="text-faint">{open ? "▴" : "▾"}</span>
       </button>
 
@@ -129,6 +132,7 @@ export function ImportDetails({
           edits={edits}
           onEdit={onEdit}
           onPeople={takePeople}
+          onCount={setPeopleTotal}
           onLoading={setPeopleLoading}
         />
       </div>
