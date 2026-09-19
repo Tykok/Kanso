@@ -106,9 +106,9 @@ port 8099, with three related bases, a status column called `Etat` and options c
 `30-setup-import.spec.ts` (scenario 30) needs the same workspace for the same reason. It
 opens the *other* door onto screen 24 — the "Import from Notion…" button on the Connections
 card in Settings, rather than the command palette — and checks the two things that mount
-point can break on its own without the other suite noticing: the button stays disabled
-until Notion is configured, and it sits beside the Notion people list this scenario also
-matches against before importing.
+point can break on its own without the other suite noticing: the button opens the import
+dialog from the settings card rather than the palette, and it sits beside the Notion
+people list this scenario also matches against before importing.
 
 The seam is `NOTION_BASE_URL`, which `application.yml` already reads. Pointing the API at
 the suite's workspace puts the real `HttpNotionClient` under test — its search-filter

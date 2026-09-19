@@ -135,7 +135,10 @@ class InstanceSettingsRepository {
 	 * to run.
 	 */
 	fun markSetupCompleted(at: OffsetDateTime = OffsetDateTime.now()) {
-		InstanceSettings.update({ (InstanceSettings.id eq true) and InstanceSettings.setupCompletedAt.isNull() }) {
+		InstanceSettings.update({
+			(InstanceSettings.id eq true) and
+				InstanceSettings.setupCompletedAt.isNull()
+		}) {
 			it[setupCompletedAt] = at
 		}
 	}
