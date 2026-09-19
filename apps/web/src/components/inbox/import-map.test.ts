@@ -70,7 +70,7 @@ describe("what the mapping adds up to", () => {
   });
 
   it("drops a mapping for a database that is no longer there", () => {
-    // The list is re-searched between step 1 and step 3; a stale id in the mapping
+    // The list can be re-searched while the mapping is still open; a stale id in it
     // must not be counted as a database to import.
     const counts = importCounts(SOURCES, { ...DRAWN, gone: "tickets" });
     expect(counts.tickets).toBe(1);
