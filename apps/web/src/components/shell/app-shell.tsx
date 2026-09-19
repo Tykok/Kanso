@@ -94,10 +94,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { leave } = useShellKeys({ ctx, page });
 
   /**
-   * An instance without an owner has nothing to show, and someone who has never been
-   * through the preferences step is sent to pick them once. Both answers come from the
-   * setup endpoint: on a backend that predates the wizard it 404s, and pushing anyone
-   * towards a route that does not exist there is worse than a working list.
+   * An instance without an owner has nothing to show, and an account with no onboarding
+   * stamp is sent to `/setup` too — every account-creation path stamps it now (claiming,
+   * OIDC, the dev-header filter, accepting an invitation), so reaching here unstamped means
+   * a row that predates one of those stamps. Both answers come from the setup endpoint: on
+   * a backend that predates the wizard it 404s, and pushing anyone towards a route that
+   * does not exist there is worse than a working list.
    */
   const needsSetup =
     setup.data !== undefined &&

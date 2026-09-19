@@ -34,7 +34,12 @@ data class PreferencesPatch(
 	 */
 	val shortcuts: Map<String, List<String>>? = null,
 	val defaultTeamId: UUID? = null,
-	/** True stamps the moment the wizard was finished; false sends the user back through it. */
+	/**
+	 * True stamps the moment `/setup`'s account screen was passed. False clears the
+	 * stamp — nothing today sends one, but `PreferencesPatch` is a generic PUT body and
+	 * nothing stops a caller from trying — though `/setup` now has nothing left to send a
+	 * claimed, signed-in account back through even if it arrived.
+	 */
 	val onboarded: Boolean? = null,
 	/**
 	 * Points per working day, declared. Clearable via [unset], because withdrawing a

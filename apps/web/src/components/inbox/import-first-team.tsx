@@ -9,13 +9,12 @@ import { actionErrorMessage } from "@/lib/errors";
  * The first team, named where the import stops for the want of one.
  *
  * An instance a moment old has no team, and `NotionImportService` refuses a plan that
- * writes anything but teams without one. Both screens that lead into the import used to
- * express that refusal the same way — a disabled Next, and a `<select>` holding
- * "— choose a team —" and nothing else. A dropdown that opens onto nothing does not read
- * as a missing row; it reads as a broken control, and there is no way from there to find
- * out which of the two it is. So the block is one component, drawn by the wizard's card
- * before the dialog opens and by the plan screen in the place the destination would have
- * been.
+ * writes anything but teams without one. The plan screen used to express that refusal
+ * with a disabled Next and a `<select>` holding "— choose a team —" and nothing else — a
+ * dropdown that opens onto nothing does not read as a missing row, it reads as a broken
+ * control, and there is no way from there to find out which of the two it is. So the block
+ * is its own component, drawn in the place the destination would have been, one caller:
+ * the wizard's own account screen has nothing left to import into.
  *
  * It writes a row, which is the one thing the dialog otherwise keeps for its confirmation.
  * That promise is about the workspace's content — nothing is read out of Notion and

@@ -39,9 +39,10 @@ test("scenario 30 — settings opens the import on the real workspace", async ({
 
   /*
    * A destination team, seeded so this scenario reads the same on a fresh database as on
-   * one the rest of the suite has already run against. With none, the step draws its "no
-   * team yet" half instead — which `notion-import-card.test.tsx` covers, and which would
-   * otherwise make this spec pass or fail on how many specs ran before it.
+   * one the rest of the suite has already run against. With none, the plan screen draws
+   * its "no team yet" half instead — which `import-plan.test.tsx` covers ("names a team
+   * instead of offering a dropdown with nothing in it"), and which would otherwise make
+   * this spec pass or fail on how many specs ran before it.
    */
   const api = await apiAs(ADMIN);
   await seedTeam(api, { name: unique("Destination"), key: uniqueKey() });

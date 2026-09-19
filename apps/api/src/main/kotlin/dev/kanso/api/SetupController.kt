@@ -90,10 +90,11 @@ class SetupController(
 	 * anyway.
 	 *
 	 * Redaction rather than a second route because of who reads what: every screen that
-	 * wants the three strings is admin-facing already (`connections-section`, the wizard's
-	 * `notion-step` and `notion-connect`), while `app-shell` and the onboarding checklist
-	 * read only booleans and are reached by every member. One route keeps those callers as
-	 * they are; a split would have moved six of them for the benefit of three fields.
+	 * wants the three strings is admin-facing already — `connections-section` and the
+	 * `notion-connect` it draws are the only ones left, now that the wizard's own Notion
+	 * step is gone — while `app-shell` and the onboarding checklist read only booleans and
+	 * are reached by every member. One route keeps those callers as they are; a split would
+	 * have moved six of them for the benefit of three fields.
 	 *
 	 * `needsOwner` itself stays open, and stays a real disclosure: it says an instance is
 	 * deployed and unclaimed, which is the window `POST /api/setup/owner` is open in. That
@@ -272,8 +273,8 @@ class SetupController(
 	/**
 	 * Where Spring Security registers Google's callback — a fixed path, so it is derived
 	 * rather than configured, and built from the request that arrived rather than from a
-	 * property nobody would remember to change. The same string `google-step.tsx` offers
-	 * to copy into Google Cloud.
+	 * property nobody would remember to change. The same string `connections-section.tsx`
+	 * offers to copy into Google Cloud.
 	 */
 	private fun googleRedirectUri(): String = ServletUriComponentsBuilder.fromCurrentContextPath()
 		.path("/login/oauth2/code/google")
