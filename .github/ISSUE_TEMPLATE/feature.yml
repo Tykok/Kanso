@@ -1,0 +1,87 @@
+# The first field asks for the problem and not the feature, and the order is the point:
+# a proposal arriving as a solution has already thrown away the thing that would let
+# anyone judge it, and the only way back is a conversation that could have been the
+# first message.
+#
+# The checkbox about Notion is not paperwork. It is the one invariant a feature request
+# breaks by accident rather than on purpose — "let people edit it in Notion and have it
+# win" is a reasonable-sounding sentence that contradicts the thing the whole sync
+# engine is built to guarantee. Saying it here costs a line; discovering it three
+# exchanges in costs both of us an afternoon.
+
+name: Feature or change
+description: Something Kanso should do, or should do differently
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [wiki](https://github.com/Tykok/Kanso/wiki) holds seventeen specs and the
+        `Follow-ups` page — debts found in review and left deliberately. If what you
+        want is already argued there, say which page: agreeing with a spec that has not
+        been built is a much shorter conversation than proposing it from scratch.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What you were trying to do, for whom, and what got in the way. Not the feature —
+        the problem it would solve. A problem survives a design being wrong; a feature
+        does not.
+      placeholder: |
+        Two of our teams share no status vocabulary, so the person who plans across both
+        of them cannot tell at a glance what is actually under way anywhere.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead
+      description: >
+        The workaround, however ugly — including "nothing, we gave up". This is the part
+        that says how much the problem actually costs, and it is the part that decides
+        whether this gets built.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which part of Kanso
+      options:
+        - The web client
+        - The REST API
+        - The MCP door and its tools
+        - The Notion mirror
+        - The image and self-hosting
+        - Documentation
+        - I am not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: >
+        Optional, and genuinely so. If you have a shape for it, it helps; if you only
+        have the problem, that is a complete request and the field above is the one
+        that mattered.
+
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Before you file
+      options:
+        - label: >
+            This does not make Notion authoritative for any field. Postgres is the
+            source of truth and Notion is an asynchronous mirror — if a Postgres row
+            moved after the last successful push, the Notion edit loses and a corrective
+            push is enqueued. A request that needs the other outcome is refused by
+            construction rather than weighed, so it is worth knowing now.
+          required: true
+        - label: I searched the open issues and the wiki
+          required: true

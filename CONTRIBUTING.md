@@ -78,6 +78,28 @@ cd apps/web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && 
 `README.md` covers bringing the application itself up (`docker compose up`, the setup
 wizard, `KANSO_AUTH_MODE=dev`).
 
+### The end-to-end suite
+
+Playwright is not in CI, which makes it yours to run when you change something it
+covers. It has no `webServer` and assumes the stack is already up, so it is two commands
+and not one — both from the repository root:
+
+```bash
+KANSO_AUTH_MODE=dev docker compose up -d --build --wait
+pnpm install && pnpm exec playwright install chromium && pnpm test:e2e
+```
+
+`KANSO_AUTH_MODE=dev` is not optional here. The permission scenarios need two people
+playable inside one test, and under `oidc` there is no automatable sign-in path.
+
+If you override the ports, set `KANSO_WEB_URL` **and** `KANSO_API_URL` together. The
+browser reads the first; every seed call and every assertion made over HTTP reads the
+second. Setting only one drives your stack while seeding — and claiming — somebody
+else's, and that is not hypothetical: a run pointed at a fresh web port left its teams,
+its tickets and a `users` row on the maintainer's own instance, and reported the failure
+as a team it could not create. `e2e/README.md` is the full version, including
+`KANSO_WEB_ORIGIN`, which you also need whenever `WEB_PORT` is not the default.
+
 ### If you are contributing from a fork
 
 Fork the repository, push your branch to your fork, open the pull request against
@@ -114,6 +136,43 @@ that is a separate thing from the language the repository is worked in.
 A comment that asserts something untrue is worse than no comment. If your change makes a
 nearby comment false, fixing that comment is part of your change, not a follow-up.
 
+## Where a document goes
+
+One question decides it: **does this document describe something that changes?**
+
+A document about a moving artefact lives in `docs/` and is reviewed in the pull request
+that moves it. That is all three files there: `docs/self-hosting.md` describes the image,
+the routing table and the variables; `docs/architecture.md` and its French twin describe
+the shape the system has today. Every line of them can be falsified by the next commit,
+so they sit in the diff, where a reviewer sees both halves at once. Otherwise the
+staleness is paid by a stranger trying to install the product, who is the last person in
+a position to notice it. A fourth file there needs the argument that it is this kind of
+document.
+
+A dated decision lives in the [wiki](https://github.com/Tykok/Kanso/wiki). A spec arguing
+what a feature should do, and the plan it was built from, say nothing about the present.
+The code moving on does not make them wrong — it makes them the record of what was
+decided before it moved. `Follow-ups`, the debts found in review and left deliberately,
+reads the same way, and it is worth checking before you propose a fix: yours may already
+be on it, agreed and unbuilt.
+
+**Comments in the code cite wiki pages by title, and the title is the only handle they
+have.** Nothing in CI builds the wiki or resolves a link into it, so renaming a page
+breaks those citations silently. Grep before you rename one.
+
+## The invariants
+
+`CLAUDE.md` at the root lists them with the reasoning behind each: Postgres is the source
+of truth and Notion an asynchronous mirror; Flyway owns the schema and a merged migration
+is immutable; `docker/Caddyfile` is a test fixture as much as configuration; `KANSO_TLS`
+decides who owns `X-Forwarded-For`; the JVM binds to loopback; `NEXT_PUBLIC_API_URL`
+stays absent; the two compose files are not variants of each other; `/data` must outlive
+the container; `KANSO_AUTH_MODE=dev` never reaches a deployed instance.
+
+It is addressed to an agent and it is accurate for a person. Read it before a first
+non-trivial change — it is shorter than this file, and every entry on it is there because
+that thing has already gone wrong once.
+
 ## Cutting a release
 
 Releases are tags on `main`, and the tag is the whole ceremony —
@@ -148,6 +207,17 @@ tag is how you re-run a release.
 
 ## Reporting things
 
-Issues are open. A bug report that says which version — the tag, or the commit `/api/me`
-reports — how it was deployed, and what you expected instead, is one that can be acted
-on. Security-sensitive reports belong in a private advisory rather than a public issue.
+Issues are open, and there are three forms rather than a blank box: a bug, a self-hosting
+problem, and a feature or change. The forms ask for the version and how the instance is
+deployed because that is the answer that always goes missing, and a report without it
+costs a round trip before anybody can try to reproduce it. Self-hosting has a form of its
+own because an install that never came up has to be asked different questions than an
+application that behaved wrong.
+
+**Security-sensitive reports belong in a [private advisory][advisory], never a public
+issue.** `SECURITY.md` says what is in scope, and lists the things that are documented
+limitations rather than vulnerabilities — dev mode, a token with no scope narrower than a
+person, a published 8080 — so that a reporter reads the answer instead of writing the
+report.
+
+[advisory]: https://github.com/Tykok/Kanso/security/advisories/new

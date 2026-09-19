@@ -1,0 +1,124 @@
+# Separate from the bug form because the required fields are genuinely different ones.
+# A bug report needs to know what the application did; an install that never came up
+# needs to know what is in front of it, what is under it, and what survives a restart.
+# Asking one form to do both produces a form where half the fields are "not applicable"
+# and people stop reading it.
+#
+# This is also the surface a stranger meets first, and the one whose documentation goes
+# stale most expensively, so a report arriving here is worth more than it looks: it is
+# usually docs/self-hosting.md being wrong, not the image.
+
+name: Self-hosting
+description: Kanso will not come up, or comes up wrong, on your own infrastructure
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        [`docs/self-hosting.md`](https://github.com/Tykok/Kanso/blob/main/docs/self-hosting.md)
+        is the full install: the SQL to run before the first boot, terminating TLS in
+        your own proxy, what `/data` holds, and the routing table. If it told you
+        something that turned out to be false, say so here — that is a report about the
+        document, and it is worth as much as one about the image.
+
+  - type: input
+    id: image
+    attributes:
+      label: Image
+      description: Tag and platform. `linux/amd64` and `linux/arm64` are both published.
+      placeholder: ghcr.io/tykok/kanso:v0.4.1, linux/arm64
+    validations:
+      required: true
+
+  - type: input
+    id: public-url
+    attributes:
+      label: KANSO_PUBLIC_URL
+      description: >
+        Scheme and host, as you set it. Redact the host if you must, but keep the shape
+        — `localhost` is the one address that cannot work here, and seeing it is often
+        the whole answer.
+      placeholder: https://kanso.example.com
+    validations:
+      required: true
+
+  - type: dropdown
+    id: edge
+    attributes:
+      label: What sits in front of Kanso
+      description: >
+        This decides who owns `X-Forwarded-For`, and therefore what address the API
+        rate-limits on. Under `KANSO_TLS=auto` the bundled Caddy is the edge and strips
+        the inbound header; under `off` it trusts what reaches it, which is only
+        defensible when something you control is in front.
+      options:
+        - Nothing — the container is the edge, KANSO_TLS=auto
+        - A reverse proxy I run (nginx, Traefik, another Caddy), KANSO_TLS=off
+        - A cloud load balancer or ingress, KANSO_TLS=off
+        - A tunnel (Cloudflare Tunnel, Tailscale, ngrok)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: data
+    attributes:
+      label: /data
+      description: >
+        It holds the key that encrypts the stored Notion and Google secrets, and Caddy's
+        ACME state. If it does not outlive the container, the stored secrets are
+        unreadable on the next deploy and Let's Encrypt rate-limits you inside a week —
+        which presents as a certificate that stops renewing, not as an error at boot.
+      options:
+        - A named volume
+        - A bind mount
+        - Nothing — it lives and dies with the container
+        - I am not sure
+    validations:
+      required: true
+
+  - type: input
+    id: postgres
+    attributes:
+      label: Postgres
+      description: >
+        Version, managed or your own, and whether TLS is required. Flyway runs the
+        migrations on boot, so a role without the rights to create objects fails here.
+      placeholder: 16.4 on RDS, sslmode=require
+    validations:
+      required: true
+
+  - type: textarea
+    id: startup
+    attributes:
+      label: What the container printed (please do not leave this empty)
+      description: >
+        From `docker logs` — the whole first boot if you can, redacted. The entrypoint
+        gives up on an unreachable database after ten seconds and says so in words, so
+        the first twenty lines usually contain the answer, and a report without them is
+        usually one round trip from being answerable.
+      # `render` and `required` are not combinable in an issue form — GitHub rejects the
+      # template outright rather than the submission — so this field asks loudly instead
+      # of enforcing. The code block is worth more here than the enforcement: a boot log
+      # pasted as prose loses its line breaks, and the line breaks are the log.
+      render: text
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you see, and what you expected instead
+      placeholder: |
+        The setup wizard loads, but "Create the databases" returns 502 through my
+        ingress. The same image on a laptop with KANSO_TLS=auto works.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Before you file
+      options:
+        - label: This is not a security issue — those go to a private advisory
+          required: true
+        - label: I read `docs/self-hosting.md` and this is not covered there, or it is wrong there
+          required: true

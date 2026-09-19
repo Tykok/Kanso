@@ -1,0 +1,27 @@
+# Blank issues are off, and that is the decision rather than a default. The forms
+# beside this file exist because the thing that goes missing from a report is always
+# the same thing — how the instance runs — and every report missing it costs a round
+# trip before anyone can even try to reproduce it. A blank box reintroduces exactly
+# that, for the reporters most likely to be new here.
+blank_issues_enabled: false
+
+contact_links:
+  - name: How it works, and why it works that way
+    url: https://github.com/Tykok/Kanso/wiki
+    about: >
+      Seventeen specs, fourteen plans and Follow-ups — the decisions behind the code,
+      each one dated. Worth reading before proposing a change to something that
+      already has a spec arguing the opposite.
+
+  - name: A question rather than a report
+    url: https://github.com/Tykok/Kanso/discussions
+    about: >
+      Whether Kanso can do a thing, how to shape a team's statuses, what an MCP tool
+      returns, whether your Postgres will do. Discussions, not issues.
+
+  - name: A security vulnerability
+    url: https://github.com/Tykok/Kanso/security/advisories/new
+    about: >
+      Never a public issue. Kanso carries an OAuth authorisation server and an
+      unauthenticated endpoint that writes rows. Report it privately — SECURITY.md
+      says what is in scope and what is a documented limitation instead.
