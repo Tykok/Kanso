@@ -18,19 +18,35 @@ import { importCounts, type ImportMapping } from "./import-map";
  *
  * `useImportSchema` is stubbed at its resting state for the reason `import-counts.test.tsx`
  * gives: `RelationHint` returns null until it answers, and letting the fetch start prints
- * a stack trace out of a passing run.
+ * a stack trace out of a passing run. `usePeople`, `notionImportApi.peopleSeen` and
+ * `notionPeopleApi.view` are stubbed for the same reason: `ImportDetails` mounts
+ * `StepColumns` and `StepPeople` unconditionally now — that is the fix for the finding that
+ * an unopened panel used to import with no column mapping and no assignees at all — so
+ * every render here fires their requests too, real client or not.
  */
 
 vi.mock("@/lib/queries", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/queries")>();
-  return { ...actual, useImportSchema: () => ({ data: undefined }) };
+  return {
+    ...actual,
+    useImportSchema: () => ({ data: undefined }),
+    usePeople: () => ({ data: undefined }),
+  };
 });
 
 const createTeam = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, api: { ...actual.api, createTeam } };
+  return {
+    ...actual,
+    api: { ...actual.api, createTeam },
+    notionImportApi: { ...actual.notionImportApi, peopleSeen: async () => [] },
+    notionPeopleApi: {
+      ...actual.notionPeopleApi,
+      view: async () => ({ available: true, people: [] }),
+    },
+  };
 });
 
 const SOURCES: NotionImportSource[] = [
@@ -138,6 +154,11 @@ describe("the plan screen's destination team", () => {
   it("keeps columns and people folded until they are asked for", () => {
     stepTwo({ teams: [team()] });
 
-    expect(screen.queryByText(/who these people are/i)).toBeNull();
+    // `StepColumns` and `StepPeople` are mounted unconditionally now — they seed the
+    // shell's request whether or not anybody looks — so "folded" is no longer "absent
+    // from the DOM"; it is this attribute, which drives the `display: none` that hides
+    // them. `import-details.test.tsx` covers the seeding and the display toggle itself.
+    const toggle = screen.getByRole("button", { name: /columns and people/i });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });
