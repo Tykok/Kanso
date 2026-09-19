@@ -1183,8 +1183,6 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  completeSetup: () => request<SetupState>("/api/setup/complete", { method: "POST" }),
-
   createInvitation: (body: { email?: string; role?: InstanceRole }) =>
     request<InvitationLink>("/api/setup/invitations", { method: "POST", body: JSON.stringify(body) }),
 
