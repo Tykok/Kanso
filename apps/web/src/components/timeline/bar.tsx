@@ -8,6 +8,7 @@ import {
   barAccessibleName,
   derivedBorderClass,
   LATE_STYLE,
+  SLIPPING_STYLE,
   SLACK_STYLE,
   slackTitle,
   slackWidthPx,
@@ -384,7 +385,13 @@ export function TimelineBar({
   // of six bracketed classes would be harder to read than the function computing
   // the same colour once.
   const colorStyle =
-    kind === "project" ? undefined : state === "late" ? LATE_STYLE : ticketTint(status, violated);
+    kind === "project"
+      ? undefined
+      : state === "late"
+        ? LATE_STYLE
+        : state === "slipping"
+          ? SLIPPING_STYLE
+          : ticketTint(status, violated);
 
   const derivedClass = derivedBorderClass(derived);
 
@@ -454,7 +461,12 @@ export function TimelineBar({
          * the same move the bundle already makes for every other case, applied
          * to the one state it never faced.
          */}
-        {state !== "late" && <span className="truncate px-1.5">{label}</span>}
+        {/* Hidden on either hatched state, not just `late`: the reason is the hatch and
+            not the meaning — no flat ink clears 4.5:1 over those stripes — so the test is
+            "is this bar hatched", which is now two values. */}
+        {state !== "late" && state !== "slipping" && (
+          <span className="truncate px-1.5">{label}</span>
+        )}
         {handles.end && (
           <span
             data-edge="end"

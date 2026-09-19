@@ -248,7 +248,18 @@ function bar(
       kind="ticket"
       // Late first: a late ticket is critical too, and the worse of the two is what the
       // reader has to be told.
-      state={ticket.late ? "late" : ticket.critical ? "critical" : "normal"}
+      // Late, then slipping, then critical. A fact beats a forecast: a ticket whose date
+      // has already passed is not "projected" to do anything, and drawing the prediction
+      // over the event would be the screen preferring its arithmetic to what happened.
+      state={
+        ticket.late
+          ? "late"
+          : ticket.slipping
+            ? "slipping"
+            : ticket.critical
+              ? "critical"
+              : "normal"
+      }
       label={ticket.title}
       start={start}
       end={end}
