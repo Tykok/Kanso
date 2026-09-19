@@ -3,10 +3,10 @@ import type { ImportField, ImportTarget } from "./import-map";
 /**
  * How the five answers are named and drawn, in one place.
  *
- * Four of the five steps show them — the first to say what everything starts as, the second
- * to choose, the third to head each base's section, the fifth to restate the plan beside
- * the confirm button — and a label that disagreed between them would be a mapping the
- * reader confirms against the wrong word.
+ * Three places show them — the plan screen to choose and to warn about a dropped relation,
+ * the folded columns panel to head each base's section, the confirmation to restate the
+ * plan beside the confirm button — and a label that disagreed between them would be a
+ * mapping the reader confirms against the wrong word.
  */
 export const TARGET_LABELS: Record<ImportTarget, string> = {
   teams: "Teams",
@@ -55,9 +55,6 @@ export const FIELD_LABELS: Record<ImportField, string> = {
   projects: "Projects",
   subTeams: "Sub-teams",
 };
-
-/** The fields that name people, and so the ones that put step 4 on the way to step 5. */
-export const PEOPLE_FIELDS: readonly ImportField[] = ["assignees", "lead"];
 
 /** The drawing's own three columns: the base, how much of it, what it becomes. */
 export const ROW_GRID = "grid-cols-[1fr_130px_150px]";

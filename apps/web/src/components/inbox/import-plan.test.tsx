@@ -98,7 +98,7 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
   );
 }
 
-describe("step 2's destination team", () => {
+describe("the plan screen's destination team", () => {
   beforeEach(() => {
     createTeam.mockReset();
   });
