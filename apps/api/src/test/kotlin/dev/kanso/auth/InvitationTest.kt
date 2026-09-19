@@ -5,6 +5,7 @@ import dev.kanso.domain.InstanceRole
 import dev.kanso.domain.User
 import dev.kanso.repo.UserRepository
 import dev.kanso.service.BadRequestException
+import dev.kanso.settings.PreferencesService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -14,6 +15,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -29,6 +31,7 @@ class InvitationTest : PostgresTest() {
 	@Autowired lateinit var encoder: PasswordEncoder
 	@Autowired lateinit var tx: TransactionTemplate
 	@Autowired lateinit var jdbc: JdbcClient
+	@Autowired lateinit var preferences: PreferencesService
 
 	@BeforeTest
 	fun clearLocalAccounts() {
@@ -54,6 +57,15 @@ class InvitationTest : PostgresTest() {
 			tx.execute { users.findByEmail("second@kanso.test") },
 			"the refused account must not survive the rejected acceptance",
 		)
+	}
+
+	@Test
+	fun `accepting an invitation stamps the onboarding`() {
+		val (token, _) = invitations.create(owner().id, null, InstanceRole.MEMBER)
+
+		val invited = invitations.accept(token, "joined@kanso.test", "Joined", "a-long-enough-password")
+
+		assertNotNull(preferences.get(invited.id).onboardedAt)
 	}
 
 	@Test
