@@ -99,6 +99,27 @@ describe("buildRows", () => {
     expect(kinds(rows)).toEqual(["team", "ticket", "team", "ticket"]);
   });
 
+  /**
+   * The row that used to vanish. A shared project is filed under whichever team's ticket
+   * named it first, so a ticket from the other team pointing at that same project was in
+   * no project group of its own and was not an orphan either. The e2e suite caught it;
+   * this is the cheap version of that test.
+   */
+  it("never drops a ticket whose project was grouped under another team", () => {
+    const rows = buildRows(
+      view({
+        projects: [project({ id: "shared", name: "Shared" })],
+        tickets: [
+          ticket({ id: "mine", projectId: "shared" }),
+          ticket({ id: "theirs", teamKey: "SUP", projectId: "shared" }),
+        ],
+      }),
+    );
+    const ids = rows.flatMap((row) => (row.kind === "ticket" ? [row.ticket.id] : []));
+    expect(ids).toContain("mine");
+    expect(ids).toContain("theirs");
+  });
+
   it("is empty for no view at all rather than throwing", () => {
     expect(buildRows(undefined)).toEqual([]);
   });
