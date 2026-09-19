@@ -147,7 +147,7 @@ export type NotionImportSource = {
 };
 
 /**
- * What step 1 gets back.
+ * What discovery gets back.
  *
  * `available: false` is a first-class answer, not an error: an instance with no Notion
  * token has nothing to import from, and so does one whose API client cannot yet search
@@ -194,7 +194,7 @@ export type NotionImportRequest = {
 /** A base's name and how many of its pages the plan would write. */
 export type NotionImportGroup = { name: string; pages: number };
 
-/** What step 5 sends, and what it gets back before anything is written. */
+/** What the confirmation sends, and what it gets back before anything is written. */
 export type NotionImportPreview = {
   teams: NotionImportGroup[];
   projects: NotionImportGroup[];
@@ -288,9 +288,9 @@ export const notionImportApi = {
     }),
 
   /**
-   * The people a plan's mapped columns would meet, before step 4 asks who any of them are
-   * in Kanso. Reads, writes nothing — `perform` is still the only call that does, and only
-   * once the import itself is confirmed.
+   * The people a plan's mapped columns would meet, before the folded people panel asks who
+   * any of them are in Kanso. Reads, writes nothing — `perform` is still the only call
+   * that does, and only once the import itself is confirmed.
    */
   peopleSeen: (plan: NotionImportPlanRow[]) =>
     request<NotionPersonSeen[]>("/api/notion/import/people-seen", {
@@ -305,12 +305,12 @@ export type NotionPersonSeen = { id: string; name?: string };
 // --- the person correspondence -----------------------------------------------
 //
 // Standing, not scoped to one import: `users.notion_person_id` outlives whichever import
-// last touched it, which is why this lives beside screen 24 rather than inside it. Step 4
-// reads it to pre-fill a suggestion for the people its own mapped columns met;
-// `settings/notion-people-section.tsx` is where the rest of the workspace gets matched, and
-// the only screen that calls `link` directly — step 4's own map reaches the server through
-// `notionImportApi.confirm`'s `people` field instead, applied by `perform`, never by a PUT
-// from here.
+// last touched it, which is why this lives beside screen 24 rather than inside it. The
+// folded people panel reads it to pre-fill a suggestion for the people its own mapped
+// columns met; `settings/notion-people-section.tsx` is where the rest of the workspace
+// gets matched, and the only screen that calls `link` directly — the panel's own map
+// reaches the server through `notionImportApi.confirm`'s `people` field instead, applied
+// by `perform`, never by a PUT from here.
 
 /**
  * `available: false` is a first-class answer here too: an integration without the

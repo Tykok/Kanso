@@ -1,5 +1,5 @@
 /**
- * Screen 24's second step: what each Notion database becomes.
+ * Screen 24's plan: what each Notion database becomes.
  *
  * The arithmetic is here, on its own, because it is the only part of the import that
  * has to be right before anything is written. "396 pages kept out of 1287" is what the
@@ -58,12 +58,13 @@ export const DEFAULT_TARGET: ImportTarget = "ignore";
 
 export type ImportCounts = {
   /**
-   * Pages in the bases the reader kept — step 2's number, and step 2's only.
+   * Pages in the bases the reader kept — the plan screen's number, and the plan screen's
+   * only.
    *
    * Not the number beside the confirm button. This is the *discovery* count, so it still
    * holds the pages a row already exists for and the pages that will be refused, neither of
-   * which is known before the preview. Step 5 sums the preview's own groups instead; step 2
-   * has no preview and this is the honest ceiling until it does.
+   * which is known before the preview. The confirmation sums the preview's own groups
+   * instead; the plan screen has no preview and this is the honest ceiling until it does.
    */
   kept: number;
   /** Pages in the workspace, mapped or not. The denominator. */

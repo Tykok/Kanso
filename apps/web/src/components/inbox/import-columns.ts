@@ -3,7 +3,7 @@ import { PRIORITY_LABELS, PROJECT_STATUS_LABELS, STATUS_LABELS } from "@/lib/sta
 import type { ImportField, ImportMapping, ImportTarget } from "./import-map";
 
 /**
- * Screen 24's third step: what the columns screen derives, and nothing else.
+ * Screen 24's folded columns panel: what the columns screen derives, and nothing else.
  *
  * The pre-fill is not here. It is computed once, server side, in `ImportSchema.of`, and
  * travels with the schema — the plan says so, because two implementations of "what looks
@@ -191,11 +191,12 @@ const pointsAt = (base: MappedBase, field: string): string | undefined => {
 
 /**
  * The bases a mapped relation points at that nothing is importing as the kind that
- * relation needs — step 2's suggestion, and the warning beside it.
+ * relation needs — the plan screen's suggestion, and the warning beside it.
  *
- * Read from [NotionImportSchema.suggestion], because on the step where this is drawn the
- * server's guess is the only mapping there is; a caller that already has the reader's own
- * mapping substitutes it there, and gets the answer for what the reader actually said.
+ * Read from [NotionImportSchema.suggestion], because on the plan screen where this is
+ * drawn the server's guess is the only mapping there is; a caller that already has the
+ * reader's own mapping substitutes it there, and gets the answer for what the reader
+ * actually said.
  *
  * It never blocks. A relation whose other end is not being imported as the right kind is a
  * fact about the plan, not a mistake: the import proceeds, the row lands in its fallback,

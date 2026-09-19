@@ -27,7 +27,8 @@ import { SettingsInline, SettingsNote } from "./field";
  * that in as many words — "la dérogation est la bonne règle" — because a non-configurator
  * running an import is the flow `NotionPeople.link`'s dispensation was written to permit.
  * So the workspace list below is drawn for anybody who opens this, and it is drawn from the
- * *same* query key screen 24's step 1 uses, because it is the same question asked twice.
+ * *same* query key screen 24's plan screen uses, because it is the same question asked
+ * twice.
  *
  * **Whose queue** is a setting, and settings are the configurator's: `RequestBaseService`
  * makes the argument — choosing a base to browse is not choosing one to wire the instance
@@ -187,8 +188,9 @@ export function RequestBases({ canConfigure }: { canConfigure: boolean }) {
 
       {discovered.isLoading && <SettingsNote>Reading the workspace…</SettingsNote>}
 
-      {/* Said plainly rather than as an empty list, following screen 24's step 1: a heading
-          over no rows reads as a workspace that is empty, which is a different fact. */}
+      {/* Said plainly rather than as an empty list, following screen 24's plan screen: a
+          heading over no rows reads as a workspace that is empty, which is a different
+          fact. */}
       {unavailable && (
         <div className="flex flex-col gap-1 rounded-md bg-warning/15 px-3 py-3 text-12 text-status-progress">
           <span className="font-medium">No workspace to read yet</span>
