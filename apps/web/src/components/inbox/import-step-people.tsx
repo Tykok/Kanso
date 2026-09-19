@@ -38,9 +38,14 @@ const EMPTY_VIEW: NotionPeopleView = { available: true, people: [] };
 export function StepPeople({
   plan,
   onPeople,
+  onLoading,
 }: {
   plan: NotionImportPlanRow[];
   onPeople: (people: Record<string, string | null>) => void;
+  /** `peopleSeen`'s query key is the plan itself, so a target or column change re-keys it —
+   *  reported as `isFetching` rather than `isLoading` so the shell sees that refetch too,
+   *  not only the first one. */
+  onLoading: (loading: boolean) => void;
 }) {
   const seen = useQuery({
     queryKey: ["notion-import-people-seen", plan],
@@ -70,6 +75,11 @@ export function StepPeople({
   useEffect(() => {
     onPeople(assignments);
   }, [assignments, onPeople]);
+
+  const busy = seen.isFetching || known.isFetching;
+  useEffect(() => {
+    onLoading(busy);
+  }, [busy, onLoading]);
 
   const loading = seen.isLoading || known.isLoading;
   const sortedMembers = useMemo(
