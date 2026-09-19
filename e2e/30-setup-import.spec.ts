@@ -3,22 +3,14 @@ import { ADMIN, apiAs, openAs, seedInstance, seedTeam, unique, uniqueKey } from 
 import { STUB_BASE_URL, startNotionWorkspace, type NotionWorkspaceStub } from "./notion-workspace";
 
 /**
- * Scenario 30. The import, reached from the wizard rather than from the app.
+ * Scenario 30. The import, reached from settings rather than from the command palette.
  *
- * `import.spec.ts` walks the five screens from the settings screen, inside the shell, on an
- * instance that has been running for a while. This file is about the one place they are now
- * also offered — the wizard's Notion step, which is a different mount point in two ways that
- * can break without either suite noticing.
- *
- * The first is the route: `/setup` sits outside `(app)`, so nothing the shell provides is
- * there. A dialog that quietly depended on the shell would work in settings and fail here.
- *
- * The second is the form. `FormCard` is a `<form>`, and `import-step-two`'s Next is a shadcn
- * `Button` — a `<button>` with no `type`, which inside a form is a submit button. Mounted in
- * the card, pressing it would submit the wizard: the step would advance to Google and take
- * the half-finished import with it. `notion-step.test.tsx` pins that with a stub in place of
- * the dialog; this asserts it with the real one, which is the only way to be sure the
- * component that actually ships is the one whose buttons were counted.
+ * `import.spec.ts` opens the dialog through ⌘K, on an instance that has been running for a
+ * while. This file is about the other place it is offered — the "Import from Notion…"
+ * button on the Connections card — which is a different mount point from the palette in a
+ * way that can break without the other suite noticing: this button is disabled until Notion
+ * is configured, and it sits beside the Notion people list this scenario also checks,
+ * rather than behind a keyboard shortcut with nothing else on screen.
  *
  * Gated on `KANSO_NOTION_STUB` for the reason `import.spec.ts` argues at length: a guard
  * derived from the API's own answers would let a broken import silence its own scenario.
@@ -40,7 +32,7 @@ test.afterAll(async () => {
   await stub?.close();
 });
 
-test("scenario 30 — the wizard's Notion step opens the import", async ({ browser }) => {
+test("scenario 30 — settings opens the import on the real workspace", async ({ browser }) => {
   test.skip(!OPTED_IN, `KANSO_NOTION_STUB is not set. ${HOW}`);
 
   const { teams, projects, tickets } = stub.workspace;
@@ -55,30 +47,22 @@ test("scenario 30 — the wizard's Notion step opens the import", async ({ brows
   await seedTeam(api, { name: unique("Destination"), key: uniqueKey() });
 
   const page = await openAs(browser, ADMIN);
-  await page.goto("/setup");
+  // Connections is not the tab `/settings` opens on its own — see `24-shortcuts.spec.ts` and
+  // `28-github-link.spec.ts` for the same `?section=` pattern against a different tab.
+  await page.goto("/settings?section=connections");
 
-  // The owner's plan is Notion, Google, preferences — the account step is behind them.
-  const rail = page.getByText(/^Step 1 of 3$/);
-  await expect(rail).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Notion" })).toBeVisible();
-
-  // Matching, before importing: step 4 of the dialog pre-fills itself from what is set here.
+  // Matching, before importing: the folded panel pre-fills itself from what is set here.
   await expect(page.getByText("Notion people")).toBeVisible();
   await expect(page.getByText(stub.workspace.person.name)).toBeVisible();
 
-  await page.getByRole("button", { name: "Import from Notion" }).click();
+  await page.getByRole("button", { name: "Import from Notion…" }).click();
 
   // The real dialog, reading the real workspace through the real client.
-  await expect(page.getByText("What is in this workspace")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Import from Notion" });
+  await expect(dialog.getByText("Choose what becomes what")).toBeVisible();
   for (const base of [teams, projects, tickets]) {
-    await expect(page.getByText(base.name, { exact: true })).toBeVisible();
+    await expect(dialog.getByText(base.name, { exact: true })).toBeVisible();
   }
-
-  // And the whole point of mounting it outside the form: its own Next advances the dialog
-  // and nothing else. The wizard is still on step 1 afterwards.
-  await page.getByRole("button", { name: "Choose what becomes what" }).click();
-  await expect(page.getByText("Each Notion database becomes")).toBeVisible();
-  await expect(rail).toBeVisible();
 
   await page.close();
   await api.dispose();
