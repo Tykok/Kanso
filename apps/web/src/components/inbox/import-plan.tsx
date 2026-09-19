@@ -51,6 +51,7 @@ export function ImportPlan({
   onSuggest,
   onNext,
   pending,
+  busy,
   error,
   details,
 }: {
@@ -77,6 +78,16 @@ export function ImportPlan({
   /** Starts the preview request; this screen's own button carries its pending and error. */
   onNext: () => void;
   pending: boolean;
+  /**
+   * `StepColumns` or `StepPeople` is still waiting on a request, inside the folded panel
+   * this screen never looks at directly. The button has to stay dead through it: the seed
+   * that carries a server suggestion into the shell only runs once that request answers, so
+   * clicking through earlier sends a mapping (or a people map) the reader never saw and
+   * throws away what the server already knew — silently, since there is no screen after
+   * this one that would show it happening. See `import-step-columns.tsx` and
+   * `import-step-people.tsx` for where each half of this is computed.
+   */
+  busy: boolean;
   error?: string;
   /**
    * The folded columns-and-people panel, passed in so this screen does not learn what a
@@ -235,7 +246,10 @@ export function ImportPlan({
       {details}
 
       <div className="flex items-center gap-2.5">
-        <Button disabled={planEmpty || (teamRequired && teamId === "") || pending} onClick={onNext}>
+        <Button
+          disabled={planEmpty || (teamRequired && teamId === "") || pending || busy}
+          onClick={onNext}
+        >
           Preview the import
         </Button>
         <span className="ml-1 text-11 text-faint">
@@ -243,6 +257,11 @@ export function ImportPlan({
               is the right way round: what is kept can never exceed what was found. */}
           {counts.kept} of {pageCount(counts.total, allExact)} kept
         </span>
+        {busy && (
+          <span className="text-11 text-faint">
+            Waiting for the columns and the people, so nothing is mapped by accident.
+          </span>
+        )}
       </div>
 
       {error && <span className="text-12 text-urgent">{error}</span>}

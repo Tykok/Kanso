@@ -109,6 +109,7 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
         onSeed={onSeed}
         onFallback={noop}
         onPeople={noop}
+        onLoading={noop}
       />,
       { wrapper: wrapper() },
     );
@@ -140,6 +141,7 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
         onSeed={noop}
         onFallback={noop}
         onPeople={(people) => calls.push(people)}
+        onLoading={noop}
       />,
       { wrapper: wrapper() },
     );
@@ -176,6 +178,7 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
           onSeed={(sourceId, seed) => setMappings((current) => ({ ...current, [sourceId]: seed }))}
           onFallback={noop}
           onPeople={noop}
+          onLoading={noop}
         />
       );
     }
@@ -205,6 +208,7 @@ describe("closing the fold on a person the reader already matched", () => {
         onSeed={noop}
         onFallback={noop}
         onPeople={(people) => calls.push(people)}
+        onLoading={noop}
       />,
       { wrapper: wrapper() },
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { NotionImportPlanRow, Project, Team } from "@/lib/api";
 import { type BaseMapping, type Fallback } from "./import-columns";
 import { detailsSummary } from "./import-details-summary";
@@ -52,6 +52,7 @@ export function ImportDetails({
   onSeed,
   onFallback,
   onPeople,
+  onLoading,
 }: {
   bases: ImportPlanEntry[];
   kept: ImportMapping;
@@ -64,15 +65,24 @@ export function ImportDetails({
   onSeed: (sourceId: string, seed: BaseMapping) => void;
   onFallback: (sourceId: string, fallback: Fallback) => void;
   onPeople: (people: Record<string, string | null>) => void;
+  /** Whether `StepColumns` or `StepPeople` is still waiting on a request — see
+   *  `import-plan.tsx`'s Preview button, which this reaches through the shell. */
+  onLoading: (loading: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [people, setPeople] = useState<Record<string, string | null>>({});
+  const [columnsLoading, setColumnsLoading] = useState(false);
+  const [peopleLoading, setPeopleLoading] = useState(false);
 
   /** Told to the shell as well as kept here, because the request carries it. */
   const takePeople = (next: Record<string, string | null>) => {
     setPeople(next);
     onPeople(next);
   };
+
+  useEffect(() => {
+    onLoading(columnsLoading || peopleLoading);
+  }, [columnsLoading, peopleLoading, onLoading]);
 
   return (
     <div className="flex flex-col gap-2.5 rounded-md border border-border px-3 py-2.5">
@@ -98,8 +108,9 @@ export function ImportDetails({
           onMapping={onMapping}
           onSeed={onSeed}
           onFallback={onFallback}
+          onLoading={setColumnsLoading}
         />
-        <StepPeople plan={plan} onPeople={takePeople} />
+        <StepPeople plan={plan} onPeople={takePeople} onLoading={setPeopleLoading} />
       </div>
     </div>
   );

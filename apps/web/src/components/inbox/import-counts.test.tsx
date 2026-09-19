@@ -69,6 +69,7 @@ function steps(pages: number, exact: boolean) {
       onSuggest={noop}
       onNext={noop}
       pending={false}
+      busy={false}
       details={null}
     />,
   );
