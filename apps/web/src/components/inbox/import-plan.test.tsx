@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotionImportSource, Team } from "@/lib/api";
+import { ImportDetails } from "./import-details";
 import { ImportPlan } from "./import-plan";
 import { importCounts, type ImportMapping } from "./import-map";
 
@@ -77,7 +78,21 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
       onSuggest={noop}
       onNext={noop}
       pending={false}
-      details={null}
+      details={
+        <ImportDetails
+          bases={[]}
+          kept={{}}
+          mappings={{}}
+          fallbacks={{}}
+          teams={[]}
+          projects={[]}
+          plan={[]}
+          onMapping={noop}
+          onSeed={noop}
+          onFallback={noop}
+          onPeople={noop}
+        />
+      }
     />,
     { wrapper },
   );
@@ -118,5 +133,11 @@ describe("step 2's destination team", () => {
 
     expect(screen.queryByRole("combobox", { name: /into team/i })).toBeNull();
     expect(screen.queryByText(/no team yet/i)).toBeNull();
+  });
+
+  it("keeps columns and people folded until they are asked for", () => {
+    stepTwo({ teams: [team()] });
+
+    expect(screen.queryByText(/who these people are/i)).toBeNull();
   });
 });
