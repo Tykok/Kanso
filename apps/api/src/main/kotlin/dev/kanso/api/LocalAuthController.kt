@@ -134,8 +134,7 @@ class LocalAuthController(
 			 * transaction of its own (the writes above open theirs inside the services),
 			 * and opening one around an auth path to tick a checklist row a beat earlier
 			 * is the wrong trade. `GET /api/me` corrects it within the client's 30s
-			 * staleTime, and a new account is sent through `/setup` first, where the
-			 * sidebar that would draw the row does not exist.
+			 * staleTime, which lands well before anyone would notice a checklist row.
 			 */
 			workMovedAlong = false,
 			version = build.version ?: "unknown",
