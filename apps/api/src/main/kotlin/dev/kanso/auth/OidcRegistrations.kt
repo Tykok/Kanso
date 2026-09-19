@@ -1,6 +1,9 @@
 package dev.kanso.auth
 
 import dev.kanso.config.KansoProperties
+import dev.kanso.settings.InstanceSettingsService
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
 import org.springframework.security.config.oauth2.client.CommonOAuth2Provider
 import org.springframework.security.oauth2.client.registration.ClientRegistration
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
@@ -80,4 +83,57 @@ class DynamicClientRegistrationRepository(props: KansoProperties) : ClientRegist
 
 	private fun index(registrations: List<ClientRegistration>): Map<String, ClientRegistration> =
 		registrations.associateBy { it.registrationId }
+}
+
+/**
+ * The providers *this instance* has, which is not the set the environment has.
+ *
+ * [DynamicClientRegistrationRepository] is built from `KansoProperties` and from nothing
+ * else, and until something reloads it that is the whole set for the life of the process.
+ * Saving Google in the wizard reloaded it, so the button appeared without a restart — and
+ * then the next restart built the repository from the environment again and the credentials
+ * stayed in `instance_settings`, unread. The instance came back up telling whoever opened
+ * it that no sign-in provider was configured, which on an instance whose only admin signs
+ * in with Google is a locked door.
+ *
+ * So the rebuild has two callers now: the save, and the start. Neither is the primary one;
+ * the setting is stored in the database and the repository is in memory, and this is what
+ * carries the one into the other.
+ */
+@Component
+class ConfiguredProviders(
+	private val settings: InstanceSettingsService,
+	private val registrations: DynamicClientRegistrationRepository,
+	private val props: KansoProperties,
+) {
+
+	/**
+	 * After the context is ready rather than during its construction: this reads the
+	 * database, and at construction time Flyway has not necessarily migrated it — while
+	 * nothing can sign in before the context serves requests anyway.
+	 */
+	@EventListener(ApplicationReadyEvent::class)
+	fun onApplicationReady() = refresh()
+
+	/**
+	 * Rebuilds the whole list rather than only Google: `reload` replaces the repository's
+	 * contents, so a GitHub registration coming from the environment would otherwise
+	 * disappear the moment someone saves Google credentials.
+	 *
+	 * The environment still wins — `ResolvedSettings` decides that, not this — so an
+	 * instance pinned by `GOOGLE_CLIENT_ID` rebuilds to the same list it booted with.
+	 */
+	fun refresh() {
+		val resolved = settings.resolved()
+		registrations.reload(
+			OidcRegistrations.from(
+				props.auth.copy(
+					google = KansoProperties.Provider(
+						clientId = resolved.googleClientId.orEmpty(),
+						clientSecret = resolved.googleClientSecret.orEmpty(),
+					),
+				)
+			)
+		)
+	}
 }
