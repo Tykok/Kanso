@@ -133,10 +133,11 @@ applications from source on two ports and is the development stack.
 
 ### Then
 
-Open `KANSO_PUBLIC_URL`. The first launch is a **setup wizard**: you create the owner
-account, then optionally link Notion, enable Google sign-in and pick a theme. Everything
-after the account is skippable and reopenable from settings. Whoever comes next arrives
-through an invitation link the owner generates.
+Open `KANSO_PUBLIC_URL`. The first screen asks for one thing: the owner account. Notion,
+Google sign-in and the theme are not part of it — they live in Settings, reachable the
+moment you are signed in, with nothing to skip because nothing before them is skippable
+in the first place. Whoever comes next arrives through an invitation link the owner
+generates.
 
 Upgrading is `docker compose pull && docker compose up -d`, or the same `docker run` with
 a newer tag. Flyway migrates the schema on the way up. There is no downgrade: take a
@@ -235,7 +236,7 @@ Two things that must survive a restart:
 
 | | |
 |---|---|
-| `/data/secret.key` | The AES key encrypting the Notion token and the OAuth client secrets the setup wizard stored. Generated on first boot unless `KANSO_SECRET_KEY` is set. Lose it and those secrets have to be entered again. |
+| `/data/secret.key` | The AES key encrypting the Notion token and the OAuth client secrets entered through Settings ▸ Connections. Generated on first boot unless `KANSO_SECRET_KEY` is set. Lose it and those secrets have to be entered again. |
 | Caddy's ACME state | The certificate and account key, under `KANSO_TLS=auto`. Lose it and every restart asks Let's Encrypt for a new certificate. |
 
 Nothing else. Tickets, documents, attachments and sessions are all in Postgres.
