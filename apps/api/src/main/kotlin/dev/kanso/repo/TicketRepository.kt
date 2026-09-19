@@ -115,6 +115,8 @@ class TicketRepository(
 		includeArchived: Boolean = false,
 		limit: Int = 200,
 		offset: Long = 0,
+		/** The timeline column's ordering; null leaves [ViewSortBy.UPDATED] in place. */
+		dateOrder: dev.kanso.service.TimelineSort? = null,
 	): List<Ticket> = query.matching(
 		scope = TicketScope(teamIds = teamIds, includeArchived = includeArchived),
 		filters = TicketFilters(
@@ -130,6 +132,7 @@ class TicketRepository(
 		sortBy = dev.kanso.service.ViewSortBy.UPDATED,
 		limit = limit,
 		offset = offset,
+		dateOrder = dateOrder,
 	)
 
 	/**

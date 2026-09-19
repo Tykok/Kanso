@@ -452,9 +452,13 @@ export type TimelineView = {
   projects: TimelineProject[];
   tickets: TimelineTicket[];
   dependencies: TimelineDependency[];
-  unscheduled: TimelineUnscheduled[];
-  /** The scope hit `SCOPE_LIMIT`, so bars are missing and the chart has to say so. */
+  /**
+   * The *shared* widening hit `SCOPE_LIMIT`, so bars are missing and the chart has to say
+   * so. The scope itself is paged rather than capped — see `hasMore`.
+   */
   truncated: boolean;
+  /** Another page of the column exists. Nothing is missing from the drawing; scroll. */
+  hasMore: boolean;
 };
 
 /** What a dependency write returns: the tickets its cascade moved. */

@@ -597,15 +597,17 @@ data class TimelineDependencyResponse(
 	val outOfScope: Boolean,
 )
 
-data class TimelineUnscheduledResponse(val id: UUID, val identifier: String, val title: String)
-
 data class TimelineResponse(
 	val projects: List<TimelineProjectResponse>,
 	val tickets: List<TimelineTicketResponse>,
 	val dependencies: List<TimelineDependencyResponse>,
-	val unscheduled: List<TimelineUnscheduledResponse>,
-	/** A cap was hit: the drawing is incomplete, and a Gantt has no next page to offer. */
+	/**
+	 * A cap was hit on the *shared* widening: the drawing is missing bars and there is no
+	 * page to offer for them. The scope itself is paged — see [hasMore].
+	 */
 	val truncated: Boolean,
+	/** Another page of the column exists. Nothing is missing; scroll. */
+	val hasMore: Boolean,
 ) {
 	companion object {
 		fun of(view: TimelineView) = TimelineResponse(
@@ -643,10 +645,8 @@ data class TimelineResponse(
 					it.outOfScope,
 				)
 			},
-			unscheduled = view.unscheduled.map {
-				TimelineUnscheduledResponse(it.id, it.identifier, it.title)
-			},
 			truncated = view.truncated,
+			hasMore = view.hasMore,
 		)
 	}
 }
