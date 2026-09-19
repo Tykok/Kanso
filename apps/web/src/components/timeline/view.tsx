@@ -38,6 +38,9 @@ import {
   daysBetween,
   PX_PER_DAY,
   today,
+  todayInView,
+  scrollToToday,
+  xOf,
 } from "@/lib/timeline-geometry";
 import { useUi } from "@/store/ui";
 
@@ -232,6 +235,23 @@ export function TimelineView({
   const scroller = useRef<HTMLDivElement>(null);
   const lanes = useRef<HTMLDivElement>(null);
   const { height: laneHeight } = useRowMetrics(scroller);
+
+  /**
+   * Enough of the scroll position to answer one question: is today's rule on screen.
+   *
+   * Tracked in state rather than read on click, because the answer is what greys the button
+   * out — a control that only discovered it had nowhere to go once pressed would be a
+   * control that lies until you use it.
+   */
+  const [window_, setWindow] = useState({ left: 0, width: 0 });
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const read = () => setWindow({ left: node.scrollLeft, width: node.clientWidth });
+    read();
+    node.addEventListener("scroll", read, { passive: true });
+    return () => node.removeEventListener("scroll", read);
+  }, [scroller]);
 
   /**
    * How far below the top of the chart's content the first lane sits: the axis strip,
@@ -498,6 +518,28 @@ export function TimelineView({
           * what fetches it. Distinct from the warning below, which means bars are missing
           * and no scroll will bring them.
           */}
+        {(() => {
+          const todayX = xOf(today(), bounds.origin, zoom);
+          const here = todayInView(todayX, window_.left, window_.width, zoom);
+          return (
+            <button
+              type="button"
+              // Disabled and not hidden: a control that vanishes when satisfied is one
+              // people stop looking for, and the moment you reach for it is the moment you
+              // cannot see the thing it points at.
+              disabled={here}
+              className="rounded-md border border-border px-1.5 py-0.5 text-11 disabled:opacity-40"
+              onClick={() =>
+                scroller.current?.scrollTo({
+                  left: scrollToToday(todayX, window_.width),
+                  behavior: "smooth",
+                })
+              }
+            >
+              Today
+            </button>
+          );
+        })()}
         {view?.hasMore && <span className="text-faint">More rows load as you scroll</span>}
       </div>
 
