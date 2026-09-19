@@ -15,8 +15,8 @@ import {
 import { FormCard } from "./frame";
 
 /**
- * Step 0. Deliberately the one step without a Skip: every later step writes through
- * an authenticated session, so there would be nothing on the other side of it. An
+ * Deliberately without a Skip: this account is what everything else in the app
+ * authenticates against, so skipping it would leave nothing on the other side. An
  * operator who already has an account signs in instead.
  */
 export function AccountStep({ onDone }: { onDone: () => void }) {
