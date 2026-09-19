@@ -9,28 +9,21 @@ import { Backdrop } from "@/components/overlays";
 import { cn } from "@/lib/utils";
 import { importCounts, importPlan, targetOf, type ImportMapping, type ImportTarget } from "./import-map";
 import { type BaseMapping, type Fallback } from "./import-columns";
-import { PEOPLE_FIELDS } from "./import-targets";
-import { StepOne } from "./import-step-one";
-import { StepTwo } from "./import-step-two";
-import { StepColumns } from "./import-step-columns";
-import { StepPeople } from "./import-step-people";
-import { StepThree } from "./import-step-three";
+import { ImportConfirm } from "./import-confirm";
+import { ImportDetails } from "./import-details";
+import { ImportPlan } from "./import-plan";
 
 /**
- * Screen 24. Five steps, and nothing written until the fifth.
+ * Screen 24. A plan and a confirmation, and nothing written until the second.
  *
- * This file is the shell: the state the steps share, the requests, and which step is on
- * screen. Each step is its own file. What each step decides:
+ * This file is the shell: the state the two screens share, the requests, and which one is
+ * on screen. Three of the five decisions the dialog used to spread across five steps only
+ * ever confirmed a guess the server had already made — which bases exist, which column is
+ * which field, who these people are — so they are folded into `ImportDetails` instead of
+ * costing a screen each. What the two screens left decide:
  *
- * 1. which databases are there at all;
- * 2. what each one becomes;
- * 3. which of its columns answers which field, and what the words inside them mean;
- * 4. who the people those columns name are, in Kanso;
- * 5. what all of that would write — the last read before the only write.
- *
- * Step 4 is skipped in both directions when no people column is mapped, and [hasPeople] is
- * the single boolean that decides it, so the way forwards and the way back cannot disagree
- * about whether that step exists.
+ * 1. what each database becomes, and where it lands;
+ * 2. what all of that would write — the last read before the only write.
  *
  * `DEFAULT_TARGET` is `ignore`, so the count starts at zero and only rises as decisions
  * are made; the other default writes the whole workspace for anybody who clicks through.
@@ -43,7 +36,7 @@ const without = <T,>(record: Record<string, T>, key: string): Record<string, T> 
 };
 
 export function ImportDialog({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2>(1);
   const [mapping, setMapping] = useState<ImportMapping>({});
   const [teamId, setTeamId] = useState("");
   const [mappings, setMappings] = useState<Record<string, BaseMapping>>({});
@@ -109,13 +102,6 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     [bases, mappings, fallbacks],
   );
 
-  /**
-   * Does anything in this plan name a person? One boolean, read by the way forwards and by
-   * the way back, so the skip cannot disagree with itself. Nothing else can put step 4 on
-   * screen: a workspace whose columns name nobody has nobody to match.
-   */
-  const hasPeople = plan.some((row) => PEOPLE_FIELDS.some((field) => row.columns[field]));
-
   /** The team is only needed by a plan that writes something outside a team of its own. */
   const teamRequired = plan.some((row) => row.target !== "teams" && !row.fallback.teamId);
 
@@ -180,14 +166,15 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     setFallbacks((current) => ({ ...current, [sourceId]: next }));
   }, []);
 
-  const toPreview = () => preview.mutate(undefined, { onSuccess: () => setStep(5) });
+  const toPreview = () => preview.mutate(undefined, { onSuccess: () => setStep(2) });
 
   /*
-   * A height, because step 3 is as tall as the workspace is wide: one section per kept
-   * base, each with a row per field and a row per option inside it. `Backdrop` clips what
-   * overflows — it is shared with the palette and the help panel, where nothing ever does
-   * — so the steps scroll inside the panel and the header stays put above them. Without
-   * this the buttons of a three-base mapping are off screen.
+   * A height, because the folded panel is as tall as the workspace is wide once it is
+   * opened: one section per kept base, each with a row per field and a row per option
+   * inside it. `Backdrop` clips what overflows — it is shared with the palette and the
+   * help panel, where nothing ever does — so the plan scrolls inside the panel and the
+   * header stays put above it. Without this the button of a three-base mapping is off
+   * screen.
    */
   return (
     <Backdrop onClose={onClose} panelClassName="flex max-h-[76vh] w-[min(710px,94vw)] flex-col">
@@ -200,12 +187,12 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-2.5 bg-background px-5 py-3 text-12 text-faint">
           <span className="font-medium text-muted-foreground">Import from Notion</span>
           <span className="flex-1" />
-          <span>step {step} of 5</span>
+          <span>step {step} of 2</span>
         </div>
 
         <div className="flex flex-col gap-[18px] overflow-y-auto p-5">
           <div className="flex gap-0.5" aria-hidden>
-            {[1, 2, 3, 4, 5].map((mark) => (
+            {[1, 2].map((mark) => (
               <span
                 key={mark}
                 className={cn("h-[3px] flex-1", mark <= step ? "bg-primary" : "bg-accent")}
@@ -214,7 +201,8 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           </div>
 
           {step === 1 && (
-            <StepOne
+            <ImportPlan
+              sources={sources}
               loading={discovered.isLoading}
               unavailable={
                 discovered.isError
@@ -223,14 +211,6 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
                     ? (discovered.data.reason ?? "Kanso cannot read this workspace.")
                     : undefined
               }
-              sources={sources}
-              onNext={() => setStep(2)}
-            />
-          )}
-
-          {step === 2 && (
-            <StepTwo
-              sources={sources}
               mapping={mapping}
               kept={kept}
               mappings={mappings}
@@ -244,43 +224,29 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
               onSuggest={(sourceId, target) =>
                 setMapping((current) => ({ ...current, [sourceId]: target }))
               }
-              onNext={() => setStep(3)}
-              onBack={() => setStep(1)}
-            />
-          )}
-
-          {step === 3 && (
-            <StepColumns
-              bases={bases}
-              kept={kept}
-              mappings={mappings}
-              fallbacks={fallbacks}
-              teams={destinations}
-              projects={projects.data ?? []}
-              hasPeople={hasPeople}
-              onMapping={setBaseMapping}
-              onSeed={seedMapping}
-              onFallback={setFallback}
-              onNext={() => (hasPeople ? setStep(4) : toPreview())}
-              onBack={() => setStep(2)}
-              pending={preview.isPending}
-              error={preview.isError ? actionErrorMessage(preview.error) : undefined}
-            />
-          )}
-
-          {step === 4 && (
-            <StepPeople
-              plan={plan}
-              onPeople={setPeople}
               onNext={toPreview}
-              onBack={() => setStep(3)}
               pending={preview.isPending}
               error={preview.isError ? actionErrorMessage(preview.error) : undefined}
+              details={
+                <ImportDetails
+                  bases={bases}
+                  kept={kept}
+                  mappings={mappings}
+                  fallbacks={fallbacks}
+                  teams={destinations}
+                  projects={projects.data ?? []}
+                  plan={plan}
+                  onMapping={setBaseMapping}
+                  onSeed={seedMapping}
+                  onFallback={setFallback}
+                  onPeople={setPeople}
+                />
+              }
             />
           )}
 
-          {step === 5 && (
-            <StepThree
+          {step === 2 && (
+            <ImportConfirm
               sources={sources}
               mapping={mapping}
               counts={counts}
@@ -289,7 +255,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
               result={confirm.data}
               onConfirm={() => confirm.mutate()}
               onClose={onClose}
-              onBack={() => setStep(hasPeople ? 4 : 3)}
+              onBack={() => setStep(1)}
               pending={confirm.isPending}
               error={confirm.isError ? actionErrorMessage(confirm.error) : undefined}
             />
