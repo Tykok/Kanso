@@ -124,7 +124,17 @@ export function ConnectionsSection({
     onSuccess: (next) => {
       setToken("");
       refresh(next);
-      // The databases may have just appeared, and `next` was read before they did.
+    },
+    /**
+     * Invalidated here rather than in `onSuccess`: the save can land and the bootstrap
+     * that follows it can still throw, and a chain that stops at the first failure must
+     * not also stop the cache from finding out. The page is saved either way — the
+     * request that changed the server already succeeded — so the note under these
+     * buttons has to be read off what is actually stored, not off whichever half of the
+     * chain last returned. The error itself still surfaces through `saveNotion.isError`;
+     * this only decides what the *other* fields on screen show while that error is up.
+     */
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: keys.setupState });
       queryClient.invalidateQueries({ queryKey: keys.sync });
       queryClient.invalidateQueries({ queryKey: keys.syncDetail });
