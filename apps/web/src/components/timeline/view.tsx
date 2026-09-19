@@ -250,7 +250,15 @@ export function TimelineView({
     const read = () => setWindow({ left: node.scrollLeft, width: node.clientWidth });
     read();
     node.addEventListener("scroll", read, { passive: true });
-    return () => node.removeEventListener("scroll", read);
+    // A scroll event is not the only way this answer changes. On first paint the element
+    // has no width yet and no scroll ever fires, so without this the button would sit
+    // enabled over a chart it has nothing to scroll — which is exactly what the e2e caught.
+    const resize = new ResizeObserver(read);
+    resize.observe(node);
+    return () => {
+      node.removeEventListener("scroll", read);
+      resize.disconnect();
+    };
   }, [scroller]);
 
   /**
@@ -520,7 +528,11 @@ export function TimelineView({
           */}
         {(() => {
           const todayX = xOf(today(), bounds.origin, zoom);
-          const here = todayInView(todayX, window_.left, window_.width, zoom);
+          // Unmeasured counts as "in view", so the button starts disabled rather than
+          // offering a scroll it cannot compute. A control that is enabled and does nothing
+          // is worse than one that is briefly grey.
+          const here =
+            window_.width === 0 || todayInView(todayX, window_.left, window_.width, zoom);
           return (
             <button
               type="button"

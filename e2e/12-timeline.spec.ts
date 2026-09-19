@@ -59,20 +59,27 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
   const api = await apiAs(ADMIN);
   const team = await seedTeam(api, { name: unique("Planning"), key: uniqueKey() });
 
-  // Three days, then a chain starting the day after. One day of slack between them:
-  // enough that the arrow alone moves nothing, little enough that two columns of
-  // lengthening overruns it.
+  /**
+   * Three days, then a chain starting the day after. One day of slack between them:
+   * enough that the arrow alone moves nothing, little enough that two columns of
+   * lengthening overruns it.
+   *
+   * **These dates must stay in the future.** The scenario asserts `data-state` is
+   * `critical`, and `late` outranks it on a bar — so the day these fall into the past the
+   * test stops measuring criticality and starts measuring the calendar. They were 2026 and
+   * had already gone by.
+   */
   const groundwork = await seedTicket(api, {
     teamId: team.id,
     title: unique("Groundwork"),
-    start: "2026-09-01",
-    due: "2026-09-03",
+    start: "2027-09-01",
+    due: "2027-09-03",
   });
   const follows = await seedTicket(api, {
     teamId: team.id,
     title: unique("Follows on"),
-    start: "2026-09-04",
-    due: "2026-09-08",
+    start: "2027-09-04",
+    due: "2027-09-08",
   });
   // Dateless, so the tray has something to hold. On a real board it is most of them.
   const unplanned = await seedTicket(api, { teamId: team.id, title: unique("Not planned yet") });
@@ -90,14 +97,17 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
   await expect(first).toBeVisible();
   await expect(second).toBeVisible();
 
-  // The tray is the other half of the screen: a ticket with no dates has no column to
-  // stand in, so it is a chip rather than a bar. A `<button>`, not an inert `<li>` —
-  // pressing one puts the cursor on its ticket.
-  const tray = page.getByRole("button", { name: `${unplanned.identifier}: ${unplanned.title}` });
-  await expect(tray).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Unscheduled · 1$/ })).toBeVisible();
+  // The tray used to be the other half of this screen, holding every undated ticket as a
+  // chip above the chart. It is gone: an undated ticket is a row like any other, its name
+  // in the column and nothing drawn beside it. A bar is a claim about days and this ticket
+  // makes none, so there is no bar to find.
+  await expect(page.getByText(unplanned.identifier, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `${unplanned.identifier}: ${unplanned.title}` }),
+  ).toHaveCount(0);
 
-  // Neither depends on anything, so neither has slack and neither is on a critical path.
+  // Neither depends on anything, so neither has slack and neither is on a critical path —
+  // and neither is overdue, because the dates above are deliberately in the future.
   await expect(first).toHaveAttribute("data-state", "normal");
   await expect(second).toHaveAttribute("data-state", "normal");
 
@@ -189,8 +199,8 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
     start: { at: string; hasTime: boolean };
     due: { at: string; hasTime: boolean };
   };
-  expect(moved.start.at.slice(0, 10)).toBe("2026-09-05");
-  expect(moved.due.at.slice(0, 10)).toBe("2026-09-09");
+  expect(moved.start.at.slice(0, 10)).toBe("2027-09-05");
+  expect(moved.due.at.slice(0, 10)).toBe("2027-09-09");
   // Still floating on the way back out. A cascade that stamped a time on a day would be
   // the exact bug the whole feature is built around avoiding.
   expect(moved.start.hasTime).toBe(false);
@@ -201,9 +211,9 @@ test("scenario 12 — lengthening a ticket pushes the one that depends on it", a
     due: { at: string };
   };
   expect(lengthened.start.at.slice(0, 10), "the resize moved the start it should not have").toBe(
-    "2026-09-01",
+    "2027-09-01",
   );
-  expect(lengthened.due.at.slice(0, 10)).toBe("2026-09-05");
+  expect(lengthened.due.at.slice(0, 10)).toBe("2027-09-05");
 
   // --- erase the arrow, without a mouse ---------------------------------------
   //

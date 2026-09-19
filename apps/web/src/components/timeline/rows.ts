@@ -68,15 +68,14 @@ export function buildRows(view: TimelineView | undefined): Row[] {
   if (!view) return [];
 
   const headed = spansTeams(view.tickets);
-  const byProject = new Map<string | undefined, TimelineTicket[]>();
-  for (const ticket of view.tickets) {
-    byProject.set(ticket.projectId, [...(byProject.get(ticket.projectId) ?? []), ticket]);
-  }
+  const teamKeys = headed
+    ? [...new Set(view.tickets.map((ticket) => ticket.teamKey))].sort((a, b) => a.localeCompare(b))
+    : [undefined];
 
   // A project belongs to the team its tickets are in. The response carries no team on a
   // project row, and asking for one would be a second query for a heading — so the first
-  // ticket under it decides, and a project with none sits under the first team that has
-  // any, which is the only answer available and is never wrong on a single-team scope.
+  // ticket under it decides, and a project nobody on this page has work in sits in the
+  // first group, which is the only answer available.
   const teamOfProject = new Map<string, string>();
   for (const ticket of view.tickets) {
     if (ticket.projectId && !teamOfProject.has(ticket.projectId)) {
@@ -84,39 +83,52 @@ export function buildRows(view: TimelineView | undefined): Row[] {
     }
   }
 
-  const teamKeys = headed
-    ? [...new Set(view.tickets.map((ticket) => ticket.teamKey))].sort((a, b) => a.localeCompare(b))
-    : [undefined];
-
-  const placed = new Set(view.projects.map((project) => project.id));
   const rows: Row[] = [];
 
   for (const teamKey of teamKeys) {
-    const mine = (ticket: TimelineTicket) => teamKey === undefined || ticket.teamKey === teamKey;
-    const projectsHere = view.projects.filter(
-      (project) => teamKey === undefined || teamOfProject.get(project.id) === teamKey,
+    const mine = view.tickets.filter(
+      (ticket) => teamKey === undefined || ticket.teamKey === teamKey,
     );
-    const orphansHere = view.tickets.filter(
-      (ticket) =>
-        mine(ticket) && (ticket.projectId === undefined || !placed.has(ticket.projectId)),
+    if (mine.length === 0 && teamKey !== undefined) {
+      // A team with nothing on this page gets no heading. A heading over nothing is the
+      // empty-group defect the tray used to have, in reverse.
+      const ownsAProject = view.projects.some(
+        (project) => teamOfProject.get(project.id) === teamKey,
+      );
+      if (!ownsAProject) continue;
+    }
+
+    const projectsHere = view.projects.filter((project) =>
+      teamKey === undefined
+        ? true
+        : teamOfProject.get(project.id) === teamKey ||
+          mine.some((ticket) => ticket.projectId === project.id),
+    );
+    const drawnHere = new Set(projectsHere.map((project) => project.id));
+
+    /**
+     * Everything of this team's that no project row in *this group* will carry.
+     *
+     * The second half of that condition is the one that matters, and it is there because
+     * the e2e suite caught its absence: a shared project is filed under whichever team's
+     * ticket named it first, so a ticket from the *other* team pointing at that same
+     * project was neither under a project row in its own group nor an orphan — it fell
+     * through both branches and vanished from the chart. A row must always land somewhere.
+     */
+    const orphansHere = mine.filter(
+      (ticket) => ticket.projectId === undefined || !drawnHere.has(ticket.projectId),
     );
 
-    // Nothing of this team's on this page and no project of theirs either: no heading. A
-    // heading over nothing is the empty-group defect the tray used to have in reverse.
     if (projectsHere.length === 0 && orphansHere.length === 0) continue;
-
     if (teamKey !== undefined) rows.push({ kind: "team", teamKey });
 
     for (const project of projectsHere) {
       rows.push({ kind: "project", project });
-      for (const ticket of byProject.get(project.id) ?? []) {
-        if (mine(ticket)) rows.push({ kind: "ticket", ticket });
+      for (const ticket of mine) {
+        if (ticket.projectId === project.id) rows.push({ kind: "ticket", ticket });
       }
     }
 
-    // Whatever is left: no project, or a project the response did not carry a row for — an
-    // archived one, say. Falling out of the grouping would drop the ticket from the chart
-    // entirely, which is a worse answer than an unheaded row.
     for (const ticket of orphansHere) rows.push({ kind: "ticket", ticket });
   }
 
