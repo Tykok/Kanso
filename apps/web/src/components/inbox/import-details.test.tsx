@@ -22,6 +22,12 @@ import type { ImportPlanEntry } from "./import-map";
  * The third describe block covers round 1's defect instead — closing the fold must not
  * cost the reader a match they already made — which unconditional mounting subsumes but
  * does not obviously prove; the test still exercises the open/close/reopen path directly.
+ *
+ * The fourth is finding 2 from the whole-branch review: closing the fold is not the only
+ * way this component disappears. `Back` from the confirmation unmounts it outright, and a
+ * match kept in `StepPeople`'s own state did not survive that — only a fold did. `edits`
+ * is lifted to `import-dialog.tsx` for it, and that describe block proves the lift by
+ * actually tearing `ImportDetails` down and remounting it, not merely hiding it.
  */
 
 const SEEN = vi.hoisted(() => vi.fn());
@@ -105,9 +111,11 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
         teams={[]}
         projects={[]}
         plan={[]}
+        edits={{}}
         onMapping={noop}
         onSeed={onSeed}
         onFallback={noop}
+        onEdit={noop}
         onPeople={noop}
         onLoading={noop}
       />,
@@ -137,9 +145,11 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
         teams={[]}
         projects={[]}
         plan={PLAN}
+        edits={{}}
         onMapping={noop}
         onSeed={noop}
         onFallback={noop}
+        onEdit={noop}
         onPeople={(people) => calls.push(people)}
         onLoading={noop}
       />,
@@ -174,9 +184,11 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
           teams={[]}
           projects={[]}
           plan={[]}
+          edits={{}}
           onMapping={noop}
           onSeed={(sourceId, seed) => setMappings((current) => ({ ...current, [sourceId]: seed }))}
           onFallback={noop}
+          onEdit={noop}
           onPeople={noop}
           onLoading={noop}
         />
@@ -190,36 +202,65 @@ describe("what reaches the shell before anybody unfolds the panel", () => {
   });
 });
 
+/** A stand-in for `import-dialog.tsx`'s own `edits` state and `setEdit` callback. */
+function EditsHarness({
+  children,
+}: {
+  children: (props: {
+    edits: Record<string, string | null>;
+    onEdit: (id: string, value: string | null) => void;
+  }) => ReactNode;
+}) {
+  const [edits, setEdits] = useState<Record<string, string | null>>({});
+  const onEdit = (id: string, value: string | null) =>
+    setEdits((current) => ({ ...current, [id]: value }));
+  return <>{children({ edits, onEdit })}</>;
+}
+
 describe("closing the fold on a person the reader already matched", () => {
   it("keeps the match instead of asking StepPeople to forget it", async () => {
     SEEN.mockResolvedValue([{ id: "notion-1", name: "Ada" }]);
     const calls: Record<string, string | null>[] = [];
 
     render(
-      <ImportDetails
-        bases={[]}
-        kept={{}}
-        mappings={{}}
-        fallbacks={{}}
-        teams={[]}
-        projects={[]}
-        plan={PLAN}
-        onMapping={noop}
-        onSeed={noop}
-        onFallback={noop}
-        onPeople={(people) => calls.push(people)}
-        onLoading={noop}
-      />,
+      <EditsHarness>
+        {({ edits, onEdit }) => (
+          <ImportDetails
+            bases={[]}
+            kept={{}}
+            mappings={{}}
+            fallbacks={{}}
+            teams={[]}
+            projects={[]}
+            plan={PLAN}
+            edits={edits}
+            onMapping={noop}
+            onSeed={noop}
+            onFallback={noop}
+            onEdit={onEdit}
+            onPeople={(people) => calls.push(people)}
+            onLoading={noop}
+          />
+        )}
+      </EditsHarness>,
       { wrapper: wrapper() },
     );
 
     toggle(); // open — the row is there already, mounting was never conditional on this
+
+    // Folded shut, the body is `display: none` rather than gone from the DOM — the whole
+    // reason a close and a reopen on this screen do not cost `StepPeople` its state.
+    const body = screen.getByTestId("import-details-body");
+    expect(body.style.display).toBe("");
+
     const select = await screen.findByRole("combobox");
     fireEvent.change(select, { target: { value: "user-1" } });
     await waitFor(() => expect(calls.at(-1)).toEqual({ "notion-1": "user-1" }));
 
     toggle(); // close
+    expect(body.style.display).toBe("none");
     toggle(); // reopen
+    expect(body.style.display).toBe("");
 
     // Still there in the UI, not reverted to "Unmatched" by a remount.
     await waitFor(() => {
@@ -234,5 +275,81 @@ describe("closing the fold on a person the reader already matched", () => {
     for (const call of calls.slice(editedAt)) {
       expect(call).toEqual({ "notion-1": "user-1" });
     }
+  });
+});
+
+/**
+ * Finding 2: `Back` from the confirmation unmounts `ImportPlan` and everything folded
+ * beneath it, `ImportDetails` included — a different, harsher event than folding shut,
+ * which only hides the body behind `display: none`. Before this fix `edits` was
+ * `StepPeople`'s own state, so it did not survive that unmount: a match made, then a trip
+ * to the confirmation screen and back, silently reverted to "Unmatched" because the fresh
+ * `StepPeople` instance re-seeded itself from the standing correspondence with no memory
+ * of the edit. `edits` is lifted to `import-dialog.tsx` for exactly this — proved here by
+ * actually unmounting `ImportDetails`, not merely folding it, and rendering a fresh
+ * instance from the same lifted `edits` the way `import-dialog.tsx` does across a Back.
+ */
+describe("a person match surviving a real unmount, not only a fold", () => {
+  it("keeps the match after ImportDetails itself is torn down and remounted", async () => {
+    SEEN.mockResolvedValue([{ id: "notion-1", name: "Ada" }]);
+
+    function Harness() {
+      const [edits, setEdits] = useState<Record<string, string | null>>({});
+      const [onPlanScreen, setOnPlanScreen] = useState(true);
+      const onEdit = (id: string, value: string | null) =>
+        setEdits((current) => ({ ...current, [id]: value }));
+
+      return (
+        <>
+          <button type="button" onClick={() => setOnPlanScreen((shown) => !shown)}>
+            go to the confirmation screen and back
+          </button>
+          {onPlanScreen ? (
+            <ImportDetails
+              bases={[]}
+              kept={{}}
+              mappings={{}}
+              fallbacks={{}}
+              teams={[]}
+              projects={[]}
+              plan={PLAN}
+              edits={edits}
+              onMapping={noop}
+              onSeed={noop}
+              onFallback={noop}
+              onEdit={onEdit}
+              onPeople={noop}
+              onLoading={noop}
+            />
+          ) : (
+            // The confirmation screen draws none of this — the point is that `ImportPlan`
+            // and `ImportDetails` are not merely hidden while it is up.
+            <span>the confirmation screen</span>
+          )}
+        </>
+      );
+    }
+
+    render(<Harness />, { wrapper: wrapper() });
+
+    toggle();
+    const select = await screen.findByRole("combobox");
+    fireEvent.change(select, { target: { value: "user-1" } });
+    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("user-1"));
+
+    const stepScreen = () =>
+      fireEvent.click(screen.getByRole("button", { name: /confirmation screen and back/i }));
+
+    stepScreen(); // to the confirmation screen — ImportDetails is gone, not hidden
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("the confirmation screen")).not.toBeNull();
+
+    stepScreen(); // back — a fresh ImportDetails, fed the same lifted edits
+    toggle();
+
+    await waitFor(() => {
+      const reopened = screen.getByRole("combobox") as HTMLSelectElement;
+      expect(reopened.value).toBe("user-1");
+    });
   });
 });
