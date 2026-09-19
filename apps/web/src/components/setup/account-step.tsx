@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { keys } from "@/lib/queries";
 import { setupKeys } from "./data";
@@ -19,7 +19,7 @@ import { FormCard } from "./frame";
  * an authenticated session, so there would be nothing on the other side of it. An
  * operator who already has an account signs in instead.
  */
-export function AccountStep({ head, onDone }: { head: ReactNode; onDone: () => void }) {
+export function AccountStep({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
 
   const [email, setEmail] = useState("");
@@ -44,7 +44,6 @@ export function AccountStep({ head, onDone }: { head: ReactNode; onDone: () => v
 
   return (
     <FormCard
-      head={head}
       title="Create your account"
       intro="The first account claims this instance and becomes its owner. Everyone else arrives through an invitation link."
       primaryLabel="Create account"
