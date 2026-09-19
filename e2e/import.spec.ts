@@ -3,13 +3,13 @@ import { ADMIN, apiAs, openAs, seedInstance, seedTeam, sidebarRow, ticketRow, un
 import { STUB_BASE_URL, startNotionWorkspace, type NotionWorkspaceStub } from "./notion-workspace";
 
 /**
- * Scenario 23. Screen 24's five steps, in a browser, against a workspace somebody else
- * built.
+ * Scenario 23. Screen 24's plan and confirmation, in a browser, against a workspace
+ * somebody else built.
  *
  * Every other proof of the import is in process: `NotionImportTest` and its siblings drive
  * the writers against `FakeNotionWorkspace`, and `import-map.test.ts` and
  * `import-columns.test.ts` pin the arithmetic the screens show. What none of them can say
- * is that the five screens, the wire between them and the four writers agree — that a
+ * is that the two screens, the wire between them and the four writers agree — that a
  * reader who maps `Etat → status` and `En cours → In progress` in the browser ends up with
  * a ticket in `In progress`. That is this file.
  *
@@ -81,7 +81,7 @@ test.afterAll(async () => {
   await stub?.close();
 });
 
-test("scenario 23 — the five screens of the Notion import, end to end", async ({ browser }) => {
+test("scenario 23 — screen 24's plan and confirmation, end to end", async ({ browser }) => {
   test.skip(!OPTED_IN, `KANSO_NOTION_STUB is not set. ${HOW}`);
 
   const { teams, projects, tickets, person, teamTitle, projectTitle } = stub.workspace;
@@ -133,7 +133,7 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
   const dialog = page.getByRole("dialog", { name: "Import from Notion" });
   await expect(dialog).toBeVisible();
 
-  // --- step 1: what the workspace holds ------------------------------------
+  // --- the plan, discovery: what the workspace holds ------------------------
 
   for (const base of [teams, projects, tickets]) {
     await expect(dialog.getByText(base.name, { exact: true })).toBeVisible();
@@ -142,7 +142,7 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
   // stub's: one team page, one project page, two task pages.
   await expect(dialog.getByText("3 databases, 4 pages in all.")).toBeVisible();
 
-  // --- step 2: what becomes what -------------------------------------------
+  // --- the plan, mapping: what becomes what ----------------------------------
 
   await expect(dialog.getByText("Choose what becomes what")).toBeVisible();
   await dialog.getByRole("combobox", { name: "Into team" }).selectOption(destination.id);
@@ -166,7 +166,7 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
 
   await dialog.getByRole("button", { name: /Columns and people/ }).click();
 
-  // --- step 3: the columns, and the words inside them -----------------------
+  // --- the plan, folded: the columns, and the words inside them -------------
 
   await expect(dialog.getByText("Say which column is which")).toBeVisible();
 
@@ -205,7 +205,7 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
     await expect(dialog.getByText(question)).toHaveCount(0);
   }
 
-  // --- step 4: who these people are ----------------------------------------
+  // --- the plan, folded: who these people are --------------------------------
 
   await expect(dialog.getByText("Who these people are")).toBeVisible();
   // The panel is mounted from the moment the dialog opens, not from this click, and
@@ -225,7 +225,7 @@ test("scenario 23 — the five screens of the Notion import, end to end", async 
 
   await dialog.getByRole("button", { name: "Preview the import" }).click();
 
-  // --- step 5: the last read, then the only write --------------------------
+  // --- the confirmation: the last read, then the only write ------------------
 
   await expect(dialog.getByText("4 pages out of 4.")).toBeVisible();
   // The server's own arithmetic, not the screen's guess at it: all three bases take part in

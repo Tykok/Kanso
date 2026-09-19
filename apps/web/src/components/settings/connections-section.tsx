@@ -214,8 +214,10 @@ export function ConnectionsSection({
         )}
         {connectError !== null && <SettingsNote error>{connectError}</SettingsNote>}
 
-        {/* The same block the wizard draws. Connecting is the same act whether it is
-            being done for the first time or the fourth, so it is the same component. */}
+        {/* One component regardless of whether this is the first connection or the
+            fourth — connecting is the same act either time, so there is nothing to draw
+            twice. See `notion-connect.tsx` for why it still lives under `components/setup/`
+            with one caller. */}
         {canConfigure && <NotionConnect state={state} onState={refresh} />}
 
         {canConfigure && (
@@ -244,9 +246,9 @@ export function ConnectionsSection({
                 onChange={(event) => setToken(event.target.value)}
               />
             )}
-            {/* The same block the wizard draws, for the same reason `NotionConnect` is
-                shared: choosing the parent page is one act, whether it is being done during
-                setup or changed a month later. */}
+            {/* Choosing the parent page is one act whether it is being done right after
+                connecting or changed a month later, so it is one component too — see
+                `notion-page-field.tsx` for why it stays beside `NotionConnect`. */}
             <div className="max-w-[380px]">
               <NotionPageField
                 value={parentPageId}
@@ -286,7 +288,7 @@ export function ConnectionsSection({
 
             {/* Screen 24's way in. The import reads Notion and writes Kanso, which is the
                 opposite direction to everything else in this card — so it is a button
-                that opens a five-step dialog rather than another field. */}
+                that opens a two-screen dialog rather than another field. */}
             <SettingsInline>
               <button
                 className="button"

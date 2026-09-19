@@ -3,9 +3,9 @@ import type { Accent, Density, SidebarMode, Theme } from "./api";
 /**
  * How a preference is named and explained, wherever it is set.
  *
- * Shared between the settings page, the `,` quick panel and the onboarding wizard's
- * preferences step so the same choice is never worded three different ways —
- * before this module existed the wizard kept its own copy of every label.
+ * Shared between the settings page and the `,` quick panel so the same choice is never
+ * worded two different ways — before this module existed, the wizard's own preferences
+ * step (since deleted) kept a third copy of every label.
  */
 export const THEME_LABELS: Record<Theme, string> = {
   system: "System",

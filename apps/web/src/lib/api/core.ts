@@ -632,7 +632,8 @@ export type Preferences = {
    */
   shortcuts: Record<string, string[]>;
   defaultTeamId?: string;
-  /** Set once the user has been through (or skipped) the preferences step. */
+  /** Set once the account has passed `/setup`'s account screen — the routing guard's own
+   *  signal that there is nothing left here for this account to do. */
   onboardedAt?: string;
   /**
    * Points per working day, as this person estimates their own pace. Absent means they
@@ -1274,9 +1275,11 @@ export const api = {
   ticketDuration: (id: string) => request<TicketDuration>(`/api/tickets/${id}/duration`),
 
   /**
-   * `onboarded: true` stamps the moment the wizard was finished. It is a command,
-   * not a field: `onboardedAt` is a server timestamp, and without this flag the
-   * routing guard would send the user back into the wizard they just completed.
+   * `onboarded: true` stamps the moment the account screen was passed. It is a command,
+   * not a field — `onboardedAt` is a server timestamp — kept here because
+   * `PreferencesPatch` accepts it, though nothing in this app sends it any more: every
+   * account-creation path stamps it from the backend directly (`claimOwner`,
+   * `UserProvisioning`, `InvitationService.accept`) rather than through this call.
    */
   savePreferences: (body: Partial<Preferences> & { onboarded?: boolean }) =>
     request<Preferences>("/api/me/preferences", { method: "PUT", body: JSON.stringify(body) }),

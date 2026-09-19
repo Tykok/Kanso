@@ -128,8 +128,9 @@ export function NotionPeopleSection({ canConfigure }: { canConfigure: boolean })
 
           {canConfigure && rows.length > 0 && (
             <SettingsInline>
-              {/* `type` stated rather than defaulted: this section is mounted inside the
-                  setup wizard's `<form>` too, where a submit button advances the step. */}
+              {/* `type` stated rather than defaulted, the usual guard against a bare
+                  `<button>`'s default of `submit` — one mount point now, the settings
+                  page, which has no surrounding `<form>` of its own. */}
               <button
                 type="button"
                 className="button button-primary"

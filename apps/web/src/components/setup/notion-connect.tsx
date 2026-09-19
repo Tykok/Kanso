@@ -8,7 +8,10 @@ import { useApiOrigin } from "@/lib/use-api-origin";
 import { Callout, CopyRow, TextField, messageFor } from "./fields";
 
 /**
- * The Notion connection, as one block shared by the wizard and the settings screen.
+ * The Notion connection, drawn by `connections-section.tsx` — its one caller now that the
+ * wizard's own Notion step is gone. Still under `components/setup/` rather than moved,
+ * because it is built from the small pieces that directory shares (`fields.tsx`'s
+ * `Callout`, `CopyRow`, `TextField`), not because anything else still calls it.
  *
  * It replaces four trips outside Kanso with one, and the one that survives is the one
  * neither Notion nor Google will let an app avoid: creating an integration for a host
