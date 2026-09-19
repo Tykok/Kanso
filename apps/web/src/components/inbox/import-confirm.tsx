@@ -12,7 +12,7 @@ import { importPlan, type ImportCounts, type ImportMapping } from "./import-map"
 import { ROW_GRID, TARGET_LABELS, pageCount } from "./import-targets";
 
 /**
- * Step 5: the last read, and then the only write.
+ * The confirmation: the last read, and then the only write.
  *
  * Everything on it comes from the preview the server just answered, so what is confirmed
  * is what was described. The sentences the drawing puts here — the linked bases, the rows a
@@ -24,7 +24,7 @@ import { ROW_GRID, TARGET_LABELS, pageCount } from "./import-targets";
  * the import decided on its own, and a dialog that closed on success would have decided
  * them silently.
  */
-export function StepThree({
+export function ImportConfirm({
   sources,
   mapping,
   counts,
@@ -51,7 +51,7 @@ export function StepThree({
   error?: string;
 }) {
   // Which counts were bounded rather than finished, so a row here says "2000+" wherever
-  // the two steps before it did. `ImportPlanEntry` carries the count but not that flag,
+  // the plan screen before it did. `ImportPlanEntry` carries the count but not that flag,
   // and `import-map.ts` is arithmetic against the drawing — not the place to widen.
   const exact = new Map(sources.map((source) => [source.id, source.pagesExact]));
   const allExact = sources.every((source) => source.pagesExact);

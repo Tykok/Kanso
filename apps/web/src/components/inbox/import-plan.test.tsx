@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotionImportSource, Team } from "@/lib/api";
-import { StepTwo } from "./import-step-two";
+import { ImportPlan } from "./import-plan";
 import { importCounts, type ImportMapping } from "./import-map";
 
 /**
@@ -15,7 +15,7 @@ import { importCounts, type ImportMapping } from "./import-map";
  * that opens onto nothing does not read as a missing row, it reads as a broken control,
  * and the reader is left with no way to find out which of the two it is.
  *
- * `useImportSchema` is stubbed at its resting state for the reason `import-steps.test.tsx`
+ * `useImportSchema` is stubbed at its resting state for the reason `import-counts.test.tsx`
  * gives: `RelationHint` returns null until it answers, and letting the fetch start prints
  * a stack trace out of a passing run.
  */
@@ -61,8 +61,9 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   return render(
-    <StepTwo
+    <ImportPlan
       sources={SOURCES}
+      loading={false}
       mapping={MAPPING}
       kept={MAPPING}
       mappings={{}}
@@ -75,7 +76,8 @@ function stepTwo({ teams = [] as Team[], teamRequired = true } = {}) {
       onCycle={noop}
       onSuggest={noop}
       onNext={noop}
-      onBack={noop}
+      pending={false}
+      details={null}
     />,
     { wrapper },
   );

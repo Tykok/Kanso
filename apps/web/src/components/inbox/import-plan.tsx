@@ -1,5 +1,6 @@
 "use client";
 
+import { type ReactNode } from "react";
 import { type NotionImportSource, type Team } from "@/lib/api";
 import { useImportSchema } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
@@ -17,21 +18,26 @@ import {
 import { ROW_GRID, TARGET_DOTS, TARGET_LABELS, pageCount } from "./import-targets";
 
 /**
- * Step 2: every Notion database becomes teams, projects, tickets, a folder of documents,
- * or nothing.
+ * The plan: what is in this workspace, and what each database becomes.
+ *
+ * Discovery is no longer a step of its own — it is one request and no decision, so its
+ * three possible answers (still reading, unable to read, or here is what is there) are
+ * drawn on this same screen rather than costing one of its own.
  *
  * The count beside the button is recomputed from the mapping on every change — see
  * `import-map.ts`, where the arithmetic lives and is tested against the drawing's own
  * numbers.
  *
- * The team is here rather than on the step that writes, because it is a decision of the
+ * The team is here rather than on the screen that writes, because it is a decision of the
  * same kind as the ones in the table: an imported ticket takes its number from a team, and
  * which team is part of saying what a base becomes. It is required before leaving this
- * step so that nobody reaches the last one and finds the button dead — and only when the
+ * screen so that nobody reaches the preview and finds the button dead — and only when the
  * plan needs one at all, since a plan of teams alone has no destination to ask about.
  */
-export function StepTwo({
+export function ImportPlan({
   sources,
+  loading,
+  unavailable,
   mapping,
   kept,
   mappings,
@@ -44,9 +50,15 @@ export function StepTwo({
   onCycle,
   onSuggest,
   onNext,
-  onBack,
+  pending,
+  error,
+  details,
 }: {
   sources: NotionImportSource[];
+  /** Discovery is still in flight: nothing below it has arrived yet. */
+  loading: boolean;
+  /** Discovery answered, but the workspace could not be read — and why. */
+  unavailable?: string;
   mapping: ImportMapping;
   /** What is being imported and as what — [mapping] minus the databases nobody kept. */
   kept: ImportMapping;
@@ -62,10 +74,17 @@ export function StepTwo({
   onTeam: (id: string) => void;
   onCycle: (source: NotionImportSource) => void;
   onSuggest: (sourceId: string, target: ImportTarget) => void;
+  /** Starts the preview request; this screen's own button carries its pending and error. */
   onNext: () => void;
-  onBack: () => void;
+  pending: boolean;
+  error?: string;
+  /**
+   * The folded columns-and-people panel, passed in so this screen does not learn what a
+   * schema is.
+   */
+  details: ReactNode;
 }) {
-  // One bounded base bounds the sum, and the sentence below is about the sum.
+  // One bounded base bounds the sum, and the sentences below are about the sum.
   const allExact = sources.every((source) => source.pagesExact);
 
   return (
@@ -77,6 +96,22 @@ export function StepTwo({
           of documents. Nothing is written before you confirm.
         </span>
       </div>
+
+      {loading && (
+        <span className="text-12 text-faint">Reading the databases Kanso can see…</span>
+      )}
+
+      {/*
+       * Said as a sentence rather than as an empty table. Discovery stopped being a step
+       * of its own — it is one request and no decision — so its one real answer, that the
+       * workspace cannot be read and why, has to survive somewhere the reader looks.
+       */}
+      {unavailable && (
+        <div className="flex flex-col gap-1 rounded-md bg-warning/15 px-3 py-3 text-12 text-status-progress">
+          <span className="font-medium">Kanso could not read this workspace</span>
+          <span>{unavailable}</span>
+        </div>
+      )}
 
       {/*
        * The picker only when there is something in it. An instance with no team drew it
@@ -165,6 +200,17 @@ export function StepTwo({
         })}
       </div>
 
+      <span className="text-11 text-faint">
+        {sources.length} {sources.length === 1 ? "database" : "databases"},{" "}
+        {/* `allExact` *is* exactness, so the exact branch hands [pageCount] a `true` it has
+            already established and can never grow a `+`. The other branch says "at least"
+            and keeps its plural: the bound is in the words there, and a lower bound of one
+            is not one page. */}
+        {allExact
+          ? `${pageCount(counts.total, true)} in all.`
+          : `at least ${counts.total} pages in all.`}
+      </span>
+
       <div className="flex items-start gap-2.5 rounded-md bg-warning/15 px-3 py-3 text-12 text-status-progress">
         <span className="mt-1 size-[7px] shrink-0 rounded-full bg-status-progress" />
         <span>
@@ -186,12 +232,11 @@ export function StepTwo({
         />
       ))}
 
+      {details}
+
       <div className="flex items-center gap-2.5">
-        <Button disabled={planEmpty || (teamRequired && teamId === "")} onClick={onNext}>
-          Say which column is which
-        </Button>
-        <Button variant="outline" onClick={onBack}>
-          Back
+        <Button disabled={planEmpty || (teamRequired && teamId === "") || pending} onClick={onNext}>
+          Preview the import
         </Button>
         <span className="ml-1 text-11 text-faint">
           {/* "pages" heads the *total* here — "1 of 1 page kept" — and so does the `+`, which
@@ -199,6 +244,8 @@ export function StepTwo({
           {counts.kept} of {pageCount(counts.total, allExact)} kept
         </span>
       </div>
+
+      {error && <span className="text-12 text-urgent">{error}</span>}
     </>
   );
 }
@@ -211,9 +258,10 @@ export function StepTwo({
  * counted as dropped. That is a fact about the plan, not a mistake, and the reader is the
  * one who decides whether it matters.
  *
- * It reads the same schema step 3 does, from the same cache, and substitutes the reader's
- * own mapping for the server's suggestion wherever they have made one — so walking back here
- * from step 3 does not warn about a relation they have since unmapped.
+ * It reads the same schema the folded columns panel does, from the same cache, and
+ * substitutes the reader's own mapping for the server's suggestion wherever they have made
+ * one — so a mapping changed in that panel is reflected here without a screen to walk back
+ * from.
  */
 function RelationHint({
   base,

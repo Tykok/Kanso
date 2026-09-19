@@ -109,10 +109,10 @@ export function NotionPageField({
       {search.isLoading && <span className="text-11 text-faint">Reading the pages Kanso can see…</span>}
 
       {/*
-       * Said as a sentence rather than as an empty list. The same choice `import-step-one`
-       * makes, for a stronger reason: here an empty list is a *diagnosis* — the integration
-       * exists and nobody has shared a page with it — and that is exactly what the old
-       * field could not tell anybody.
+       * Said as a sentence rather than as an empty list. The same choice `import-plan.tsx`
+       * makes for its own "cannot read this workspace" sentence, for a stronger reason
+       * here: an empty list is a *diagnosis* — the integration exists and nobody has shared
+       * a page with it — and that is exactly what the old field could not tell anybody.
        */}
       {notice && (
         <div className="flex flex-col gap-1 rounded-md bg-warning/15 px-3 py-3 text-12 text-status-progress">
