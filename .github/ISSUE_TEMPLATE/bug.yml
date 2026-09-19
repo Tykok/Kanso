@@ -1,0 +1,127 @@
+# The required fields here are not a formality: they are the four answers that decide
+# whether a report can be reproduced at all. "How it runs" separates the published
+# one-origin image from this repository's two-port dev stack, which are different
+# products with different routing. `KANSO_TLS` decides who owns `X-Forwarded-For`, and
+# therefore what every rate limit and every logged address means. The version pins what
+# the code was. Postgres pins what Flyway ran against.
+#
+# Anything an instance running Kanso cannot be asked for — a screenshot, a HAR, a log —
+# is optional, because demanding it turns a real report into an abandoned one.
+
+name: Bug report
+description: Something Kanso does that it should not
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before anything else: **if this is a security issue, close this form.** Kanso
+        runs an OAuth authorisation server and an unauthenticated endpoint that writes
+        rows; a weakness in either goes to a [private advisory][advisory] and never
+        here. `SECURITY.md` says what counts and what is a documented limitation.
+
+        [advisory]: https://github.com/Tykok/Kanso/security/advisories/new
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How this instance runs
+      description: >
+        The published image and this repository's compose file are two different
+        things, not two settings of one thing. The first serves everything from one
+        origin behind Caddy; the second builds from source onto two ports and is what
+        the Playwright suite drives. A bug in one is often not a bug in the other.
+      options:
+        - The published image, one origin (ghcr.io/tykok/kanso)
+        - docker/docker-compose.yml — the published image next to a Postgres
+        - The repository's own docker-compose.yml — built from source, two ports
+        - Local development — ./gradlew bootRun and pnpm dev
+        - Something else (say so below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >
+        The image tag, or the commit SHA if you built it. `latest` is an answer, but a
+        worse one — it means something different the week after you read this.
+      placeholder: ghcr.io/tykok/kanso:v0.4.1 — or 1215b9d
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tls
+    attributes:
+      label: KANSO_TLS
+      description: >
+        Under `auto`, Caddy is the edge and strips the inbound `X-Forwarded-For`; under
+        `off`, your own proxy is the edge and the header is preserved. The API reads the
+        *leftmost* entry as the client address, so this one variable decides what every
+        rate limit and every recorded origin actually means.
+      options:
+        - auto — Caddy terminates TLS and is the edge
+        - "off — my own proxy terminates TLS in front of Kanso"
+        - Not applicable — dev stack or local development
+    validations:
+      required: true
+
+  - type: input
+    id: postgres
+    attributes:
+      label: Postgres
+      description: Version, and whether it is managed. Flyway owns the schema and runs on boot.
+      placeholder: 16.4, managed (RDS) — or postgres:16-alpine from the compose file
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what Kanso did instead of what you expected.
+      placeholder: |
+        Moved a ticket from the board into a team that renames its statuses. It landed
+        in the first status of that team rather than in its word for work already
+        started.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to get back to it
+      description: >
+        From a fresh instance if you can. Name the words your team uses where they
+        matter — a team invents its own statuses, so "moved it to Done" is ambiguous at
+        an instance where nobody has a status called Done.
+      placeholder: |
+        1. Create two teams, rename the second team's statuses
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: What the logs say
+      description: >
+        **"Nothing" is a useful answer here, not an empty field.** A request that
+        reaches no mapping does not fail loudly: it falls through the routing table to
+        the Next front end, which answers its own 404 as an HTML page, and the API
+        never records that the request existed. So an HTML 404 where you expected JSON,
+        with silence in the API's logs, is itself the symptom — say so rather than
+        leaving this blank.
+      render: text
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Before you file
+      options:
+        - label: This is not a security issue — those go to a private advisory
+          required: true
+        - label: I searched the open issues and the wiki's `Follow-ups` page
+          required: true
