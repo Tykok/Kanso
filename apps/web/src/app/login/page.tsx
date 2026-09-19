@@ -103,9 +103,11 @@ function AcceptInvitation({ token }: { token: string }) {
     mutationFn: api.acceptInvitation,
     onSuccess: (me) => {
       queryClient.setQueryData(keys.me, me);
-      // Straight into the wizard: an invited member still has a preferences step,
-      // and it is the only one they will ever be shown.
-      router.replace("/setup");
+      // Straight into the board: `InvitationService.accept` stamps onboarding itself, so
+      // `/setup` has nothing left to ask a joiner. Routing there anyway cost them two
+      // flashes of a screen with nothing for them — "Reading the instance state…", then
+      // "Opening Kanso…" — before its own guard bounced them to `/` regardless.
+      router.replace("/");
     },
   });
 
