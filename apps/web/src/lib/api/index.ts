@@ -22,3 +22,4 @@ export * from "./fields";
 export * from "./github";
 export * from "./requests";
 export * from "./time";
+export * from "./templates";

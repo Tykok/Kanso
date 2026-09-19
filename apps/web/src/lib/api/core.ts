@@ -1360,6 +1360,12 @@ export const api = {
     /** Absent files a draft — see `Ticket.identifier` for what that costs it. */
     teamId?: string;
     title: string;
+    /**
+     * Absent rather than empty when the composer is folded, which is every creation that
+     * does not start from a template. `TicketService.create` has accepted a description
+     * since `V1`; this type simply never offered one, because no screen had a field for it.
+     */
+    description?: string;
     status?: TicketStatus;
     priority?: TicketPriority;
     estimate?: EffortPoints;
