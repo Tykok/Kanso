@@ -49,8 +49,9 @@ const OPEN_TICKET_HINT =
  * Appearance is judged by looking at it, so each click applies to the whole page at
  * once and persists in the background. A preview tile would ask you to imagine the
  * result; this shows it. A failed save rolls the interface back, which is the honest
- * signal that nothing was stored. The tile itself is the wizard's own — one preview,
- * not a settings copy of it that could drift.
+ * signal that nothing was stored. The tile itself is `setup/preview.tsx`'s
+ * `PreferencePreview` — one caller now that the wizard's own preferences step is gone,
+ * still one preview rather than a settings copy of it that could drift.
  */
 export function AppearanceSection() {
   const preferences = usePreferences();

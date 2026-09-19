@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
  * Somebody else's Notion workspace, answered over HTTP.
  *
  * The import is the one part of Kanso that reads a workspace it did not create, and until
- * this file existed there was no way to walk its five screens in a browser: with no token
- * the dialog's first step prints a sentence and stops, and with a real token the pass would
- * depend on a workspace nobody else has.
+ * this file existed there was no way to walk it in a browser: with no token the dialog's
+ * plan screen prints a sentence and stops, and with a real token the pass would depend on
+ * a workspace nobody else has.
  *
  * The seam is Notion's own base URL. `application.yml` already reads it from
  * `NOTION_BASE_URL`, so pointing the API container at this server puts the *real*

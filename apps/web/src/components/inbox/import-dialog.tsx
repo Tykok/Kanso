@@ -17,10 +17,12 @@ import { ImportPlan } from "./import-plan";
  * Screen 24. A plan and a confirmation, and nothing written until the second.
  *
  * This file is the shell: the state the two screens share, the requests, and which one is
- * on screen. Three of the five decisions the dialog used to spread across five steps only
- * ever confirmed a guess the server had already made — which bases exist, which column is
- * which field, who these people are — so they are folded into `ImportDetails` instead of
- * costing a screen each. What the two screens left decide:
+ * on screen. Discovery — which bases exist — used to cost a step of its own and now costs
+ * none: `ImportPlan` draws it directly, as one of its three possible answers (see that
+ * file). Two more of the decisions the dialog used to spread across five steps only ever
+ * confirmed a guess the server had already made — which column is which field, who these
+ * people are — so they are folded into `ImportDetails` instead of costing a screen each.
+ * What the two screens left decide:
  *
  * 1. what each database becomes, and where it lands;
  * 2. what all of that would write — the last read before the only write.

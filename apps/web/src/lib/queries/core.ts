@@ -189,8 +189,9 @@ export const useSetupState = () =>
     queryKey: keys.setupState,
     queryFn: api.setupState,
     retry: false,
-    // The wizard watches this change step by step, so the client-wide 30s
-    // staleTime would show it a stale answer to the question it just resolved.
+    // The connections card watches this change on every save-then-bootstrap it triggers
+    // (Notion connect, the parent page, Google), so the client-wide 30s staleTime would
+    // show it a stale answer to the question it just resolved.
     staleTime: 0,
   });
 

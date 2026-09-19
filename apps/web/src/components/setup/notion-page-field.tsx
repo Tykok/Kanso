@@ -7,8 +7,9 @@ import { messageFor } from "./fields";
 import { pageIdFrom, pageLabel, pickerNotice, sameId } from "./page-picker";
 
 /**
- * The parent page, chosen instead of typed — as one block shared by the wizard and the
- * settings screen, the way `notion-connect.tsx` is.
+ * The parent page, chosen instead of typed — drawn by `connections-section.tsx`, its one
+ * caller now, for the reason `notion-connect.tsx` gives for its own: built from
+ * `fields.tsx` and `page-picker.ts`, not shared with a wizard step that no longer exists.
  *
  * It replaces a field that asked for "32 hex characters from the page URL": the last
  * manual step of the old setup, and the one most likely to be got wrong, because a
@@ -81,8 +82,10 @@ export function NotionPageField({
           className="w-full"
           autoComplete="off"
           spellCheck={false}
-          // The wizard's card is a real form, and this is the setting the step exists to
-          // write: the same guard the field it replaced carried.
+          // `connections-section` draws this with no surrounding `<form>`, so the
+          // browser's own required-field validation never fires here — but the attribute
+          // still reaches assistive tech through the implicit `aria-required`, which is
+          // reason enough to keep stating it.
           required={!disabled}
           disabled={disabled}
           value={value}
