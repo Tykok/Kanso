@@ -36,6 +36,9 @@
     <header class="topbar">
       <span class="brand">Kanso</span>
       <span class="topbar-note">{{nav.tagline}}</span>
+      <!-- The wiki's first page, not an index of it: a reader arriving here wants to be
+           told where to start, and the column on the other side is the index. -->
+      <a class="topbar-link" href="{{docs.href}}">{{nav.docs}}</a>
       <nav class="langs" aria-label="{{nav.language}}">{{page.switch}}</nav>
     </header>
 

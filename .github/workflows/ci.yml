@@ -15,15 +15,42 @@
 
 name: CI
 
-# Every push, on every branch, and no `pull_request`. The history is merge commits
-# authored locally rather than squashes landed from PRs, so a `pull_request`-only
-# workflow would first see this branch's work at the merge — long after the point of
-# testing it. Triggering on both instead would run the same commit twice whenever a PR
-# does exist, and paying double for a 60-second Postgres suite trains its only reader
-# to stop reading. The repository is private and single-author, so nothing arrives from
-# a fork that the push trigger would miss.
+# `push` on the two long-lived branches, `pull_request` on every base. What stood here
+# was "every push, on every branch, and no `pull_request`", resting on two premises that
+# were true when it was written and are not now: that the history is merge commits
+# authored locally rather than work landed from PRs, and that the repository is private
+# and single-author, so nothing arrives from a fork that the push trigger would miss.
+# The repository is public, `allow_forking` is on, and work now lands through pull
+# requests into `main` and `develop`. A fork's PR pushes to the fork, where this workflow
+# does not run at all — so under the old trigger a stranger's commit could reach `main`
+# without this suite, the typecheck or the lint having seen it once.
+#
+# The other half of that comment still holds, and it is what shapes the replacement:
+# triggering on both events unfiltered runs the same commit twice whenever a PR exists,
+# and paying double for a 60-second Postgres suite trains its only reader to stop
+# reading. So the two triggers are cut to touch without overlapping. A commit on a topic
+# branch is tested by its `pull_request` run and by nothing else, because `push` no
+# longer matches that branch. The merge commit that lands it on `main` or `develop` is a
+# commit no run has ever seen — different tree, different SHA — and the `push` run is
+# what tests that. One run per commit, and no commit without one.
+#
+# Naming the branches also ends a double that was already being paid: `on: push:` with no
+# `branches:` matches *tag* pushes, so tagging `v0.1.1` ran this suite a second time on
+# `2223af4`, a SHA whose verdict was already green from its push to `main`. `release.yml`
+# skips its own tests on that verdict and now says where it comes from.
+#
+# `pull_request` deliberately carries no `branches:` filter. Under gitflow a `release/*`
+# or `hotfix/*` branch is a PR *base* as well as a head, and a filter listing today's two
+# long-lived names would quietly stop testing one on the day it exists. The default types
+# — `opened`, `synchronize`, `reopened` — are the ones that change what would be merged.
+#
+# The cost, written down so it is met here rather than discovered: pushing a topic branch
+# with no PR open now runs nothing. Opening the PR — a draft counts — covers it from then
+# on, and `workflow_dispatch` is the way to ask for a run without one.
 on:
   push:
+    branches: [main, develop]
+  pull_request:
   workflow_dispatch:
 
 # Nothing here writes to the repository: no artifact, no deployment, no comment.
@@ -74,6 +101,13 @@ jobs:
       # configured for it: `application-test.yml` disables both sync workers and the
       # trash sweep, and `@ServiceConnection` hands Spring the container's URL, so
       # there is no database secret for this workflow to need or leak.
+      #
+      # That last sentence is why this job survives the `pull_request` trigger intact. A
+      # PR from a fork runs with a read-only `GITHUB_TOKEN` and no repository secrets, and
+      # this job asks for neither: `postgres:16-alpine` is a public image pulled
+      # anonymously, and the only credentials in the suite are the ones Testcontainers
+      # invents for the container it just started. A fork's PR gets the same verdict a
+      # branch here does, which is the point of requiring it before merge.
       #
       # `--no-daemon`: the Gradle daemon exists to keep a warm JVM between invocations,
       # and a fresh runner has exactly one invocation. Keeping it would leave a live

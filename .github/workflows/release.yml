@@ -92,9 +92,13 @@ jobs:
       # commit is what was actually compiled, and `/api/me` is asked in order to answer
       # "which code is this instance running".
       #
-      # `-x test` because `ci.yml` runs the suite on every push, including the push of the
-      # tagged commit. Running it again here would double a 60-second Postgres suite for a
-      # verdict already on the same SHA.
+      # `-x test` because `ci.yml` has already tested this exact SHA: a tag is cut on
+      # `main`, and every commit reaches `main` through a pull request whose merge is a
+      # push `ci.yml` triggers on. Running the suite again here would double a 60-second
+      # Postgres suite for a verdict already green on the same SHA. It used to be true
+      # that the tag push itself re-ran `ci.yml` — `on: push:` with no `branches:` matches
+      # tags — and that second run was the waste, not the safety net; `ci.yml` now names
+      # its branches and the tag triggers only this file.
       - name: Build the jar
         working-directory: apps/api
         env:

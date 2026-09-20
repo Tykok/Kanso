@@ -1,0 +1,47 @@
+{
+  "meta.title": "Get started — Kanso",
+  "meta.description": "Run Kanso with Docker, walk through the setup wizard, and file the first ticket. The two variables that are the whole configuration, and the keys that do the work.",
+
+  "head.eyebrow": "Get started",
+  "head.title": "A running instance, and a ticket in it.",
+  "head.lead": "Two things to configure, one wizard, and six keys. Everything else has a defensible default or is derived, and can be changed later from settings.",
+
+  "run.title": "Run it against your own Postgres",
+  "run.body": "One image — the front end, the API and a proxy that routes between them — on one origin. Kanso does not ship a database: a container that owns your data is a container you cannot restart without thinking about it.",
+  "run.two": "Those two things — the URL it lives at and the database it writes to — are the whole configuration. Caddy obtains a certificate for that host on its own, for <code>linux/amd64</code> and <code>linux/arm64</code> alike.",
+  "run.compose": "No database yet? <code>docker/docker-compose.yml</code> ships a <code>postgres:16-alpine</code> beside the image. Copy it, change <code>KANSO_PUBLIC_URL</code> and the password, then <code>docker compose up -d</code>.",
+  "run.note": "The host in <code>SPRING_DATASOURCE_URL</code> is resolved from inside the container. On Compose it is the service name; for a Postgres running on this machine but outside Docker it is <code>host.docker.internal</code>. It is never <code>localhost</code>, which is the container itself.",
+
+  "dev.title": "Or run it from source",
+  "dev.body": "The repository's own <code>docker-compose.yml</code> is a different thing: it builds both applications from source and serves them on two ports, which is what the Playwright suite drives. Fill in OIDC credentials in <code>.env</code>, or set <code>KANSO_AUTH_MODE=dev</code>.",
+  "dev.web": "The web application",
+  "dev.api": "The REST API, the WebSocket and the MCP endpoint",
+  "dev.health": "Liveness, readiness and the database check",
+  "dev.apps": "To run the applications outside Docker and keep only Postgres in it:",
+
+  "wizard.title": "The setup wizard",
+  "wizard.body": "The first launch opens a wizard rather than a login screen, because there is nobody to log in as yet. It has four steps and only the first is required.",
+  "wizard.account": "<strong>The owner account.</strong> An email address and a password. This account can configure the instance; nothing else can.",
+  "wizard.notion": "<strong>Notion.</strong> Optional, and reopenable. Connecting it is a page of its own — see <em>Notion</em>.",
+  "wizard.google": "<strong>Google sign-in.</strong> Optional. An instance can run on passwords alone.",
+  "wizard.preferences": "<strong>Preferences.</strong> Theme, accent, sidebar. Per person, not per instance.",
+  "wizard.skip": "Every step after the account is skippable and reopenable from settings — <code>,</code> — so you can be filing tickets in under a minute and decide the rest later.",
+  "wizard.invite": "Whoever comes next arrives through an invitation link the owner generates, and sees only the preferences step. Notion and Google are instance-wide, so a member has nothing to decide there and the steps are hidden rather than shown disabled.",
+
+  "first.title": "The first team, and the first ticket",
+  "first.body": "A ticket belongs to a team, so a team comes first — the sidebar creates one. From then on the keyboard is the interface, and the same keys work in the list, on the board and on the timeline.",
+  "first.c": "Create, from anywhere",
+  "first.e": "Rename in place",
+  "first.digits": "Your team's first six statuses, in its own order",
+  "first.shift": "Pick a status by name, including a seventh",
+  "first.palette": "The command palette (<code>Ctrl+K</code> elsewhere)",
+  "first.help": "Every shortcut, as this account has them bound",
+  "first.number": "The ticket gets a short identifier of its team's own — KAN-1, then KAN-2 — allocated inside the insert transaction from a counter on the team row. Two people pressing <code>c</code> at the same moment get 41 and 42: no gaps, no collisions.",
+
+  "next.title": "Where to go next",
+  "next.model": "teams, projects, tickets, statuses and the documents beside them.",
+  "next.working": "one query drawn three ways, filters, cycles, workload, triage.",
+  "next.notion": "what is mirrored, what is not, and why Notion never wins.",
+  "next.agents": "the MCP door for an agent, tokens and webhooks for a service.",
+  "next.selfHosting": "TLS, what <code>/data</code> holds, and what to back up."
+}
