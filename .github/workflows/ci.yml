@@ -34,6 +34,14 @@ name: CI
 # commit no run has ever seen — different tree, different SHA — and the `push` run is
 # what tests that. One run per commit, and no commit without one.
 #
+# One exception, and it is worth the minute it costs. A release is a fast-forward of
+# `main` onto `develop` (CONTRIBUTING.md says why, and `gitflow.yml` fails when it is not),
+# so the SHA arriving on `main` is the SHA that was already tested on its push to
+# `develop`: that run is a repeat. Filtering it out would mean dropping `main` from this
+# trigger, and a hotfix lands there as a merge commit no run has seen — the case this
+# trigger exists for. Once per release is the price of covering that, and `release.yml`
+# then builds the tag with `-x test` on the strength of it.
+#
 # Naming the branches also ends a double that was already being paid: `on: push:` with no
 # `branches:` matches *tag* pushes, so tagging `v0.1.1` ran this suite a second time on
 # `2223af4`, a SHA whose verdict was already green from its push to `main`. `release.yml`

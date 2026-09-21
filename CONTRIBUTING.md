@@ -12,7 +12,7 @@ are the branch you target and the fact that pushing a branch no longer runs anyt
 
 | Branch | What it is | What lands there |
 |---|---|---|
-| `main` | What is released. Every tag is cut here. | Merges from `develop`, and hotfixes. |
+| `main` | What is released. Every tag is cut here. | Fast-forwards from `develop`, and hotfixes. |
 | `develop` | The next release, integrated. | Everything else. |
 
 **Target `develop`.** Features, fixes, documentation, refactors — all of it. `develop` is
@@ -33,6 +33,11 @@ Both `main` and `develop` are protected: they take pull requests, not pushes, an
 request cannot be merged until CI is green on it. Force-pushing and deleting them are
 off. Tags are not protected, because a release is a tag and blocking it would block
 releasing.
+
+The one push that is not a pull request is the release itself — a fast-forward of `main`
+onto `develop`, which no merge button can perform. "Cutting a release" below says why it
+has to be that and not a PR, and `.github/workflows/gitflow.yml` fails on `main` when it
+was not.
 
 ## What runs, and when
 
@@ -178,8 +183,26 @@ that thing has already gone wrong once.
 Releases are tags on `main`, and the tag is the whole ceremony —
 [`.github/workflows/release.yml`](.github/workflows/release.yml) does the rest.
 
-1. Open a pull request from `develop` into `main` and merge it once CI is green.
-2. Tag the merge commit and push the tag:
+1. Fast-forward `main` onto `develop`, once CI is green on `develop`:
+
+   ```bash
+   git push origin develop:main
+   ```
+
+   **Not a pull request.** GitHub's merge button has three modes and all three write a
+   commit that `develop` does not have: merge creates one, squash flattens the branch
+   into one, rebase replays the branch as new ones. Any of them leaves `main` holding
+   something `develop` never sees, and the next release PR then proposes the whole
+   history again — a conflict per commit, against content already present. That is not
+   hypothetical; #13, #14 and #15 each did it in turn, each reported success, and none
+   of them changed a byte. `.github/workflows/gitflow.yml` fails on `main` when it
+   happens.
+
+   A fast-forward moves `main` to the exact commit `develop` is on, so the two are
+   identical and `develop` only ever runs ahead. It is a direct push: branch protection
+   takes pull requests, and this is the one thing that cannot be one.
+
+2. Tag that commit and push the tag:
 
    ```bash
    git checkout main && git pull
@@ -198,9 +221,10 @@ under its own full tag only and moves neither `1.2` nor `latest`, because
 `docs/self-hosting.md` tells people to pull `latest` and a release candidate arriving
 there would be a lie told to every `docker compose pull` in the world.
 
-The tag does not re-run `ci.yml`. It does not need to: the tagged commit reached `main`
-through a pull request, and the push that merged it was tested. That is also why
-`release.yml` builds with `-x test`.
+The tag does not re-run `ci.yml`. It does not need to: the tagged commit is the commit
+`develop` was on, and it was tested twice already — on its push to `develop`, and again
+on the fast-forward push to `main`. That is also why `release.yml` builds with
+`-x test`.
 
 Branch protection does not touch tags, so pushing one needs nothing special. Re-pushing a
 tag is how you re-run a release.

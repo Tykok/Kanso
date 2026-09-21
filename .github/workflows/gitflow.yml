@@ -1,0 +1,70 @@
+# `main` must never hold a commit `develop` does not have. That is not a preference about
+# how history should look: it decides what the next `develop` -> `main` pull request says.
+# With the invariant held it proposes the release; with it broken it proposes six commits
+# `main` already carries, and the only way to make that PR mergeable is to resolve a
+# conflict per commit against content that is already there.
+#
+# This is guarded rather than written down because of *how* it breaks. The trees stay
+# identical — `git diff main develop` printed nothing through the whole of it — and the one
+# symptom is a commit count in the GitHub header that reads as a rounding error. The
+# repository paid for it three times in a row before anyone looked: #13 squashed the
+# release, #14 squashed the back-merge meant to repair it, #15 rebased away the merge
+# commit written to repair that. All three reported success. None moved a byte.
+# `CaddyRoutingTableTest` is guarded for the same reason and its header says it plainly: a
+# failure nobody can see is a failure nobody fixes.
+#
+# A release is a fast-forward (`git push origin develop:main`), so the invariant holds by
+# construction the moment that push lands — a commit is its own ancestor. What this job
+# actually catches is the other two routes onto `main`. One is a pull request merged with
+# any of GitHub's three buttons: merge, squash and rebase all write a commit `develop` has
+# never seen, and the button is one click from the one you want. The other is a hotfix,
+# which is legitimate and which this job will fail — the red check is the reminder to merge
+# `main` back into `develop`, not a defect. CONTRIBUTING.md, "Cutting a release", is the
+# prose half of this file.
+name: Gitflow
+
+# Only where the invariant can break. Nothing a pull request or a push to `develop` does
+# can put a commit on `main`, so running this there would spend a runner to assert
+# something the event cannot have changed.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ancestry:
+    name: main is an ancestor of develop
+    runs-on: ubuntu-latest
+    # A clone and one `merge-base`. The cap is here for the clone that never returns,
+    # not because five minutes is a budget this could approach.
+    timeout-minutes: 5
+    steps:
+      # The full history: `merge-base` reads commits, and the default shallow clone has
+      # one, which would make every branch older than that answer "not an ancestor".
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Explicit refspecs rather than `git fetch origin main develop`, which writes
+      # `FETCH_HEAD` and leaves `origin/main` at whatever the checkout happened to leave
+      # it — the comparison would then be against a stale ref and pass while it should
+      # not. The failure prints the offending commits: "main is ahead" is the finding,
+      # and *which commit* is the thing that says whether it was a merge button or a
+      # hotfix.
+      - name: Compare the two branches
+        run: |
+          git fetch --quiet origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/develop:refs/remotes/origin/develop
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "main is an ancestor of develop."
+            exit 0
+          fi
+          echo "::error::main holds commits develop does not have. A release is a"\
+            "fast-forward (git push origin develop:main); after a hotfix, merge main"\
+            "back into develop. See CONTRIBUTING.md."
+          git log --oneline origin/develop..origin/main
+          exit 1
