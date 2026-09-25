@@ -90,9 +90,10 @@ function wrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return ({ children }: { children: ReactNode }) => (
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
+  return Wrapper;
 }
 
 const toggle = () => fireEvent.click(screen.getByRole("button", { name: /columns and people/i }));
