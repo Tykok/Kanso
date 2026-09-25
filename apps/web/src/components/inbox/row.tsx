@@ -93,14 +93,30 @@ export function InboxRow({
         {copy.detail && (
           <span
             className={cn(
-              "text-12",
+              "text-12 text-muted-foreground",
               // A failure's reason is the actionable part and gets two lines; every
               // other detail is a title and truncates to keep the rows even.
-              failure ? "text-muted-foreground" : "truncate text-muted-foreground",
+              failure ? "line-clamp-2" : "truncate",
             )}
           >
             {copy.detail}
           </span>
+        )}
+
+        {copy.raw && (
+          <details className="text-11">
+            <summary className="cursor-pointer text-faint hover:text-muted-foreground">
+              Details
+            </summary>
+            <pre
+              className={cn(
+                "mt-1 max-h-48 overflow-auto whitespace-pre-wrap",
+                "font-mono text-11 text-muted-foreground",
+              )}
+            >
+              {copy.raw}
+            </pre>
+          </details>
         )}
 
         {failure && (

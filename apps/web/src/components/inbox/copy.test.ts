@@ -16,6 +16,17 @@ const row = (over: Partial<Notification>): Notification => ({
 });
 
 describe("what an inbox row says", () => {
+  it("summarises Notion's validation list and keeps the raw text to unfold", () => {
+    const error =
+      "Notion API 400 (validation_error): body failed validation. Fix one:\n" +
+      "body.properties.Start.date should be defined, instead was `undefined`.";
+    const copy = rowCopy(
+      row({ kind: "sync_failed", actor: undefined, payload: { destination: "notion", error } }),
+    );
+    expect(copy.detail).toBe("Notion refused the page: Start is invalid");
+    expect(copy.raw).toBe(error);
+  });
+
   it("names the person who assigned it, and the ticket underneath", () => {
     expect(rowCopy(row({}))).toEqual({
       sentence: "A. Okonkwo assigned this ticket to you",
