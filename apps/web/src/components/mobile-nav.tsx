@@ -44,7 +44,7 @@ import { Sidebar } from "./sidebar";
  * `Écrans 5` states this exact value, and it is not one token: the composer's own
  * scrim is the same hue at 22%, a different alpha for a different surface.
  */
-export function MobileNavDrawer({ ctx, syncSummary }: { ctx: ActionContext; syncSummary: string }) {
+export function MobileNavDrawer({ ctx }: { ctx: ActionContext }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -70,7 +70,7 @@ export function MobileNavDrawer({ ctx, syncSummary }: { ctx: ActionContext; sync
           aria-label="Navigation"
           className="fixed inset-y-0 left-0 z-30 hidden w-[288px] flex-col overflow-y-auto bg-card pt-[44px] shadow-float outline-none max-[720px]:flex"
         >
-          <Sidebar ctx={ctx} syncSummary={syncSummary} onNavigate={() => setOpen(false)} />
+          <Sidebar ctx={ctx} onNavigate={() => setOpen(false)} />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

@@ -8,7 +8,7 @@ import { OfflineBanner } from "@/components/offline/banner";
 import { useOfflineWatch } from "@/components/offline/watch";
 import { ApiError } from "@/lib/api";
 import { breadcrumbOf, sameScope } from "@/lib/nav";
-import { useAuthMode, useMe, useSetupState, useSyncStatus } from "@/lib/queries";
+import { useAuthMode, useMe, useSetupState } from "@/lib/queries";
 import { useActionContext } from "@/lib/use-action-ctx";
 import { cn } from "@/lib/utils";
 import { useUi, type Scope } from "@/store/ui";
@@ -42,7 +42,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const authMode = useAuthMode();
   const me = useMe();
   const setup = useSetupState();
-  const sync = useSyncStatus();
   const { scope, setScope } = useUi();
   const pinned = useSidebarPinned();
   // Here rather than on the one page that draws the banner: a write queued on the board
@@ -172,14 +171,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <LoginScreen mode={authMode.data} />;
   }
 
-  const mirrorSummary = !sync.data
-    ? ""
-    : sync.data.mirrorEnabled
-      ? `Notion: ${sync.data.bootstrapped ? "connected" : "not bootstrapped"}${
-          sync.data.jobs.pending ? ` · ${sync.data.jobs.pending} queued` : ""
-        }${sync.data.jobs.failed ? ` · ${sync.data.jobs.failed} failed` : ""}`
-      : "Notion mirror off";
-
   return (
     <ShellChannelProvider value={channel}>
       <div
@@ -188,12 +179,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           pinned ? "grid-cols-[248px_1fr]" : "grid-cols-[1fr]",
         )}
       >
-        <SidebarFrame ctx={ctx} syncSummary={mirrorSummary} />
+        <SidebarFrame ctx={ctx} />
 
         <div className="flex min-h-0 min-w-0 flex-col">
           <Topbar
             ctx={ctx}
-            syncSummary={mirrorSummary}
             crumbs={breadcrumbOf(pathname, page.crumbs)}
             slotRef={setTopbarNode}
             onLeave={leave}

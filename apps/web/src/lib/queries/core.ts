@@ -9,6 +9,7 @@ import { findTicket, queryCache } from "@/lib/realtime-events";
 import { RUNS_OFFLINE, withOfflineFallback } from "@/store/offline";
 import { DRAFTS_GROUP } from "@/components/organise/grouping";
 import { useUi, type Scope } from "@/store/ui";
+import { remainingOf } from "@/lib/sync-status";
 import {
   api,
   filterParams,
@@ -532,8 +533,16 @@ export const useContents = (kind: "team" | "project", id: string) =>
     gcTime: 0,
   });
 
+/**
+ * Every ten seconds, and every three while a wave drains: at ten, a fifty-job wave that
+ * Notion's rate limit empties in about twenty seconds would move the bar in two jumps.
+ */
 export const useSyncStatus = () =>
-  useQuery({ queryKey: keys.sync, queryFn: api.syncStatus, refetchInterval: 10_000 });
+  useQuery({
+    queryKey: keys.sync,
+    queryFn: api.syncStatus,
+    refetchInterval: (query) => (remainingOf(query.state.data) > 0 ? 3_000 : 10_000),
+  });
 
 /**
  * The mirror's failure reasons, which the API refuses to anyone but a configurator.

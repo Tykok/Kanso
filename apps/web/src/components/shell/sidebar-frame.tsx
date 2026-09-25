@@ -118,7 +118,7 @@ const holdsAnOpenPopup = (panel: HTMLElement | null) =>
 /** Names the panel for the top bar button's `aria-controls`. */
 const REVEAL_ID = "sidebar-reveal";
 
-export function SidebarFrame({ ctx, syncSummary }: { ctx: ActionContext; syncSummary: string }) {
+export function SidebarFrame({ ctx }: { ctx: ActionContext }) {
   const mode = usePreferences().sidebarMode;
 
   /*
@@ -131,12 +131,12 @@ export function SidebarFrame({ ctx, syncSummary }: { ctx: ActionContext; syncSum
   if (mode === "pinned") {
     return (
       <div className="contents max-[720px]:hidden">
-        <Sidebar ctx={ctx} syncSummary={syncSummary} />
+        <Sidebar ctx={ctx} />
       </div>
     );
   }
 
-  return <SidebarReveal mode={mode} ctx={ctx} syncSummary={syncSummary} />;
+  return <SidebarReveal mode={mode} ctx={ctx} />;
 }
 
 /**
@@ -149,11 +149,9 @@ export function SidebarFrame({ ctx, syncSummary }: { ctx: ActionContext; syncSum
 function SidebarReveal({
   mode,
   ctx,
-  syncSummary,
 }: {
   mode: "hover" | "hidden";
   ctx: ActionContext;
-  syncSummary: string;
 }) {
   const open = isRevealed(useHold());
   const panel = useRef<HTMLDivElement>(null);
@@ -306,7 +304,7 @@ function SidebarReveal({
         {/* A peek's one job is to take you somewhere, so it goes when it has. This is the
             prop the mobile drawer passes for the same reason; the pinned column leaves it
             unset because it has nothing to close. */}
-        <Sidebar ctx={ctx} syncSummary={syncSummary} onNavigate={dismiss} />
+        <Sidebar ctx={ctx} onNavigate={dismiss} />
       </div>
     </>
   );
