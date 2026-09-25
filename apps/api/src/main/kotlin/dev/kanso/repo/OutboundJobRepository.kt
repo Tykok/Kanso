@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.time.Duration
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -20,6 +21,24 @@ import java.util.UUID
  * be treated as superseding a push queued for another, and the change would silently
  * never leave — see `V26`.
  */
+/**
+ * A job as the queue screen lists it: `OutboundJob` plus what only a reader needs.
+ *
+ * Its own type rather than two more fields on `OutboundJob`, which is what the worker
+ * claims with and has no use for when a job is due or what its entity is called.
+ */
+data class QueuedJobRow(
+	val id: Long,
+	val entityType: OutboundEntityType,
+	val entityId: UUID,
+	val operation: OutboundOperation,
+	val status: String,
+	val attempts: Int,
+	val nextAttemptAt: OffsetDateTime?,
+	val lastError: String?,
+	val label: String?,
+)
+
 @Repository
 class OutboundJobRepository(private val jdbc: JdbcClient) {
 
@@ -378,6 +397,66 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		 ORDER BY updated_at DESC LIMIT :limit
 		""".trimIndent()
 	).param("destination", destination.wire).param("limit", limit).query(mapper).list()
+
+	private val listed = RowMapper { rs, _ ->
+		QueuedJobRow(
+			id = rs.getLong("id"),
+			entityType = OutboundEntityType.from(rs.text("entity_type")),
+			entityId = rs.uuid("entity_id"),
+			operation = OutboundOperation.from(rs.text("operation")),
+			status = rs.text("status"),
+			attempts = rs.getInt("attempts"),
+			nextAttemptAt = rs.timestampOrNull("next_attempt_at"),
+			lastError = rs.getString("last_error"),
+			label = rs.getString("label"),
+		)
+	}
+
+	/**
+	 * The queue screen's rows, named. One statement with a join per entity type rather than
+	 * four lookups, because it runs every five seconds while the screen is open. A missing
+	 * label is a row that is gone — a delete job, or an entity removed since.
+	 */
+	private fun listing(where: String, order: String, destination: Destination, limit: Int) =
+		jdbc.sql(
+			"""
+			SELECT j.id, j.entity_type, j.entity_id, j.operation, j.status, j.attempts,
+			       j.next_attempt_at, j.last_error,
+			       CASE j.entity_type
+			            WHEN 'ticket'  THEN t.title
+			            WHEN 'project' THEN p.name
+			            WHEN 'team'    THEN tm.name
+			            WHEN 'doc'     THEN d.title
+			       END AS label
+			  FROM outbound_jobs j
+			  LEFT JOIN tickets t      ON j.entity_type = 'ticket'  AND t.id = j.entity_id
+			  LEFT JOIN projects p     ON j.entity_type = 'project' AND p.id = j.entity_id
+			  LEFT JOIN teams tm       ON j.entity_type = 'team'    AND tm.id = j.entity_id
+			  LEFT JOIN notion_docs d  ON j.entity_type = 'doc'     AND d.id = j.entity_id
+			 WHERE j.destination = :destination AND $where
+			 ORDER BY $order
+			 LIMIT :limit
+			""".trimIndent()
+		).param("destination", destination.wire).param("limit", limit).query(listed).list()
+
+	/**
+	 * What is waiting and what is being pushed, running first and the rest in
+	 * [claimBatch]'s order — so the top of the list is what moves next.
+	 */
+	fun findQueued(destination: Destination, limit: Int = 50): List<QueuedJobRow> = listing(
+		where = "j.status IN ('pending', 'running')",
+		order = "(j.status = 'running') DESC, j.priority, j.next_attempt_at, j.id",
+		destination = destination,
+		limit = limit,
+	)
+
+	/** [findFailed]'s rows in the listing's shape, so both lists render with one component. */
+	fun findFailedRows(destination: Destination, limit: Int = 50): List<QueuedJobRow> = listing(
+		where = "j.status = 'failed'",
+		order = "j.updated_at DESC",
+		destination = destination,
+		limit = limit,
+	)
 
 	/**
 	 * Puts every failed job for one destination back in the queue. Used by the admin
