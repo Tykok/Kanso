@@ -1,6 +1,7 @@
 import { labelOfKey } from "@/lib/statuses";
 import type { Notification, TicketStatus } from "@/lib/api";
 import { STATUS_LABELS } from "@/lib/status";
+import { readableError } from "@/lib/sync-error";
 
 /**
  * What an inbox row says, in one place.
@@ -21,6 +22,8 @@ export type RowCopy = {
   sentence: string;
   /** The line under it — the ticket's title, the mirror's reason, the excerpt. */
   detail?: string;
+  /** The far side's own words, when the detail is a summary of them. */
+  raw?: string;
 };
 
 const quoted = (value: string) => `“${value}”`;
@@ -90,18 +93,20 @@ export function rowCopy(notification: Notification): RowCopy {
       };
     }
 
-    case "sync_failed":
+    case "sync_failed": {
+      // A summary rather than the far side's words verbatim: Notion's answer to a bad body
+      // is twenty lines of union branches, and the row read as a stack trace. The words are
+      // kept in `raw`, unfolded on demand — "the target page is locked" is still actionable.
+      const error = readableError(typeof payload.error === "string" ? payload.error : null);
       return {
         // The outbox serves more than Notion now, so the row names who refused rather
         // than assuming. An older server sends no destination and only ever meant
         // Notion, which is what the fallback says.
         sentence: `The ${destinationLabel(payload.destination)} refused this write`,
-        // The far side's own words, not a paraphrase: "the target page is locked by
-        // another workspace" is actionable and "sync failed" is not.
-        detail: typeof payload.error === "string" && payload.error
-          ? payload.error
-          : "The change is kept in the queue.",
+        detail: error?.summary ?? "The change is kept in the queue.",
+        ...(error?.detail ? { raw: error.detail } : {}),
       };
+    }
 
     case "conflict": {
       const field = typeof payload.field === "string" ? payload.field : "value";
