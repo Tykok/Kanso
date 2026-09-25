@@ -26,14 +26,12 @@ import { SidebarRevealButton } from "./sidebar-frame";
  */
 export function Topbar({
   ctx,
-  syncSummary,
   crumbs,
   slotRef,
   onLeave,
   canLeave,
 }: {
   ctx: ActionContext;
-  syncSummary: string;
   /** From `breadcrumbOf`. Empty at `/`, where the list names itself in its own heading. */
   crumbs: string[];
   /** Where `<TopbarSlot>` renders the page's own controls. */
@@ -47,7 +45,7 @@ export function Topbar({
 }) {
   return (
     <div className="flex items-center gap-2.5 bg-card px-5 py-3 text-12 text-faint max-[720px]:px-4 max-[720px]:py-2">
-      <MobileNavDrawer ctx={ctx} syncSummary={syncSummary} />
+      <MobileNavDrawer ctx={ctx} />
 
       {/* Beside the `☰` and to the left of the trail, which is where the column it
           reveals would begin. Absent while the column is pinned: there is nothing to

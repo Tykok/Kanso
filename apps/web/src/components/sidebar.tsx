@@ -15,9 +15,11 @@ import {
   navHref,
   type NavSelection,
 } from "@/lib/nav";
-import { keys, usePreferences, useSavePreferences } from "@/lib/queries";
+import { keys, useMe, usePreferences, useSavePreferences } from "@/lib/queries";
+import { canConfigure } from "@/lib/seat";
 import { useUi, type Scope } from "@/store/ui";
 import { GroupLabel } from "./ui/group-label";
+import { SyncStatus } from "./shell/sync-status";
 import { BrandMenu } from "./brand-menu";
 import { Favourites } from "./favourites";
 import { OnboardingChecklist } from "./inbox/onboarding-checklist";
@@ -134,13 +136,12 @@ function SidebarAnchor() {
  */
 export function Sidebar({
   ctx,
-  syncSummary,
   onNavigate,
 }: {
   ctx: ActionContext;
-  syncSummary: string;
   onNavigate?: () => void;
 }) {
+  const me = useMe();
   const { scope, setScope, showArchived, setShowArchived } = useUi();
   const pathname = usePathname();
   const router = useRouter();
@@ -212,147 +213,153 @@ export function Sidebar({
   const allCurrent = isCurrentScope({ kind: "all" }, selection);
 
   return (
-    <aside className="flex w-full flex-col gap-[22px] bg-card px-2.5 py-4 overflow-y-auto">
-      {/* The seal takes the width it is given, so it is the one that flexes and the
-          anchor button keeps its 24px beside it. */}
-      <div className="flex items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <BrandMenu ctx={rootCtx} />
+    // The column scrolls and its foot does not: the sync status is something you glance
+    // at, and on a short window it used to scroll away with the navigation above it.
+    <aside className="flex min-h-0 w-full flex-col bg-card">
+      <div className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-2.5 py-4">
+        {/* The seal takes the width it is given, so it is the one that flexes and the
+            anchor button keeps its 24px beside it. */}
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <BrandMenu ctx={rootCtx} />
+          </div>
+          <SidebarAnchor />
         </div>
-        <SidebarAnchor />
-      </div>
 
-      {/* Above everything: what somebody pinned is what they came back for. Draws nothing
-          at all until there is a pin, so an empty instance is the column it always was. */}
-      <Favourites onNavigate={onNavigate} />
+        {/* Above everything: what somebody pinned is what they came back for. Draws nothing
+            at all until there is a pin, so an empty instance is the column it always was. */}
+        <Favourites onNavigate={onNavigate} />
 
-      <div>
-        <GroupLabel className="pt-0">Views</GroupLabel>
+        <div>
+          <GroupLabel className="pt-0">Views</GroupLabel>
 
-        {/* A route rather than a scope, like every row but the next one. `live` is what
-            keeps a half-built one out of the column and `row` is what keeps a finished
-            one out — the inbox is a bell in the top bar now, and `isNavRow` is the single
-            place that knows both.
+          {/* A route rather than a scope, like every row but the next one. `live` is what
+              keeps a half-built one out of the column and `row` is what keeps a finished
+              one out — the inbox is a bell in the top bar now, and `isNavRow` is the single
+              place that knows both.
 
-            `navHref` rather than `item.href`: while a team is selected, these links carry
-            it forward as `?team=`, so going from a team's list to that team's cycle keeps
-            the subject across the page load that wipes the store. */}
-        {PERSONAL_ROWS.map((item) => (
-          <RouteRow key={item.id} item={item} scope={scope} selection={selection} onNavigate={onNavigate} />
-        ))}
+              `navHref` rather than `item.href`: while a team is selected, these links carry
+              it forward as `?team=`, so going from a team's list to that team's cycle keeps
+              the subject across the page load that wipes the store. */}
+          {PERSONAL_ROWS.map((item) => (
+            <RouteRow key={item.id} item={item} scope={scope} selection={selection} onNavigate={onNavigate} />
+          ))}
 
-        {/* The one row in this group that goes nowhere: it changes what the list is
-            about, which is why it is a `<button>` and why it lives in the markup rather
-            than in `NAV_ITEMS` — it has no href to put there. */}
-        <ViewRow current={allCurrent}>
-          <button
-            className="min-w-0 flex-1 py-[5px] pl-1.5 text-left"
-            aria-current={allCurrent}
-            onClick={() => selectScope({ kind: "all" })}
-          >
-            <span className="truncate">All tickets</span>
-          </button>
-        </ViewRow>
-
-        {ROUTE_ROWS.map((item) => (
-          <RouteRow key={item.id} item={item} scope={scope} selection={selection} onNavigate={onNavigate} />
-        ))}
-      </div>
-
-      <div>
-        <GroupLabel className="flex items-center gap-1.5">
-          <span className="flex-1">Teams</span>
-          {permits(newTeam, rootCtx) && (
+          {/* The one row in this group that goes nowhere: it changes what the list is
+              about, which is why it is a `<button>` and why it lives in the markup rather
+              than in `NAV_ITEMS` — it has no href to put there. */}
+          <ViewRow current={allCurrent}>
             <button
-              className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
-              aria-label="New team"
-              title={newTeam.label}
-              onClick={() => newTeam.run(rootCtx)}
+              className="min-w-0 flex-1 py-[5px] pl-1.5 text-left"
+              aria-current={allCurrent}
+              onClick={() => selectScope({ kind: "all" })}
             >
-              +
+              <span className="truncate">All tickets</span>
             </button>
-          )}
-        </GroupLabel>
+          </ViewRow>
 
-        {rows.length === 0 && <div className="px-1.5 py-1 text-12 text-faint">No team yet</div>}
+          {ROUTE_ROWS.map((item) => (
+            <RouteRow key={item.id} item={item} scope={scope} selection={selection} onNavigate={onNavigate} />
+          ))}
+        </div>
 
-        {rows.map((row) =>
-          row.kind === "team" ? (
-            <TeamRow
-              key={`team-${row.team.id}`}
-              team={row.team}
-              depth={row.depth}
-              current={isCurrentScope({ kind: "team", id: row.team.id }, selection)}
-              ctx={at({ kind: "team", id: row.team.id })}
-              onSelect={() => selectScope({ kind: "team", id: row.team.id })}
-            />
-          ) : (
-            <ProjectRow
-              key={`project-${row.project.id}`}
-              project={row.project}
-              depth={row.depth}
-              current={isCurrentScope({ kind: "project", id: row.project.id }, selection)}
-              ctx={at({ kind: "project", id: row.project.id })}
-              onSelect={() => selectScope({ kind: "project", id: row.project.id })}
-            />
-          ),
-        )}
-      </div>
-
-      <div>
-        <GroupLabel className="flex items-center gap-1.5">
-          <span className="flex-1">Projects</span>
-          {permits(newProject, rootCtx) && (
-            <button
-              className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
-              aria-label="New project"
-              title={newProject.label}
-              onClick={() => newProject.run(rootCtx)}
-            >
-              +
-            </button>
-          )}
-        </GroupLabel>
-
-        {loose.length === 0 && <div className="px-1.5 py-1 text-12 text-faint">No project without a team</div>}
-
-        {loose.map((project) => (
-          <ProjectRow
-            key={`root-${project.id}`}
-            project={project}
-            depth={0}
-            current={isCurrentScope({ kind: "project", id: project.id }, selection)}
-            ctx={at({ kind: "project", id: project.id })}
-            onSelect={() => selectScope({ kind: "project", id: project.id })}
-          />
-        ))}
-      </div>
-
-      <div className="mt-auto flex flex-col gap-2 px-1.5">
-        {/* Screen 08's four gestures. It renders nothing once they are done, so this
-            needs no condition of its own — the checklist is the only thing that knows
-            whether it is finished. The one condition it does need is the seat: all four
-            gestures are writes, and homework a reader cannot do would never be finished
-            and so would never go away. */}
-        {rootCtx.canWrite && <OnboardingChecklist />}
-
-        <button
-          className={cn(
-            "flex items-center gap-2 rounded-md py-[5px] text-left hover:bg-accent",
-            showArchived ? "text-foreground" : "text-muted-foreground",
-          )}
-          aria-pressed={showArchived}
-          onClick={() => setShowArchived(!showArchived)}
-        >
-          <span
-            className={cn(
-              "size-3 shrink-0 rounded-sm border border-border",
-              showArchived && "border-primary bg-primary",
+        <div>
+          <GroupLabel className="flex items-center gap-1.5">
+            <span className="flex-1">Teams</span>
+            {permits(newTeam, rootCtx) && (
+              <button
+                className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
+                aria-label="New team"
+                title={newTeam.label}
+                onClick={() => newTeam.run(rootCtx)}
+              >
+                +
+              </button>
             )}
-          />
-          Show archived
-        </button>
-        <div className="text-11 text-faint">{syncSummary}</div>
+          </GroupLabel>
+
+          {rows.length === 0 && <div className="px-1.5 py-1 text-12 text-faint">No team yet</div>}
+
+          {rows.map((row) =>
+            row.kind === "team" ? (
+              <TeamRow
+                key={`team-${row.team.id}`}
+                team={row.team}
+                depth={row.depth}
+                current={isCurrentScope({ kind: "team", id: row.team.id }, selection)}
+                ctx={at({ kind: "team", id: row.team.id })}
+                onSelect={() => selectScope({ kind: "team", id: row.team.id })}
+              />
+            ) : (
+              <ProjectRow
+                key={`project-${row.project.id}`}
+                project={row.project}
+                depth={row.depth}
+                current={isCurrentScope({ kind: "project", id: row.project.id }, selection)}
+                ctx={at({ kind: "project", id: row.project.id })}
+                onSelect={() => selectScope({ kind: "project", id: row.project.id })}
+              />
+            ),
+          )}
+        </div>
+
+        <div>
+          <GroupLabel className="flex items-center gap-1.5">
+            <span className="flex-1">Projects</span>
+            {permits(newProject, rootCtx) && (
+              <button
+                className="flex size-5 items-center justify-center rounded-sm normal-case tracking-normal text-faint hover:bg-accent hover:text-foreground"
+                aria-label="New project"
+                title={newProject.label}
+                onClick={() => newProject.run(rootCtx)}
+              >
+                +
+              </button>
+            )}
+          </GroupLabel>
+
+          {loose.length === 0 && <div className="px-1.5 py-1 text-12 text-faint">No project without a team</div>}
+
+          {loose.map((project) => (
+            <ProjectRow
+              key={`root-${project.id}`}
+              project={project}
+              depth={0}
+              current={isCurrentScope({ kind: "project", id: project.id }, selection)}
+              ctx={at({ kind: "project", id: project.id })}
+              onSelect={() => selectScope({ kind: "project", id: project.id })}
+            />
+          ))}
+        </div>
+
+        <div className="mt-auto flex flex-col gap-2 px-1.5">
+          {/* Screen 08's four gestures. It renders nothing once they are done, so this
+              needs no condition of its own — the checklist is the only thing that knows
+              whether it is finished. The one condition it does need is the seat: all four
+              gestures are writes, and homework a reader cannot do would never be finished
+              and so would never go away. */}
+          {rootCtx.canWrite && <OnboardingChecklist />}
+
+          <button
+            className={cn(
+              "flex items-center gap-2 rounded-md py-[5px] text-left hover:bg-accent",
+              showArchived ? "text-foreground" : "text-muted-foreground",
+            )}
+            aria-pressed={showArchived}
+            onClick={() => setShowArchived(!showArchived)}
+          >
+            <span
+              className={cn(
+                "size-3 shrink-0 rounded-sm border border-border",
+                showArchived && "border-primary bg-primary",
+              )}
+            />
+            Show archived
+          </button>
+        </div>
+      </div>
+      <div className="border-t border-border px-4 py-3">
+        <SyncStatus canConfigure={canConfigure(me.data?.user.instanceRole)} />
       </div>
     </aside>
   );
