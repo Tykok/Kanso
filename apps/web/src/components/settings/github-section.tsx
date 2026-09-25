@@ -19,6 +19,7 @@ import {
   githubLinkSummary,
 } from "../github/link-copy";
 import { SettingsFormField, SettingsInline, SettingsNote } from "./field";
+import { forgetCallback } from "@/lib/forget-callback";
 
 function message(error: unknown) {
   return error instanceof ApiError ? error.message : (error as Error)?.message ?? "Something went wrong";
@@ -63,7 +64,7 @@ export function GithubSection({ canConfigure }: { canConfigure: boolean }) {
   useEffect(() => {
     if (linked === null && linkError === null) return;
     void queryClient.invalidateQueries({ queryKey: githubKeys.link });
-    window.history.replaceState(null, "", window.location.pathname);
+    forgetCallback("github");
   }, [linked, linkError, queryClient]);
 
   const [clientId, setClientId] = useState("");

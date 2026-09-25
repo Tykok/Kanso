@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { ApiError, api, type SetupState } from "@/lib/api";
+import { forgetCallback } from "@/lib/forget-callback";
 import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
 import { keys, useSyncStatus } from "@/lib/queries";
 import { useApiOrigin } from "@/lib/use-api-origin";
@@ -81,7 +82,7 @@ export function ConnectionsSection({
   useEffect(() => {
     if (connected === null && connectError === null) return;
     queryClient.invalidateQueries({ queryKey: keys.setupState });
-    window.history.replaceState(null, "", window.location.pathname);
+    forgetCallback("connections");
   }, [connected, connectError, queryClient]);
 
   const [token, setToken] = useState("");

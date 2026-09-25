@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { AccountSection } from "@/components/settings/account-section";
 import { AgentsSection } from "@/components/settings/agents-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
@@ -53,24 +52,14 @@ export default function SettingsPage() {
   const me = useMe();
   const setup = useSetupState();
   /**
-   * `?section=` decides which tab opens, and only the initial one.
+   * `?section=` decides which tab is open, and pressing a tab writes it back.
    *
    * An OAuth callback comes back as a fresh page load from another origin — it cannot ask
    * this component to change tabs, so the section has to be readable from the URL or the
-   * member lands on Appearance and never sees whether their link worked. Read once as the
-   * `useState` initialiser rather than as a synchronised value, because pressing a tab
-   * afterwards must not have to write to the URL: the query string is where this screen
-   * was *entered*, not what it currently shows.
-   *
-   * An unknown value falls back to Appearance rather than rendering nothing, which is what
-   * a hand-typed or stale link deserves.
+   * member lands on Appearance and never sees whether their link worked. `useRequestedSection`
+   * carries why the address is the only source of truth rather than a starting point.
    */
-  const requested = useSearchParams().get("section");
-  // A new request while already here is followed too — see useRequestedSection.
-  const [section, setSection] = useRequestedSection<SectionId>(
-    requested !== null && requested in SECTION_NAMES ? (requested as SectionId) : null,
-    "appearance",
-  );
+  const [section, setSection] = useRequestedSection(SECTION_NAMES, "appearance");
 
   /**
    * The sign-in redirect this page ran from an effect is the shell's gate now, and so is

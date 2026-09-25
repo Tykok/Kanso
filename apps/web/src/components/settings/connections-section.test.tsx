@@ -40,7 +40,10 @@ vi.mock("@/lib/queries", async (importOriginal) => {
 // provider to read from and returns `null`, so the callback-banner branch's `.get()`
 // throws before anything under test here ever renders. Same fix `offline-watch.test.tsx`
 // applies for the same reason: what the address bar says is not the subject of this file.
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+const address = vi.hoisted(() => ({ search: "" }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(address.search),
+}));
 
 vi.mock("@/components/setup/notion-connect", () => ({ NotionConnect: () => null }));
 vi.mock("@/components/setup/notion-page-field", () => ({
@@ -83,6 +86,16 @@ describe("the Notion card in settings", () => {
   beforeEach(() => {
     saveNotion.mockReset();
     bootstrapNotion.mockReset();
+    address.search = "";
+  });
+
+  // The tab is read from `?section=` now, so stripping the whole query after the callback
+  // would throw a member who just connected Notion back onto Appearance.
+  it("forgets the callback's answer without leaving the connections tab", () => {
+    window.history.replaceState(null, "", "/settings?section=connections&notion_connected=1");
+    address.search = "section=connections&notion_connected=1";
+    section();
+    expect(window.location.search).toBe("?section=connections");
   });
 
   it("creates the databases as part of saving the page", async () => {
