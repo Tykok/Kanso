@@ -5,7 +5,7 @@ import { useMenuItems } from "./menu-items";
 import { Menu } from "./menu";
 import type { ActionContext } from "@/lib/actions";
 import { useMe } from "@/lib/queries";
-import { WEB_VERSION } from "@/lib/version";
+import { RELEASE, WEB_VERSION } from "@/lib/version";
 
 /**
  * Who am I, how do I configure this, how do I leave. Nothing in the interface answered
@@ -21,6 +21,9 @@ import { WEB_VERSION } from "@/lib/version";
  * reaches `NEXT_PUBLIC_KANSO_COMMIT` and the API's Gradle build — so the comparison
  * has something to compare. While the API answered with a hand-edited `0.1.0` the two
  * were different kinds of string, never equal, and the skew warning was permanently on.
+ *
+ * A released image leads with its tag, `v0.2.0 · <commit>`. The tag only decorates the
+ * line; the comparison stays commit against commit, for the reason above.
  */
 export function BrandMenu({ ctx }: { ctx: ActionContext }) {
   const me = useMe();
@@ -67,7 +70,7 @@ export function BrandMenu({ ctx }: { ctx: ActionContext }) {
               <span>api {apiVersion}</span>
             </>
           ) : (
-            <span>{WEB_VERSION}</span>
+            <span>{RELEASE ? `${RELEASE} · ${WEB_VERSION}` : WEB_VERSION}</span>
           )
         }
       />
