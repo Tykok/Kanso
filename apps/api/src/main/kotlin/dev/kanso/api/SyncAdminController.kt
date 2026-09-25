@@ -251,8 +251,11 @@ class SyncAdminController(
 		}
 		// The detailed shape, unchanged from before the split: this route is already the
 		// configurator's, and the four ids it just created are the one thing worth reading
-		// back from it.
-		return detail()
+		// back from it. Inside `tx` because this call is on `this`: the proxy never sees it,
+		// so `detail`'s own `@Transactional` does not apply here, and without one Exposed
+		// threw after a bootstrap that had succeeded — the screen said "Unexpected server
+		// error" over four databases it had just created.
+		return tx.execute { detail() }!!
 	}
 
 	/**
