@@ -16,13 +16,16 @@ import {
   useInbox,
   useMarkAllRead,
   useMarkRead,
+  useMe,
   usePatchTicket,
   useRetryFailedPushes,
   type PatchInput,
 } from "@/lib/queries";
 import { actionById } from "@/lib/actions";
 import { isMac } from "@/lib/platform";
+import { canConfigure } from "@/lib/seat";
 import { hintFor } from "@/lib/shortcuts";
+import { syncQueueHref } from "@/lib/sync-queue-href";
 import { useBindings } from "@/lib/use-bindings";
 import { useUi } from "@/store/ui";
 
@@ -62,6 +65,8 @@ function ticketPatchFor(conflict: Notification, value: string): PatchInput | und
  */
 export default function InboxPage() {
   const router = useRouter();
+  const me = useMe();
+  const queueHref = syncQueueHref(canConfigure(me.data?.user.instanceRole));
   const { overlay, open, close } = useUi();
   const reportError = useReportError();
 
@@ -182,7 +187,7 @@ export default function InboxPage() {
                 onError: (failure) => reportError(actionErrorMessage(failure)),
               })
             }
-            onSeeQueue={() => router.push("/settings")}
+            onSeeQueue={() => router.push(queueHref)}
           />
         ))}
 
@@ -194,7 +199,7 @@ export default function InboxPage() {
             now={now}
             onOpen={() => openRow(row)}
             onRetry={() => retryPushes.mutate()}
-            onSeeQueue={() => router.push("/settings")}
+            onSeeQueue={() => router.push(queueHref)}
           />
         ))}
       </div>

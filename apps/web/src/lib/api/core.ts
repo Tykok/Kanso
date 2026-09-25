@@ -1039,6 +1039,25 @@ export type SyncDetail = SyncStatus & {
   }[];
 };
 
+/** One outbox row as `GET /api/admin/sync/queue` lists it — `SyncAdminController.queue`. */
+export type QueuedJob = {
+  id: number;
+  entity: string;
+  entityId: string;
+  label?: string;
+  operation: string;
+  status: "pending" | "running" | "failed";
+  attempts: number;
+  nextAttemptAt?: string;
+  error?: string;
+};
+
+export type SyncQueue = {
+  counts: Record<string, number>;
+  queued: QueuedJob[];
+  failed: QueuedJob[];
+};
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -1542,4 +1561,5 @@ export const api = {
   users: () => request<User[]>("/api/users"),
   syncStatus: () => request<SyncStatus>("/api/admin/sync"),
   syncDetail: () => request<SyncDetail>("/api/admin/sync/detail"),
+  syncQueue: () => request<SyncQueue>("/api/admin/sync/queue"),
 };
