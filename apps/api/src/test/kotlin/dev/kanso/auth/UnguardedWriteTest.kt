@@ -309,6 +309,35 @@ class UnguardedWriteTest : MockMvcTest() {
 		)
 	}
 
+	/**
+	 * The queue screen quotes Notion about pages by title, which is `/sync/detail`'s
+	 * argument, and so it is refused to a member for the same reason.
+	 */
+	@Test
+	fun `the queue is the configurator's alone`() {
+		val read = { who: User ->
+			mvc.perform(
+				MockMvcRequestBuilders.get("/api/admin/sync/queue")
+					.header(DevAuthenticationFilter.HEADER, who.email),
+			).andReturn().response
+		}
+
+		val refused = read(member)
+		assertEquals(
+			403,
+			refused.status,
+			"a member reads the badge, not the queue: ${refused.contentAsString}",
+		)
+
+		val allowed = read(admin)
+		assertEquals(
+			200,
+			allowed.status,
+			"an admin diagnosing the mirror reads it: ${allowed.contentAsString}",
+		)
+		assertTrue("\"queued\"" in allowed.contentAsString, allowed.contentAsString)
+	}
+
 	private companion object {
 		val UNSAFE = setOf("POST", "PUT", "PATCH", "DELETE")
 

@@ -5,6 +5,7 @@ import dev.kanso.config.KansoProperties
 import dev.kanso.outbox.Destination
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
+import dev.kanso.repo.QueuedJobRow
 import dev.kanso.repo.RequestBaseRepository
 import dev.kanso.service.BadRequestException
 import dev.kanso.sync.bootstrap.BootstrapNotPossible
@@ -64,6 +65,24 @@ data class SyncSummaryResponse(
 data class MirroredDatabase(val kind: String, val databaseId: String, val dataSourceId: String)
 data class FailedJob(val id: Long, val entity: String, val entityId: String, val attempts: Int, val error: String?)
 data class CursorStatus(val dataSourceId: String, val lastEditTime: String?, val lastRunAt: String?, val lastError: String?)
+
+data class QueuedJob(
+	val id: Long,
+	val entity: String,
+	val entityId: String,
+	val label: String?,
+	val operation: String,
+	val status: String,
+	val attempts: Int,
+	val nextAttemptAt: String?,
+	val error: String?,
+)
+
+data class SyncQueueResponse(
+	val counts: Map<String, Long>,
+	val queued: List<QueuedJob>,
+	val failed: List<QueuedJob>,
+)
 
 /**
  * Operational surface for the mirror. Everything here is diagnosable from the UI
@@ -179,6 +198,38 @@ class SyncAdminController(
 				},
 		)
 	}
+
+	/**
+	 * The outbox as the queue screen reads it: what waits, what is pushing, what failed.
+	 *
+	 * Its own route rather than a wider [detail]. That one is read once when the connections
+	 * card opens; this one is polled while the screen is open, and the card should not pay
+	 * for a join it never draws. Owner or admin on [detail]'s argument: an error string is
+	 * Notion talking about a page by title. `counts` is the whole queue, not the lists'
+	 * length, which stop at fifty.
+	 */
+	@GetMapping("/sync/queue")
+	@Transactional(readOnly = true)
+	fun queue(): SyncQueueResponse {
+		requireInstanceAdmin()
+		return SyncQueueResponse(
+			counts = jobs.countsByStatus(Destination.NOTION),
+			queued = jobs.findQueued(Destination.NOTION).map(::wire),
+			failed = jobs.findFailedRows(Destination.NOTION).map(::wire),
+		)
+	}
+
+	private fun wire(row: QueuedJobRow) = QueuedJob(
+		id = row.id,
+		entity = row.entityType.wire,
+		entityId = row.entityId.toString(),
+		label = row.label,
+		operation = row.operation.wire,
+		status = row.status,
+		attempts = row.attempts,
+		nextAttemptAt = row.nextAttemptAt?.toString(),
+		error = row.lastError,
+	)
 
 	/**
 	 * Creates the four Notion databases. Safe to call twice.
