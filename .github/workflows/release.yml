@@ -147,10 +147,16 @@ jobs:
       #
       # The commit goes in the same way the jar's did, so the footer and `/api/me` report
       # the same value and can be compared at all.
+      #
+      # The tag goes in too, and only here. It is the one place a build knows it is a
+      # release, and it is the answer an operator wants from the footer — "am I on
+      # v0.2.0" — which the commit alone makes them translate. It rides beside the commit
+      # and never replaces it, for the reason the jar's step gives for `github.sha`.
       - name: Build the web bundle
         working-directory: apps/web
         env:
           NEXT_PUBLIC_KANSO_COMMIT: ${{ github.sha }}
+          NEXT_PUBLIC_KANSO_RELEASE: ${{ github.ref_name }}
         run: pnpm build
 
       # `output: "standalone"` leaves three pieces in three places. Assembling them here
@@ -450,6 +456,12 @@ jobs:
       # list, which several registries and older Docker clients render as a phantom
       # `unknown/unknown` platform — a confusing thing to hand someone reading `docker
       # manifest inspect` to find out whether arm64 is there.
+      #
+      # The two labels are the image answering "which release am I" without being run:
+      # `docker inspect`, GHCR's package page and a registry scanner read them, and a pull
+      # of `latest` otherwise says nothing but a digest. Set here and not as `LABEL`s in
+      # `docker/Dockerfile`, beside the three that are there, because only this step knows
+      # the tag — a source build would have to stamp `dev` into a field that means release.
       - name: Push
         uses: docker/build-push-action@v6
         with:
@@ -458,6 +470,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             API_SOURCE=api-prebuilt
             WEB_SOURCE=web-prebuilt

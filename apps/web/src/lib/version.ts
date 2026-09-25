@@ -5,3 +5,14 @@
  * to a version number nobody bumped.
  */
 export const WEB_VERSION = process.env.NEXT_PUBLIC_KANSO_COMMIT ?? "dev";
+
+/**
+ * The tag `release.yml` was triggered by — `v0.2.0` — and absent everywhere else: a
+ * source build has no tag, and inventing one would be the hand-bumped number above.
+ *
+ * Shown beside the commit, never instead of it. The commit is what was compiled and what
+ * the skew check compares against `/api/me`; a tag is a name someone can move. But a tag
+ * is what an operator asks for when they want to know whether an instance is behind, and
+ * answering that with forty hex characters sends them to `git describe` to translate.
+ */
+export const RELEASE = process.env.NEXT_PUBLIC_KANSO_RELEASE || undefined;
