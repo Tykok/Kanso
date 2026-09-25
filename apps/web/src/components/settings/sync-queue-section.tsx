@@ -21,10 +21,29 @@ export function SyncQueueSection() {
   // data was not read at would drift between polls.
   const now = useMemo(() => new Date(queue.dataUpdatedAt), [queue.dataUpdatedAt]);
   const counts = queue.data?.counts ?? {};
+  const heading = <h2 className="text-21 font-medium tracking-tight">Sync queue</h2>;
+  const unreadable = queue.isError && (
+    <SettingsNote error>
+      The queue could not be read. It is tried again every few seconds.
+    </SettingsNote>
+  );
+
+  // Nothing is drawn from a queue that has not been read. Zeros and "Nothing waiting."
+  // before the first answer, or after a refused one, would assert the very silence this
+  // screen exists to break.
+  if (!queue.data) {
+    return (
+      <section className="flex flex-col gap-6">
+        {heading}
+        {unreadable || <SettingsNote>Reading the queue…</SettingsNote>}
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-6">
-      <h2 className="text-21 font-medium tracking-tight">Sync queue</h2>
+      {heading}
+      {unreadable}
 
       <div className="flex gap-4 text-13 text-muted-foreground">
         <span>{counts.running ?? 0} pushing</span>
