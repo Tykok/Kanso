@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AccountSection } from "@/components/settings/account-section";
 import { AgentsSection } from "@/components/settings/agents-section";
@@ -13,11 +12,13 @@ import { PeopleSection } from "@/components/settings/people-section";
 import { RequestBases } from "@/components/settings/request-bases";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { StatusesSection } from "@/components/settings/statuses-section";
+import { SyncQueueSection } from "@/components/settings/sync-queue-section";
 import { TemplatesSection } from "@/components/settings/templates-section";
 import { TokensSection } from "@/components/settings/tokens-section";
 import { VelocitySection } from "@/components/settings/velocity-section";
 import { useMe, useSetupState } from "@/lib/queries";
 import { canConfigure as configures } from "@/lib/seat";
+import { useRequestedSection } from "@/lib/use-requested-section";
 
 type SectionId =
   | "appearance"
@@ -28,6 +29,7 @@ type SectionId =
   | "templates"
   | "people"
   | "connections"
+  | "sync-queue"
   | "github"
   | "agents"
   | "tokens";
@@ -41,6 +43,7 @@ const SECTION_NAMES: Record<SectionId, string> = {
   templates: "Templates",
   people: "People",
   connections: "Connections",
+  "sync-queue": "Sync queue",
   github: "GitHub",
   agents: "Agents",
   tokens: "API tokens",
@@ -63,8 +66,10 @@ export default function SettingsPage() {
    * a hand-typed or stale link deserves.
    */
   const requested = useSearchParams().get("section");
-  const [section, setSection] = useState<SectionId>(
-    requested !== null && requested in SECTION_NAMES ? (requested as SectionId) : "appearance",
+  // A new request while already here is followed too — see useRequestedSection.
+  const [section, setSection] = useRequestedSection<SectionId>(
+    requested !== null && requested in SECTION_NAMES ? (requested as SectionId) : null,
+    "appearance",
   );
 
   /**
@@ -100,6 +105,7 @@ export default function SettingsPage() {
         "templates",
         "people",
         "connections",
+        "sync-queue",
         "github",
         "agents",
         "tokens",
@@ -162,6 +168,7 @@ export default function SettingsPage() {
           {section === "statuses" && canConfigure && <StatusesSection />}
           {section === "templates" && <TemplatesSection />}
           {section === "people" && canConfigure && <PeopleSection />}
+          {section === "sync-queue" && canConfigure && <SyncQueueSection />}
           {section === "github" && <GithubSection canConfigure={canConfigure} />}
           {section === "agents" && <AgentsSection />}
           {section === "tokens" && <TokensSection />}

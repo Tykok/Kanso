@@ -6,7 +6,15 @@ import { Bell } from "lucide-react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import type { Notification } from "@/lib/api";
 import { actionErrorMessage } from "@/lib/errors";
-import { useInbox, useMarkAllRead, useMarkRead, useRetryFailedPushes } from "@/lib/queries";
+import {
+  useInbox,
+  useMarkAllRead,
+  useMarkRead,
+  useMe,
+  useRetryFailedPushes,
+} from "@/lib/queries";
+import { canConfigure } from "@/lib/seat";
+import { syncQueueHref } from "@/lib/sync-queue-href";
 import { useReportError } from "@/components/shell/topbar-slot";
 import { InboxRow } from "./row";
 
@@ -36,6 +44,8 @@ const PEEK_ROWS = 8;
 
 export function InboxBell() {
   const router = useRouter();
+  const me = useMe();
+  const queueHref = syncQueueHref(canConfigure(me.data?.user.instanceRole));
   const reportError = useReportError();
   const [open, setOpen] = useState(false);
 
@@ -211,7 +221,7 @@ export function InboxBell() {
                 }
                 onSeeQueue={() => {
                   setOpen(false);
-                  router.push("/settings");
+                  router.push(queueHref);
                 }}
               />
             ))}

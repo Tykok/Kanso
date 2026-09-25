@@ -127,6 +127,7 @@ export function useRetryFailedPushes() {
       // the button that empties the queue is the one place both have to be dropped: the
       // count would drop to zero beside a list still naming the rows it counted.
       client.invalidateQueries({ queryKey: ["syncDetail"] });
+      client.invalidateQueries({ queryKey: ["syncQueue"] });
     },
   });
 }

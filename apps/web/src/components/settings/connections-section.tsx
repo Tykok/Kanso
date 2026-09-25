@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ImportDialog } from "@/components/inbox/import-dialog";
 import { ApiError, api, type SetupState } from "@/lib/api";
 import { readGoogleClientFile, redirectUriProblem } from "@/lib/google-client-file";
-import { keys, useRetryFailedPushes, useSyncDetail, useSyncStatus } from "@/lib/queries";
+import { keys, useSyncStatus } from "@/lib/queries";
 import { useApiOrigin } from "@/lib/use-api-origin";
 import { NotionConnect } from "@/components/setup/notion-connect";
 import { NotionPageField } from "@/components/setup/notion-page-field";
@@ -177,22 +178,11 @@ export function ConnectionsSection({
   const notionLocked = state.notion.managedByEnvironment || !canConfigure;
   const googleLocked = state.google.managedByEnvironment || !canConfigure;
 
-  // The queue is on this page because this is where the inbox's `See the queue` on a
-  // refused push lands: the mirror's failures belong beside the connection that
-  // produced them, not on a screen of their own.
+  // The count stays beside the connection that produced the failures, because a member's
+  // `See the queue` lands here: the rows and Notion's reasons are the configurator's, on
+  // the sync queue section.
   const sync = useSyncStatus();
-  const retryPushes = useRetryFailedPushes();
-
-  /**
-   * Two reads because `KAN-53` gave the mirror two answers: how many writes it refused is
-   * every member's, and which pages and why is the configurator's. So the section is drawn
-   * from the count — a member arriving here from the inbox's `See the queue` still finds
-   * the queue, rather than a screen that silently has nothing on it — and the rows fill in
-   * only for the reader entitled to Notion's own sentences about pages in the workspace.
-   */
-  const detail = useSyncDetail(canConfigure);
   const failedCount = sync.data?.jobs.failed ?? 0;
-  const failed = detail.data?.failed ?? [];
 
   return (
     <section className="flex flex-col gap-6">
@@ -303,12 +293,11 @@ export function ConnectionsSection({
       </div>
 
       {/*
-       * The queue, named as a section rather than as a note.
+       * How many writes the mirror refused, and for a configurator the way to which and why.
        *
-       * `See the queue` on a refused push in the inbox lands here, so this has to be
-       * the place where "which writes did the mirror refuse, and why" is answerable.
-       * Drawn only when something has failed: an empty queue is not news, and a
-       * permanent "0 failed" row is one more line to read past on every visit.
+       * A member's `See the queue` on a refused push lands here, so the count has to be
+       * readable without the rows. Drawn only when something has failed: an empty queue is
+       * not news, and a permanent "0 failed" row is one more line to read past.
        */}
       {failedCount > 0 && (
         <div
@@ -328,40 +317,15 @@ export function ConnectionsSection({
             </SettingsNote>
           )}
 
-          <div className="flex flex-col gap-0.5 text-12">
-            {failed.map((job) => (
-              <div
-                key={job.id}
-                data-testid="failed-push"
-                className="grid grid-cols-[80px_1fr] items-start gap-2.5 rounded-sm bg-background px-2.5 py-1.5"
-              >
-                <span className="font-mono text-11 text-faint">{job.entity}</span>
-                <span className="text-muted-foreground">
-                  {job.error ?? "No reason was recorded."}
-                  <span className="text-faint">
-                    {" "}
-                    · {job.attempts} {job.attempts === 1 ? "attempt" : "attempts"}
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-
           {canConfigure && (
             <SettingsInline>
-              <button
-                className="button"
-                disabled={retryPushes.isPending}
-                onClick={() => retryPushes.mutate()}
-              >
-                Retry all
-              </button>
+              {/* One home for the failures: the rows and their reasons moved to the queue
+                  section, and this card keeps the count a member can read too. */}
+              <Link className="button" href="/settings?section=sync-queue">
+                Open the sync queue
+              </Link>
             </SettingsInline>
           )}
-          <SettingsNote>
-            Every push writes the whole row from Postgres, so retrying one that already
-            partly landed cannot make the mirror worse.
-          </SettingsNote>
         </div>
       )}
 

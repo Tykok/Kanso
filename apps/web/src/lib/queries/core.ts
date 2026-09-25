@@ -44,6 +44,7 @@ export const keys = {
    * a key something else invalidates into.
    */
   syncDetail: ["syncDetail"] as const,
+  syncQueue: ["syncQueue"] as const,
 
   // Everything below is keyed on what was asked for, so two different answers
   // never share one cache entry. `applyEvents` finds them on the first segment,
@@ -554,6 +555,10 @@ export const useSyncStatus = () =>
  */
 export const useSyncDetail = (enabled: boolean) =>
   useQuery({ queryKey: keys.syncDetail, queryFn: api.syncDetail, enabled });
+
+/** Watched rather than read once: the screen exists to see the queue move. */
+export const useSyncQueue = () =>
+  useQuery({ queryKey: keys.syncQueue, queryFn: api.syncQueue, refetchInterval: 5_000 });
 
 export const useTeamMembers = (teamId: string) =>
   useQuery({ queryKey: keys.teamMembers(teamId), queryFn: () => api.teamMembers(teamId) });
