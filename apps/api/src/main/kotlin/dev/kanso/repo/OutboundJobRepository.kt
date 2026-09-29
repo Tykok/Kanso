@@ -398,6 +398,37 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		""".trimIndent()
 	).param("destination", destination.wire).param("limit", limit).query(mapper).list()
 
+	/**
+	 * Why one entity's push was given up on, or null while anything is still trying.
+	 *
+	 * A failed row with a pending or running sibling is history — somebody edited the
+	 * entity since, or pressed retry — and the sibling is the attempt that counts. Only a
+	 * failure with nothing behind it means the far side will not get this entity until a
+	 * person does something.
+	 */
+	fun givenUpOn(destination: Destination, entityType: OutboundEntityType, entityId: UUID): String? =
+		jdbc.sql(
+			"""
+			SELECT j.last_error FROM outbound_jobs j
+			 WHERE j.destination = :destination AND j.entity_type = :type AND j.entity_id = :id
+			   AND j.status = 'failed'
+			   AND NOT EXISTS (
+			       SELECT 1 FROM outbound_jobs other
+			        WHERE other.destination = j.destination
+			          AND other.entity_type = j.entity_type
+			          AND other.entity_id = j.entity_id
+			          AND other.status IN ('pending', 'running')
+			   )
+			 ORDER BY j.updated_at DESC LIMIT 1
+			""".trimIndent()
+		)
+			.param("destination", destination.wire)
+			.param("type", entityType.wire)
+			.param("id", entityId)
+			.query { rs, _ -> rs.getString("last_error") ?: "no error recorded" }
+			.optional()
+			.orElse(null)
+
 	private val listed = RowMapper { rs, _ ->
 		QueuedJobRow(
 			id = rs.getLong("id"),
