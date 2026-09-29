@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QueuedJob } from "@/lib/api";
-import { queueLine } from "./sync-queue-line";
+import { queueLine } from "./queue-line";
 
 const NOW = new Date("2026-09-25T17:00:00Z");
 const job = (over: Partial<QueuedJob>): QueuedJob => ({
@@ -49,5 +49,9 @@ describe("what a queue row says", () => {
     expect(queueLine(job({ status: "failed", attempts: 8 }), NOW).state).toBe(
       "Failed after 8 attempts",
     );
+  });
+
+  it("does not count the tries of a push that was stopped before its first", () => {
+    expect(queueLine(job({ status: "failed", attempts: 0 }), NOW).state).toBe("Stopped");
   });
 });

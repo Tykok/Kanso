@@ -31,7 +31,7 @@ describe("the sync status at the foot of the sidebar", () => {
   it("links an admin to the queue, and gives a member the words only", () => {
     reading.current = jobs({ pending: 1 });
     const { unmount } = render(<SyncStatus canConfigure />);
-    expect(screen.getByRole("link").getAttribute("href")).toBe("/settings?section=sync-queue");
+    expect(screen.getByRole("link").getAttribute("href")).toBe("/sync");
     unmount();
 
     render(<SyncStatus canConfigure={false} />);

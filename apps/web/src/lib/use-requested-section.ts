@@ -4,9 +4,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
  * The settings tab, read from `?section=` and written back to it.
  *
  * The address is the only source of truth, because every other arrangement ignores a link
- * sooner or later. Read once at mount, a link followed while already on `/settings` — the
- * sidebar's status, the connections card's `Open the sync queue` — changes the URL and
- * nothing else, since a same-route navigation does not remount the page. Following only
+ * sooner or later. Read once at mount, a link followed while already on `/settings` — a
+ * refused push's `See the queue`, for a member, which lands on the connections — changes
+ * the URL and nothing else, since a same-route navigation does not remount the page. Following only
  * *changes* in the request still ignores the second click on the same link after a tab was
  * pressed, because the URL it leads to is the one already in the bar. Pressing a tab writes
  * the URL, so every link lands. `replace` rather than `push`: switching tabs is not

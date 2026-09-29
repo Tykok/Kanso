@@ -181,7 +181,7 @@ export function ConnectionsSection({
 
   // The count stays beside the connection that produced the failures, because a member's
   // `See the queue` lands here: the rows and Notion's reasons are the configurator's, on
-  // the sync queue section.
+  // the sync page.
   const sync = useSyncStatus();
   const failedCount = sync.data?.jobs.failed ?? 0;
 
@@ -320,10 +320,10 @@ export function ConnectionsSection({
 
           {canConfigure && (
             <SettingsInline>
-              {/* One home for the failures: the rows and their reasons moved to the queue
-                  section, and this card keeps the count a member can read too. */}
-              <Link className="button" href="/settings?section=sync-queue">
-                Open the sync queue
+              {/* One home for the failures: the rows and their reasons are the sync page's,
+                  and this card keeps the count a member can read too. */}
+              <Link className="button" href="/sync">
+                Open Notion sync
               </Link>
             </SettingsInline>
           )}

@@ -75,6 +75,7 @@ const ROUTES: { path: string; sidebar: boolean }[] = [
   { path: "/docs/doc-1", sidebar: true },
   { path: "/trash", sidebar: true },
   { path: "/settings", sidebar: false },
+  { path: "/sync", sidebar: false },
   { path: "/p/project-onboarding", sidebar: false },
   { path: "/t/KAN-142", sidebar: false },
 ];
