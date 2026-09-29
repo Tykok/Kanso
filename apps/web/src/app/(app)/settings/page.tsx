@@ -11,7 +11,6 @@ import { PeopleSection } from "@/components/settings/people-section";
 import { RequestBases } from "@/components/settings/request-bases";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { StatusesSection } from "@/components/settings/statuses-section";
-import { SyncQueueSection } from "@/components/settings/sync-queue-section";
 import { TemplatesSection } from "@/components/settings/templates-section";
 import { TokensSection } from "@/components/settings/tokens-section";
 import { VelocitySection } from "@/components/settings/velocity-section";
@@ -28,7 +27,6 @@ type SectionId =
   | "templates"
   | "people"
   | "connections"
-  | "sync-queue"
   | "github"
   | "agents"
   | "tokens";
@@ -42,7 +40,6 @@ const SECTION_NAMES: Record<SectionId, string> = {
   templates: "Templates",
   people: "People",
   connections: "Connections",
-  "sync-queue": "Sync queue",
   github: "GitHub",
   agents: "Agents",
   tokens: "API tokens",
@@ -94,7 +91,6 @@ export default function SettingsPage() {
         "templates",
         "people",
         "connections",
-        "sync-queue",
         "github",
         "agents",
         "tokens",
@@ -157,7 +153,6 @@ export default function SettingsPage() {
           {section === "statuses" && canConfigure && <StatusesSection />}
           {section === "templates" && <TemplatesSection />}
           {section === "people" && canConfigure && <PeopleSection />}
-          {section === "sync-queue" && canConfigure && <SyncQueueSection />}
           {section === "github" && <GithubSection canConfigure={canConfigure} />}
           {section === "agents" && <AgentsSection />}
           {section === "tokens" && <TokensSection />}

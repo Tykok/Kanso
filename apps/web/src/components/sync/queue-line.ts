@@ -12,6 +12,8 @@ export function queueLine(job: QueuedJob, now: Date): QueueLine {
   const reason = readableError(job.error);
   if (job.status === "running") return { state: "Pushing", reason };
   if (job.status === "failed") {
+    // A push stopped behind a refused dependency may never have spent a try of its own.
+    if (job.attempts === 0) return { state: "Stopped", reason };
     return {
       state: `Failed after ${job.attempts} ${job.attempts === 1 ? "attempt" : "attempts"}`,
       reason,

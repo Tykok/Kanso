@@ -151,6 +151,7 @@ const CRUMBS: Record<string, { team?: boolean; project?: boolean; index?: boolea
   docs: { index: true, record: "Document" },
   trash: {},
   settings: {},
+  sync: {},
   t: { team: true, project: true, record: "Ticket" },
   p: { team: true, record: "Project" },
   // Screen 41's two destinations. `team: true` because both are figures measured against
@@ -163,7 +164,7 @@ const CRUMBS: Record<string, { team?: boolean; project?: boolean; index?: boolea
 };
 
 /**
- * The three destinations with no entry in `NAV_ITEMS`, and so no label to borrow.
+ * The destinations with no entry in `NAV_ITEMS`, and so no label to borrow.
  *
  * `me` was a fourth until §5 gave it a row: it read "My work" here while the column said
  * "My view", and `indexLabel` below asks `NAV_ITEMS` first — so the crumb was already
@@ -175,6 +176,7 @@ const CRUMBS: Record<string, { team?: boolean; project?: boolean; index?: boolea
  */
 const UNROWED: Record<string, string> = {
   settings: "Settings",
+  sync: "Notion sync",
   t: "Ticket",
   p: "Project",
 };

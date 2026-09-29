@@ -1,7 +1,14 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  keepPreviousData,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  api,
   inboxApi,
   notionImportApi,
   type Inbox,
@@ -120,16 +127,30 @@ export function useRetryFailedPushes() {
 
   return useMutation({
     mutationFn: inboxApi.retryFailedPushes,
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: inboxKeys.all });
-      client.invalidateQueries({ queryKey: ["sync"] });
-      // The queue's own rows live under a second key since `KAN-53` split the answer, and
-      // the button that empties the queue is the one place both have to be dropped: the
-      // count would drop to zero beside a list still naming the rows it counted.
-      client.invalidateQueries({ queryKey: ["syncDetail"] });
-      client.invalidateQueries({ queryKey: ["syncQueue"] });
-    },
+    onSuccess: () => dropSyncReadings(client),
   });
+}
+
+/** `Retry` on one row of the sync page, which only a configurator reaches. */
+export function useRetrySyncJob() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: api.retrySyncJob,
+    onSuccess: () => dropSyncReadings(client),
+  });
+}
+
+/**
+ * Every reading a requeue changes. The queue's own rows live under a second key since
+ * `KAN-53` split the answer, and a retry is the one place all of them have to be dropped:
+ * the count would drop to zero beside a list still naming the rows it counted.
+ */
+function dropSyncReadings(client: QueryClient) {
+  client.invalidateQueries({ queryKey: inboxKeys.all });
+  client.invalidateQueries({ queryKey: ["sync"] });
+  client.invalidateQueries({ queryKey: ["syncDetail"] });
+  client.invalidateQueries({ queryKey: ["syncQueue"] });
 }
 
 /**

@@ -31,6 +31,16 @@ describe("a push error, read by a person", () => {
     expect(readableError(raw)?.summary).toBe("Notion refused the page: A, B, C are invalid");
   });
 
+  it("names what a blocked push waits on, and leaves the refusal to its own row", () => {
+    const raw =
+      "Blocked by project 5e1acffe-fb7b-4f9c-b18a-ae84d95e5e05, which Notion refused: " +
+      REFUSED;
+    expect(readableError(raw)).toEqual({
+      summary: "Waiting on a project Notion refused",
+      detail: raw,
+    });
+  });
+
   it("leaves a one-line error as it is, with nothing to unfold", () => {
     expect(readableError("The target page is locked by another workspace")).toEqual({
       summary: "The target page is locked by another workspace",

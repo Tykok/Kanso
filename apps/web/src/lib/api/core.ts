@@ -1562,4 +1562,6 @@ export const api = {
   syncStatus: () => request<SyncStatus>("/api/admin/sync"),
   syncDetail: () => request<SyncDetail>("/api/admin/sync/detail"),
   syncQueue: () => request<SyncQueue>("/api/admin/sync/queue"),
+  retrySyncJob: (id: number) =>
+    request<{ requeued: number }>(`/api/admin/sync/jobs/${id}/retry`, { method: "POST" }),
 };

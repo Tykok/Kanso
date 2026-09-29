@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
 }));
 
-const NAMES = { appearance: "Appearance", people: "People", "sync-queue": "Sync queue" };
+const NAMES = { appearance: "Appearance", people: "People", connections: "Connections" };
 
 describe("the settings tab the address names", () => {
   beforeEach(() => {
@@ -31,7 +31,7 @@ describe("the settings tab the address names", () => {
   });
 
   it("writes a pressed tab to the address, so the same link followed again still lands", () => {
-    address.search = "section=sync-queue";
+    address.search = "section=connections";
     const { result } = renderHook(() => useRequestedSection(NAMES, "appearance"));
     act(() => result.current[1]("people"));
     expect(replace).toHaveBeenCalledWith("/settings?section=people", { scroll: false });
