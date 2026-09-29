@@ -83,6 +83,17 @@ class OutboundQueueListingTest : PostgresTest() {
 	}
 
 	@Test
+	fun `a refused dependency is listed above the pushes stopped behind it`() {
+		val blocked = queue(OutboundEntityType.TICKET, status = "failed", error = "Blocked by project")
+		val project = queue(OutboundEntityType.PROJECT, status = "failed", error = "Notion API 400")
+
+		assertEquals(
+			listOf(project, blocked),
+			jobs.findFailedRows(Destination.NOTION).map { it.entityId },
+		)
+	}
+
+	@Test
 	fun `a row names its entity, and says nothing for one that is gone`() {
 		val admin = users.createLocalUser(
 			email = "queue-${UUID.randomUUID()}@kanso.test",

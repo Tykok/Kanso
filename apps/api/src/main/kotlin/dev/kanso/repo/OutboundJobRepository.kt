@@ -481,10 +481,15 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		limit = limit,
 	)
 
-	/** [findFailed]'s rows in the listing's shape, so both lists render with one component. */
+	/**
+	 * [findFailed]'s rows in the listing's shape, so both lists render with one component.
+	 *
+	 * Dependencies first: a refused project stops every ticket in it, and the one row worth
+	 * reading is the refusal the others are blocked behind, not whichever failed last.
+	 */
 	fun findFailedRows(destination: Destination, limit: Int = 50): List<QueuedJobRow> = listing(
 		where = "j.status = 'failed'",
-		order = "j.updated_at DESC",
+		order = "j.priority, j.updated_at DESC",
 		destination = destination,
 		limit = limit,
 	)
@@ -494,11 +499,22 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 	 * retry endpoint, which is a button on one destination's own screen — retrying
 	 * somebody else's failures from it would be a surprise.
 	 */
-	fun retryAllFailed(destination: Destination): Int = jdbc.sql(
+	fun retryAllFailed(destination: Destination): Int = requeueFailed(destination, id = null)
+
+	/**
+	 * [retryAllFailed] for one row, from the sync page's own button. Zero when the row is
+	 * not a failure of this destination any more — somebody pressed the other button, or
+	 * the entity was edited and a fresh push is already pending, which is the attempt that
+	 * counts.
+	 */
+	fun retryFailed(destination: Destination, id: Long): Int = requeueFailed(destination, id)
+
+	private fun requeueFailed(destination: Destination, id: Long?): Int = jdbc.sql(
 		"""
 		UPDATE outbound_jobs SET status = 'pending', attempts = 0, next_attempt_at = now()
 		 WHERE status = 'failed'
 		   AND destination = :destination
+		   AND (CAST(:id AS bigint) IS NULL OR id = :id)
 		   AND NOT EXISTS (
 		       SELECT 1 FROM outbound_jobs other
 		        WHERE other.destination = outbound_jobs.destination
@@ -507,5 +523,5 @@ class OutboundJobRepository(private val jdbc: JdbcClient) {
 		          AND other.status = 'pending'
 		   )
 		""".trimIndent()
-	).param("destination", destination.wire).update()
+	).param("destination", destination.wire).param("id", id).update()
 }

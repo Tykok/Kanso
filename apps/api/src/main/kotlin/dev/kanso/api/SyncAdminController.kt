@@ -16,6 +16,7 @@ import org.springframework.security.access.AccessDeniedException
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -293,6 +294,18 @@ class SyncAdminController(
 	@PostMapping("/sync/retry-failed")
 	@Transactional
 	fun retryFailed(): Map<String, Any> = mapOf("requeued" to jobs.retryAllFailed(Destination.NOTION))
+
+	/**
+	 * One row's `Retry`, on the sync page. Guarded where [retryFailed] is not, because the
+	 * only way to learn a job's id is [queue], which is the configurator's — a member has
+	 * no row to press this on, and the inbox keeps the open button.
+	 */
+	@PostMapping("/sync/jobs/{id}/retry")
+	@Transactional
+	fun retryJob(@PathVariable id: Long): Map<String, Any> {
+		requireInstanceAdmin()
+		return mapOf("requeued" to jobs.retryFailed(Destination.NOTION, id))
+	}
 
 	/**
 	 * `SetupController`'s sentence, said the same way, because a member who trips this and
