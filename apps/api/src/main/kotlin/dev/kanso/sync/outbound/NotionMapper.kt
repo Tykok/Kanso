@@ -5,6 +5,7 @@ import dev.kanso.domain.Project
 import dev.kanso.domain.Team
 import dev.kanso.domain.Ticket
 import dev.kanso.domain.mirroredWord
+import dev.kanso.outbox.OutboundEntityType
 import dev.kanso.repo.DependencyRepository
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.ProjectRepository
@@ -20,8 +21,13 @@ import java.util.UUID
  * Raised when a page this one relates to hasn't reached Notion yet. The job is put
  * back with a short delay instead of failing: the dependency is almost certainly
  * queued right behind it.
+ *
+ * It names the dependency because "almost certainly" is not "always": a dependency
+ * Notion refused is not queued behind anything, and `NotionOutboundHandler` has to be
+ * able to look it up to tell waiting from waiting forever.
  */
-class DependencyNotReady(message: String) : RuntimeException(message)
+class DependencyNotReady(val entityType: OutboundEntityType, val entityId: UUID) :
+	RuntimeException("${entityType.wire} $entityId has no Notion page yet")
 
 /**
  * Turns a Postgres row into the full set of Notion properties for its mirrored
@@ -53,7 +59,7 @@ class NotionMapper(
 			// Everyone, including those Notion can't represent as a person.
 			put(NotionProps.MEMBERS_TEXT, NotionProps.richText(memberships.joinToString { it.user.displayName }))
 			team.parentTeamId?.let { parentId ->
-				put(NotionProps.PARENT_TEAM, NotionProps.relation(listOf(requirePage("team", parentId, teams.findById(parentId)?.mirror?.notionPageId))))
+				put(NotionProps.PARENT_TEAM, NotionProps.relation(listOf(requirePage(OutboundEntityType.TEAM, parentId, teams.findById(parentId)?.mirror?.notionPageId))))
 			} ?: put(NotionProps.PARENT_TEAM, NotionProps.relation(emptyList()))
 		}
 	}
@@ -129,11 +135,11 @@ class NotionMapper(
 	)
 
 	private fun teamRelation(teamId: UUID?): List<String> = teamId?.let {
-		listOf(requirePage("team", it, teams.findById(it)?.mirror?.notionPageId))
+		listOf(requirePage(OutboundEntityType.TEAM, it, teams.findById(it)?.mirror?.notionPageId))
 	} ?: emptyList()
 
 	private fun projectRelation(projectId: UUID?): List<String> = projectId?.let {
-		listOf(requirePage("project", it, projects.findById(it)?.mirror?.notionPageId))
+		listOf(requirePage(OutboundEntityType.PROJECT, it, projects.findById(it)?.mirror?.notionPageId))
 	} ?: emptyList()
 
 	/**
@@ -142,11 +148,12 @@ class NotionMapper(
 	 * — so the predecessor's push always lands first in the end.
 	 */
 	private fun predecessorRelation(ticketId: UUID): List<String> =
-		dependencies.predecessorPageIds(ticketId).map { (id, pageId) -> requirePage("ticket", id, pageId) }
+		dependencies.predecessorPageIds(ticketId)
+			.map { (id, pageId) -> requirePage(OutboundEntityType.TICKET, id, pageId) }
 
 	private fun docRelation(docIds: List<UUID>): List<String> =
-		docs.findAllById(docIds).map { requirePage("doc", it.id, it.mirrorPageId) }
+		docs.findAllById(docIds).map { requirePage(OutboundEntityType.DOC, it.id, it.mirrorPageId) }
 
-	private fun requirePage(kind: String, id: UUID, pageId: String?): String =
-		pageId ?: throw DependencyNotReady("$kind $id has no Notion page yet")
+	private fun requirePage(type: OutboundEntityType, id: UUID, pageId: String?): String =
+		pageId ?: throw DependencyNotReady(type, id)
 }

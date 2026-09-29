@@ -10,6 +10,7 @@ import dev.kanso.outbox.OutboundJobHandler
 import dev.kanso.outbox.OutboundOperation
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.NotionMetaRepository
+import dev.kanso.repo.OutboundJobRepository
 import dev.kanso.repo.ProjectRepository
 import dev.kanso.repo.TeamRepository
 import dev.kanso.repo.TicketRepository
@@ -54,6 +55,7 @@ class NotionOutboundHandler(
 	private val projects: ProjectRepository,
 	private val tickets: TicketRepository,
 	private val docs: DocRepository,
+	private val jobs: OutboundJobRepository,
 	private val tx: TransactionTemplate,
 	private val objectMapper: ObjectMapper,
 ) : OutboundJobHandler {
@@ -92,9 +94,17 @@ class NotionOutboundHandler(
 	 * A rate limit and a dependency that hasn't landed are not the job's fault, so
 	 * they are deferred without spending an attempt: counting them would fail
 	 * perfectly good work for being queued behind something slow.
+	 *
+	 * Except a dependency that Notion has already refused. Nothing is queued behind that
+	 * one, so the deferral never ends: a project refused with a 400 kept every ticket in
+	 * it cycling every three seconds, `pending` forever, with no error anyone could read.
+	 * Those stop here and name the refusal they are stuck behind; the retry button puts
+	 * both back, and `priority` runs the dependency first.
 	 */
 	override fun classify(error: Exception): Failure = when (error) {
-		is DependencyNotReady -> Failure.Defer(error.message ?: "dependency not ready", DEPENDENCY_DELAY)
+		is DependencyNotReady -> blockedBy(error)
+			?.let { Failure.Fatal(it) }
+			?: Failure.Defer(error.message ?: "dependency not ready", DEPENDENCY_DELAY)
 		is NotBootstrapped -> Failure.Defer(error.message ?: "not bootstrapped", BOOTSTRAP_DELAY)
 		is NotionRateLimited -> Failure.Defer("rate limited", error.retryAfter)
 
@@ -191,6 +201,11 @@ class NotionOutboundHandler(
 	}
 
 	private fun message(error: Exception) = error.message ?: error.javaClass.simpleName
+
+	private fun blockedBy(error: DependencyNotReady): String? =
+		jobs.givenUpOn(destination, error.entityType, error.entityId)?.let {
+			"Blocked by ${error.entityType.wire} ${error.entityId}, which Notion refused: $it"
+		}
 
 	private companion object {
 		val DEPENDENCY_DELAY: Duration = Duration.ofSeconds(3)

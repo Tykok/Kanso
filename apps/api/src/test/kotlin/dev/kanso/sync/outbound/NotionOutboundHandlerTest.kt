@@ -9,6 +9,8 @@ import dev.kanso.domain.DefaultStatus
 import dev.kanso.domain.User
 import dev.kanso.outbox.Destination
 import dev.kanso.outbox.Failure
+import dev.kanso.outbox.OutboundEntityType
+import dev.kanso.outbox.OutboundOperation
 import dev.kanso.repo.DocRepository
 import dev.kanso.repo.NotionMetaRepository
 import dev.kanso.repo.OutboundJobRepository
@@ -127,6 +129,7 @@ class NotionOutboundHandlerTest : PostgresTest() {
 		projects = projectRows,
 		tickets = ticketRows,
 		docs = docRows,
+		jobs = jobs,
 		tx = tx,
 		objectMapper = objectMapper,
 	)
@@ -224,9 +227,9 @@ class NotionOutboundHandlerTest : PostgresTest() {
 		val gone = UUID.randomUUID()
 		jobs.enqueue(
 			Destination.NOTION,
-			dev.kanso.outbox.OutboundEntityType.TICKET,
+			OutboundEntityType.TICKET,
 			gone,
-			dev.kanso.outbox.OutboundOperation.DELETE,
+			OutboundOperation.DELETE,
 			payload = deletePayload("page-deleted"),
 		)
 		val job = claim().single { it.entityId == gone }
@@ -276,12 +279,45 @@ class NotionOutboundHandlerTest : PostgresTest() {
 			(handler.classify(NotionRateLimited(Duration.ofSeconds(7))) as Failure.Defer).delay,
 			"a rate limit is the queue being busy, not the job being wrong",
 		)
-		assertTrue(handler.classify(DependencyNotReady("team has no page yet")) is Failure.Defer)
+		assertTrue(
+			handler.classify(DependencyNotReady(OutboundEntityType.TEAM, UUID.randomUUID())) is Failure.Defer,
+		)
 		assertTrue(handler.classify(NotionApiException(502, null, "bad gateway")) is Failure.Retry)
 		assertTrue(
 			handler.classify(NotionApiException(400, null, "no such property")) is Failure.Fatal,
 			"eight attempts at something Notion will never accept is eight wasted minutes",
 		)
+	}
+
+	/**
+	 * A deferral is only a wait while something is still coming. A project Notion refused
+	 * is not coming, and deferring behind it kept its tickets `pending` forever, cycling
+	 * every three seconds with no error on the queue screen.
+	 */
+	@Test
+	fun `a dependency Notion refused stops the wait and says what it refused`() {
+		val handler = handler(RecordingClient())
+		val project = UUID.randomUUID()
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, project, OutboundOperation.UPSERT)
+		jobs.markFailed(claim().single { it.entityId == project }.id, "Notion API 400: bad Start")
+
+		val verdict = handler.classify(DependencyNotReady(OutboundEntityType.PROJECT, project))
+
+		assertTrue(verdict is Failure.Fatal, "nothing is queued behind a refusal")
+		assertTrue(verdict.message.contains("bad Start"), "the queue screen has to show why")
+	}
+
+	@Test
+	fun `a refused dependency that is being retried is waited for again`() {
+		val handler = handler(RecordingClient())
+		val project = UUID.randomUUID()
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.PROJECT, project, OutboundOperation.UPSERT)
+		jobs.markFailed(claim().single { it.entityId == project }.id, "Notion API 400: bad Start")
+		jobs.retryAllFailed(Destination.NOTION)
+
+		val verdict = handler.classify(DependencyNotReady(OutboundEntityType.PROJECT, project))
+
+		assertTrue(verdict is Failure.Defer, "the retried push may land, so the ticket waits for it")
 	}
 
 	@Test
