@@ -338,6 +338,16 @@ class UnguardedWriteTest : MockMvcTest() {
 		assertTrue("\"queued\"" in allowed.contentAsString, allowed.contentAsString)
 	}
 
+	/** A job's id only comes from the queue, so its own `Retry` is guarded like the queue. */
+	@Test
+	fun `retrying one push is the configurator's alone`() {
+		val refused = fire(member, "POST", "/api/admin/sync/jobs/1/retry")
+		assertEquals(403, refused.status, "a member has no row to press it on: ${refused.contentAsString}")
+
+		val allowed = fire(admin, "POST", "/api/admin/sync/jobs/1/retry")
+		assertEquals(200, allowed.status, "an admin retries the row: ${allowed.contentAsString}")
+	}
+
 	private companion object {
 		val UNSAFE = setOf("POST", "PUT", "PATCH", "DELETE")
 

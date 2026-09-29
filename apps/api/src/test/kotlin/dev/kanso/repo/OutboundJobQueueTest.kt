@@ -234,6 +234,26 @@ class OutboundJobQueueTest : PostgresTest() {
 	}
 
 	@Test
+	fun `one failed job can be requeued without its neighbours`() {
+		val mine = freshEntity()
+		val other = freshEntity()
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, mine, OutboundOperation.UPSERT)
+		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, other, OutboundOperation.UPSERT)
+		// One claim for both: a claim takes the whole batch, so a second would find nothing.
+		val batch = jobs.claimBatch(Destination.NOTION, 200, "test-worker")
+		val pressed = batch.single { it.entityId == mine }
+		val left = batch.single { it.entityId == other }
+		jobs.markFailed(pressed.id, "Notion said no")
+		jobs.markFailed(left.id, "Notion said no")
+
+		assertEquals(1, jobs.retryFailed(Destination.NOTION, pressed.id))
+
+		assertEquals("pending", statusOf(pressed.id), "the row's own button moves the row")
+		assertEquals("failed", statusOf(left.id), "and only that row")
+		assertEquals(0, jobs.retryFailed(Destination.NOTION, pressed.id), "a second press finds nothing")
+	}
+
+	@Test
 	fun `a job abandoned by a dead worker returns to the queue`() {
 		val id = freshEntity()
 		jobs.enqueue(Destination.NOTION, OutboundEntityType.TICKET, id, OutboundOperation.UPSERT)
